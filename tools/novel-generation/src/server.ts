@@ -30,7 +30,7 @@ import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } 
 import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
 import { copyOriginalCanonToUniverse, ensureBoundedUniverseCanonAssets, resolveOriginalCanonPath, truncateCanonAtLine } from "./canon-source.js";
-import { assessStoryUnitProgress, generateStoryUnit, hasVerifiableStoryProgress, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
+import { assessStoryUnitProgress, generateStoryUnit, hasVerifiableStoryProgress, isStoryUnitNaturallyComplete, mergeStorySpinePreservingCompleted, validateStoryUnit } from "./story-unit.js";
 import { archiveStoredStoryUnitVersion, createStoredStoryUnit, getStoredStoryUnit, getStoredStoryUnitVersion, listStoredStoryUnitVersions, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
 import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, storyRunStateWasRolledBack, type StoryExecution } from "./story-execution.js";
 import { canCancelStoryExecution, knowledgeBuildAttemptStatus, reusableKnowledgeBuildStepNames, shouldCancelStoryExecutionImmediately } from "./pipeline-state.js";
@@ -1706,12 +1706,7 @@ async function assessStoryExecutionCheckpoint(
     idleChapterCount,
     updatedAt: assessedAt
   }, { at: assessedAt, type: "assessment", message: assessment.rationale.slice(0, 1200), runId: checkpoint.runId });
-  const revisedSpine = assessment.revisedStorySpine.length >= 4
-    ? assessment.revisedStorySpine.map(beat => {
-        const previousBeat = unitInput.storySpine.find(item => item.title === beat.title);
-        return previousBeat?.status === "completed" ? { ...beat, status: "completed" as const } : beat;
-      })
-    : unitInput.storySpine;
+  const revisedSpine = mergeStorySpinePreservingCompleted(unitInput.storySpine, assessment.revisedStorySpine);
   const characterArcHistory = [
     ...(unitInput.execution.characterArcHistory ?? []),
     ...assessment.characterArcUpdates.filter(update => update.observedChange.trim()).map(update => ({
