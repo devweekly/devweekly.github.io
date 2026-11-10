@@ -196,6 +196,7 @@ console.log("Story state automatically updated: " + stateFile);
     const complete = await runCompleteStory(unitB.id);
     assert.equal(complete.completedChapters.length, 2);
     assert.equal(completeStoryAssessmentCount, 2);
+    completeStoryMode = false;
     const completedUnitB = JSON.parse(await readFile(join(worldDir, ".story-units", unitB.id + ".json"), "utf8")) as { execution: { status: string; completedChapterIds: string[] } };
     assert.equal(completedUnitB.execution.status, "completed");
     assert.equal(completedUnitB.execution.completedChapterIds.length, 3);
