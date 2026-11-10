@@ -624,19 +624,38 @@ export function stripUnclassifiedAliases(analysis: BatchAnalysis): BatchAnalysis
 
 export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysisOptions = {}): Promise<StoryAnalysisResult> {
   const worldDir = options.worldDir ?? resolve("worlds", worldId);
-  if (existsSync(join(worldDir, "universe.json"))) {
-    throw new Error("analyze-story 只能在原著来源世界执行。历史故事宇宙必须复用来源世界的分析快照；禁止在子宇宙从第一章重新分析原著。");
+  const isUniverse = existsSync(join(worldDir, "universe.json"));
+  if (isUniverse && !options.mergeOnly) {
+    throw new Error("历史故事宇宙禁止重新分析原著。仅允许 --merge-only 合并该宇宙已有的完整批次缓存；正常分析必须在原著来源世界执行。");
   }
   const { units } = await buildAnalysisUnits(worldId, { worldDir, catalogPath: options.catalogPath });
   if (!units.length) throw new Error("No chapter text found. Run ingest and index-story before analyze-story.");
-  const model = resolveAgentModel(options.model).model;
-  const batches = groupAnalysisUnits(units, options.maxChars ?? ANALYSIS_BATCH_CHARS).map((chapters, index) => ({ index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0) }));
+  const maxChars = options.maxChars ?? ANALYSIS_BATCH_CHARS;
+  const batches = groupAnalysisUnits(units, maxChars).map((chapters, index) => ({ index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0) }));
   const totalBatches = batches.length;
   if (options.limit !== undefined) {
     if (!Number.isInteger(options.limit) || options.limit < 1) throw new Error("--limit must be a positive integer.");
     batches.length = Math.min(batches.length, options.limit);
   }
-  const maxChars = options.maxChars ?? ANALYSIS_BATCH_CHARS;
+  const configuredModel = resolveAgentModel(options.model).model;
+  const modelCandidates = options.model
+    ? [configuredModel]
+    : [...new Set([configuredModel, ...readModelCatalog().map(item => item.id)])];
+  const hasCompleteCacheSet = (candidate: string): boolean => {
+    const root = resolve(".output", worldId, "story-analysis");
+    const directories = [
+      cacheKeyFor(candidate, units, maxChars, options.delta),
+      legacyCacheKeyFor(candidate, units, maxChars, options.delta),
+      cacheKeyFor(candidate, units, maxChars, !options.delta),
+      legacyCacheKeyFor(candidate, units, maxChars, !options.delta)
+    ];
+    return directories.some(key => batches.every((_, index) =>
+      existsSync(join(root, key, "batch-" + String(index).padStart(4, "0") + ".json"))
+    ));
+  };
+  const model = options.mergeOnly && !options.model
+    ? modelCandidates.find(hasCompleteCacheSet) ?? configuredModel
+    : configuredModel;
   const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, maxChars, options.delta));
   await mkdir(cacheDir, { recursive: true });
   const legacyExactDir = resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars, options.delta));
