@@ -1360,6 +1360,53 @@ app.post("/api/worlds/:worldId/story-units/:storyUnitId/versions/:versionId/rest
   } catch (error) { sendError(res, error); }
   finally { if (reserved) chapterGenerationReservations.delete(id); }
 });
+// Story Unit 创意生成审计：与章节 run 分开保存，避免混入章节执行状态。
+app.get("/api/worlds/:worldId/story-unit-generation-runs", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    const root = path.resolve(".output", id);
+    let names: string[];
+    try { names = await readdir(root); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return void res.json({ runs: [] });
+      throw error;
+    }
+    const runs = await Promise.all(names.filter(name => /^story-unit-[0-9a-f-]{36}$/i.test(name)).map(async name => {
+      try {
+        const record = JSON.parse(await readFile(path.join(root, name, "run.json"), "utf8")) as Record<string, unknown>;
+        return record.worldId === id && record.kind === "story-unit" ? record : null;
+      } catch { return null; }
+    }));
+    res.json({ runs: runs.filter((run): run is Record<string, unknown> => run !== null).sort((a, b) => String(b.startedAt ?? "").localeCompare(String(a.startedAt ?? ""))) });
+  } catch (error) { sendError(res, error); }
+});
+app.get("/api/worlds/:worldId/story-unit-generation-runs/:runId", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    const runId = recordId(req.params.runId);
+    const root = path.resolve(".output", id) + path.sep;
+    const outputDir = path.resolve(".output", id, "story-unit-" + runId);
+    if (!outputDir.startsWith(root)) return void res.status(400).json({ error: "Invalid Story Unit run path." });
+    const readOptional = async (name: string): Promise<string | Record<string, unknown> | null> => {
+      try {
+        const value = await readFile(path.join(outputDir, name), "utf8");
+        return name.endsWith(".json") ? JSON.parse(value) as Record<string, unknown> : value;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw error;
+      }
+    };
+    const run = await readOptional("run.json");
+    if (!run || typeof run === "string" || run.worldId !== id || run.id !== runId || run.kind !== "story-unit") {
+      return void res.status(404).json({ error: "Story Unit generation run not found." });
+    }
+    const [input, prompt, response, trace, result, failure] = await Promise.all([
+      readOptional("input-snapshot.json"), readOptional("prompt.txt"), readOptional("raw-response.txt"),
+      readOptional("model-trace.json"), readOptional("story-unit.json"), readOptional("failure.json")
+    ]);
+    res.json({ run, input, prompt, response, trace, result, failure });
+  } catch (error) { sendError(res, error); }
+});
 app.get("/api/worlds/:worldId/story-units/:storyUnitId/versions", async (req, res) => {
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
