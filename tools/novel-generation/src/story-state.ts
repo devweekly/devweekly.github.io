@@ -250,7 +250,16 @@ export async function commitStoryStateAndArc(input: {
   storyArcText?: string;
 }): Promise<void> {
   if (!input.applyState) return;
-  await saveStoryState(input.statePath, input.nextState);
+  try {
+    await saveStoryState(input.statePath, input.nextState);
+  } catch (error) {
+    try {
+      await saveStoryState(input.statePath, input.previousState);
+    } catch (rollbackError) {
+      throw new AggregateError([error, rollbackError], "Story State persistence failed and rollback also failed; inspect the run artifacts before continuing.");
+    }
+    throw error;
+  }
   if (!input.storyArcPath || input.storyArcText === undefined) return;
   const target = input.storyArcPath;
   const temporary = target + "." + process.pid + "." + Date.now() + ".tmp";
