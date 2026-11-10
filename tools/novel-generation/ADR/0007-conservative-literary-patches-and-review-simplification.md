@@ -3,7 +3,7 @@
 - 状态：Accepted
 - 日期：2026-11-10
 - 范围：`tools/novel-generation`
-- 取代：ADR 0004 中关于常规章节每章执行 Anti-AI 诊断/整章编辑/整章复核、每章自动 Style Regression，以及后置文风观察的默认流水线决策；ADR 0004 的文学优先、Living Voice、Reader 隔离等原则继续有效。
+- 取代：ADR 0008 中关于常规章节每章执行 Anti-AI 诊断/整章编辑/整章复核、每章自动 Style Regression，以及后置文风观察的默认流水线决策；ADR 0008 的文学优先、Living Voice、Reader 隔离等原则继续有效。
 
 ## 背景
 
