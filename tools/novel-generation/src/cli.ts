@@ -910,13 +910,10 @@ async function main(): Promise<void> {
         const universe = parseJsonDocument(universeRaw, resolve("worlds", worldId, "universe.json")) as {
           sourceWorldId?: string; entryChapter?: string; entryChapterId?: string;
         };
-        const bounded = snapshot as typeof snapshot & {
-          sourceWorldId?: string; asOfEntryChapter?: string; asOfEntryChapterId?: string;
-        };
-        bounded.sourceWorldId = universe.sourceWorldId;
-        bounded.asOfEntryChapter = universe.entryChapter;
-        bounded.asOfEntryChapterId = universe.entryChapterId;
-        saveStoryAnalysis(resolve("worlds", worldId), worldId, bounded);
+        snapshot.sourceWorldId = universe.sourceWorldId;
+        snapshot.asOfEntryChapter = universe.entryChapter;
+        snapshot.asOfEntryChapterId = universe.entryChapterId;
+        saveStoryAnalysis(resolve("worlds", worldId), worldId, snapshot);
       }
     }
     console.log(JSON.stringify({
