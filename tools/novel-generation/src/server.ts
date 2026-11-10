@@ -572,9 +572,13 @@ async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUnive
     // If no local cache exists, reuse the source world's earlier complete
     // batches and analyze only the single batch crossing the entry boundary.
     if (!imported && universe.entryChapterId) {
-      imported = await importBoundedStoryAnalysisFromBatchCache(
-        universe.sourceWorldId, worldId, targetDir, universe.entryChapterId, universe.entryChapter
-      );
+      try {
+        imported = await importBoundedStoryAnalysisFromBatchCache(
+          universe.sourceWorldId, worldId, targetDir, universe.entryChapterId, universe.entryChapter
+        );
+      } catch (error) {
+        console.warn("[workbench] source-world batch reuse failed; checking whether the merged snapshot is already fully bounded:", String(error));
+      }
     }
 
     if (!imported && source) {
