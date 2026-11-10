@@ -48,7 +48,9 @@ test("recent event context is bounded, chronological, and permits meaningful cal
     origin: "original" as const
   }));
 
+  state.events[9]!.summary = "已发生事件10" + "超长摘要".repeat(1_000);
   const context = buildRecentEventContinuityContext(state);
+  assert.match(context, /避免只换人物、地点或措辞/);
   assert.match(context, /已发生事件3/);
   assert.match(context, /已发生事件10/);
   assert.doesNotMatch(context, /已发生事件2/);
