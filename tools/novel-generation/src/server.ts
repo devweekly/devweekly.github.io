@@ -1829,10 +1829,6 @@ async function executeStoryUnitTask(initial: StoryExecution, signal?: AbortSigna
     const dir = worldDir(worldId);
     let unit = await loadExecutionStoryUnit(worldId, task.storyUnitId);
     unit = await syncStoryUnitCheckpointIds(worldId, task, unit) ?? unit;
-    if (task.mode === "complete_story" && unit.execution.status === "completed") {
-      task = { ...task, status: "completed", completedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), nextDirection: "故事已自然收束。" };
-      await saveStoryExecution(task); return;
-    }
     const universe = await readUniverse(worldId);
     if (universe?.archivedAt) throw new Error("当前故事宇宙已归档。");
     if (universe) await ensureUniverseStoryAnalysis(worldId, universe);
@@ -1858,6 +1854,12 @@ async function executeStoryUnitTask(initial: StoryExecution, signal?: AbortSigna
       const recoveredAssessment = await ensureStoryExecutionCheckpointAssessed(worldId, task, unit, pendingAssessment);
       task = recoveredAssessment.task; unit = recoveredAssessment.unit;
       if (recoveredAssessment.terminal) return;
+    }
+    if (task.mode === "complete_story" && unit.execution.status === "completed") {
+      task = appendStoryExecutionEvent({ ...task, status: "completed", completedAt: unit.execution.completedAt ?? new Date().toISOString(),
+        updatedAt: new Date().toISOString(), lastAssessment: unit.execution.lastAssessment ?? task.lastAssessment,
+        nextDirection: "故事已自然收束。" }, { at: new Date().toISOString(), type: "completed", message: "故事单元已在前次评估中自然收束" });
+      await saveStoryExecution(task); return;
     }
     while (true) {
       task = (await getStoryExecution(worldId, task.id)) ?? task;
