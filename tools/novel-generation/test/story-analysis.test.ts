@@ -6,8 +6,30 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { databaseStatus, invalidateDerivedAnalysis, readStoryAnalysis, saveStoryAnalysis } from "../src/database.js";
 import { groupAnalysisUnits } from "../src/novel-kb.js";
-import { assertMergeOptions, buildAnalysisPrompt, cleanCharacterAliases, filterCharacterAliasEvidence, parseModelJson, plotThreadId, plotThreadMergeKey, stripUnclassifiedAliases } from "../src/story-analysis.js";
+import { assertMergeOptions, batchFingerprint, buildAnalysisPrompt, cleanCharacterAliases, filterCharacterAliasEvidence, parseModelJson, plotThreadId, plotThreadMergeKey, storyAnalysisCacheNamespace, stripUnclassifiedAliases } from "../src/story-analysis.js";
 import { loadLibraryChunks } from "../src/library.js";
+
+test("story-analysis cache namespace is stable across corpus edits while each batch fingerprint is content-addressed", () => {
+  const batch = {
+    index: 0, chars: 12,
+    chapters: [{
+      chapterId: "V01-C001", ordinal: 1, volume: 1, title: "第一章", label: "1",
+      text: "原文正文", charCount: 4
+    }]
+  };
+  const namespace = storyAnalysisCacheNamespace("deepseek-v4.1-flash", 14000);
+  assert.equal(namespace, storyAnalysisCacheNamespace("deepseek-v4.1-flash", 14000),
+    "unrelated corpus changes must not create a different cache namespace");
+  assert.notEqual(namespace, storyAnalysisCacheNamespace("glm-5.3-flash", 14000),
+    "changing model must isolate incompatible analysis");
+  assert.notEqual(namespace, storyAnalysisCacheNamespace("deepseek-v4.1-flash", 16000),
+    "changing batch budget must isolate a different batch layout");
+  const fingerprint = batchFingerprint(batch, "deepseek-v4.1-flash", 14000);
+  assert.equal(fingerprint, batchFingerprint(batch, "deepseek-v4.1-flash", 14000));
+  assert.notEqual(fingerprint, batchFingerprint({
+    ...batch, chapters: [{ ...batch.chapters[0]!, text: "修改后的正文", charCount: 6 }]
+  }, "deepseek-v4.1-flash", 14000), "only the batch containing changed source text should be invalidated");
+});
 
 test("story analysis batches preserve every chapter in order without splitting one", () => {
   const units = [0, 1, 2].map(index => ({
