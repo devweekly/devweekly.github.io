@@ -1,7 +1,7 @@
 // 全文分析（analyze-story）：自动读取 SQLite 全部已索引片段，按上下文长度分批调 Agent SDK，
 // 分析人物小传/主线/伏笔/后续发展并按 chapterKeys 精确关联来源。批次失败保留失败状态可
-// 重跑，不计入完整快照；缓存指纹覆盖模型、语料哈希、批次布局与 Prompt 版本。完整成功后
-// 一次性把结构化快照写入 SQLite story_analysis（当前 v6）。
+// 重跑，不计入完整快照；缓存目录按分析契约稳定命名，每批用章节正文指纹独立校验。完整成功后
+// 一次性把结构化快照写入 SQLite story_analysis（数据 Schema v6，缓存协议 v7）。
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -528,10 +528,14 @@ const STORY_ANALYSIS_PROMPT_TAG = "story-graph-core-macguffin-interactions-v2";
 const STORY_ANALYSIS_DELTA_PROMPT_TAG = "delta-fields-v1";
 
 /** Stable cache namespace; exact chapter content is checked by each batch manifest. */
-function cacheKeyFor(model: string, _units: AnalysisUnit[], maxChars: number, delta = false): string {
+export function storyAnalysisCacheNamespace(model: string, maxChars: number, delta = false): string {
   const version = delta ? "story-analysis-delta-v2" : "story-analysis-v7";
   const promptTag = delta ? STORY_ANALYSIS_DELTA_PROMPT_TAG : STORY_ANALYSIS_PROMPT_TAG;
   return createHash("sha256").update(version + "\nprompt=" + promptTag + "\nmodel=" + model + "\nmaxChars=" + maxChars).digest("hex");
+}
+
+function cacheKeyFor(model: string, _units: AnalysisUnit[], maxChars: number, delta = false): string {
+  return storyAnalysisCacheNamespace(model, maxChars, delta);
 }
 
 /** Exact v6 directory identity, used only to migrate an unchanged legacy corpus. */
@@ -543,7 +547,7 @@ function legacyCacheKeyFor(model: string, units: AnalysisUnit[], maxChars: numbe
   return createHash("sha256").update(version + "\nprompt=" + promptTag + "\nmodel=" + model + "\nmaxChars=" + maxChars + "\nbatches=" + batchLayout + "\nsource=" + sourceHash).digest("hex");
 }
 
-function batchFingerprint(batch: AnalysisBatch, model: string, maxChars: number, delta = false): string {
+export function batchFingerprint(batch: AnalysisBatch, model: string, maxChars: number, delta = false): string {
   return createHash("sha256").update(JSON.stringify({
     version: delta ? STORY_ANALYSIS_DELTA_PROMPT_TAG : STORY_ANALYSIS_PROMPT_TAG,
     model, maxChars,
@@ -1095,11 +1099,17 @@ export async function storyAnalysisCacheStatus(worldId: string, options: StoryAn
   const worldDir = options.worldDir ?? resolve("worlds", worldId);
   const { units } = await buildAnalysisUnits(worldId, { worldDir, catalogPath: options.catalogPath });
   const model = resolveAgentModel(options.model).model;
-  const batches = groupAnalysisUnits(units, options.maxChars ?? ANALYSIS_BATCH_CHARS);
-  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, options.maxChars ?? ANALYSIS_BATCH_CHARS));
+  const maxChars = options.maxChars ?? ANALYSIS_BATCH_CHARS;
+  const batches = groupAnalysisUnits(units, maxChars).map((chapters, index) => ({
+    index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0)
+  }));
+  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, maxChars));
+  const legacyDir = resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars));
   let cached = 0;
-  batches.forEach((_, index) => {
-    if (existsSync(join(cacheDir, "batch-" + String(index).padStart(4, "0") + ".json"))) cached++;
-  });
+  for (const batch of batches) {
+    const path = join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
+    if (await readBatchCache(path, batch, model, maxChars,
+      join(legacyDir, "batch-" + String(batch.index).padStart(4, "0") + ".json"))) cached++;
+  }
   return { batches: batches.length, cached, directory: cacheDir };
 }
