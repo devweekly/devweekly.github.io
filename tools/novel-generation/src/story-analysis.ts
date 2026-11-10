@@ -8,7 +8,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import {
-  saveStoryAnalysis, syncNovelBeats, syncNovelCharacters, syncNovelForeshadowings, syncNovelThreads, writeNovelKbMeta,
+  readStoryAnalysis, saveStoryAnalysis, syncNovelBeats, syncNovelCharacters, syncNovelForeshadowings, syncNovelThreads, writeNovelKbMeta,
   type NovelBeatRow, type NovelCharacterRow, type NovelForeshadowingRow, type NovelRelationRow, type NovelSourceRef,
   type NovelThreadRow, type StoryAnalysisSnapshot
 } from "./database.js";
@@ -529,12 +529,52 @@ export function applyDelta(legacy: BatchAnalysis, delta: DeltaAnalysis, batch: A
   } as unknown as BatchAnalysis;
 }
 
-function cacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number, delta = false): string {
+const STORY_ANALYSIS_PROMPT_TAG = "story-graph-core-macguffin-interactions-v2";
+const STORY_ANALYSIS_DELTA_PROMPT_TAG = "delta-fields-v1";
+
+/** Stable cache namespace; exact chapter content is checked by each batch manifest. */
+function cacheKeyFor(model: string, _units: AnalysisUnit[], maxChars: number, delta = false): string {
+  const version = delta ? "story-analysis-delta-v2" : "story-analysis-v7";
+  const promptTag = delta ? STORY_ANALYSIS_DELTA_PROMPT_TAG : STORY_ANALYSIS_PROMPT_TAG;
+  return createHash("sha256").update(version + "\nprompt=" + promptTag + "\nmodel=" + model + "\nmaxChars=" + maxChars).digest("hex");
+}
+
+/** Exact v6 directory identity, used only to migrate an unchanged legacy corpus. */
+function legacyCacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number, delta = false): string {
   const sourceHash = createHash("sha256").update(units.map(unit => unit.chapterId + ":" + unit.text).join("\n")).digest("hex");
   const batchLayout = groupAnalysisUnits(units, maxChars).map(chapters => chapters.map(chapter => chapter.chapterId).join(",")).join("|");
   const version = delta ? "story-analysis-delta-v1" : "story-analysis-v6";
-  const promptTag = delta ? "delta-fields-v1" : "story-graph-core-macguffin-interactions-v2";
+  const promptTag = delta ? "delta-fields-v1" : STORY_ANALYSIS_PROMPT_TAG;
   return createHash("sha256").update(version + "\nprompt=" + promptTag + "\nmodel=" + model + "\nmaxChars=" + maxChars + "\nbatches=" + batchLayout + "\nsource=" + sourceHash).digest("hex");
+}
+
+function batchFingerprint(batch: AnalysisBatch, model: string, maxChars: number, delta = false): string {
+  return createHash("sha256").update(JSON.stringify({
+    version: delta ? STORY_ANALYSIS_DELTA_PROMPT_TAG : STORY_ANALYSIS_PROMPT_TAG,
+    model, maxChars,
+    chapters: batch.chapters.map(chapter => [chapter.chapterId, chapter.text])
+  })).digest("hex");
+}
+
+async function readBatchCache(
+  path: string, batch: AnalysisBatch, model: string, maxChars: number,
+  legacyPath?: string, delta = false
+): Promise<BatchAnalysis | undefined> {
+  const expected = batchFingerprint(batch, model, maxChars, delta);
+  try {
+    const manifest = JSON.parse(await readFile(path + ".meta.json", "utf8")) as { fingerprint?: string };
+    return manifest.fingerprint === expected ? await readCached(path) : undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return undefined;
+  }
+  // Legacy cache has no per-batch manifest. It is trusted only through the old
+  // directory key, which embeds the exact complete-corpus fingerprint.
+  if (!legacyPath) return undefined;
+  const legacy = await readCached(legacyPath);
+  if (!legacy) return undefined;
+  await writeFile(path, JSON.stringify(legacy, null, 2) + "\n", "utf8");
+  await writeFile(path + ".meta.json", JSON.stringify({ fingerprint: expected, migratedFrom: legacyPath }, null, 2) + "\n", "utf8");
+  return legacy;
 }
 
 async function readCached(path: string): Promise<BatchAnalysis | undefined> {
@@ -564,13 +604,14 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
     if (!Number.isInteger(options.limit) || options.limit < 1) throw new Error("--limit must be a positive integer.");
     batches.length = Math.min(batches.length, options.limit);
   }
-  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, options.maxChars ?? ANALYSIS_BATCH_CHARS, options.delta));
+  const maxChars = options.maxChars ?? ANALYSIS_BATCH_CHARS;
+  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, maxChars, options.delta));
   await mkdir(cacheDir, { recursive: true });
+  const legacyExactDir = resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars, options.delta));
   const legacyDir = options.delta ? findLegacyCacheDir(worldId, totalBatches, cacheDir) : undefined;
   if (legacyDir) console.log("[story-analysis] delta mode · legacy batches from " + legacyDir);
-  // v6 adds evolving relationship dynamics and main/subplot classification.
-  // Older batch responses cannot satisfy its schema semantically; keep them untouched and re-analyze.
   const cachePath = (batch: AnalysisBatch): string => join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
+  const legacyExactPath = (batch: AnalysisBatch): string => join(legacyExactDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
   const shard = options.shard;
   if (shard && (!Number.isInteger(shard.count) || shard.count < 1 || shard.count > 16 || !Number.isInteger(shard.index) || shard.index < 0 || shard.index >= shard.count)) {
     throw new Error("--shard must be i/n with 0 <= i < n <= 16.");
@@ -583,7 +624,17 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
   for (const batch of batches) {
     if (shard && batch.index % shard.count !== shard.index) { skipped++; continue; }
     const path = cachePath(batch);
-    let analysis = await readCached(path);
+    let analysis = await readBatchCache(path, batch, model, maxChars,
+      options.delta ? undefined : legacyExactPath(batch), options.delta);
+    if (!analysis && options.delta && legacyDir) {
+      const legacy = await loadLegacyBatch(legacyDir, batch);
+      if (legacy) {
+        const raw = await runAgentText(buildDeltaPrompt(batch, legacy), model, options.timeoutMs ?? DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().state);
+        analysis = applyDelta(legacy, parseDelta(raw), batch);
+        await writeFile(path, JSON.stringify(analysis, null, 2) + "\n", "utf8");
+        await writeFile(path + ".meta.json", JSON.stringify({ fingerprint: batchFingerprint(batch, model, maxChars, true), migratedFrom: legacyDir }, null, 2) + "\n", "utf8");
+      }
+    }
     if (analysis) {
       cached++;
       console.log(`[story-analysis] batch ${batch.index + 1}/${totalBatches} · cache hit`);
@@ -632,6 +683,14 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
       const temporary = path + ".tmp";
       await writeFile(temporary, JSON.stringify(analysis, null, 2) + "\n", "utf8");
       await rename(temporary, path);
+      const metaTemporary = path + ".meta.json.tmp";
+      await writeFile(metaTemporary, JSON.stringify({
+        fingerprint: batchFingerprint(batch, model, maxChars, options.delta),
+        model, maxChars, promptVersion: options.delta ? STORY_ANALYSIS_DELTA_PROMPT_TAG : STORY_ANALYSIS_PROMPT_TAG,
+        chapterIds: batch.chapters.map(chapter => chapter.chapterId),
+        chapterHashes: batch.chapters.map(chapter => createHash("sha256").update(chapter.text).digest("hex"))
+      }, null, 2) + "\n", "utf8");
+      await rename(metaTemporary, path + ".meta.json");
       processed++;
     }
     results.push({ analysis, chapters: batch.chapters });
@@ -952,29 +1011,61 @@ export async function importBoundedStoryAnalysisFromBatchCache(
   const entry = units.find(unit => unit.chapterId === entryChapterId);
   if (!entry) return false;
   const boundedUnits = units.filter(unit => unit.ordinal <= entry.ordinal);
-  const maxChars = options.maxChars ?? ANALYSIS_BATCH_CHARS;
-  const model = resolveAgentModel(options.model).model;
-  const batches = groupAnalysisUnits(units, maxChars).map((chapters, index) => ({ index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0) }));
-  const reusable = batches.filter(batch => batch.chapters.every(chapter => chapter.ordinal <= entry.ordinal));
-  const covered = new Set(reusable.flatMap(batch => batch.chapters.map(chapter => chapter.chapterId)));
-  if (boundedUnits.some(unit => !covered.has(unit.chapterId))) return false;
-  const cacheDir = resolve(".output", sourceWorldId, "story-analysis", cacheKeyFor(model, units, maxChars));
+  const sourceSnapshot = readStoryAnalysis(sourceWorldDir, sourceWorldId) as
+    (StoryAnalysisSnapshot & { analysisModel?: string; analysisMaxChars?: number }) | undefined;
+  const model = options.model ?? sourceSnapshot?.analysisModel ?? resolveAgentModel().model;
+  const maxChars = options.maxChars ?? sourceSnapshot?.analysisMaxChars ?? ANALYSIS_BATCH_CHARS;
+  const allBatches = groupAnalysisUnits(units, maxChars).map((chapters, index) => ({
+    index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0)
+  }));
   const results: Array<{ analysis: BatchAnalysis; chapters: AnalysisUnit[] }> = [];
-  for (const batch of reusable) {
-    const analysis = await readCached(join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json"));
-    if (!analysis) return false;
-    results.push({ analysis, chapters: batch.chapters });
+  const cacheDir = resolve(".output", sourceWorldId, "story-analysis", cacheKeyFor(model, units, maxChars));
+  const legacyDir = resolve(".output", sourceWorldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars));
+  await mkdir(cacheDir, { recursive: true });
+
+  for (const batch of allBatches) {
+    const safeChapters = batch.chapters.filter(chapter => chapter.ordinal <= entry.ordinal);
+    if (!safeChapters.length) break;
+    const path = join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
+    const legacyPath = join(legacyDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
+    if (safeChapters.length === batch.chapters.length) {
+      const analysis = await readBatchCache(path, batch, model, maxChars, legacyPath);
+      if (!analysis) return false;
+      results.push({ analysis, chapters: batch.chapters });
+      continue;
+    }
+
+    // Re-analyze only the one batch crossing the entry boundary. Future
+    // chapters are excluded from both model input and persisted source refs.
+    const boundaryBatch: AnalysisBatch = {
+      index: batch.index, chapters: safeChapters,
+      chars: safeChapters.reduce((sum, chapter) => sum + chapter.charCount, 0)
+    };
+    const raw = await runAgentText(
+      buildAnalysisPrompt(boundaryBatch), model, DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().state
+    );
+    results.push({ analysis: parseModelJson(raw), chapters: safeChapters });
+    break;
   }
-  if (!results.length) return false;
-  const snapshot = mergeAndPersist(targetWorldId, targetWorldDir, boundedUnits, results, results.length);
-  const boundedSnapshot = {
-    ...snapshot,
-    asOfEntryChapter: entryChapter,
-    asOfEntryChapterId: entry.chapterId,
-    asOfEntryOrdinal: entry.ordinal,
-    sourceWorldId
+
+  if (!results.length || boundedUnits.some(unit =>
+    !results.some(result => result.chapters.some(chapter => chapter.chapterId === unit.chapterId))
+  )) return false;
+
+  const snapshot = mergeAndPersist(
+    targetWorldId, targetWorldDir, boundedUnits, results, results.length
+  ) as StoryAnalysisSnapshot & {
+    asOfEntryChapter?: string; asOfEntryChapterId?: string; asOfEntryOrdinal?: number;
+    sourceWorldId?: string; analysisModel?: string; analysisMaxChars?: number; analysisPromptTag?: string;
   };
-  saveStoryAnalysis(targetWorldDir, targetWorldId, boundedSnapshot as unknown as StoryAnalysisSnapshot);
+  snapshot.asOfEntryChapter = entryChapter;
+  snapshot.asOfEntryChapterId = entry.chapterId;
+  snapshot.asOfEntryOrdinal = entry.ordinal;
+  snapshot.sourceWorldId = sourceWorldId;
+  snapshot.analysisModel = model;
+  snapshot.analysisMaxChars = maxChars;
+  snapshot.analysisPromptTag = STORY_ANALYSIS_PROMPT_TAG;
+  saveStoryAnalysis(targetWorldDir, targetWorldId, snapshot);
   return true;
 }
 
