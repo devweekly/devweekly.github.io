@@ -185,7 +185,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     input.contextText ? "前文与连续性摘要：\n" + input.contextText : "",
     input.writingBrief ? "全书知识库（已经写成的事实与未收线，优先于分析参考）：\n" + input.writingBrief : "",
     input.storyPlanText ? input.storyPlanText : "",
-    "当前滚动式多章节 Story Arc（方向性参考，可根据正文自然偏离）：\\n" + storyArc,
+    "当前滚动式多章节 Story Arc（方向性参考，可根据正文自然偏离）：\n" + storyArc,
     input.storyAnalysisContext ? "既有小说分析参考（仅供启发，不是正史或写作清单）：\n" + input.storyAnalysisContext : "",
     input.sourceText ? "用户提供且有权使用的续写起点（只用于承接，不得整段复制）：\n" + input.sourceText : "",
     input.styleProfile ? "叙事风格参考：\n" + input.styleProfile + "\n风格参考不能凌驾于当前人物、场景需要和文学表达。" : "",
