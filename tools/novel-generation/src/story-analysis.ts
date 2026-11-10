@@ -1156,6 +1156,7 @@ export async function storyAnalysisCacheStatus(worldId: string, options: StoryAn
   }));
   const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, maxChars));
   const legacyDir = resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars));
+  await mkdir(cacheDir, { recursive: true });
   let cached = 0;
   for (const batch of batches) {
     const path = join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
