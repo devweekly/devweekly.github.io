@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { emptyStoryState } from "../src/story-state.js";
-import { buildWorldSituationContext } from "../src/world-situation.js";
+import { buildRecentEventContinuityContext, buildWorldSituationContext } from "../src/world-situation.js";
 
 test("world situation injects only the latest relevant clue and MacGuffin lifecycle state", () => {
   const state = emptyStoryState("test-world");
@@ -35,8 +35,7 @@ test("resolved or unrelated clue updates are not pushed into unrelated chapter c
   assert.doesNotMatch(context, /海底石门/);
 });
 
-test("recent event context is bounded, chronological, and permits meaningful callbacks", async () => {
-  const { buildRecentEventContinuityContext } = await import("../src/world-situation.js");
+test("recent event context is bounded, chronological, and permits meaningful callbacks", () => {
   const state = emptyStoryState("test-world");
   state.events = Array.from({ length: 10 }, (_, index) => ({
     id: "event-" + (index + 1),
@@ -57,9 +56,11 @@ test("recent event context is bounded, chronological, and permits meaningful cal
   assert.match(context, /新的信息、意义、代价/);
   assert.match(context, /不要求每章必须引入新事件/);
   assert.ok(context.length <= 1_800);
+  assert.ok(buildRecentEventContinuityContext(state, 100).includes("已发生事件10"));
+  assert.ok(buildRecentEventContinuityContext(state, 8, 40).length <= 40);
 });
 
-test("recent event context is empty when there is no recorded history or the limit is zero", async () => {
+test("recent event context is empty when there is no recorded history or the limit is zero", () => {
   const { buildRecentEventContinuityContext } = await import("../src/world-situation.js");
   const state = emptyStoryState("test-world");
   assert.equal(buildRecentEventContinuityContext(state), "");
