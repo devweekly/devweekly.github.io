@@ -249,7 +249,7 @@ async function runKnowledgeBuildStep(
       if (idleTimer) clearTimeout(idleTimer);
       idleTimer = setTimeout(() => {
         timedOut = true;
-        error += "\\n知识构建步骤超过 " + Math.round(KNOWLEDGE_BUILD_IDLE_TIMEOUT_MS / 60000) + " 分钟没有输出，已终止子进程组。";
+        error += "\n知识构建步骤超过 " + Math.round(KNOWLEDGE_BUILD_IDLE_TIMEOUT_MS / 60000) + " 分钟没有输出，已终止子进程组。";
         terminate();
       }, KNOWLEDGE_BUILD_IDLE_TIMEOUT_MS);
     };
