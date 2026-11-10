@@ -538,38 +538,40 @@ async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUnive
     }
 
     const targetDir = worldDir(worldId);
-    let imported = universe.entryChapterId
-      ? await importBoundedStoryAnalysisFromBatchCache(
-          universe.sourceWorldId, worldId, targetDir, universe.entryChapterId, universe.entryChapter
-        )
-      : false;
+    let imported = false;
 
-    if (!imported) {
-      // Older runs may already have produced complete batch-00xx files inside
-      // this universe. Merge them without model calls before considering the
-      // conservative aggregate-snapshot fallback.
-      try {
-        const localCache = await analyzeStoryCorpus(worldId, { worldDir: targetDir, mergeOnly: true });
-        if (localCache.snapshot) {
-          const snapshot = localCache.snapshot as typeof localCache.snapshot & {
-            asOfEntryChapter?: string; asOfEntryChapterId?: string; asOfEntryOrdinal?: number; sourceWorldId?: string;
-          };
-          snapshot.asOfEntryChapter = universe.entryChapter;
-          snapshot.asOfEntryChapterId = universe.entryChapterId;
-          if (universe.entryChapterId) {
-            const db = new DatabaseSync(path.join(targetDir, "novel.db"));
-            try {
-              const row = db.prepare("SELECT ordinal FROM novel_chapters WHERE chapter_id=?").get(universe.entryChapterId) as { ordinal?: number } | undefined;
-              if (Number.isSafeInteger(Number(row?.ordinal))) snapshot.asOfEntryOrdinal = Number(row?.ordinal);
-            } finally { db.close(); }
-          }
-          snapshot.sourceWorldId = universe.sourceWorldId;
-          saveStoryAnalysis(targetDir, worldId, snapshot);
-          imported = true;
+    // Prefer complete batch files already produced for this universe. They
+    // are keyed to its exact bounded original.txt and can be merged without
+    // any new model calls.
+    try {
+      const localCache = await analyzeStoryCorpus(worldId, { worldDir: targetDir, mergeOnly: true });
+      if (localCache.snapshot) {
+        const snapshot = localCache.snapshot as typeof localCache.snapshot & {
+          asOfEntryChapter?: string; asOfEntryChapterId?: string; asOfEntryOrdinal?: number; sourceWorldId?: string;
+        };
+        snapshot.asOfEntryChapter = universe.entryChapter;
+        snapshot.asOfEntryChapterId = universe.entryChapterId;
+        if (universe.entryChapterId) {
+          const db = new DatabaseSync(path.join(targetDir, "novel.db"));
+          try {
+            const row = db.prepare("SELECT ordinal FROM novel_chapters WHERE chapter_id=?").get(universe.entryChapterId) as { ordinal?: number } | undefined;
+            if (Number.isSafeInteger(Number(row?.ordinal))) snapshot.asOfEntryOrdinal = Number(row?.ordinal);
+          } finally { db.close(); }
         }
-      } catch (error) {
-        console.info("[workbench] no complete local universe batch cache to merge; checking bounded source snapshot:", String(error));
+        snapshot.sourceWorldId = universe.sourceWorldId;
+        saveStoryAnalysis(targetDir, worldId, snapshot);
+        imported = true;
       }
+    } catch (error) {
+      console.info("[workbench] no complete local universe batch cache to merge; trying source-world batches:", String(error));
+    }
+
+    // If no local cache exists, reuse the source world's earlier complete
+    // batches and analyze only the single batch crossing the entry boundary.
+    if (!imported && universe.entryChapterId) {
+      imported = await importBoundedStoryAnalysisFromBatchCache(
+        universe.sourceWorldId, worldId, targetDir, universe.entryChapterId, universe.entryChapter
+      );
     }
 
     if (!imported) {
