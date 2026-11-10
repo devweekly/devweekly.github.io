@@ -226,6 +226,17 @@ console.log("Story state automatically updated: " + stateFile);
     assert.equal(failedExecution?.status, "failed");
     assert.ok(failedExecution?.currentRunId);
     assert.match(failedExecution?.error ?? "", /状态回滚失败/);
+    const failedRunId = failedExecution?.currentRunId;
+    const resumed = await fetch(base + "/story-executions/" + failedBody.execution.id + "/resume", { method: "POST", headers });
+    assert.equal(resumed.status, 202);
+    for (let attempt = 0; attempt < 200; attempt++) {
+      const response = await fetch(base + "/story-executions/" + failedBody.execution.id, { headers });
+      failedExecution = (await response.json() as { execution: typeof failedExecution }).execution;
+      if (failedExecution?.status === "failed") break;
+      await new Promise(resolveWait => setTimeout(resolveWait, 50));
+    }
+    assert.equal(failedExecution?.currentRunId, failedRunId);
+    assert.match(failedExecution?.error ?? "", /无法确认|快照|恢复/i);
     const failedRunsResponse = await fetch(base + "/runs?storyUnitId=" + unitC.id, { headers });
     const failedRuns = await failedRunsResponse.json() as { runs: Array<{ id: string; error?: string }> };
     assert.match(failedRuns.runs.find(run => run.id === failedExecution?.currentRunId)?.error ?? "", /状态回滚失败/);
