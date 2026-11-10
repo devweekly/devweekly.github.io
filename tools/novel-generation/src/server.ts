@@ -2086,7 +2086,7 @@ app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
       id: randomUUID(), worldId: id, ...(unit.id ? {storyUnitId: unit.id} : {}), storyUnitTitle: unit.title, mode: "complete_story", status: "queued", createdAt: now, updatedAt: now,
       completedChapters: [], events: [{ at: now, type: "created", message: "创建完整故事执行任务" }], brief: typeof req.body?.brief === "string" ? req.body.brief.trim().slice(0, 8000) : "",
       ...(typeof req.body?.model === "string" ? {model:req.body.model} : {}),
-      idleChapterCount: 0, pauseRequested: false, cancelRequested: false, resumeCount: 0
+      idleChapterCount: unit.execution.idleChapterCount, pauseRequested: false, cancelRequested: false, resumeCount: 0
     };
     await saveStoryExecution(task);
     startStoryUnitExecution(task);
@@ -2118,15 +2118,18 @@ app.post("/api/worlds/:worldId/chapter-batches", async (req, res) => {
     const latest = previousTasks.find(item => ["running","queued","paused"].includes(item.status));
     if (latest) return void res.status(409).json({error:"已有长篇任务，请恢复或取消后再启动批量任务。",execution:latest});
     let title = "连续章节批次";
+    let initialIdleChapterCount = 0;
     if (requestedUnitId) {
       const unit = await loadExecutionStoryUnit(id, requestedUnitId);
       if (unit.execution.status === "completed") return void res.status(409).json({error:"当前完整故事已经自然收束，请创建新的故事单元后再继续生成。"});
       title = unit.title;
+      initialIdleChapterCount = unit.execution.idleChapterCount;
     } else {
       try {
         const unit = await loadExecutionStoryUnit(id);
         if (unit.execution.status === "completed") return void res.status(409).json({error:"当前完整故事已经自然收束，请创建新的故事单元后再继续生成。"});
         title = unit.title;
+        initialIdleChapterCount = unit.execution.idleChapterCount;
       } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     }
     const now = new Date().toISOString();
@@ -2135,7 +2138,7 @@ app.post("/api/worlds/:worldId/chapter-batches", async (req, res) => {
       status: "queued", createdAt: now, updatedAt: now, completedChapters: [], events: [{ at: now, type: "created", message: "创建连续章节批次任务" }],
       brief: typeof req.body?.brief === "string" ? req.body.brief.trim().slice(0,8000) : "",
       ...(typeof req.body?.model === "string" ? {model:req.body.model} : {}),
-      idleChapterCount: 0, pauseRequested: false, cancelRequested: false, resumeCount: 0
+      idleChapterCount: initialIdleChapterCount, pauseRequested: false, cancelRequested: false, resumeCount: 0
     };
     await saveStoryExecution(task); startStoryUnitExecution(task);
     res.status(202).json({execution:task});
