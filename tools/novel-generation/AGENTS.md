@@ -237,7 +237,7 @@ CLI 命令（均经 `npm run dev --`）：
 - 没有真实认可参考样本时，Style Regression 不能判断与原著的距离，也不能得出“没有风格漂移”的结论。
 
 
-- Knowledge build is never a chapter-generation prerequisite. `novel.db` (analysis) and `story.db` (chapter state) are separate; do not reintroduce a whole-build lock on writing.
+- New story universes must complete the mandatory writing knowledge steps (`style-profile`, `character-profiles`, `character-states`, `as-of-dossier`) before either `write` or `write-long` starts model generation. The Workbench API queues the request immediately; the CLI waits in the child process. Optional `corpus-craft` and Vane indexing never block writing. Ordinary source worlds without `universe.json` do not need this gate. `novel.db` (analysis) and `story.db` (chapter state) remain separate stores.
 - Historical universe reuse must remain chapter-bounded: only reuse source Story Analysis records whose complete chapter provenance is at or before the branch entry; discard unbounded whole-book aggregates and future-touching records.
 - Legacy universes must backfill a missing bounded v6 Story Analysis from their `sourceWorldId` before the first chapter is launched; apply the same cutoff filter and never copy the source snapshot verbatim.
 
