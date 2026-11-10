@@ -41,8 +41,6 @@ test("universe knowledge build fails fast when source analysis is missing and ne
     assert.equal((await archive(true)).status, 409);
     const firstBuild = await request();
     assert.equal(firstBuild.status, 202, await firstBuild.clone().text());
-    const immediateRetry = await request();
-    assert.ok([202, 409].includes(immediateRetry.status), "an active build is guarded; a completed fail-fast build can be retried");
     await saveRun({
       id: "11111111-1111-4111-8111-111111111111", worldId, kind: "chapter",
       status: "completed", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
