@@ -571,8 +571,12 @@ async function readBatchCache(
   if (!legacyPath) return undefined;
   const legacy = await readCached(legacyPath);
   if (!legacy) return undefined;
-  await writeFile(path, JSON.stringify(legacy, null, 2) + "\n", "utf8");
-  await writeFile(path + ".meta.json", JSON.stringify({ fingerprint: expected, migratedFrom: legacyPath }, null, 2) + "\n", "utf8");
+  const temporary = path + ".migrate.tmp";
+  await writeFile(temporary, JSON.stringify(legacy, null, 2) + "\n", "utf8");
+  await rename(temporary, path);
+  const metaTemporary = path + ".meta.json.tmp";
+  await writeFile(metaTemporary, JSON.stringify({ fingerprint: expected, migratedFrom: legacyPath }, null, 2) + "\n", "utf8");
+  await rename(metaTemporary, path + ".meta.json");
   return legacy;
 }
 
@@ -1027,7 +1031,10 @@ export async function importBoundedStoryAnalysisFromBatchCache(
   const boundedUnits = units.filter(unit => unit.ordinal <= entry.ordinal);
   const sourceSnapshot = readStoryAnalysis(sourceWorldDir, sourceWorldId) as
     (StoryAnalysisSnapshot & { analysisModel?: string; analysisMaxChars?: number }) | undefined;
-  const model = options.model ?? sourceSnapshot?.analysisModel ?? resolveAgentModel().model;
+  const currentSourceHash = createHash("sha256").update(units.map(unit => unit.chapterId + ":" + unit.text).join("\n")).digest("hex");
+  if (!sourceSnapshot || sourceSnapshot.analysisVersion !== 6 || sourceSnapshot.complete !== true ||
+      sourceSnapshot.sourceHash !== currentSourceHash) return false;
+  const model = options.model ?? sourceSnapshot.analysisModel ?? resolveAgentModel().model;
   const maxChars = options.maxChars ?? sourceSnapshot?.analysisMaxChars ?? ANALYSIS_BATCH_CHARS;
   const allBatches = groupAnalysisUnits(units, maxChars).map((chapters, index) => ({
     index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0)
