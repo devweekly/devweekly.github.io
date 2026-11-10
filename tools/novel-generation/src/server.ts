@@ -557,31 +557,27 @@ async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUnive
       console.info("[workbench] no complete local universe batch cache to merge; trying source-world batches:", String(error));
     }
 
-    let source: ReturnType<typeof readStoryAnalysis> | undefined;
-    if (!imported) {
-      const sourceDbPath = path.join(worldDir(universe.sourceWorldId), "novel.db");
-      if (!existsSync(sourceDbPath)) {
-        throw new Error("原著项目缺少 novel.db，当前宇宙也没有可合并的完整本地批次缓存。请先在原著项目完成一次知识分析；禁止在新故事宇宙重新分析整本原著。");
-      }
-      source = readStoryAnalysis(worldDir(universe.sourceWorldId), universe.sourceWorldId);
-      if (!source || source.analysisVersion !== 6 || source.complete !== true) {
-        throw new Error("原著项目没有完整的 v6 story-analysis 快照，且当前宇宙没有可合并的完整本地批次缓存。请在原著项目完成缺失分析；新宇宙不会从第一章重新分析原著。");
-      }
-    }
+    const sourceDbPath = path.join(worldDir(universe.sourceWorldId), "novel.db");
+    const source = existsSync(sourceDbPath)
+      ? readStoryAnalysis(worldDir(universe.sourceWorldId), universe.sourceWorldId)
+      : undefined;
 
-    // If no local cache exists, reuse the source world's earlier complete
-    // batches and analyze only the single batch crossing the entry boundary.
+    // Batch caches are an independent recovery source. Do not require a
+    // complete SQLite snapshot before attempting them: the snapshot is only
+    // the merged output of those durable batch artifacts.
     if (!imported && universe.entryChapterId) {
       try {
         imported = await importBoundedStoryAnalysisFromBatchCache(
           universe.sourceWorldId, worldId, targetDir, universe.entryChapterId, universe.entryChapter
         );
       } catch (error) {
-        console.warn("[workbench] source-world batch reuse failed; checking whether the merged snapshot is already fully bounded:", String(error));
+        console.warn("[workbench] source-world batch reuse failed; checking filtered snapshot fallback:", String(error));
       }
     }
 
-    if (!imported && source) {
+    // A whole-source snapshot is the final fallback, and only when it is
+    // complete and current. Its absence must not block batch-cache recovery.
+    if (!imported && source?.analysisVersion === 6 && source.complete === true) {
       imported = importBoundedStoryAnalysisSnapshot(
         path.join(targetDir, "novel.db"),
         worldId,
