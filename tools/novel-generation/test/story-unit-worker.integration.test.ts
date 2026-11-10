@@ -187,6 +187,17 @@ console.log("Story state automatically updated: " + stateFile);
     assert.equal((await readFile(join(worldDir, ".story-units", unitA.id, "story-arc.md"), "utf8")).trim(), "arc:" + unitA.id);
     assert.equal((await readFile(join(worldDir, ".story-units", unitB.id, "story-arc.md"), "utf8")).trim(), "arc:" + unitB.id);
 
+    // Complete-story mode must use the same per-chapter assessor and stop only
+    // when the deterministic assessment confirms natural narrative closure.
+    completeStoryMode = true;
+    completeStoryAssessmentCount = 0;
+    const complete = await runCompleteStory(unitB.id);
+    assert.equal(complete.completedChapters.length, 2);
+    assert.equal(completeStoryAssessmentCount, 2);
+    const completedUnitB = JSON.parse(await readFile(join(worldDir, ".story-units", unitB.id + ".json"), "utf8")) as { execution: { status: string; completedChapterIds: string[] } };
+    assert.equal(completedUnitB.execution.status, "completed");
+    assert.equal(completedUnitB.execution.completedChapterIds.length, 3);
+
     // A failed chapter whose rollback manifest is missing must retain currentRunId;
     // recovery must stop rather than silently continue from uncertain Story State.
     process.env.NOVEL_TEST_CORRUPT_SNAPSHOT = "1";
@@ -208,16 +219,6 @@ console.log("Story state automatically updated: " + stateFile);
     assert.match(failedRuns.runs.find(run => run.id === failedExecution?.currentRunId)?.error ?? "", /状态回滚失败/);
     delete process.env.NOVEL_TEST_CORRUPT_SNAPSHOT;
 
-    // Complete-story mode must use the same per-chapter assessor and stop only
-    // when the deterministic assessment confirms natural narrative closure.
-    completeStoryMode = true;
-    completeStoryAssessmentCount = 0;
-    const complete = await runCompleteStory(unitB.id);
-    assert.equal(complete.completedChapters.length, 2);
-    assert.equal(completeStoryAssessmentCount, 2);
-    const completedUnitB = JSON.parse(await readFile(join(worldDir, ".story-units", unitB.id + ".json"), "utf8")) as { execution: { status: string; completedChapterIds: string[] } };
-    assert.equal(completedUnitB.execution.status, "completed");
-    assert.equal(completedUnitB.execution.completedChapterIds.length, 3);
   } finally {
     setStoryProgressAssessorForTests((await import("../src/story-unit.js")).assessStoryUnitProgress);
     if (serverStarted) await new Promise<void>(resolveClose => server.close(() => resolveClose()));
