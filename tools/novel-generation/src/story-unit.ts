@@ -204,6 +204,8 @@ export function formatStoryUnit(unit: StoryUnit | undefined): string {
     "核心矛盾：" + unit.centralConflict,
     "果实/场景：" + unit.fruitOrSetting.name + "；" + unit.fruitOrSetting.premise,
     "历史与社会：" + unit.fruitOrSetting.historicalContext + "；" + unit.fruitOrSetting.geographyAndDailyLife + "；" + unit.fruitOrSetting.powerAndSocialRelations,
+    "原作类型定位：" + unit.canonTypeFit.worldIdentity + "；超凡机制：" + unit.canonTypeFit.supernaturalEngine + "；因果必要性：" + unit.canonTypeFit.causalNecessity + "；移除机制后的断裂点：" + unit.canonTypeFit.removalTest,
+    "客观异常：" + unit.supernaturalEngine.phenomenon + "；可验证规则：" + unit.supernaturalEngine.rules.join("；") + "；边界：" + unit.supernaturalEngine.boundaries.join("；") + "；代价：" + unit.supernaturalEngine.cost.join("；") + "；观察证据：" + unit.supernaturalEngine.observableEvidence + "；因果作用：" + unit.supernaturalEngine.causalRole,
     "规则及代价：" + [...unit.fruitOrSetting.abilitiesAndRules, ...unit.fruitOrSetting.costsAndLimits].join("；"),
     "文化民俗：" + unit.cultureAndFolklore.map(x => x.name + "：" + x.practice + "；" + x.storyUse).join(" / "),
     "禁忌怪谈：" + unit.taboosAndGhostStories.map(x => x.name + "：" + x.versions.join("、") + "；场景潜力：" + x.scenePotential).join(" / "),
