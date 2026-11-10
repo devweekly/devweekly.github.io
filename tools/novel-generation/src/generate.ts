@@ -155,23 +155,52 @@ export function resolveModelAttempts(model?: string, allowFallback = true): stri
   return allowFallback ? [resolved.model, ...resolved.fallbacks] : [resolved.model];
 }
 
+export interface AgentTextTrace {
+  prompt?: string;
+  rawResponse?: string;
+  attempts: Array<{ model: string; mode: "normal" | "thinking-disabled-retry"; startedAt: string; finishedAt?: string; durationMs?: number; status: "running" | "succeeded" | "failed"; error?: string }>;
+}
+
 export async function runAgentText(
-  prompt: string, model?: string, timeoutMs = GENERATION_DEFAULT_TIMEOUT_MS, profile?: TaskProfile, allowFallback = true
+  prompt: string, model?: string, timeoutMs = GENERATION_DEFAULT_TIMEOUT_MS, profile?: TaskProfile, allowFallback = true,
+  trace?: AgentTextTrace
 ): Promise<string> {
+  if (trace) trace.prompt = prompt;
   const resolved = resolveAgentModel(model);
   const attempts = resolveModelAttempts(model, allowFallback);
   const failures: string[] = [];
   for (const candidate of attempts) {
     const fallback = attempts.find(item => item !== candidate);
+    const attempt = (mode: "normal" | "thinking-disabled-retry") => {
+      const item = { model: candidate, mode, startedAt: new Date().toISOString(), status: "running" as const };
+      trace?.attempts.push(item);
+      return item;
+    };
+    const finish = (item: AgentTextTrace["attempts"][number], status: "succeeded" | "failed", error?: string, raw?: string) => {
+      item.finishedAt = new Date().toISOString();
+      item.durationMs = Math.max(0, Date.parse(item.finishedAt) - Date.parse(item.startedAt));
+      item.status = status;
+      if (error) item.error = error;
+      if (raw !== undefined && trace) trace.rawResponse = raw;
+    };
+    const normalAttempt = attempt("normal");
     try {
-      return await callOnce(prompt, candidate, fallback, timeoutMs, profile);
+      const output = await callOnce(prompt, candidate, fallback, timeoutMs, profile);
+      finish(normalAttempt, "succeeded", undefined, output);
+      return output;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      finish(normalAttempt, "failed", message);
       if (message.includes("TOOL_LEAK") && profile && profile.thinkingMode !== "disabled") {
+        const retryAttempt = attempt("thinking-disabled-retry");
         try {
-          return await callOnce(prompt, candidate, fallback, timeoutMs, { ...profile, thinkingMode: "disabled", effort: "low" });
+          const output = await callOnce(prompt, candidate, fallback, timeoutMs, { ...profile, thinkingMode: "disabled", effort: "low" });
+          finish(retryAttempt, "succeeded", undefined, output);
+          return output;
         } catch (retryError) {
-          failures.push(`${candidate}（关闭思考重试）: ${retryError instanceof Error ? retryError.message : String(retryError)}`);
+          const retryMessage = retryError instanceof Error ? retryError.message : String(retryError);
+          finish(retryAttempt, "failed", retryMessage);
+          failures.push(`${candidate}（关闭思考重试）: ${retryMessage}`);
           continue;
         }
       }
