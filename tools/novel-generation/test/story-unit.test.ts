@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hasVerifiableStoryProgress, isStoryUnitNaturallyComplete, validateStoryUnit } from "../src/story-unit.js";
+import { hasVerifiableStoryProgress, isStoryUnitNaturallyComplete, mergeStorySpinePreservingCompleted, validateStoryUnit } from "../src/story-unit.js";
 
 const valid = {
   schemaVersion: 1, worldId: "world-a", updatedAt: "2026-11-08T00:00:00.000Z",
@@ -65,4 +65,20 @@ test("stall detection requires verifiable narrative progress rather than directi
   assert.equal(hasVerifiableStoryProgress(assessment, "沈砚仍站在原地。"), false);
   assert.equal(hasVerifiableStoryProgress({ ...assessment, meaningfulProgress: false }, "沈砚拔刀"), false);
   assert.equal(hasVerifiableStoryProgress({ ...assessment, progressEvidence: "泛泛的总结" }, "沈砚拔刀"), false);
+});
+
+
+test("rolling Story Spine replanning never drops or reopens completed beats", () => {
+  const unit = validateStoryUnit(valid, "world-a");
+  const previous = unit.storySpine.map((beat, index) => ({ ...beat, status: index < 2 ? "completed" as const : beat.status }));
+  const proposed = [
+    { ...previous[1]!, status: "planned" as const },
+    previous[2]!,
+    previous[3]!,
+    { title: "新的余韵", function: "留下后果", causalChange: "人物关系发生变化", involvedCharacters: [], possibleArcs: [], status: "planned" as const }
+  ];
+  const merged = mergeStorySpinePreservingCompleted(previous, proposed);
+  assert.equal(merged[0]?.title, previous[0]?.title);
+  assert.equal(merged.find(beat => beat.title === previous[1]?.title)?.status, "completed");
+  assert.equal(merged.find(beat => beat.title === "新的余韵")?.status, "planned");
 });
