@@ -38,16 +38,23 @@ test("fixed-batch worker keeps alternating Story Unit chapter history and Story 
   const server = createServer(createApp());
   let serverStarted = false;
   let assessmentCount = 0;
+  let completeStoryMode = false;
+  let completeStoryAssessmentCount = 0;
   setStoryProgressAssessorForTests(async input => {
     assessmentCount++;
+    if (completeStoryMode) completeStoryAssessmentCount++;
+    const naturallyComplete = completeStoryMode && completeStoryAssessmentCount >= 2;
     return {
-      coreConflictResolved: false, endingFeelsNatural: false, confidence: "medium",
-      unresolvedCoreThreads: ["核心选择仍在推进"], unrealizedMajorBeats: ["高潮尚未发生"],
-      remainingStoryWork: ["继续推进人物选择及其后果"],
-      nextDirection: "让人物选择带来新的局面变化", rationale: "测试用的逐章进展评估",
+      coreConflictResolved: naturallyComplete, endingFeelsNatural: naturallyComplete, confidence: naturallyComplete ? "high" : "medium",
+      unresolvedCoreThreads: naturallyComplete ? [] : ["核心选择仍在推进"],
+      unrealizedMajorBeats: naturallyComplete ? [] : ["高潮尚未发生"],
+      remainingStoryWork: naturallyComplete ? [] : ["继续推进人物选择及其后果"],
+      nextDirection: naturallyComplete ? "故事自然收束" : "让人物选择带来新的局面变化",
+      rationale: naturallyComplete ? "核心冲突已解决，人物选择产生后果，结尾自然。" : "测试用的逐章进展评估",
       meaningfulProgress: true, progressEvidence: "Worker chapter",
       cumulativeStorySummary: (input.unit.execution.cumulativeStorySummary ? input.unit.execution.cumulativeStorySummary + "\\n" : "") + input.chapterTitle + "：人物作出新的选择",
-      revisedStorySpine: input.unit.storySpine, characterArcUpdates: []
+      revisedStorySpine: naturallyComplete ? input.unit.storySpine.map((beat, index) => ({ ...beat, status: index === input.unit.storySpine.length - 1 ? "completed" as const : "completed" as const })) : input.unit.storySpine,
+      characterArcUpdates: []
     };
   });
   try {
@@ -125,6 +132,24 @@ console.log("Story state automatically updated: " + stateFile);
       }
       throw new Error("Timed out waiting for deterministic worker completion.");
     };
+    const runCompleteStory = async (storyUnitId: string) => {
+      let created: Response | undefined;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        created = await fetch(base + "/story-executions", { method: "POST", headers, body: JSON.stringify({ storyUnitId }) });
+        if (created.status !== 409) break;
+        await new Promise(resolveWait => setTimeout(resolveWait, 50));
+      }
+      if (!created || created.status !== 202) throw new Error("Complete-story creation failed: " + (created ? await created.text() : "no response"));
+      const body = await created.json() as { execution: { id: string } };
+      for (let attempt = 0; attempt < 200; attempt++) {
+        const response = await fetch(base + "/story-executions/" + body.execution.id, { headers });
+        const current = await response.json() as { execution: { status: string; error?: string; completedChapters: Array<{runId:string;chapterPath:string}> } };
+        if (current.execution.status === "completed") return current.execution;
+        if (current.execution.status === "failed" || current.execution.status === "stalled") throw new Error("Complete-story worker failed: " + current.execution.error);
+        await new Promise(resolveWait => setTimeout(resolveWait, 50));
+      }
+      throw new Error("Timed out waiting for complete-story worker completion.");
+    };
 
     const a1 = await runBatch(unitA.id, 2);
     const b1 = await runBatch(unitB.id);
@@ -154,6 +179,17 @@ console.log("Story state automatically updated: " + stateFile);
     assert.ok(stateB.state.characters.every(person => person.name.startsWith(unitB.id + "-")));
     assert.equal((await readFile(join(worldDir, ".story-units", unitA.id, "story-arc.md"), "utf8")).trim(), "arc:" + unitA.id);
     assert.equal((await readFile(join(worldDir, ".story-units", unitB.id, "story-arc.md"), "utf8")).trim(), "arc:" + unitB.id);
+
+    // Complete-story mode must use the same per-chapter assessor and stop only
+    // when the deterministic assessment confirms natural narrative closure.
+    completeStoryMode = true;
+    completeStoryAssessmentCount = 0;
+    const complete = await runCompleteStory(unitB.id);
+    assert.equal(complete.completedChapters.length, 2);
+    assert.equal(completeStoryAssessmentCount, 2);
+    const completedUnitB = JSON.parse(await readFile(join(worldDir, ".story-units", unitB.id + ".json"), "utf8")) as { execution: { status: string; completedChapterIds: string[] } };
+    assert.equal(completedUnitB.execution.status, "completed");
+    assert.equal(completedUnitB.execution.completedChapterIds.length, 3);
   } finally {
     setStoryProgressAssessorForTests((await import("../src/story-unit.js")).assessStoryUnitProgress);
     if (serverStarted) await new Promise<void>(resolveClose => server.close(() => resolveClose()));
