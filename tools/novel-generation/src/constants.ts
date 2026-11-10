@@ -238,6 +238,12 @@ export const WORLD_SITUATION_EVENT_LIMIT = 8;
 /** 没有命中相关事件时，按时间顺序保底的近期事件数。 */
 export const WORLD_SITUATION_FALLBACK_EVENTS = 5;
 
+/** 显式提供给规划器的最近事件数；用于减少重复情节，不构成剧情禁令。 */
+export const RECENT_EVENT_CONTEXT_LIMIT = 8;
+
+/** 最近事件上下文的字符预算，避免长篇事件摘要挤占正文上下文。 */
+export const RECENT_EVENT_CONTEXT_MAX_CHARS = 1_800;
+
 /** 人物快照里各字段进入局势输入的条数上限；默认 4，字段特异处单独放宽。 */
 export const WORLD_SITUATION_FIELD_DEFAULT_LIMIT = 4;
 export const WORLD_SITUATION_FIELD_KNOWLEDGE_LIMIT = 6;
