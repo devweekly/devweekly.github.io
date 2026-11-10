@@ -650,7 +650,7 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
       cacheKeyFor(candidate, units, maxChars, !options.delta),
       legacyCacheKeyFor(candidate, units, maxChars, !options.delta)
     ];
-    return directories.some(key => batches.every((_, index) =>
+    return batches.every((_, index) => directories.some(key =>
       existsSync(join(root, key, "batch-" + String(index).padStart(4, "0") + ".json"))
     ));
   };
@@ -1111,7 +1111,7 @@ export async function importBoundedStoryAnalysisFromBatchCache(
           cacheKeyFor(candidate, units, maxChars),
           cacheKeyFor(candidate, units, maxChars, true)
         ];
-        return directories.some(key => selection.reusable.every(batch =>
+        return selection.reusable.every(batch => directories.some(key =>
           existsSync(join(root, key, "batch-" + String(batch.index).padStart(4, "0") + ".json"))
         ));
       }) ?? sourceSnapshot.analysisModel ?? configuredModel
