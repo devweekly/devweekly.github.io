@@ -196,7 +196,15 @@ async function waitForWritingKnowledgeReadiness(worldId: string): Promise<void> 
       sawStatus = true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      return; // Ordinary worlds without an automatic universe knowledge build.
+      const universePath = resolve("worlds", worldId, "universe.json");
+      try {
+        await access(universePath);
+        throw new Error("当前是独立故事宇宙，但没有 Knowledge Build 状态记录。请先通过 Workbench 启动知识准备；禁止在缺少最低上下文时直接写作。");
+      } catch (universeError) {
+        if (universeError instanceof Error && universeError.message.includes("没有 Knowledge Build 状态记录")) throw universeError;
+        if ((universeError as NodeJS.ErrnoException).code !== "ENOENT") throw universeError;
+      }
+      return; // 普通原文世界不要求新宇宙知识准备。
     }
     const ready = isWritingKnowledgeReady(state?.steps);
     if (ready) return;
