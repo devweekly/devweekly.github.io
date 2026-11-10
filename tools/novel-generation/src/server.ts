@@ -524,27 +524,41 @@ async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUnive
   const active = universeAnalysisBackfills.get(worldId);
   if (active) return active;
   const task = (async () => {
-    const current = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
+    const current = readStoryAnalysis(worldDir(worldId), worldId) as
+      (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
     if (hasBoundedStoryAnalysis(current, universe)) return;
-    if (!existsSync(path.join(worldDir(universe.sourceWorldId), "novel.db"))) return;
+
+    const sourceDbPath = path.join(worldDir(universe.sourceWorldId), "novel.db");
+    if (!existsSync(sourceDbPath)) {
+      throw new Error("原著项目缺少 novel.db，无法复用原著分析。请先在原著项目完成一次知识分析；禁止在新故事宇宙重新分析整本原著。");
+    }
     const source = readStoryAnalysis(worldDir(universe.sourceWorldId), universe.sourceWorldId);
-    if (!source || source.analysisVersion !== 6 || source.complete !== true) return;
+    if (!source || source.analysisVersion !== 6 || source.complete !== true) {
+      throw new Error("原著项目没有完整的 v6 story-analysis 快照。请在原著项目完成缺失分析后再创建/恢复故事宇宙；新宇宙不会从第一章重新分析原著。");
+    }
+
     const targetDir = worldDir(worldId);
-    const reusedBatches = universe.entryChapterId
+    let imported = universe.entryChapterId
       ? await importBoundedStoryAnalysisFromBatchCache(
           universe.sourceWorldId, worldId, targetDir, universe.entryChapterId, universe.entryChapter
-        ).catch(error => {
-          console.warn("[workbench] bounded batch-cache reuse failed; falling back to filtered merged snapshot", error);
-          return false;
-        })
+        )
       : false;
-    if (!reusedBatches) {
-      importBoundedStoryAnalysisSnapshot(
+
+    if (!imported) {
+      imported = importBoundedStoryAnalysisSnapshot(
         path.join(targetDir, "novel.db"),
         worldId,
         universe.entryChapter,
         source as unknown as Record<string, unknown>,
         universe.entryChapterId
+      );
+    }
+
+    const bounded = readStoryAnalysis(targetDir, worldId) as
+      (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string; asOfEntryChapterId?: string }) | undefined;
+    if (!imported || !hasBoundedStoryAnalysis(bounded, universe)) {
+      throw new Error(
+        "无法从原著已有分析安全构建当前章节时点的知识快照。已停止知识构建，不会在新宇宙从第一章重新分析。请检查原著 story-analysis 批次缓存是否完整，以及所选章节 ID 是否与原著目录一致。"
       );
     }
   })();
