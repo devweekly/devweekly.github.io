@@ -563,8 +563,8 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   }
   const nextState = mergeStoryState(state, update);
   try {
-    await commitStoryStateAndArc({ statePath: input.statePath, previousState: state, nextState, applyState: input.applyState, storyArcPath: input.storyArcPath, storyArcText: storyArc });
     await saveStage(input.outputDir, "07-state-update.json", JSON.stringify(nextState, null, 2));
+    await commitStoryStateAndArc({ statePath: input.statePath, previousState: state, nextState, applyState: input.applyState, storyArcPath: input.storyArcPath, storyArcText: storyArc });
   } catch (error) {
     await saveStage(input.outputDir, "07-state-update-error.txt", String(error) + "\n\n" + stateText);
     throw new Error("Chapter was generated, but story-state persistence failed. See 07-state-update-error.txt; do not start the next chapter.");
