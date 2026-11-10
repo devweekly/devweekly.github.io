@@ -624,6 +624,9 @@ export function stripUnclassifiedAliases(analysis: BatchAnalysis): BatchAnalysis
 
 export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysisOptions = {}): Promise<StoryAnalysisResult> {
   const worldDir = options.worldDir ?? resolve("worlds", worldId);
+  if (existsSync(join(worldDir, "universe.json"))) {
+    throw new Error("analyze-story 只能在原著来源世界执行。历史故事宇宙必须复用来源世界的分析快照；禁止在子宇宙从第一章重新分析原著。");
+  }
   const { units } = await buildAnalysisUnits(worldId, { worldDir, catalogPath: options.catalogPath });
   if (!units.length) throw new Error("No chapter text found. Run ingest and index-story before analyze-story.");
   const model = resolveAgentModel(options.model).model;
