@@ -245,6 +245,8 @@ CLI 命令（均经 `npm run dev --`）：
 
 - Historical universe creation must pass a stable chapter index and resolve it to the exact `novel_chapters.chapter_id` plus ordinal. Never use a chapter title as a unique key; repeated titles, catalog/database count mismatches, missing IDs, or unresolved boundaries must fail closed before publishing the universe. Persist `entryChapterId`, `entryChapterIndex`, and `entryOrdinal` through forks.
 - For bounded v6 analysis reuse, prefer complete cached analysis batches whose every chapter is at or before the entry ordinal. Never reuse a batch crossing the cutoff. Fall back to conservative merged-snapshot filtering only when safe batch reuse is unavailable; never retain unbounded `storyCore` text or count marker-only/empty snapshots as reusable.
+- The source world's SQLite `story_analysis` row is a derived merged snapshot, not a prerequisite for batch-cache reuse. When it is missing/incomplete, still inspect and validate source-world v6/delta batch caches first; only fall back to a complete source snapshot after batch reuse fails. A missing snapshot must never short-circuit the cache path.
+- For a cutoff inside a batch, re-analyze only the prefix through the entry chapter. Do not reuse the crossing batch's cached aggregate by merely filtering `chapterKeys`: the model may have seen future chapters when producing it.
 
 
 ## 完整故事单元与长篇执行（ADR 0006）
