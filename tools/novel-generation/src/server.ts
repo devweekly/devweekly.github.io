@@ -11,7 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { loadStoryPlan, saveStoryPlan, generateStoryPlan } from "./story-plan.js";
 import { loadStoryState, validateStoryState } from "./story-state.js";
-import { readStoryAnalysis, listNovelCharacters, countNovelCharacters, readNovelCharacterWorkbenchDetail } from "./database.js";
+import { readStoryAnalysis, saveStoryAnalysis, listNovelCharacters, countNovelCharacters, readNovelCharacterWorkbenchDetail } from "./database.js";
 import {
   CHARACTER_LIST_MAX_LIMIT, CHARACTER_LIST_DEFAULT_LIMIT, DASHBOARD_PLAN_VERSIONS_LIMIT, DASHBOARD_RECENT_RUNS_LIMIT,
   STORY_ANALYSIS_QUERY_CHARACTERS,
@@ -27,7 +27,7 @@ import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns,
 import type { StoryState } from "./story-state.js";
 import { buildUniverseOriginContext, buildUniverseWorldBible, rebaseStoryState, remapForkedRun, shouldCopyUniverseAsset } from "./universe-branch.js";
 import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
-import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
+import { analyzeStoryCorpus, importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
 import { copyOriginalCanonToUniverse, ensureBoundedUniverseCanonAssets, resolveOriginalCanonPath, truncateCanonAtLine } from "./canon-source.js";
 import { assessStoryUnitProgress, generateStoryUnit, hasVerifiableStoryProgress, isStoryUnitNaturallyComplete, mergeStorySpinePreservingCompleted, validateStoryUnit } from "./story-unit.js";
@@ -543,6 +543,28 @@ async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUnive
           universe.sourceWorldId, worldId, targetDir, universe.entryChapterId, universe.entryChapter
         )
       : false;
+
+    if (!imported) {
+      // Older runs may already have produced complete batch-00xx files inside
+      // this universe. Merge them without model calls before considering the
+      // conservative aggregate-snapshot fallback.
+      try {
+        const localCache = await analyzeStoryCorpus(worldId, { worldDir: targetDir, mergeOnly: true });
+        if (localCache.snapshot) {
+          const snapshot = localCache.snapshot as typeof localCache.snapshot & {
+            asOfEntryChapter?: string; asOfEntryChapterId?: string; asOfEntryOrdinal?: number; sourceWorldId?: string;
+          };
+          snapshot.asOfEntryChapter = universe.entryChapter;
+          snapshot.asOfEntryChapterId = universe.entryChapterId;
+          snapshot.asOfEntryOrdinal = universe.entryChapterIndex + 1;
+          snapshot.sourceWorldId = universe.sourceWorldId;
+          saveStoryAnalysis(targetDir, worldId, snapshot);
+          imported = true;
+        }
+      } catch (error) {
+        console.info("[workbench] no complete local universe batch cache to merge; checking bounded source snapshot:", String(error));
+      }
+    }
 
     if (!imported) {
       imported = importBoundedStoryAnalysisSnapshot(
