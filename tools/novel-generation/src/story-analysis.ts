@@ -129,6 +129,32 @@ export interface AnalysisBatch {
   chars: number;
 }
 
+export interface BoundedAnalysisBatchSelection {
+  reusable: AnalysisBatch[];
+  boundary?: AnalysisBatch;
+}
+
+/** Select only batches at/before an as-of chapter; truncate the one crossing batch. */
+export function selectBatchesThroughOrdinal(batches: AnalysisBatch[], entryOrdinal: number): BoundedAnalysisBatchSelection {
+  const reusable: AnalysisBatch[] = [];
+  let boundary: AnalysisBatch | undefined;
+  for (const batch of batches) {
+    const chapters = batch.chapters.filter(chapter => chapter.ordinal <= entryOrdinal);
+    if (!chapters.length) break;
+    if (chapters.length === batch.chapters.length) {
+      reusable.push(batch);
+      continue;
+    }
+    boundary = {
+      index: batch.index,
+      chapters,
+      chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0)
+    };
+    break;
+  }
+  return { reusable, ...(boundary ? { boundary } : {}) };
+}
+
 export interface StoryAnalysisOptions {
   model?: string;
   timeoutMs?: number;
@@ -1045,46 +1071,40 @@ export async function importBoundedStoryAnalysisFromBatchCache(
   const allBatches = groupAnalysisUnits(units, maxChars).map((chapters, index) => ({
     index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0)
   }));
+  const selection = selectBatchesThroughOrdinal(allBatches, entry.ordinal);
   const results: Array<{ analysis: BatchAnalysis; chapters: AnalysisUnit[] }> = [];
   const cacheDir = resolve(".output", sourceWorldId, "story-analysis", cacheKeyFor(model, units, maxChars));
   const legacyDir = resolve(".output", sourceWorldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars));
   const legacyDeltaDir = resolve(".output", sourceWorldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars, true));
   await mkdir(cacheDir, { recursive: true });
 
-  for (const batch of allBatches) {
-    const safeChapters = batch.chapters.filter(chapter => chapter.ordinal <= entry.ordinal);
-    if (!safeChapters.length) break;
+  for (const batch of selection.reusable) {
     const path = join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
     const legacyPath = join(legacyDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
-    if (safeChapters.length === batch.chapters.length) {
-      let analysis = await readBatchCache(path, batch, model, maxChars, legacyPath);
-      if (!analysis) {
-        const legacyDeltaPath = join(legacyDeltaDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
-        const legacyDelta = await readCached(legacyDeltaPath);
-        if (legacyDelta) {
-          analysis = legacyDelta;
-          await writeFile(path, JSON.stringify(analysis, null, 2) + "\n", "utf8");
-          await writeFile(path + ".meta.json", JSON.stringify({
-            fingerprint: batchFingerprint(batch, model, maxChars, false), migratedFrom: legacyDeltaPath
-          }, null, 2) + "\n", "utf8");
-        }
+    let analysis = await readBatchCache(path, batch, model, maxChars, legacyPath);
+    if (!analysis) {
+      const legacyDeltaPath = join(legacyDeltaDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
+      const legacyDelta = await readCached(legacyDeltaPath);
+      if (legacyDelta) {
+        analysis = legacyDelta;
+        await writeFile(path, JSON.stringify(analysis, null, 2) + "\n", "utf8");
+        await writeFile(path + ".meta.json", JSON.stringify({
+          fingerprint: batchFingerprint(batch, model, maxChars, false), migratedFrom: legacyDeltaPath
+        }, null, 2) + "\n", "utf8");
       }
-      if (!analysis) return false;
-      results.push({ analysis, chapters: batch.chapters });
-      continue;
     }
+    if (!analysis) return false;
+    results.push({ analysis, chapters: batch.chapters });
+  }
 
+  if (selection.boundary) {
     // Re-analyze only the one batch crossing the entry boundary. Future
     // chapters are excluded from both model input and persisted source refs.
-    const boundaryBatch: AnalysisBatch = {
-      index: batch.index, chapters: safeChapters,
-      chars: safeChapters.reduce((sum, chapter) => sum + chapter.charCount, 0)
-    };
+    const boundaryBatch = selection.boundary;
     const raw = await runAgentText(
       buildAnalysisPrompt(boundaryBatch), model, DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().state
     );
-    results.push({ analysis: parseModelJson(raw), chapters: safeChapters });
-    break;
+    results.push({ analysis: parseModelJson(raw), chapters: boundaryBatch.chapters });
   }
 
   if (!results.length || boundedUnits.some(unit =>
