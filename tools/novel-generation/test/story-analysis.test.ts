@@ -64,6 +64,11 @@ test("historical universe reuses complete prior batches and re-analyzes only the
     ["V01-C001", "V01-C002"]
   ]);
   assert.deepEqual(selected.boundary?.chapters.map(chapter => chapter.chapterId), ["V01-C003"]);
+  assert.ok(selected.boundary);
+  const boundaryPrompt = buildAnalysisPrompt(selected.boundary);
+  assert.match(boundaryPrompt, /章节正文3/);
+  assert.doesNotMatch(boundaryPrompt, /章节正文4|章节正文5|章节正文6/,
+    "future chapters must never be included in the boundary model input");
   assert.ok(!JSON.stringify(selected).includes("V01-C004"), "entry-after chapters must not enter boundary analysis");
   assert.ok(!JSON.stringify(selected).includes("V01-C005"), "future batches must be excluded");
   const exactBoundary = selectBatchesThroughOrdinal(batches, 4);
