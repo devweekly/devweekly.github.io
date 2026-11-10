@@ -633,13 +633,22 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
     const path = cachePath(batch);
     let analysis = await readBatchCache(path, batch, model, maxChars,
       options.delta ? undefined : legacyExactPath(batch), options.delta);
-    if (!analysis && options.delta && legacyDir) {
-      const legacy = await loadLegacyBatch(legacyDir, batch);
-      if (legacy) {
-        const raw = await runAgentText(buildDeltaPrompt(batch, legacy), model, options.timeoutMs ?? DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().state);
-        analysis = applyDelta(legacy, parseDelta(raw), batch);
-        await writeFile(path, JSON.stringify(analysis, null, 2) + "\n", "utf8");
-        await writeFile(path + ".meta.json", JSON.stringify({ fingerprint: batchFingerprint(batch, model, maxChars, true), migratedFrom: legacyDir }, null, 2) + "\n", "utf8");
+    if (!analysis && !options.delta) {
+      const legacyDeltaPath = join(
+        resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars, true)),
+        "batch-" + String(batch.index).padStart(4, "0") + ".json"
+      );
+      const legacyDelta = await readCached(legacyDeltaPath);
+      if (legacyDelta) {
+        analysis = legacyDelta;
+        const temporary = path + ".migrate.tmp";
+        await writeFile(temporary, JSON.stringify(analysis, null, 2) + "\n", "utf8");
+        await rename(temporary, path);
+        const metaTemporary = path + ".meta.json.tmp";
+        await writeFile(metaTemporary, JSON.stringify({
+          fingerprint: batchFingerprint(batch, model, maxChars, false), migratedFrom: legacyDeltaPath
+        }, null, 2) + "\n", "utf8");
+        await rename(metaTemporary, path + ".meta.json");
       }
     }
     if (analysis) {
