@@ -305,7 +305,7 @@ async function main(): Promise<void> {
         complete: v6Complete, analysisVersion: snapshot?.analysisVersion ?? null,
         sourceHash: snapshot?.sourceHash ?? null, analyzedAt: snapshot?.analyzedAt ?? null,
         nextStep: v6Complete ? null : isUniverse
-          ? "该目录是独立故事宇宙；禁止在此重新分析原著。请检查来源原著的 story_analysis 与批次缓存，再重新运行 Workbench 知识构建。"
+          ? "该目录是独立故事宇宙；禁止在此重新分析原著。请检查本宇宙已有批次缓存及来源原著的 story_analysis / 批次缓存，再重新运行 Workbench 知识构建。"
           : "npm run dev -- analyze-story --world " + worldId
       },
       annotations: {
