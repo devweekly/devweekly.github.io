@@ -1403,8 +1403,22 @@ app.post("/api/worlds/:worldId/story-units/generate", async (req, res) => {
       const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(dir, id), query);
       const brief = typeof req.body?.brief === "string" ? req.body.brief.trim().slice(0, 8000) : "";
       const model = typeof req.body?.model === "string" ? req.body.model : undefined;
-      const generated = await generateStoryUnit({ worldId: id, worldBible, state, storyAnalysisContext, previous, brief, model });
-      let unit: Record<string, unknown>;
+      const runId = randomUUID();
+      const outputDir = path.resolve(".output", id, "story-unit-" + runId);
+      const trace: import("./generate.js").AgentTextTrace = { attempts: [] };
+      const startedAt = new Date().toISOString();
+      await mkdir(outputDir, { recursive: true });
+      const runRecord = { id: runId, worldId: id, kind: "story-unit", status: "running", startedAt, updatedAt: startedAt, outputDir, storyUnitId: previousId ?? null };
+      await writeFile(path.join(outputDir, "run.json"), JSON.stringify(runRecord, null, 2) + "\n", "utf8");
+      await writeFile(path.join(outputDir, "input-snapshot.json"), JSON.stringify({
+        worldId: id, worldBible, state, storyAnalysisContext, previous: previous ?? null, brief, requestedModel: model ?? null
+      }, null, 2) + "\n", "utf8");
+      try {
+        const generated = await generateStoryUnit({ worldId: id, worldBible, state, storyAnalysisContext, previous, brief, model, trace });
+        await writeFile(path.join(outputDir, "prompt.txt"), trace.prompt ?? "", "utf8");
+        await writeFile(path.join(outputDir, "raw-response.txt"), trace.rawResponse ?? "", "utf8");
+        await writeFile(path.join(outputDir, "model-trace.json"), JSON.stringify({ requestedModel: model ?? null, attempts: trace.attempts }, null, 2) + "\n", "utf8");
+        let unit: Record<string, unknown>;
       if (previous) {
         // Keep every prior design immutable so regeneration is reversible and inspectable.
         await archiveStoredStoryUnitVersion(dir, { ...previous, id: previousId! });
@@ -1413,7 +1427,17 @@ app.post("/api/worlds/:worldId/story-units/generate", async (req, res) => {
       } else {
         unit = await createStoredStoryUnit(dir, generated as never);
       }
-      res.json({ storyUnit: validateStoryUnit(unit, id) });
+        await writeFile(path.join(outputDir, "story-unit.json"), JSON.stringify(unit, null, 2) + "\n", "utf8");
+        await writeFile(path.join(outputDir, "run.json"), JSON.stringify({ ...runRecord, status: "completed", updatedAt: new Date().toISOString(), storyUnitId: (unit as {id?:string}).id ?? previousId ?? null }, null, 2) + "\n", "utf8");
+        res.json({ storyUnit: validateStoryUnit(unit, id), generationRunId: runId });
+      } catch (generationError) {
+        await writeFile(path.join(outputDir, "prompt.txt"), trace.prompt ?? "", "utf8").catch(() => undefined);
+        await writeFile(path.join(outputDir, "raw-response.txt"), trace.rawResponse ?? "", "utf8").catch(() => undefined);
+        await writeFile(path.join(outputDir, "model-trace.json"), JSON.stringify({ requestedModel: model ?? null, attempts: trace.attempts }, null, 2) + "\n", "utf8").catch(() => undefined);
+        await writeFile(path.join(outputDir, "failure.json"), JSON.stringify({ error: generationError instanceof Error ? generationError.message : String(generationError), failedAt: new Date().toISOString() }, null, 2) + "\n", "utf8").catch(() => undefined);
+        await writeFile(path.join(outputDir, "run.json"), JSON.stringify({ ...runRecord, status: "failed", updatedAt: new Date().toISOString(), error: generationError instanceof Error ? generationError.message : String(generationError) }, null, 2) + "\n", "utf8").catch(() => undefined);
+        throw generationError;
+      }
       });
     } finally { chapterGenerationReservations.delete(id); }
   } catch (error) { sendError(res, error); }
