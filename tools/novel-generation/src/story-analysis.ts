@@ -1094,23 +1094,28 @@ export async function importBoundedStoryAnalysisFromBatchCache(
   if (!sourceSnapshot || sourceSnapshot.analysisVersion !== 6 || sourceSnapshot.complete !== true ||
       sourceSnapshot.sourceHash !== currentSourceHash) return false;
   const maxChars = options.maxChars ?? sourceSnapshot.analysisMaxChars ?? ANALYSIS_BATCH_CHARS;
-  const configuredModel = resolveAgentModel(options.model).model;
-  const modelCandidates = options.model
-    ? [configuredModel]
-    : [...new Set([sourceSnapshot.analysisModel, configuredModel, ...readModelCatalog().map(item => item.id)].filter((value): value is string => Boolean(value)))];
-  const model = modelCandidates.find(candidate => {
-    const root = resolve(".output", sourceWorldId, "story-analysis");
-    return [
-      legacyCacheKeyFor(candidate, units, maxChars),
-      legacyCacheKeyFor(candidate, units, maxChars, true),
-      cacheKeyFor(candidate, units, maxChars),
-      cacheKeyFor(candidate, units, maxChars, true)
-    ].some(key => existsSync(join(root, key, "batch-0000.json")));
-  }) ?? sourceSnapshot.analysisModel ?? configuredModel;
   const allBatches = groupAnalysisUnits(units, maxChars).map((chapters, index) => ({
     index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0)
   }));
   const selection = selectBatchesThroughOrdinal(allBatches, entry.ordinal);
+  const configuredModel = resolveAgentModel(options.model).model;
+  const modelCandidates = options.model
+    ? [configuredModel]
+    : [...new Set([sourceSnapshot.analysisModel, configuredModel, ...readModelCatalog().map(item => item.id)].filter((value): value is string => Boolean(value)))];
+  const model = selection.reusable.length
+    ? modelCandidates.find(candidate => {
+        const root = resolve(".output", sourceWorldId, "story-analysis");
+        const directories = [
+          legacyCacheKeyFor(candidate, units, maxChars),
+          legacyCacheKeyFor(candidate, units, maxChars, true),
+          cacheKeyFor(candidate, units, maxChars),
+          cacheKeyFor(candidate, units, maxChars, true)
+        ];
+        return directories.some(key => selection.reusable.every(batch =>
+          existsSync(join(root, key, "batch-" + String(batch.index).padStart(4, "0") + ".json"))
+        ));
+      }) ?? sourceSnapshot.analysisModel ?? configuredModel
+    : sourceSnapshot.analysisModel ?? configuredModel;
   const results: Array<{ analysis: BatchAnalysis; chapters: AnalysisUnit[] }> = [];
   const cacheDir = resolve(".output", sourceWorldId, "story-analysis", cacheKeyFor(model, units, maxChars));
   const legacyDir = resolve(".output", sourceWorldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars));
