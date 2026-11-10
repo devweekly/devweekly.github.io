@@ -1,0 +1,164 @@
+{
+  "states": [
+    {
+      "characterId": "ch_b0339f203f27",
+      "behavior": [
+        "茱蒂放下刀叉，用餐巾擦了擦手",
+        "她给自己倒了一杯加烈葡萄酒",
+        "她的高跟鞋勾了勾李阎的裤脚",
+        "她叉起一块鹅肝放进嘴里咀嚼"
+      ],
+      "goals": [],
+      "knowledge": [],
+      "relationships": [
+        "她与李阎在席间言语往来亲密，主动撩拨"
+      ],
+      "resources": [],
+      "situation": "与李阎同桌用餐",
+      "changes": [],
+      "evidence": [
+        "茱蒂的神色错愕了一下，她放下刀叉，用餐巾擦了擦手",
+        "她的高跟鞋勾了勾李阎的裤脚"
+      ],
+      "uncertainty": [
+        "原文未点明其具体身份与来历"
+      ]
+    },
+    {
+      "characterId": "ch_cece0c3a5f56",
+      "behavior": [],
+      "goals": [],
+      "knowledge": [],
+      "relationships": [],
+      "resources": [],
+      "situation": "",
+      "changes": [],
+      "evidence": [
+        "直到我看了你和城户南的拳赛"
+      ],
+      "uncertainty": [
+        "本章仅在茱蒂的回忆中被提及与李阎的拳赛，本人未出场、无任何言行"
+      ]
+    },
+    {
+      "characterId": "ch_20f6b35b7720",
+      "behavior": [],
+      "goals": [],
+      "knowledge": [],
+      "relationships": [],
+      "resources": [],
+      "situation": "",
+      "changes": [],
+      "evidence": [],
+      "uncertainty": [
+        "本章原文未出现该人物"
+      ]
+    },
+    {
+      "characterId": "ch_dd9ed95051cc",
+      "behavior": [],
+      "goals": [],
+      "knowledge": [],
+      "relationships": [],
+      "resources": [],
+      "situation": "",
+      "changes": [],
+      "evidence": [
+        "小金受枪伤之后，他们又来到了九龙城寨给小金治枪伤"
+      ],
+      "uncertainty": [
+        "本章仅在李阎的推断叙述中被提及曾受枪伤，本人未出场"
+      ]
+    },
+    {
+      "characterId": "ch_efece289432e",
+      "behavior": [
+        "李阎点了点头",
+        "李阎把身子靠了过去",
+        "李阎不受控制地咽了一口唾沫，下意识地往后一缩，端起红酒杯给自己倒上，然后满饮了一杯",
+        "李阎招了招手",
+        "李阎扶着茱蒂把她送上车，目送着车子离开",
+        "他解开扣子，把西装装回袋子里面，穿着那件从照相馆租来的单薄衬衫小跑着去拦计程车",
+        "李阎正要走开",
+        "李阎蓦然回首，顾不上街边摆摊卖东西的老人，从草编筐上直接迈了过去"
+      ],
+      "goals": [
+        "从两个方面入手，寻找五张残篇，尤其是那张姑获鸟残片",
+        "追上近处正在移动的那团火焰图标"
+      ],
+      "knowledge": [
+        "他从何安东手里拿到两张残篇，提前开启了阎浮事件",
+        "何安东他们手里只有两张残篇，警方称五篇都被何安东劫走，剩下三篇下落不明",
+        "五张残篇的位置每24小时通报一次",
+        "他觉得剩下残篇可能在城寨内被处理掉，也可能被银行人员监守自盗",
+        "阎浮向他报告残篇位置，并在他眼前浮现九龙城寨的立体地图"
+      ],
+      "relationships": [
+        "与茱蒂在席间互相问答，气氛亲密；散席后送她上车，独自离开",
+        "对茱蒂的女保镖保持客气，拒绝同行",
+        "对茱蒂的死鬼丈夫绝口不提"
+      ],
+      "resources": [
+        "已到手的两张残篇",
+        "租来的衬衫与袋中装回的西装",
+        "阎浮残篇位置地图（24小时通报）"
+      ],
+      "situation": "把茱蒂送走后独自返回九龙城寨，收到残篇位置提示，追向正在移动的火焰图标",
+      "changes": [],
+      "evidence": [
+        "原本按照李阎的设想，他应该是在城寨的擂台上打到第七擂的时候才能开启阎浮事件，没想到阴差阳错，从何安东手里拿到了两张残篇",
+        "古小说钩沉录本残篇位置已经报告，请注意接收。",
+        "李阎蓦然回首，顾不上街边摆摊卖东西的老人，从草编筐上直接迈了过去"
+      ],
+      "uncertainty": [
+        "移动中的火焰图标对应何人、残篇为何移动，原文未交代"
+      ]
+    },
+    {
+      "characterId": "ch_52e7c25a3222",
+      "behavior": [],
+      "goals": [],
+      "knowledge": [],
+      "relationships": [],
+      "resources": [],
+      "situation": "",
+      "changes": [],
+      "evidence": [
+        "整个龙城，本来我只对红鬼抱有期待"
+      ],
+      "uncertainty": [
+        "本章仅在茱蒂的话中被提及，本人未出场"
+      ]
+    },
+    {
+      "characterId": "ch_04681a29be39",
+      "behavior": [],
+      "goals": [],
+      "knowledge": [],
+      "relationships": [],
+      "resources": [],
+      "situation": "",
+      "changes": [],
+      "evidence": [
+        "顾不上街边摆摊卖东西的老人"
+      ],
+      "uncertainty": [
+        "此处“老人”是街边摆摊者，与候选人物是否为同一身份无法确认，无言行可分析"
+      ]
+    },
+    {
+      "characterId": "ch_b0339f203f27",
+      "behavior": [],
+      "goals": [],
+      "knowledge": [],
+      "relationships": [],
+      "resources": [],
+      "situation": "",
+      "changes": [],
+      "evidence": [],
+      "uncertainty": [
+        "候选表重复列出该 characterId，已是上一条，此处不重复输出"
+      ]
+    }
+  ]
+}
