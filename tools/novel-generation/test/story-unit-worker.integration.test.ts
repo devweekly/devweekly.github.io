@@ -31,6 +31,7 @@ function storyUnit(worldId: string, title: string) {
 test("fixed-batch worker keeps alternating Story Unit chapter history and Story State isolated", async () => {
   const originalCwd = process.cwd();
   const previousSourceRoot = process.env.NOVEL_TEST_SOURCE_ROOT;
+  const previousCorruptSnapshot = process.env.NOVEL_TEST_CORRUPT_SNAPSHOT;
   const root = await mkdtemp(join(tmpdir(), "story-unit-worker-"));
   const worldId = "world-worker-test";
   const worldDir = join(root, "worlds", worldId);
@@ -72,7 +73,7 @@ test("fixed-batch worker keeps alternating Story Unit chapter history and Story 
     // The real Express routes, worker, Run store, Story State store and checkpoint
     // handling still execute exactly as they do in the application.
     const fakeCli = `
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 const args = process.argv.slice(2);
 const value = name => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] : undefined; };
@@ -96,6 +97,11 @@ const chapterPath = join(outputDir, "chapter.md");
 await writeFile(chapterPath, "# Worker chapter\\n\\n" + unitId + " generated content.\\n", "utf8");
 await writeFile(join(outputDir, "09-quality-summary.json"), JSON.stringify({ status: "passed" }), "utf8");
 await writeFile(join(outputDir, "08-state-update.json"), JSON.stringify({ worldId }), "utf8");
+if (process.env.NOVEL_TEST_CORRUPT_SNAPSHOT === "1") {
+  const runId = outputDir.split("/").at(-1)?.replace(/^chapter-/, "");
+  await rm(resolve(".output", worldId, "workbench", "state-snapshots", runId, "manifest.json"), { force: true });
+  process.exitCode = 1;
+}
 console.log("Saved chapter: " + resolve(chapterPath));
 console.log("Story state automatically updated: " + stateFile);
 `;
@@ -103,6 +109,7 @@ console.log("Story state automatically updated: " + stateFile);
 
     const unitA = await createStoredStoryUnit(worldDir, storyUnit(worldId, "故事 A"));
     const unitB = await createStoredStoryUnit(worldDir, storyUnit(worldId, "故事 B"));
+    const unitC = await createStoredStoryUnit(worldDir, storyUnit(worldId, "故事 C"));
     await new Promise<void>((resolveListen, reject) => server.listen(0, "127.0.0.1", error => error ? reject(error) : resolveListen()));
     serverStarted = true;
     const address = server.address();
@@ -180,6 +187,27 @@ console.log("Story state automatically updated: " + stateFile);
     assert.equal((await readFile(join(worldDir, ".story-units", unitA.id, "story-arc.md"), "utf8")).trim(), "arc:" + unitA.id);
     assert.equal((await readFile(join(worldDir, ".story-units", unitB.id, "story-arc.md"), "utf8")).trim(), "arc:" + unitB.id);
 
+    // A failed chapter whose rollback manifest is missing must retain currentRunId;
+    // recovery must stop rather than silently continue from uncertain Story State.
+    process.env.NOVEL_TEST_CORRUPT_SNAPSHOT = "1";
+    const failedCreate = await fetch(base + "/chapter-batches", { method: "POST", headers, body: JSON.stringify({ storyUnitId: unitC.id, chapterCount: 1 }) });
+    assert.equal(failedCreate.status, 202);
+    const failedBody = await failedCreate.json() as { execution: { id: string } };
+    let failedExecution: { status: string; currentRunId?: string; error?: string } | undefined;
+    for (let attempt = 0; attempt < 200; attempt++) {
+      const response = await fetch(base + "/story-executions/" + failedBody.execution.id, { headers });
+      failedExecution = (await response.json() as { execution: typeof failedExecution }).execution;
+      if (failedExecution?.status === "failed") break;
+      await new Promise(resolveWait => setTimeout(resolveWait, 50));
+    }
+    assert.equal(failedExecution?.status, "failed");
+    assert.ok(failedExecution?.currentRunId);
+    assert.match(failedExecution?.error ?? "", /状态回滚失败/);
+    const failedRunsResponse = await fetch(base + "/runs?storyUnitId=" + unitC.id, { headers });
+    const failedRuns = await failedRunsResponse.json() as { runs: Array<{ id: string; error?: string }> };
+    assert.match(failedRuns.runs.find(run => run.id === failedExecution?.currentRunId)?.error ?? "", /状态回滚失败/);
+    delete process.env.NOVEL_TEST_CORRUPT_SNAPSHOT;
+
     // Complete-story mode must use the same per-chapter assessor and stop only
     // when the deterministic assessment confirms natural narrative closure.
     completeStoryMode = true;
@@ -196,6 +224,8 @@ console.log("Story state automatically updated: " + stateFile);
     process.chdir(originalCwd);
     if (previousSourceRoot === undefined) delete process.env.NOVEL_TEST_SOURCE_ROOT;
     else process.env.NOVEL_TEST_SOURCE_ROOT = previousSourceRoot;
+    if (previousCorruptSnapshot === undefined) delete process.env.NOVEL_TEST_CORRUPT_SNAPSHOT;
+    else process.env.NOVEL_TEST_CORRUPT_SNAPSHOT = previousCorruptSnapshot;
     await rm(root, { recursive: true, force: true });
   }
 });
