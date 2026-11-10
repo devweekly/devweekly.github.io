@@ -53,7 +53,7 @@ export function buildCommonWritingContext(
     worldSituation ? "本章相关人物与局势上下文（用于理解当前局面，不是新增正史）：\n" + worldSituation : "",
     "事实来源说明：canonFacts.confidence=confirmed 表示原著已确认，inferred 表示基于原文的推断，original 表示项目原创。项目原创事实可在续写中承接，但不得伪装成原著事实。",
     input.contextText ? "用户补充的前文摘要：\n" + input.contextText : "",
-    input.retrievedContext ? "本地资料库证据（用于核实事实，不得整段复制）：\n" + input.retrievedContext : "",
+    input.retrievedContext ? "本地原文检索材料（首先用于核实事实；正文写作时也可观察其中与当前场景相关的叙事方法，如视角距离、信息释放、动作与对白的组织，但不得复制句子、近义改写或把参考片段当作情节模板）：\n" + input.retrievedContext : "",
     input.writingBrief ? "全书知识库（已经写成的事实与未收线，优先于分析参考）：\n" + input.writingBrief : "",
     input.storyPlanText ? input.storyPlanText : "",
     input.storyArcText ? "当前滚动式多章节 Story Arc（优先承接已发生事实；未执行章节可调整）：\n" + input.storyArcText : "",
@@ -287,7 +287,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     cachedCall("creative", "02-creative-options.md", "creative", [
       "角色：创意发散 Agent。提出不同方向的创作可能性，不负责决定正史，也不要求每个点子都服务主线。",
       CREATIVE_FREEDOM_RULES, creativeContext,
-      "自由发散若干真正不同、鲜活、有戏剧性的可能性，可以大胆、怪异、温柔、残酷或出人意料。不要为了数量凑点子，也不必把每个点子拆成固定字段。关注它能带来什么人物互动、情绪、冲突或故事惊喜；不要写正文，不要把建议当作已发生事实。"
+      "优先提出 3 个真正不同的创作方向；差异必须来自不同的事件机制、人物选择、信息差或冲突来源，不能只是同一剧情换措辞。若只有 1～2 个方向确实有价值，就少给，不为凑数制造平庸点子。至少尝试一个不沿着当前大纲最显然路径发展的可能性，但必须符合人物当下的知识、欲望、资源与处境。可以组合、改造或全部否决；不要写正文，不要把建议当作已发生事实。"
     ])
   ]);
   await saveStage(input.outputDir, "01-main-plot.md", plotPlan);
@@ -312,6 +312,8 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "目标篇幅约 " + input.maxWords + " 个中文字符，仅作整体预期，不是必须命中的配额。重要事件可以充分展开；日常、过渡和重复过程可以自然概述。不要为了达到字数而添加场景、动作、心理解释或对白。",
     "像小说家一样写，不要像舞台监督一样执行蓝图。蓝图中的建议可以合并、替换、省略或发展出新方向，只要不破坏已发生事实和必要连续性。不是每个场景都要推进情节或制造悬念；不要把普通生活强行解释成伏笔、成长或象征。叙事锋利来自准确选择，不来自每段都要有意义的压力。",
     "同一动作只写到足以让读者看清并感受到后果；不要把准备、迟疑、伸手、触碰、收手拆成一串没有新增信息的句子。不要在对白/动作已呈现潜台词后，再替读者解释一遍。段落可以承担推进、质感、停留、过渡或留白，不要求每段都产生信息增量；不要靠反复否定和静物收束拖长。",
+    "原文检索片段是本场景的参考材料：优先学习其叙述距离、信息取舍、动作/对白衔接和场景节奏，不借用原句或独特措辞；若片段与本场景功能不同，只参考通用叙事方法，不强行套用。",
+    "避免常见的模型化表达：不要替读者总结刚刚发生的事，不要重复解释人物已通过行动表达的情绪，不要让人物完整说出自己全部动机；避免每段都用对称句、抽象判断或警句式收尾。表达可以直接、粗粝、平实或舒展，不必句句显得漂亮。",
     RHYTHM_RULE
   ]);
   await saveStage(input.outputDir, "04-scene-draft.md", initialDraft);
