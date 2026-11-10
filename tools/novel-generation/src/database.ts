@@ -436,6 +436,15 @@ export interface StoryAnalysisSnapshot {
   analysisVersion?: number;
   complete: boolean;
   batches: number;
+  /** Reproducibility metadata for the batch cache that produced this snapshot. */
+  analysisModel?: string;
+  analysisMaxChars?: number;
+  analysisPromptTag?: string;
+  /** Present when this snapshot is bounded to a historical universe entry. */
+  sourceWorldId?: string;
+  asOfEntryChapter?: string;
+  asOfEntryChapterId?: string;
+  asOfEntryOrdinal?: number;
   characters: Array<Record<string, unknown>>;
   plotThreads: Array<Record<string, unknown>>;
   foreshadowings: Array<Record<string, unknown>>;
