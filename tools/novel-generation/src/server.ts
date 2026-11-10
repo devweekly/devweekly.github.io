@@ -30,7 +30,7 @@ import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } 
 import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
 import { copyOriginalCanonToUniverse, ensureBoundedUniverseCanonAssets, resolveOriginalCanonPath, truncateCanonAtLine } from "./canon-source.js";
-import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
+import { assessStoryUnitProgress, generateStoryUnit, hasVerifiableStoryProgress, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
 import { archiveStoredStoryUnitVersion, createStoredStoryUnit, getStoredStoryUnit, getStoredStoryUnitVersion, listStoredStoryUnitVersions, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
 import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, storyRunStateWasRolledBack, type StoryExecution } from "./story-execution.js";
 import { canCancelStoryExecution, knowledgeBuildAttemptStatus, reusableKnowledgeBuildStepNames, shouldCancelStoryExecutionImmediately } from "./pipeline-state.js";
@@ -1648,6 +1648,13 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
 }
 
 
+let storyProgressAssessor: typeof assessStoryUnitProgress = assessStoryUnitProgress;
+
+/** Dependency seam for deterministic Worker integration tests; production uses the real model assessor. */
+export function setStoryProgressAssessorForTests(assessor: typeof assessStoryUnitProgress): void {
+  storyProgressAssessor = assessor;
+}
+
 async function assessStoryExecutionCheckpoint(
   worldId: string, taskInput: StoryExecution, unitInput: Awaited<ReturnType<typeof generateStoryUnit>>,
   checkpoint: StoryExecution["completedChapters"][number]
@@ -1661,7 +1668,7 @@ async function assessStoryExecutionCheckpoint(
   const chapterText = await readFile(chapterPath, "utf8");
   const chapterTitle = chapterText.split("\n").find(line => /^#\s+/.test(line))?.replace(/^#\s+/,"").trim() || "章节";
   const state = await loadStoryState(taskInput.storyUnitId ? path.join(dir, ".story-units", taskInput.storyUnitId, "story-state.json") : path.join(dir, "story-state.json"), worldId);
-  const assessment = await assessStoryUnitProgress({
+  const assessment = await storyProgressAssessor({
     unit: unitInput, chapterText, chapterTitle, completedChapterCount: taskInput.completedChapters.length,
     storyState: state, model: taskInput.model
   });
@@ -1672,9 +1679,7 @@ async function assessStoryExecutionCheckpoint(
     : taskInput;
   task = appendStoryExecutionEvent({
     ...task, currentRunId: undefined, lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
-    idleChapterCount: assessment.nextDirection === unitInput.execution.nextDirection &&
-      assessment.unresolvedCoreThreads.join("|") === unitInput.execution.lastUnresolvedCoreThreads.join("|")
-      ? task.idleChapterCount + 1 : 0,
+    idleChapterCount: hasVerifiableStoryProgress(assessment, chapterText) ? 0 : task.idleChapterCount + 1,
     updatedAt: assessedAt
   }, { at: assessedAt, type: "assessment", message: assessment.rationale.slice(0, 1200) });
   const naturallyComplete = isStoryUnitNaturallyComplete(assessment);
@@ -1700,6 +1705,7 @@ async function assessStoryExecutionCheckpoint(
       lastAssessedChapterId: checkpoint.runId,
       lastUnresolvedCoreThreads: assessment.unresolvedCoreThreads,
       lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
+      cumulativeStorySummary: assessment.cumulativeStorySummary.trim() || unitInput.execution.cumulativeStorySummary,
       characterArcHistory,
       assessedAt, ...(naturallyComplete ? {completedAt: assessedAt} : {})
     }
@@ -1867,7 +1873,8 @@ async function executeFixedChapterBatch(initial: StoryExecution, signal?: AbortS
   const worldId = task.worldId;
   try {
     task = await reconcileStoryExecutionCurrentRun(task);
-    await syncStoryUnitCheckpointIds(worldId, task);
+    let unit = await loadExecutionStoryUnit(worldId, task.storyUnitId);
+    unit = await syncStoryUnitCheckpointIds(worldId, task, unit) ?? unit;
     const dir = worldDir(worldId);
     const universe = await readUniverse(worldId);
     if (universe?.archivedAt) throw new Error("当前故事宇宙已归档。");
@@ -1888,6 +1895,12 @@ async function executeFixedChapterBatch(initial: StoryExecution, signal?: AbortS
     task = mergeStoryExecutionControlFlags(task, await getStoryExecution(worldId, task.id));
     task = { ...task, status: "running", startedAt: task.startedAt ?? new Date().toISOString(), updatedAt: new Date().toISOString(), resumeCount: task.resumeCount + (task.startedAt ? 1 : 0), error: undefined };
     await saveStoryExecution(task);
+    const pendingAssessment = task.completedChapters.at(-1);
+    if (pendingAssessment && unit.execution.lastAssessedChapterId !== pendingAssessment.runId) {
+      const recoveredAssessment = await assessStoryExecutionCheckpoint(worldId, task, unit, pendingAssessment);
+      task = recoveredAssessment.task; unit = recoveredAssessment.unit;
+      if (recoveredAssessment.terminal) return;
+    }
     // A crash may happen after the final chapter run completes but before the
     // batch task is marked completed. Reconciliation above restores that checkpoint.
     if (task.completedChapters.length >= (task.targetChapterCount ?? 1)) {
@@ -1926,7 +1939,7 @@ async function executeFixedChapterBatch(initial: StoryExecution, signal?: AbortS
           await saveStoryExecution(task); return;
         }
         const failedAt = new Date().toISOString();
-        task = appendStoryExecutionEvent({ ...task, status: "failed", error: "第 " + chapterNumber + " 章未通过终审或 Story State 提交门禁。可修复后从已完成检查点恢复。" + (chapterRun.error ? " " + chapterRun.error : ""), updatedAt: failedAt, currentRunId: undefined }, { at: failedAt, type: "failed", message: "第 " + chapterNumber + " 章未通过终审或状态提交门禁" });
+        task = appendStoryExecutionEvent({ ...task, status: "failed", error: "第 " + chapterNumber + " 章未通过终审或 Story State 提交门禁。可修复后从已完成检查点恢复。" + (chapterRun.error ? " " + chapterRun.error : ""), updatedAt: failedAt, currentRunId: chapterRun.error?.includes("状态回滚失败") ? chapterRun.id : undefined }, { at: failedAt, type: "failed", message: "第 " + chapterNumber + " 章未通过终审或状态提交门禁" });
         await saveStoryExecution(task); return;
       }
       previousChapterPath = chapterRun.chapterPath;
@@ -1935,12 +1948,20 @@ async function executeFixedChapterBatch(initial: StoryExecution, signal?: AbortS
       if (latestTask) task = { ...task, pauseRequested: latestTask.pauseRequested, cancelRequested: latestTask.cancelRequested };
       task = appendStoryExecutionEvent({ ...task, completedChapters: [...task.completedChapters, {runId:chapterRun.id,chapterPath:chapterRun.chapterPath,completedAt}], currentRunId: undefined, updatedAt: completedAt }, { at: completedAt, type: "chapter_completed", message: "批量章节通过终审并提交 Story State", runId: chapterRun.id });
       await saveStoryExecution(task);
-      try {
-        const unit = await loadExecutionStoryUnit(worldId, task.storyUnitId);
-        await saveExecutionStoryUnit({ ...unit, updatedAt: completedAt, execution: { ...unit.execution, status: unit.execution.status === "completed" ? "completed" : "in_progress", completedChapterIds: unit.execution.completedChapterIds.includes(chapterRun.id) ? unit.execution.completedChapterIds : [...unit.execution.completedChapterIds, chapterRun.id] } });
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      }
+      unit = {
+        ...unit, updatedAt: completedAt,
+        execution: {
+          ...unit.execution, status: "in_progress",
+          completedChapterIds: unit.execution.completedChapterIds.includes(chapterRun.id)
+            ? unit.execution.completedChapterIds : [...unit.execution.completedChapterIds, chapterRun.id]
+        }
+      };
+      await saveExecutionStoryUnit(unit);
+      // Fixed-count execution limits only how many chapters this task runs.
+      // It must not skip the same narrative progress review used by complete_story.
+      const assessed = await assessStoryExecutionCheckpoint(worldId, task, unit, task.completedChapters.at(-1)!);
+      task = assessed.task; unit = assessed.unit;
+      if (assessed.terminal) return;
       if (task.completedChapters.length >= (task.targetChapterCount ?? 1)) {
         task = { ...task, status: "completed", completedAt, updatedAt: completedAt, nextDirection: "本次指定数量的连续章节已完成；不代表完整故事已经结束。" };
         await saveStoryExecution(task); return;
@@ -1948,7 +1969,7 @@ async function executeFixedChapterBatch(initial: StoryExecution, signal?: AbortS
       await saveStoryExecution(task);
     }
   } catch (error) {
-    task = appendStoryExecutionEvent({ ...task, status: "failed", error: error instanceof Error ? error.message : String(error), updatedAt: new Date().toISOString(), currentRunId: undefined }, { at: new Date().toISOString(), type: "failed", message: (error instanceof Error ? error.message : String(error)).slice(0, 1200) });
+    task = appendStoryExecutionEvent({ ...task, status: "failed", error: error instanceof Error ? error.message : String(error), updatedAt: new Date().toISOString() }, { at: new Date().toISOString(), type: "failed", message: (error instanceof Error ? error.message : String(error)).slice(0, 1200) });
     await saveStoryExecution(task).catch(() => undefined);
   }
 }
