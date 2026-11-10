@@ -13,21 +13,18 @@ Pipeline 状态必须能解释三个事实：任务是否真的在执行、当�
 
 ## Story Execution 状态
 
-```mermaid
-stateDiagram-v2
-  [*] --> queued
-  queued --> running
-  running --> paused: 用户暂停 / 服务重启
-  running --> cancelled: 用户取消并终止当前子进程
-  running --> failed: 章节门禁或执行失败
-  running --> completed: 故事自然收束
-  running --> stalled: 连续推进停滞
-  paused --> queued: 从检查点恢复
-  failed --> queued: 修复后从检查点恢复
-  stalled --> queued: 调整方向后恢复
-  queued --> cancelled: 取消 / 无 worker 的孤儿任务清理
-  paused --> cancelled: 取消
-```
+Story Execution 状态转换：
+
+- `queued → running`：worker 获得 World 执行权。
+- `running → paused`：用户暂停或服务重启；保留当前章节检查点。
+- `running → cancelled`：用户取消，终止子进程组并回滚未提交章节状态。
+- `running → failed`：章节门禁、模型、终审或状态提交失败。
+- `running → completed`：故事自然收束。
+- `running → stalled`：连续推进无法产生有效进展。
+- `paused/failed/stalled → queued`：从最近有效检查点恢复。
+- `queued/paused → cancelled`：取消任务或清理没有活动 worker 的孤儿记录。
+
+
 
 `queued/running/paused` 是阻塞 World 写入的状态；`failed/stalled` 可恢复但不应永久持有写锁；`completed/cancelled` 是终态。服务重启时将残留 `queued/running` 转为 `paused`，保留 `currentRunId` 供恢复逻辑对账。
 
