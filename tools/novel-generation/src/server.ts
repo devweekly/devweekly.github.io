@@ -1431,7 +1431,7 @@ async function findUnresolvedStoryRecovery(worldId: string): Promise<{task?: Sto
   const task = tasks.find(item => Boolean(item.currentRunId));
   if (task) return { task };
   const runs = await listRuns(worldId);
-  const run = runs.find(item => item.kind === "chapter" && item.status === "failed" && /状态回滚失败/.test(item.error ?? ""));
+  const run = runs.find(item => item.kind === "chapter" && item.status === "failed" && /(状态回滚失败|state rollback failed|rollback failed)/i.test(item.error ?? ""));
   return run ? { run } : undefined;
 }
 function unresolvedStoryRecoveryResponse(recovery: {task?: StoryExecution; run?: WorkbenchRun}): {error: string; execution?: StoryExecution; run?: WorkbenchRun} {
@@ -2559,13 +2559,18 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     child.on("error", error => {
       if (settled) return; settled = true;
       void (async () => {
-        await restoreStoryStateSnapshot(id, run).catch(() => false);
+        let rollbackError = "";
+        try {
+          const restored = await restoreStoryStateSnapshot(id, run);
+          if (!restored) throw new Error("未找到章节开始前的事务快照，无法证明 Story State 已恢复。");
+        } catch (cause) { rollbackError = cause instanceof Error ? cause.message : String(cause); }
+        const message = error.message + (rollbackError ? "；状态回滚失败：" + rollbackError : "");
         await Promise.all([
           writeFile(path.join(outputDir, "process.stdout.log"), output, "utf8"),
           writeFile(path.join(outputDir, "process.stderr.log"), errors + "\n" + error.stack, "utf8"),
-          writeFile(path.join(outputDir, "process-result.json"), JSON.stringify({ exitCode: null, error: error.message, completed: false }, null, 2) + "\n", "utf8")
+          writeFile(path.join(outputDir, "process-result.json"), JSON.stringify({ exitCode: null, error: message, completed: false, rollbackError: rollbackError || undefined }, null, 2) + "\n", "utf8")
         ]);
-        await saveRun({ ...run, status: "failed", error: error.message, updatedAt: new Date().toISOString() });
+        await saveRun({ ...run, status: "failed", error: message, updatedAt: new Date().toISOString() });
       })().catch(console.error);
     });
     child.on("close", code => {
@@ -2589,8 +2594,10 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
         const completed = code === 0 && finalChapterExists && qualityPassed && stateCommitted;
         let rollbackError = "";
         if (!completed) {
-          try { await restoreStoryStateSnapshot(id, run); }
-          catch (error) { rollbackError = error instanceof Error ? error.message : String(error); }
+          try {
+            const restored = await restoreStoryStateSnapshot(id, run);
+            if (!restored) throw new Error("未找到章节开始前的事务快照，无法证明 Story State 已恢复。");
+          } catch (error) { rollbackError = error instanceof Error ? error.message : String(error); }
         }
         const result = { exitCode: code, chapterPath: chapterPath ?? null, finalChapterExists, qualityPassed, stateCommitted, completed, rollbackError: rollbackError || undefined };
         await Promise.all([
@@ -2608,7 +2615,10 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
         if (completed || !rollbackError) await rm(storyStateSnapshotDir(id, runId), { recursive: true, force: true }).catch(() => undefined);
       })().catch(async error => {
         let rollbackError = "";
-        try { await restoreStoryStateSnapshot(id, run); } catch (cause) { rollbackError = cause instanceof Error ? cause.message : String(cause); }
+        try {
+          const restored = await restoreStoryStateSnapshot(id, run);
+          if (!restored) throw new Error("Missing transaction snapshot; Story State rollback cannot be verified.");
+        } catch (cause) { rollbackError = cause instanceof Error ? cause.message : String(cause); }
         await saveRun({ ...run, status: "failed", error: "Finalizing chapter run failed: " + String(error) + (rollbackError ? "; state rollback failed: " + rollbackError : ""), updatedAt: new Date().toISOString() });
       });
     });
