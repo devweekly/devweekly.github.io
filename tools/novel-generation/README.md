@@ -99,17 +99,18 @@ npm run dev -- write --world conghuoniao --mode continuation \
 
 终审一次自动修复后仍有必改项时，本次运行安全失败：最新成稿保留为 `chapter-blocked.md`，诊断写入质量摘要（状态为 `blocked`），故事状态不更新。系统不会提供人工批准绕过硬伤的开关；修复输入或问题后可从 checkpoint 恢复或重新运行。`--strict-model` 禁止失败时回退到备用模型，保证成稿模型来源可追踪。
 
-每次运行生成：
-- `00-retrieval.md`：命中的原文片段、来源位置和抽取标注
+每次普通章节运行生成的主要产物：
+- `00-story-arc.md`：本次滚动中期故事方向候选；只有终审通过且 Story State 提交成功后，才发布到活动 Story Arc 文件
 - `01-main-plot.md`、`02-creative-options.md`：主线方案与创意备选
 - `03-chapter-plan.md`：主编确定的章节蓝图
-- `04-scene-draft.md`、`05-dialogue-edited.md`、`06-voice-edited.md`：正文、对白修订和叙事声音统一
-- `05-literary-patches-raw.json` / `05-literary-patches-applied.json`（长章节为 `06-literary-patches-raw.json` / `06-literary-patches-applied.json`）：模型原始 Patch 与逐条应用结果；`05-literary-edited.md` / `06b-anti-ai-edited.md` 为应用后的正文
-- `07-continuity-review.md`：终审必改清单；没有必改项时只有一行结论
+- `04-scene-draft.md`：初稿正文
+- `05-literary-patches-raw.json`、`05-literary-patches-applied.json`：Patch 原始响应与逐条应用结果
+- `05-literary-edited.md`：Patch 应用后的正文
+- `07-review-round-*-raw.txt`、`07-continuity-review-round-*.json`、`07-continuity-review.md`：终审原始输出、结构化复查与修复记录
 - `chapter.md`：最终复查通过后的章节
-- `08-state-update.json`：合并后的下一章状态（默认已自动持久化）
-- `07-review-round-*-raw.txt`、`07-continuity-review-round-N.json`、`09-quality-summary.json`：终审原始输出、结构化复查结果与修复轮数
-- `chapter-blocked.md`：终审一轮自动修复后仍有明确硬伤时保留的最新成稿；本次运行失败且故事状态不更新
+- `08-state-update.json`、`09-quality-summary.json`：状态提案和质量摘要
+
+不会再生成内容完全相同的 `05-dialogue-edited.md` / `06-voice-edited.md`，也不会生成表示未执行阶段的 `11-style-regression-skipped.json`。阶段文件只代表实际执行过的阶段；专项风格回归由独立命令执行。
 
 章节生成成功后，状态管理员会提取人物、事件、正史事实和情节线变化，并自动写入 SQLite 权威状态及兼容 JSON 快照，供下一章直接使用。只有模型对照、盲测等需要候选互相隔离的场景才传 `--no-apply-state`；普通续写不要使用该参数。状态提取或持久化失败会使本次命令失败，不能把状态未更新的章节当作可继续写作的成功结果。`continuation` 模式的 `--source` 必须是你提供或有权使用的文本，本地 `private/` 不入库。
 
