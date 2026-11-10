@@ -234,6 +234,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     input.contextText ? "前情摘要：\n" + input.contextText : "",
     input.writingBrief ? "相关既成事实、人物和未收线：\n" + input.writingBrief : "",
     input.storyPlanText ? input.storyPlanText : "",
+    recentEventContext ? "最近已发生事件（用于避免机械重复，允许有效呼应）：\n" + recentEventContext : "",
     input.storyArcText ? "当前滚动式多章节 Story Arc：\n" + input.storyArcText : "",
     input.brief ? "本次创作任务：\n" + input.brief : ""
   ].filter(Boolean).join("\n\n");
@@ -260,6 +261,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   const previousArc = input.storyArcText?.trim() ?? "";
   const storyArc = await cachedCall("story-arc", "00-story-arc.md", "plan", [
     "角色：中期故事架构师。为接下来一段故事设计可调整的方向，跨度由当前情节自然决定；若现有阶段尚未自然结束，延续并修订它，不要无故另起炉灶。",
+    "分层展开：如果长期 Story Plan 提供了重大节点，先结合当前已发生事实识别正在推进或最近的未完成节点，只把当前节点及必要的相邻因果展开成近期 Story Arc；更远节点保留方向性摘要，不预先细化成整串章节。若当前剧情已自然偏离某节点，以已提交事实为准，调整未来路径，不得 retcon。",
     common,
     "既有 Story Arc（可能为空）：", previousArc || "尚无中期故事阶段，请从当前局势自然推演。",
     characterArcRetrospective ? "跨章人物弧光回顾（仅供创意启发）：\n" + characterArcRetrospective : "",
