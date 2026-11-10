@@ -482,7 +482,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
       ], validateStateUpdate);
       update = validateStateUpdate(stateText);
     } catch (retryError) {
-      await saveStage(input.outputDir, "08-state-update-error.txt", "First attempt: " + String(firstError) + "\\nRetry: " + String(retryError) + "\\n\\n" + stateText);
+      await saveStage(input.outputDir, "08-state-update-error.txt", "First attempt: " + String(firstError) + "\nRetry: " + String(retryError) + "\n\n" + stateText);
       throw new Error("Chapter was generated, but story-state extraction failed twice. See 08-state-update-error.txt; do not start the next chapter.");
     }
   }
