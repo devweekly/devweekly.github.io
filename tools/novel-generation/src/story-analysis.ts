@@ -639,9 +639,13 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
     batches.length = Math.min(batches.length, options.limit);
   }
   const configuredModel = resolveAgentModel(options.model).model;
+  const existingSnapshot = options.mergeOnly
+    ? readStoryAnalysis(worldDir, worldId) as (StoryAnalysisSnapshot & { analysisModel?: string }) | undefined
+    : undefined;
   const modelCandidates = options.model
     ? [configuredModel]
-    : [...new Set([configuredModel, ...readModelCatalog().map(item => item.id)])];
+    : [...new Set([existingSnapshot?.analysisModel, configuredModel, ...readModelCatalog().map(item => item.id)]
+      .filter((value): value is string => Boolean(value)))];
   const hasCompleteCacheSet = (candidate: string): boolean => {
     const root = resolve(".output", worldId, "story-analysis");
     const directories = [
