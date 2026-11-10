@@ -203,7 +203,7 @@ CLI 命令（均经 `npm run dev --`）：
 - 编辑不得改变剧情事实、因果、人物决定、信息揭示、叙事视角、人物关系或场景顺序，不得新增剧情事实。编辑前后版本必须保留并经过最终硬伤审查。
 - Reader 体验评估是独立观察产物，不进入 blocker/major 门禁，不触发自动修复，不更新 Story State。
 - 角色推演沙盘是作者主动调用的工具；所有推演均为候选创作素材，不自动成为正史。
-- 详见 `ARCHITECTURE.md` 第 10 节与 `ADR/0004-living-voice-and-anti-ai-editing.md`。
+- 详见 `ARCHITECTURE.md` 第 10 节与 `ADR/0008-living-voice-and-anti-ai-editing.md`。
 
 
 ## Literary workflow implementation invariants
