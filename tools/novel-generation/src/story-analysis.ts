@@ -433,7 +433,7 @@ function deltaKey(value: unknown): string {
   return String(value ?? "").replace(/\s/gu, "").toLocaleLowerCase();
 }
 
-/** 旧缓存目录名是旧版指纹；按 batch 文件数匹配，取最近修改的一个。 */
+/** Only the exact old full-corpus key is eligible for delta migration; never guess by batch count. */
 function findLegacyCacheDir(worldId: string, model: string, units: AnalysisUnit[], maxChars: number, excludeDir: string): string {
   const root = resolve(".output", worldId, "story-analysis");
   const exact = resolve(root, legacyCacheKeyFor(model, units, maxChars, false));
@@ -1046,10 +1046,9 @@ function mergeAndPersist(
 
 
 /**
- * Rebuild an as-of snapshot from already completed source batch caches.
- * A batch is reusable only when every chapter in it is at/before the boundary.
- * If a batch straddles the boundary, or any earlier batch is missing/invalid,
- * return false rather than mixing future context into the historical universe.
+ * Rebuild an as-of snapshot from the source world's completed batch caches.
+ * Complete prior batches are reused. If the entry falls inside a batch, only
+ * that batch's prefix is re-analyzed; no later chapter is sent to the model.
  */
 export async function importBoundedStoryAnalysisFromBatchCache(
   sourceWorldId: string,
