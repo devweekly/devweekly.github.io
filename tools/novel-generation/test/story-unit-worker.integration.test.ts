@@ -217,6 +217,9 @@ console.log("Story state automatically updated: " + stateFile);
     const failedRunsResponse = await fetch(base + "/runs?storyUnitId=" + unitC.id, { headers });
     const failedRuns = await failedRunsResponse.json() as { runs: Array<{ id: string; error?: string }> };
     assert.match(failedRuns.runs.find(run => run.id === failedExecution?.currentRunId)?.error ?? "", /状态回滚失败/);
+    const blockedNewBatch = await fetch(base + "/chapter-batches", { method: "POST", headers, body: JSON.stringify({ storyUnitId: unitA.id, chapterCount: 1 }) });
+    assert.equal(blockedNewBatch.status, 409);
+    assert.match(((await blockedNewBatch.json()) as { error: string }).error, /回滚尚未得到确认/);
     delete process.env.NOVEL_TEST_CORRUPT_SNAPSHOT;
 
   } finally {
