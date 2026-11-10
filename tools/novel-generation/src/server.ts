@@ -15,7 +15,7 @@ import { readStoryAnalysis, listNovelCharacters, countNovelCharacters, readNovel
 import {
   CHARACTER_LIST_MAX_LIMIT, CHARACTER_LIST_DEFAULT_LIMIT, DASHBOARD_PLAN_VERSIONS_LIMIT, DASHBOARD_RECENT_RUNS_LIMIT,
   STORY_ANALYSIS_QUERY_CHARACTERS,
-  WORKBENCH_BODY_LIMIT
+  WORKBENCH_BODY_LIMIT, KNOWLEDGE_BUILD_IDLE_TIMEOUT_MS, CHILD_PROCESS_KILL_GRACE_MS
 } from "./constants.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
 import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, splitCanonLines, type CanonChunk } from "./canon-chapters.js";
@@ -34,6 +34,7 @@ import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplet
 import { archiveStoredStoryUnitVersion, createStoredStoryUnit, getStoredStoryUnit, getStoredStoryUnitVersion, listStoredStoryUnitVersions, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
 import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, storyRunStateWasRolledBack, type StoryExecution } from "./story-execution.js";
 import { canCancelStoryExecution, reusableKnowledgeBuildStepNames, shouldCancelStoryExecutionImmediately } from "./pipeline-state.js";
+import { isWritingKnowledgeReady, REQUIRED_WRITING_KNOWLEDGE_STEPS } from "./pipeline-readiness.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -178,16 +179,12 @@ async function readKnowledgeBuild(id: string): Promise<KnowledgeBuildState | nul
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
 }
 
-const WRITING_READINESS_STEPS: KnowledgeBuildStep[] = [
-  "style-profile", "character-profiles", "character-states", "as-of-dossier"
-];
+const WRITING_READINESS_STEPS: KnowledgeBuildStep[] = [...REQUIRED_WRITING_KNOWLEDGE_STEPS];
 
 /** Start or resume required knowledge preparation without holding the HTTP request open. */
 async function ensureWritingKnowledgeBuildStarted(worldId: string): Promise<void> {
   const state = await readKnowledgeBuild(worldId);
-  const ready = Boolean(state && WRITING_READINESS_STEPS.every(name =>
-    state.steps.some(step => step.name === name && (step.status === "completed" || step.status === "skipped"))
-  ));
+  const ready = Boolean(state && isWritingKnowledgeReady(state.steps));
   if (!ready && !knowledgeBuilds.has(worldId)) await startKnowledgeBuild(worldId);
 }
 
@@ -232,13 +229,14 @@ async function runKnowledgeBuildStep(
     const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", ...cliArgs], {
       cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32"
     });
-    let output = "", error = "", settled = false, lastCurrent = 0;
+    let output = "", error = "", settled = false, lastCurrent = 0, timedOut = false;
+    let idleTimer: NodeJS.Timeout | undefined, forceKillTimer: NodeJS.Timeout | undefined;
+    const clearTimers = () => { if (idleTimer) clearTimeout(idleTimer); if (forceKillTimer) clearTimeout(forceKillTimer); };
     const finish = (result: { exitCode: number | null; output: string; error: string }) => {
       if (settled) return;
-      settled = true; signal?.removeEventListener("abort", abort); resolve(result);
+      settled = true; clearTimers(); signal?.removeEventListener("abort", abort); resolve(result);
     };
-    let forceKillTimer: NodeJS.Timeout | undefined;
-    const abort = () => {
+    const terminate = () => {
       if (child.pid && process.platform !== "win32") {
         try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); }
       } else child.kill("SIGTERM");
@@ -247,20 +245,28 @@ async function runKnowledgeBuildStep(
         if (child.pid && process.platform !== "win32") {
           try { process.kill(-child.pid, "SIGKILL"); } catch { child.kill("SIGKILL"); }
         } else child.kill("SIGKILL");
-      }, 5000);
+      }, CHILD_PROCESS_KILL_GRACE_MS);
     };
-    child.once("close", () => { if (forceKillTimer) clearTimeout(forceKillTimer); });
+    const resetIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        timedOut = true;
+        error += "\\n知识构建步骤超过 " + Math.round(KNOWLEDGE_BUILD_IDLE_TIMEOUT_MS / 60000) + " 分钟没有输出，已终止子进程组。";
+        terminate();
+      }, KNOWLEDGE_BUILD_IDLE_TIMEOUT_MS);
+    };
+    const abort = () => { if (idleTimer) clearTimeout(idleTimer); terminate(); };
     signal?.addEventListener("abort", abort, { once: true });
-    if (signal?.aborted) abort();
+    if (signal?.aborted) abort(); else resetIdleTimer();
     child.stdout.setEncoding("utf8").on("data", chunk => {
-      output += chunk;
+      resetIdleTimer(); output += chunk;
       if (!onProgress) return;
       const progress = parseBatchProgress(output.slice(-4096));
       if (progress && progress.current !== lastCurrent) { lastCurrent = progress.current; onProgress(progress); }
     });
-    child.stderr.setEncoding("utf8").on("data", chunk => { error += chunk; });
+    child.stderr.setEncoding("utf8").on("data", chunk => { resetIdleTimer(); error += chunk; });
     child.on("error", cause => finish({ exitCode: null, output, error: error + cause.message }));
-    child.on("close", code => finish({ exitCode: code, output, error }));
+    child.on("close", code => finish({ exitCode: timedOut ? null : code, output, error }));
   });
 }
 async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState> {
@@ -283,7 +289,7 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
       steps: (previousState?.steps ?? []).filter(step => reusableSteps.has(step.name)) };
     await writeKnowledgeBuild(state);
     void (async () => {
-      let failed = 0;
+      let failed = 0, attempted = 0;
       state.status = "running";
       const universe = await readUniverse(worldId);
       let existingAnalysis = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
@@ -315,6 +321,7 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
         state.currentStep = step.name; state.steps.push(record); state.updatedAt = new Date().toISOString();
         delete state.progress;
         await writeKnowledgeBuild(state);
+        attempted++;
         let progressWrite: Promise<unknown> = Promise.resolve();
         const result = await runKnowledgeBuildStep(worldId, step.command, progress => {
           state.progress = progress;
@@ -341,7 +348,7 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
         state.updatedAt = new Date().toISOString();
         await writeKnowledgeBuild(state);
       }
-      state.status = controller.signal.aborted ? "cancelled" : failed === 0 ? "completed" : failed === state.steps.length ? "failed" : "partial";
+      state.status = controller.signal.aborted ? "cancelled" : failed === 0 ? "completed" : failed === attempted ? "failed" : "partial";
       state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
       delete state.currentStep; delete state.progress;
       await writeKnowledgeBuild(state);
@@ -2329,7 +2336,7 @@ app.post("/api/worlds/:worldId/knowledge-build", async (req, res) => {
       if (!universe) return void res.status(409).json({ error: "该入口用于独立故事宇宙；原文项目请使用现有分析命令。" });
       if (universe.archivedAt) return void res.status(409).json({ error: "已归档的故事宇宙不能启动知识构建，请先恢复。" });
       // Knowledge data lives in novel.db; chapter state commits live in story.db.
-      // They can run concurrently, so analysis completion is never a writing prerequisite.
+      // The API queues generation immediately; the CLI waits for mandatory knowledge steps before writing.
       res.status(202).json({ build: await startKnowledgeBuild(id) });
     });
   } catch (error) { sendError(res, error); }
