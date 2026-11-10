@@ -190,6 +190,7 @@ CLI 命令（均经 `npm run dev --`）：
 - The existing plot/planner call performs any optional situation reasoning. Do not add a dedicated DM/WorldSimulation agent or another model call just to restate current state.
 - Distinguish recorded events from possible developments. Never persist planner speculation as Story State; only the final chapter state extractor may write facts.
 - Expand event-cause IDs and related plot-thread IDs into readable summaries/titles when building context. Preserve unknown references as-is instead of inventing relationships.
+- Both ordinary and long-chapter planning reuse `buildRecentEventContinuityContext`: inject a bounded recent-event digest and distinguish redundant repetition from meaningful callbacks. This is advisory prompt context, not a deterministic ban or an extra model call; callbacks that add information, reinterpretation, consequences or relationship changes remain valid.
 - Story Plan participates in retrieval/context selection so long-term direction can surface relevant existing people, threads and foreshadowings. It remains a direction, not a chapter contract.
 - See `ACTION-PLAN.md` for the implemented scope.
 
