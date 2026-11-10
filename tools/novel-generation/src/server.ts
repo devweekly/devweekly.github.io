@@ -1683,13 +1683,13 @@ async function assessStoryExecutionCheckpoint(
   let task: StoryExecution = latestTask
     ? { ...taskInput, pauseRequested: latestTask.pauseRequested, cancelRequested: latestTask.cancelRequested }
     : taskInput;
+  const naturallyComplete = isStoryUnitNaturallyComplete(assessment);
+  const idleChapterCount = hasVerifiableStoryProgress(assessment, chapterText) ? 0 : task.idleChapterCount + 1;
   task = appendStoryExecutionEvent({
     ...task, currentRunId: undefined, lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
     idleChapterCount,
     updatedAt: assessedAt
   }, { at: assessedAt, type: "assessment", message: assessment.rationale.slice(0, 1200), runId: checkpoint.runId });
-  const naturallyComplete = isStoryUnitNaturallyComplete(assessment);
-  const idleChapterCount = hasVerifiableStoryProgress(assessment, chapterText) ? 0 : task.idleChapterCount + 1;
   const revisedSpine = assessment.revisedStorySpine.length >= 4
     ? assessment.revisedStorySpine.map(beat => {
         const previousBeat = unitInput.storySpine.find(item => item.title === beat.title);
