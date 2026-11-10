@@ -1171,9 +1171,7 @@ export async function importBoundedStoryAnalysisFromBatchCache(
     // the original batch is never included in the prompt or persisted refs.
     const boundaryBatch = selection.boundary;
     const raw = await runAgentText(
-      buildAnalysisPrompt(boundaryBatch), model,
-      options.model ? DEFAULT_AGENT_TIMEOUT_MS : DEFAULT_AGENT_TIMEOUT_MS,
-      readTaskProfiles().state
+      buildAnalysisPrompt(boundaryBatch), model, DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().state
     );
     results.push({ analysis: parseModelJson(raw), chapters: boundaryBatch.chapters });
   }
