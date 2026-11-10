@@ -33,7 +33,7 @@ import { copyOriginalCanonToUniverse, ensureBoundedUniverseCanonAssets, resolveO
 import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
 import { archiveStoredStoryUnitVersion, createStoredStoryUnit, getStoredStoryUnit, getStoredStoryUnitVersion, listStoredStoryUnitVersions, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
 import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, storyRunStateWasRolledBack, type StoryExecution } from "./story-execution.js";
-import { canCancelStoryExecution, reusableKnowledgeBuildStepNames, shouldCancelStoryExecutionImmediately } from "./pipeline-state.js";
+import { canCancelStoryExecution, knowledgeBuildAttemptStatus, reusableKnowledgeBuildStepNames, shouldCancelStoryExecutionImmediately } from "./pipeline-state.js";
 import { isWritingKnowledgeReady } from "./pipeline-readiness.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
@@ -346,7 +346,7 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
         state.updatedAt = new Date().toISOString();
         await writeKnowledgeBuild(state);
       }
-      state.status = controller.signal.aborted ? "cancelled" : failed === 0 ? "completed" : failed === attempted ? "failed" : "partial";
+      state.status = controller.signal.aborted ? "cancelled" : knowledgeBuildAttemptStatus(failed, attempted);
       state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
       delete state.currentStep; delete state.progress;
       await writeKnowledgeBuild(state);
