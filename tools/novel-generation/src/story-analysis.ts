@@ -1092,12 +1092,13 @@ export async function importBoundedStoryAnalysisFromBatchCache(
   const entry = units.find(unit => unit.chapterId === entryChapterId);
   if (!entry) return false;
   const boundedUnits = units.filter(unit => unit.ordinal <= entry.ordinal);
+
+  // The SQLite snapshot is a derived merge product, not a prerequisite for
+  // reading durable batch artifacts. It may be absent after a DB rebuild or
+  // partial restore while the original batch caches are still intact.
   const sourceSnapshot = readStoryAnalysis(sourceWorldDir, sourceWorldId) as
     (StoryAnalysisSnapshot & { analysisModel?: string; analysisMaxChars?: number }) | undefined;
-  const currentSourceHash = createHash("sha256").update(units.map(unit => unit.chapterId + ":" + unit.text).join("\n")).digest("hex");
-  if (!sourceSnapshot || sourceSnapshot.analysisVersion !== 6 || sourceSnapshot.complete !== true ||
-      sourceSnapshot.sourceHash !== currentSourceHash) return false;
-  const maxChars = options.maxChars ?? sourceSnapshot.analysisMaxChars ?? ANALYSIS_BATCH_CHARS;
+  const maxChars = options.maxChars ?? sourceSnapshot?.analysisMaxChars ?? ANALYSIS_BATCH_CHARS;
   const allBatches = groupAnalysisUnits(units, maxChars).map((chapters, index) => ({
     index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0)
   }));
@@ -1105,53 +1106,74 @@ export async function importBoundedStoryAnalysisFromBatchCache(
   const configuredModel = resolveAgentModel(options.model).model;
   const modelCandidates = options.model
     ? [configuredModel]
-    : [...new Set([sourceSnapshot.analysisModel, configuredModel, ...readModelCatalog().map(item => item.id)].filter((value): value is string => Boolean(value)))];
-  const model = selection.reusable.length
-    ? modelCandidates.find(candidate => {
-        const root = resolve(".output", sourceWorldId, "story-analysis");
-        const directories = [
-          legacyCacheKeyFor(candidate, units, maxChars),
-          legacyCacheKeyFor(candidate, units, maxChars, true),
-          cacheKeyFor(candidate, units, maxChars),
-          cacheKeyFor(candidate, units, maxChars, true)
-        ];
-        return selection.reusable.every(batch => directories.some(key =>
-          existsSync(join(root, key, "batch-" + String(batch.index).padStart(4, "0") + ".json"))
-        ));
-      }) ?? sourceSnapshot.analysisModel ?? configuredModel
-    : sourceSnapshot.analysisModel ?? configuredModel;
-  const results: Array<{ analysis: BatchAnalysis; chapters: AnalysisUnit[] }> = [];
-  const cacheDir = resolve(".output", sourceWorldId, "story-analysis", cacheKeyFor(model, units, maxChars));
-  const legacyDir = resolve(".output", sourceWorldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars));
-  const legacyDeltaDir = resolve(".output", sourceWorldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars, true));
-  await mkdir(cacheDir, { recursive: true });
+    : [...new Set([sourceSnapshot?.analysisModel, configuredModel, ...readModelCatalog().map(item => item.id)]
+      .filter((value): value is string => Boolean(value)))];
 
-  for (const batch of selection.reusable) {
-    const path = join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
-    const legacyPath = join(legacyDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
-    let analysis = await readBatchCache(path, batch, model, maxChars, legacyPath);
-    if (!analysis) {
-      const deltaStableDir = resolve(".output", sourceWorldId, "story-analysis", cacheKeyFor(model, units, maxChars, true));
-      const deltaStablePath = join(deltaStableDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
-      const legacyDeltaPath = join(legacyDeltaDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
-      analysis = await readBatchCache(deltaStablePath, batch, model, maxChars, legacyDeltaPath, true);
-      if (analysis) {
-        await writeFile(path, JSON.stringify(analysis, null, 2) + "\n", "utf8");
-        await writeFile(path + ".meta.json", JSON.stringify({
-          fingerprint: batchFingerprint(batch, model, maxChars, false), migratedFrom: deltaStablePath
-        }, null, 2) + "\n", "utf8");
+  const cacheRoot = resolve(".output", sourceWorldId, "story-analysis");
+  const results: Array<{ analysis: BatchAnalysis; chapters: AnalysisUnit[] }> = [];
+  let selectedModel: string | undefined;
+
+  // Try each known model and validate actual cache contents, not just filenames.
+  // Normal v6 and delta-upgraded v6 batches are both complete BatchAnalysis
+  // payloads; delta caches can therefore restore the merged snapshot directly.
+  for (const candidate of modelCandidates) {
+    const normalDir = resolve(cacheRoot, cacheKeyFor(candidate, units, maxChars));
+    const legacyNormalDir = resolve(cacheRoot, legacyCacheKeyFor(candidate, units, maxChars));
+    const deltaDir = resolve(cacheRoot, cacheKeyFor(candidate, units, maxChars, true));
+    const legacyDeltaDir = resolve(cacheRoot, legacyCacheKeyFor(candidate, units, maxChars, true));
+    const candidateResults: Array<{ analysis: BatchAnalysis; chapters: AnalysisUnit[] }> = [];
+    let complete = true;
+
+    for (const batch of selection.reusable) {
+      const filename = "batch-" + String(batch.index).padStart(4, "0") + ".json";
+      const normalPath = join(normalDir, filename);
+      let analysis = await readBatchCache(
+        normalPath, batch, candidate, maxChars, join(legacyNormalDir, filename)
+      );
+      if (!analysis) {
+        const deltaPath = join(deltaDir, filename);
+        analysis = await readBatchCache(
+          deltaPath, batch, candidate, maxChars, join(legacyDeltaDir, filename), true
+        );
+        if (analysis) {
+          // Normalize the validated delta result into the stable normal cache
+          // namespace so later consumers do not need to rediscover its origin.
+          await mkdir(dirname(normalPath), { recursive: true });
+          const temporary = normalPath + ".migrate.tmp";
+          await writeFile(temporary, JSON.stringify(analysis, null, 2) + "\n", "utf8");
+          await rename(temporary, normalPath);
+          const metaTemporary = normalPath + ".meta.json.tmp";
+          await writeFile(metaTemporary, JSON.stringify({
+            fingerprint: batchFingerprint(batch, candidate, maxChars, false),
+            migratedFrom: join(deltaDir, filename)
+          }, null, 2) + "\n", "utf8");
+          await rename(metaTemporary, normalPath + ".meta.json");
+        }
       }
+      if (!analysis) { complete = false; break; }
+      candidateResults.push({ analysis, chapters: batch.chapters });
     }
-    if (!analysis) return false;
-    results.push({ analysis, chapters: batch.chapters });
+
+    if (complete) {
+      selectedModel = candidate;
+      results.push(...candidateResults);
+      break;
+    }
   }
 
+  // A boundary-only entry has no reusable full batch; in that case use the
+  // source snapshot's recorded model when available, otherwise current config.
+  const model = selectedModel ?? sourceSnapshot?.analysisModel ?? configuredModel;
+  if (selection.reusable.length && !selectedModel) return false;
+
   if (selection.boundary) {
-    // Re-analyze only the one batch crossing the entry boundary. Future
-    // chapters are excluded from both model input and persisted source refs.
+    // Re-analyze only the prefix through the entry chapter. The future tail of
+    // the original batch is never included in the prompt or persisted refs.
     const boundaryBatch = selection.boundary;
     const raw = await runAgentText(
-      buildAnalysisPrompt(boundaryBatch), model, DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().state
+      buildAnalysisPrompt(boundaryBatch), model,
+      options.model ? DEFAULT_AGENT_TIMEOUT_MS : DEFAULT_AGENT_TIMEOUT_MS,
+      readTaskProfiles().state
     );
     results.push({ analysis: parseModelJson(raw), chapters: boundaryBatch.chapters });
   }
