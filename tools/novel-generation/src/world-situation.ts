@@ -76,7 +76,7 @@ export function buildRecentEventContinuityContext(
       event.summary,
       event.consequences.length ? "后果：" + strings(event.consequences, 2) : ""
     ].filter(Boolean);
-    return "- " + details.join("；");
+    return ("- " + details.join("；")).slice(0, 140);
   });
   const guidance = [
     "规划时先对照这些已发生事件，避免只换人物、地点或措辞，却再次安排相同的发现、解释、冲突和解决过程。",
@@ -84,10 +84,10 @@ export function buildRecentEventContinuityContext(
     "不要为了去重而禁止伏笔回响、冲突升级或人物反复面对同一问题；也不要求每章必须引入新事件。"
   ];
   const rendered = [
-    "## 最近已发生的事件（按 Story State 记录顺序）",
-    ...eventLines,
     "## 重复情节与有效呼应",
-    ...guidance
+    ...guidance,
+    "## 最近已发生的事件（按 Story State 记录顺序）",
+    ...eventLines
   ].join("\n");
   if (rendered.length <= budget) return rendered;
   const suffix = "\n（近期事件摘要已按预算截断。）";
