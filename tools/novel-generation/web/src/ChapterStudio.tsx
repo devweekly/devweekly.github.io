@@ -6,7 +6,9 @@ const { Title, Text, Paragraph } = Typography;
 type Run = { id:string; storyUnitId?:string; kind?:string; status:string; createdAt:string; updatedAt:string; error?:string; outputDir?:string; chapterPath?:string; previousChapterPath?:string };
 type Preview = { storyArc:string; chapterPlan:string; chapter:string };
 type StoryExecution = {id:string;worldId:string;storyUnitId?:string;storyUnitTitle:string;mode:"complete_story"|"fixed_batch";targetChapterCount?:number;status:"queued"|"running"|"paused"|"completed"|"failed"|"cancelled"|"stalled";cancelRequested?:boolean;createdAt:string;updatedAt:string;completedAt?:string;currentRunId?:string;completedChapters:Array<{runId:string;chapterPath:string;completedAt:string}>;events?:Array<{at:string;type:string;message:string;runId?:string}>;lastAssessment?:string;nextDirection?:string;error?:string;brief:string;resumeCount:number};
-type StoryUnit = { id?:string; updatedAt?:string; execution:{status:"not_started"|"in_progress"|"completed";completedChapterIds:string[];lastAssessment?:string;nextDirection?:string;assessedAt?:string;completedAt?:string;characterArcHistory?:Array<{chapterId:string;name:string;observedChange:string;futurePossibilities:string[];recordedAt:string}>}; title:string; storyCore:string; readerExperience:string; openingSituation:string; centralConflict:string; fruitOrSetting:{name:string;premise:string;abilitiesAndRules:string[];costsAndLimits:string[];historicalContext:string;geographyAndDailyLife:string;powerAndSocialRelations:string}; cultureAndFolklore:Array<{name:string;practice:string;originOrBelief:string;socialFunction:string;storyUse:string}>; taboosAndGhostStories:Array<{name:string;versions:string[];underlyingTruthOptions:string[];consequences:string;scenePotential:string}>; cast:Array<{name:string;role:string;status:string;desire:string;fearOrSecret:string;relationships:string[];possibleDevelopment:string[]}>; relationshipDynamics:string[]; storySpine:Array<{title:string;function:string;causalChange:string;involvedCharacters:string[];possibleArcs:string[];status?:"planned"|"in_progress"|"completed"|"replaced"}>; subplots:string[]; climax:string; endingAndAftermath:string; unresolvedQuestions:string[]; creativePossibilities:string[] };
+type StoryUnitGenerationRun = {id:string;status:string;startedAt:string;updatedAt:string;error?:string;storyUnitId?:string|null};
+type StoryUnitGenerationDetail = {run:StoryUnitGenerationRun;input:unknown;prompt:string|null;response:string|null;trace:{requestedModel?:string|null;attempts:Array<{model:string;mode:string;status:string;durationMs?:number;error?:string}>}|null;result:unknown;failure:unknown};
+type StoryUnit = { id?:string; updatedAt?:string; canonTypeFit:{worldIdentity:string;supernaturalEngine:string;causalNecessity:string;removalTest:string}; supernaturalEngine:{phenomenon:string;rules:string[];boundaries:string[];cost:string[];observableEvidence:string;causalRole:string}; execution:{status:"not_started"|"in_progress"|"completed";completedChapterIds:string[];lastAssessment?:string;nextDirection?:string;assessedAt?:string;completedAt?:string;characterArcHistory?:Array<{chapterId:string;name:string;observedChange:string;futurePossibilities:string[];recordedAt:string}>}; title:string; storyCore:string; readerExperience:string; openingSituation:string; centralConflict:string; fruitOrSetting:{name:string;premise:string;abilitiesAndRules:string[];costsAndLimits:string[];historicalContext:string;geographyAndDailyLife:string;powerAndSocialRelations:string}; cultureAndFolklore:Array<{name:string;practice:string;originOrBelief:string;socialFunction:string;storyUse:string}>; taboosAndGhostStories:Array<{name:string;versions:string[];underlyingTruthOptions:string[];consequences:string;scenePotential:string}>; cast:Array<{name:string;role:string;status:string;desire:string;fearOrSecret:string;relationships:string[];possibleDevelopment:string[]}>; relationshipDynamics:string[]; storySpine:Array<{title:string;function:string;causalChange:string;involvedCharacters:string[];possibleArcs:string[];status?:"planned"|"in_progress"|"completed"|"replaced"}>; subplots:string[]; climax:string; endingAndAftermath:string; unresolvedQuestions:string[]; creativePossibilities:string[] };
 type Universe = { id:string; sourceWorldId:string; name:string; type:string; entryChapter:string; entryChapterId?:string; entryOrdinal?:number; brief:string; createdAt:string; parentUniverseId?:string; forkPoint?:string; archivedAt?:string };
 type ForkableRun = { id:string; chapterTitle:string; createdAt:string };
 type BuildProgress = { current:number; total:number; label:string };
@@ -43,6 +45,8 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [knowledgeBuild,setKnowledgeBuild]=useState<KnowledgeBuild|null>(null);
  const [storyUnit,setStoryUnit]=useState<StoryUnit|null>(null);
  const [storyUnitVersions,setStoryUnitVersions]=useState<Array<{versionId:string;createdAt:string;title:string;storyCore:string;centralConflict:string}>>([]);
+ const [storyUnitGenerationRuns,setStoryUnitGenerationRuns]=useState<StoryUnitGenerationRun[]>([]);
+ const [storyUnitGenerationDetail,setStoryUnitGenerationDetail]=useState<StoryUnitGenerationDetail|null>(null);
  const [storyUnits,setStoryUnits]=useState<Array<{id:string;title:string;updatedAt:string}>>([]);
  const [selectedStoryUnitId,setSelectedStoryUnitId]=useState<string|undefined>();
  const [historyScope,setHistoryScope]=useState<"current"|"legacy">("current");
@@ -104,6 +108,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  },[worldId]);
  useEffect(()=>{void refresh();},[activeWorldId,selectedStoryUnitId,historyScope]);
  useEffect(()=>{if(!activeWorldId||!storyUnit?.id){setStoryUnitVersions([]);return;}let cancelled=false;fetch("/api/worlds/"+activeWorldId+"/story-units/"+storyUnit.id+"/versions").then(async response=>{const body=await response.json() as {versions?:Array<{versionId:string;createdAt:string;title:string;storyCore:string;centralConflict:string}>;error?:string};if(!response.ok)throw new Error(body.error??response.statusText);if(!cancelled)setStoryUnitVersions(body.versions??[]);}).catch(()=>{if(!cancelled)setStoryUnitVersions([]);});return()=>{cancelled=true;};},[activeWorldId,storyUnit?.id,storyUnit?.updatedAt]);
+ useEffect(()=>{if(!activeWorldId){setStoryUnitGenerationRuns([]);return;}let cancelled=false;void api<{runs:StoryUnitGenerationRun[]}>("/api/worlds/"+activeWorldId+"/story-unit-generation-runs").then(result=>{if(!cancelled)setStoryUnitGenerationRuns(result.runs);}).catch(()=>{if(!cancelled)setStoryUnitGenerationRuns([]);});return()=>{cancelled=true;};},[activeWorldId,storyUnit?.id,storyUnit?.updatedAt,generatingStoryUnit]);
  useEffect(()=>{if(!activeWorldId)return;let cancelled=false;void Promise.all([
   api<{storyUnits:Array<{id:string;title:string;updatedAt:string}>}>("/api/worlds/"+activeWorldId+"/story-units"),
   api<{executions:StoryExecution[]}>("/api/worlds/"+activeWorldId+"/story-executions")
@@ -227,6 +232,10 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    setStoryUnit(result.storyUnit);if(result.storyUnit.id)setSelectedStoryUnitId(result.storyUnit.id);void api<{storyUnits:Array<{id:string;title:string;updatedAt:string}>}>("/api/worlds/"+activeWorldId+"/story-units").then(x=>setStoryUnits(x.storyUnits));message.success("完整故事单元设计已生成并保存。");
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
   finally{setGeneratingStoryUnit(false);}
+ };
+ const openStoryUnitGenerationRun=async(runId:string)=>{
+  try{const detail=await api<StoryUnitGenerationDetail>("/api/worlds/"+activeWorldId+"/story-unit-generation-runs/"+runId);setStoryUnitGenerationDetail(detail);}
+  catch(error){message.error(error instanceof Error?error.message:String(error));}
  };
  const restoreStoryUnitVersion=(versionId:string)=>{
   Modal.confirm({title:"恢复这版故事设计？",content:"当前设计会先自动存为一个新历史版本，之后仍可恢复。执行中的章节或故事任务不能被覆盖。",okText:"恢复版本",cancelText:"取消",onOk:async()=>{
@@ -404,6 +413,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
      {key:"people",label:"已出场人物与新人物",children:<div>{storyUnit.cast.map((x,i)=><div key={i}><Space><Text strong>{x.name}</Text><Tag>{x.status==="existing"?"已出场":"新人物"}</Tag></Space><Paragraph>{x.role}。欲望：{x.desire}。秘密/恐惧：{x.fearOrSecret}。关系：{x.relationships.join("；")}。发展可能：{x.possibleDevelopment.join("；")}</Paragraph></div>)}<Paragraph>{storyUnit.relationshipDynamics.join("；")}</Paragraph></div>},
      {key:"spine",label:"从开端到高潮与结局",children:<div>{storyUnit.storySpine.map((x,i)=><div key={i}><Space wrap><Text strong>{i+1}. {x.title}</Text><Tag color={x.status==="completed"?"success":x.status==="in_progress"?"processing":x.status==="replaced"?"warning":"default"}>{({planned:"待推进",in_progress:"进行中",completed:"已发生",replaced:"已由剧情发展替代"} as Record<string,string>)[x.status??"planned"]??x.status??"planned"}</Tag></Space><Paragraph>{x.function}。因果变化：{x.causalChange}。人物：{x.involvedCharacters.join("、")}。发展可能：{x.possibleArcs.join("；")}</Paragraph></div>)}<Paragraph>支线：{storyUnit.subplots.join("；")}</Paragraph><Paragraph>高潮：{storyUnit.climax}</Paragraph><Paragraph>结局与余韵：{storyUnit.endingAndAftermath}</Paragraph></div>}
     ]}/>
+    {!!storyUnitGenerationRuns.length&&<Collapse size="small" items={[{key:"generation-audit",label:"故事创意生成记录（"+storyUnitGenerationRuns.length+"）",children:<Space direction="vertical" style={{width:"100%"}}>{storyUnitGenerationRuns.map(item=><div key={item.id}><Space wrap><Tag color={item.status==="completed"?"success":item.status==="failed"?"error":"processing"}>{item.status==="completed"?"成功":item.status==="failed"?"失败":item.status}</Tag><Text>{new Date(item.startedAt).toLocaleString()}</Text><Text type="secondary">{item.id}</Text><Button size="small" onClick={()=>void openStoryUnitGenerationRun(item.id)}>查看 Prompt / 原始响应 / 模型重试记录</Button></Space>{item.error&&<Paragraph type="danger">{item.error}</Paragraph>}</div>)}</Space>}]}/>}
     {!!storyUnitVersions.length&&<Collapse size="small" items={[{key:"versions",label:"故事设计历史版本（"+storyUnitVersions.length+"）",children:<div>{storyUnitVersions.map(version=><div key={version.versionId}><Text strong>{version.title}</Text><Text type="secondary"> · {new Date(version.createdAt).toLocaleString()}</Text><Paragraph style={{marginBottom:4}}>{version.storyCore}</Paragraph><Text type="secondary">核心矛盾：{version.centralConflict}</Text><div><Button size="small" onClick={()=>restoreStoryUnitVersion(version.versionId)} disabled={Boolean(activeStoryExecution)||Boolean(busy)}>恢复此版本</Button></div></div>)}</div>}]}/>}
     <Space wrap>
      <Tag color={storyUnit.execution.status==="completed"?"success":storyUnit.execution.status==="in_progress"?"processing":"default"}>{storyUnit.execution.status==="completed"?"故事已收束":storyUnit.execution.status==="in_progress"?"正在执行":"尚未执行"}</Tag>
@@ -463,6 +473,19 @@ export default function ChapterStudio({worldId}:{worldId:string}){
      {run.outputDir&&<Collapse ghost style={{marginTop:12}} items={[{key:"diagnostics",label:"运行诊断（中间产物与日志）",children:<Text type="secondary">{run.outputDir}。完整过程日志、质量审查、状态更新和阶段缓存均保存在该目录。</Text>}]}/>}
     </div>}
   </Card>
+  <Modal title="Story Unit 创意生成审计" open={Boolean(storyUnitGenerationDetail)} onCancel={()=>setStoryUnitGenerationDetail(null)} footer={<Button onClick={()=>setStoryUnitGenerationDetail(null)}>关闭</Button>} width={960}>
+   {storyUnitGenerationDetail&&<Space direction="vertical" style={{width:"100%"}} size="middle">
+    <Space wrap><Tag color={storyUnitGenerationDetail.run.status==="completed"?"success":"error"}>{storyUnitGenerationDetail.run.status}</Tag><Text type="secondary">{storyUnitGenerationDetail.run.id} · {new Date(storyUnitGenerationDetail.run.startedAt).toLocaleString()}</Text></Space>
+    {storyUnitGenerationDetail.failure&&<Alert type="error" showIcon message="生成失败" description={<pre style={{whiteSpace:"pre-wrap",margin:0}}>{JSON.stringify(storyUnitGenerationDetail.failure,null,2)}</pre>}/>}
+    <Collapse items={[
+     {key:"input",label:"输入快照（世界设定、Story State、原著分析上下文）",children:<pre style={{whiteSpace:"pre-wrap",maxHeight:280,overflow:"auto"}}>{JSON.stringify(storyUnitGenerationDetail.input,null,2)}</pre>},
+     {key:"prompt",label:"完整 Prompt",children:<pre style={{whiteSpace:"pre-wrap",maxHeight:360,overflow:"auto"}}>{storyUnitGenerationDetail.prompt??"无记录"}</pre>},
+     {key:"response",label:"模型原始响应",children:<pre style={{whiteSpace:"pre-wrap",maxHeight:420,overflow:"auto"}}>{storyUnitGenerationDetail.response??"无记录"}</pre>},
+     {key:"trace",label:"模型调用、重试与耗时",children:<pre style={{whiteSpace:"pre-wrap"}}>{JSON.stringify(storyUnitGenerationDetail.trace,null,2)}</pre>},
+     {key:"result",label:"解析后的 Story Unit",children:<pre style={{whiteSpace:"pre-wrap",maxHeight:360,overflow:"auto"}}>{JSON.stringify(storyUnitGenerationDetail.result,null,2)}</pre>}
+    ]}/>
+   </Space>}
+  </Modal>
   <Modal title="创建独立故事宇宙" open={createOpen} onCancel={()=>setCreateOpen(false)} onOk={()=>void createUniverse()} confirmLoading={creatingUniverse} okButtonProps={{disabled:sourceChapters.length===0||entryChapterIndex===undefined}} okText="创建宇宙">
    <Space direction="vertical" style={{width:"100%"}} size="middle">
     {sourceChapterError&&<Alert type="error" showIcon message="原文目录加载失败" description={sourceChapterError}/>}
