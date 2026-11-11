@@ -25,7 +25,7 @@ CLI 命令（均经 `npm run dev --`）：
 | `analyze-story --world <id> [--model m] [--timeout-ms 180000] [--shard i/n] [--merge-only] [--delta]` | CodeBuddy SDK 自动分析人物小传/成长可能性、主线、伏笔与后续发展并保存 SQLite；`--delta` 复用旧批次长文本，只重抽 v6 新增字段 |
 | `analyze-world --world <id> --phase prepare/status/collect [--evidence-review]` | 多 Agent 文本分析（文件交接；默认确定性校验，`--evidence-review` 才调模型） |
 | `analyze-arcs / index-story / story-kb / db-status / check-runtime` | 卷级梗概、章节索引入库、知识库查询（`story-kb --type graph` 可查完整 v6 原著图谱）、DB 状态、运行时自检 |
-| `story-state --world <id> [--type overview/characters/events/threads/relationships/foreshadowings/macguffins/graph] [--query q]` | 只读查看续写 Story State、动态关系/伏笔/MacGuffin 记录及派生图谱 |
+| `dream-memory --world <id> --run-dir <completed-run>` | 从已完成章节和审核记录提炼带逐字证据的隐性经验；不同运行重复出现后才进入写作上下文 |\n| `story-state --world <id> [--type overview/characters/events/threads/relationships/foreshadowings/macguffins/graph] [--query q]` | 只读查看续写 Story State、动态关系/伏笔/MacGuffin 记录及派生图谱 |
 | `write-long --brief "" [--scenes n] [--max-words n] [--strict-model] [--no-apply-state] [--reader-experience] [--resume-dir dir]` | 万字长章节逐场生成；Reader 体验报告默认关闭 |
 | `regress --world <id> --chapter n` | 单章盲写回归对照 |
 | `write --brief "" [--mode continuation/derivative] [--source f] [--context f] [--model m] [--max-words n] [--strict-model] [--no-apply-state] [--reader-experience] [--resume-dir dir]` | 多阶段章节写作、自动复查与有限修复；Reader 默认关闭 |
