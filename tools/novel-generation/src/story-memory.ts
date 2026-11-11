@@ -44,6 +44,7 @@ function matchingMemory(
 ): StoryMemoryRow | undefined {
   let best: { memory: StoryMemoryRow; score: number } | undefined;
   for (const memory of existing) {
+    if (memory.status !== "candidate" && memory.status !== "active") continue;
     if (memory.memoryType !== candidate.memoryType) continue;
     const contentScore = similarity(candidate.content, memory.content);
     const scopeScore = similarity(candidate.scope, memory.scope);
