@@ -459,7 +459,7 @@ export function recordStoryMemoryCandidates(
         const old = get.get(candidate.memoryId) as { evidence_json: string; occurrences: number; status: string } | undefined;
         const evidence = old ? JSON.parse(old.evidence_json) as StoryMemoryEvidence[] : [];
         if (evidence.some(item => item.runId === candidate.evidence.runId)) continue;
-        const next = [...evidence, candidate.evidence].slice(-8);
+        const next = [...evidence, candidate.evidence];
         const occurrences = next.length;
         if (old) {
           db.prepare("UPDATE story_memories SET evidence_json=?,occurrences=?,status=CASE WHEN ? >= 2 AND status='candidate' THEN 'active' ELSE status END,updated_at=?,last_seen_at=? WHERE memory_id=?")
