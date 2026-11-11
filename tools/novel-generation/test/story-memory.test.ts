@@ -22,6 +22,7 @@ test("story memory requires independent run evidence before context injection", 
     assert.equal(recordStoryMemoryCandidates(worldDir, "test-world", [candidate]), 1);
     assert.equal(recordStoryMemoryCandidates(worldDir, "test-world", [candidate]), 0, "同一运行不能重复累计证据");
     assert.equal(listStoryMemories(worldDir, "test-world", "active").length, 0);
+    assert.throws(() => updateStoryMemory(worldDir, "test-world", "memory-1", { status: "active" }), /at least two independent story executions/);
     assert.equal(buildNarrativeMemoryContext(worldDir, "test-world", "人物信任变化"), "");
 
     assert.equal(recordStoryMemoryCandidates(worldDir, "test-world", [{

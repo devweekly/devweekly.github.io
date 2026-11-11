@@ -54,21 +54,28 @@ export function buildNarrativeMemoryContext(worldDir: string, worldId: string, q
 export async function dreamOnCompletedRun(input: {
   worldId: string; worldDir: string; runDir: string; runDirs?: string[]; memoryRunId?: string; model?: string; timeoutMs?: number;
 }): Promise<{ recorded: number; candidates: number }> {
-  const runDirs = [...new Set((input.runDirs?.length ? input.runDirs : [input.runDir]).map(dir => resolve(dir)))];
+  const allRunDirs = [...new Set((input.runDirs?.length ? input.runDirs : [input.runDir]).map(dir => resolve(dir)))];
+  // Keep a small arc sample (opening, middle and ending), rather than turning Dreaming
+  // into a second transcript store or letting early chapters crowd out the ending.
+  const runDirs = allRunDirs.length <= 5 ? allRunDirs : [...new Set([
+    allRunDirs[0]!, allRunDirs[Math.floor((allRunDirs.length - 1) / 4)]!,
+    allRunDirs[Math.floor((allRunDirs.length - 1) / 2)]!,
+    allRunDirs[Math.floor(3 * (allRunDirs.length - 1) / 4)]!, allRunDirs.at(-1)!
+  ])];
   const evidenceFiles: Array<{ source: string; content: string }> = [];
   for (const runDir of runDirs) {
     const chapterPath = resolve(runDir, "chapter.md");
     try {
       const chapter = await readFile(chapterPath, "utf8");
-      evidenceFiles.push({ source: relative(process.cwd(), chapterPath), content: chapter.slice(0, 7000) });
+      evidenceFiles.push({ source: relative(process.cwd(), chapterPath), content: chapter.slice(0, 5000) });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
     const names = await readdir(runDir);
-    const reviewFiles = names.filter(name => /review|reader|literary|revision/i.test(name) && /\.(md|txt|json)$/i.test(name)).slice(0, 2);
+    const reviewFiles = names.filter(name => /review|reader|literary|revision/i.test(name) && /\.(md|txt|json)$/i.test(name)).slice(0, 1);
     for (const name of reviewFiles) {
       const path = resolve(runDir, name);
-      evidenceFiles.push({ source: relative(process.cwd(), path), content: (await readFile(path, "utf8")).slice(0, 2200) });
+      evidenceFiles.push({ source: relative(process.cwd(), path), content: (await readFile(path, "utf8")).slice(0, 1800) });
     }
   }
   if (!evidenceFiles.some(file => file.source.endsWith("/chapter.md"))) throw new Error("Completed run has no chapter.md evidence.");
