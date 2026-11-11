@@ -14,7 +14,7 @@ const CandidateSchema = z.object({
   scope: z.string().max(120).optional(),
   evidence: z.string().min(12).max(500)
 });
-const OutputSchema = z.object({ memories: z.array(CandidateSchema).max(3), creativeCompass: z.string().max(1200).optional() });
+const OutputSchema = z.object({ memories: z.array(CandidateSchema).max(3), creativeCompass: z.string().optional() });
 
 function memoryId(type: StoryMemoryType, content: string): string {
   const normalized = content.toLocaleLowerCase().replace(/\s+/gu, "").replace(/[，。！？；：、“”‘’]/gu, "");
@@ -234,7 +234,7 @@ export async function dreamOnCompletedRun(input: {
   if (parsed.creativeCompass?.trim()) {
     const compassDir = resolve(input.worldDir, "story-memory");
     await mkdir(compassDir, { recursive: true });
-    await writeFile(resolve(compassDir, "creative-compass.md"), parsed.creativeCompass.trim() + "\n", "utf8");
+    await writeFile(resolve(compassDir, "creative-compass.md"), parsed.creativeCompass.trim().slice(0, 1200) + "\n", "utf8");
     compassUpdated = true;
   }
   return { recorded, candidates: candidates.length, compassUpdated };
