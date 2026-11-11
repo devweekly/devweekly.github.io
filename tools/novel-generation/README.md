@@ -24,6 +24,8 @@ npm run start:web     # 启动生产 Web 服务
 
 检索会综合记忆内容与适用范围的相关性，并对流程类任务适度优先考虑 operational 经验。它仍然只提供少量可选启发，不参与 Canon 事实判断。记忆不按时间自动过期；发现经验被反例推翻时，应在 Workbench 中标记为已替代或淘汰。
 
+Dreaming 也会综合既有 active memories 与新完成故事，提炼跨故事单元的文学经验，并维护派生的 creative-compass.md（位于 worlds/<world>/story-memory/）。它概括值得延续的语言气质、人物复杂性、叙事张力和创意方向，只作为可忽略、可突破的启发，不是固定风格规则。记忆检索会结合当前任务中的对白、冲突、动作、情绪转折、信息揭示、场景转换和环境描写等意图线索。只出现一次但有强证据的独特创意也可先保留为 candidate，仍需遵守原有晋级机制。
+
 ## Story Memory 有效性盲测
 
 不要以记忆条数、检索命中率或 Prompt 长度判断 Dreaming 是否有价值。先让同一世界积累至少两次独立故事执行的 active memory，再用相同故事起点、同一模型和同一份 Story State 运行成对盲测：
