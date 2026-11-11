@@ -9,11 +9,12 @@ import { buildNarrativeMemoryContext } from "../src/story-memory.js";
 import { listStoryMemories } from "../src/database.js";
 
 const argv = process.argv.slice(2);
-function arg(name: string, fallback = ""): string {
+if (argv.includes("--help")) { console.log("Usage: npm run evaluate-story-memory -- --world <id> --brief <text> [--command write|write-long] [--model <id>]"); process.exit(0); }
+function arg(name, fallback = "") {
   const index = argv.indexOf("--" + name);
   return index >= 0 && argv[index + 1] && !argv[index + 1]!.startsWith("--") ? argv[index + 1]! : fallback;
 }
-function required(name: string): string {
+function required(name) {
   const value = arg(name);
   if (!value.trim()) throw new Error("Missing required --" + name);
   return value;
@@ -66,11 +67,10 @@ if (strictModel) commonArgs.push("--strict-model");
 if (readerExperience) commonArgs.push("--reader-experience");
 if (command === "write-long") commonArgs.push("--scenes", scenes, "--timeout-ms", timeoutMs);
 
-type Arm = "memory-on" | "memory-off";
-const order: Arm[] = randomBytes(1)[0]! % 2 === 0 ? ["memory-on", "memory-off"] : ["memory-off", "memory-on"];
-const results: Record<Arm, { outputDir: string; chapterPath: string }> = {} as never;
+const order = randomBytes(1)[0] % 2 === 0 ? ["memory-on", "memory-off"] : ["memory-off", "memory-on"];
+const results = {};
 
-function runArm(arm: Arm): Promise<{ stdout: string; stderr: string; code: number }> {
+function runArm(arm) {
   const args = ["--import", "tsx", "src/cli.ts", command, ...commonArgs];
   if (arm === "memory-off") args.push("--no-story-memory");
   return new Promise((resolvePromise, reject) => {
@@ -98,10 +98,10 @@ for (const arm of order) {
   results[arm] = { outputDir: dirname(chapterPath), chapterPath };
 }
 
-const labels: Record<Arm, "A" | "B"> = randomBytes(1)[0]! % 2 === 0
+const labels = randomBytes(1)[0] % 2 === 0
   ? { "memory-on": "A", "memory-off": "B" }
   : { "memory-on": "B", "memory-off": "A" };
-for (const arm of ["memory-on", "memory-off"] as const) {
+for (const arm of ["memory-on", "memory-off"]) {
   const chapter = await readFile(results[arm].chapterPath, "utf8");
   await writeFile(resolve(blindDir, labels[arm] + ".md"), chapter, "utf8");
   await writeFile(resolve(outputRoot, labels[arm] + ".json"), JSON.stringify({
