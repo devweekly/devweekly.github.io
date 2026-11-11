@@ -62,6 +62,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const autoStoryUnitWorlds=useRef(new Set<string>());
  const knowledgeBuildActive=startingKnowledgeBuild||knowledgeBuild?.status==="queued"||knowledgeBuild?.status==="running";
  const storyUnitReady=Boolean(selectedStoryUnitId&&storyUnit?.id);
+ const canonContractReady=Boolean(storyUnit&&storyUnit.canonTypeFit?.worldIdentity?.trim()&&storyUnit.canonTypeFit?.supernaturalEngine?.trim()&&storyUnit.canonTypeFit?.causalNecessity?.trim()&&storyUnit.canonTypeFit?.removalTest?.trim()&&storyUnit.supernaturalEngine?.phenomenon?.trim()&&storyUnit.supernaturalEngine?.rules?.length&&storyUnit.supernaturalEngine?.boundaries?.length&&storyUnit.supernaturalEngine?.cost?.length&&storyUnit.supernaturalEngine?.causalRole?.trim());
  const busy=run?.status==="queued"||run?.status==="running"||worldActiveChapterRun?.status==="queued"||worldActiveChapterRun?.status==="running";
  const activeStoryExecution=worldStoryExecutions.find(item=>["queued","running","paused"].includes(item.status));
  const batchRunning=activeStoryExecution?.mode==="fixed_batch"&&["queued","running"].includes(activeStoryExecution.status);
@@ -73,6 +74,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   storyTaskBlocksWrites?"存在尚未结束的完整故事任务；请先在页面顶部恢复或取消该任务":
   busy?"当前宇宙有章节任务正在执行，请等待完成":
   generatingStoryUnit?"正在准备完整故事单元":
+  selectedStoryUnitId&&storyUnit&&!canonContractReady?"当前故事单元缺少原作类型契约或可验证的超凡因果机制；请先重新推演故事设计":
   activeWorldId!==worldId&&!storyUnitReady?"当前宇宙尚未准备好完整故事单元，系统正在自动创建；若失败，请在下方重新生成":
   storyUnit?.execution.status==="completed"?"当前故事单元已经自然收束，请创建新的故事单元继续":
   universes.find(item=>item.id===activeWorldId)?.archivedAt?"当前宇宙已归档，请先恢复宇宙":"";
@@ -328,8 +330,8 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     <Button onClick={()=>setCreateOpen(true)}>新建故事宇宙</Button>
     {activeWorldId!==worldId&&!activeUniverse?.archivedAt&&<Button onClick={()=>void openFork()} disabled={Boolean(busy)||storyTaskBlocksWrites||knowledgeBuildActive}>从本宇宙分叉</Button>}
     {activeUniverse&&(activeUniverse.archivedAt?<Button onClick={()=>void changeArchive(false)} disabled={storyTaskBlocksWrites||Boolean(busy)||knowledgeBuildActive}>恢复宇宙</Button>:<Button danger onClick={()=>void changeArchive(true)} disabled={Boolean(busy)||storyTaskBlocksWrites||knowledgeBuildActive}>归档当前宇宙</Button>)}
-    <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)||batchRunning||storyTaskBlocksWrites||generatingStoryUnit||(activeWorldId!==worldId&&!storyUnitReady)||storyUnit?.execution.status==="completed"||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generate()}>生成下一章</Button>
-    <Space.Compact><InputNumber min={1} value={batchCount} onChange={value=>setBatchCount(value??1)} disabled={batchRunning||Boolean(busy)||storyTaskBlocksWrites||storyUnit?.execution.status==="completed"} style={{width:76}}/><Button loading={batchRunning||startingStoryExecution&&activeStoryExecution?.mode==="fixed_batch"} disabled={!activeWorldId||Boolean(busy)||batchRunning||storyTaskBlocksWrites||generatingStoryUnit||(activeWorldId!==worldId&&!storyUnitReady)||storyUnit?.execution.status==="completed"||startingStoryExecution||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generateBatch()}>连续生成多章</Button></Space.Compact>
+    <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)||batchRunning||storyTaskBlocksWrites||generatingStoryUnit||(activeWorldId!==worldId&&!storyUnitReady)||(Boolean(selectedStoryUnitId)&&!canonContractReady)||storyUnit?.execution.status==="completed"||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generate()}>生成下一章</Button>
+    <Space.Compact><InputNumber min={1} value={batchCount} onChange={value=>setBatchCount(value??1)} disabled={batchRunning||Boolean(busy)||storyTaskBlocksWrites||storyUnit?.execution.status==="completed"} style={{width:76}}/><Button loading={batchRunning||startingStoryExecution&&activeStoryExecution?.mode==="fixed_batch"} disabled={!activeWorldId||Boolean(busy)||batchRunning||storyTaskBlocksWrites||generatingStoryUnit||(activeWorldId!==worldId&&!storyUnitReady)||(Boolean(selectedStoryUnitId)&&!canonContractReady)||storyUnit?.execution.status==="completed"||startingStoryExecution||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generateBatch()}>连续生成多章</Button></Space.Compact>
     <Button icon={<ReloadOutlined/>} loading={loading} onClick={()=>void refresh()}>刷新状态</Button>
     {busy&&<Tag color="processing">{worldActiveChapterRun&&worldActiveChapterRun.storyUnitId!==selectedStoryUnitId?"当前宇宙另一故事单元正在生成":"正在自动创作"}</Tag>}
     {batchRunning&&<Tag color="processing">批量进度 {batchProgress.completed}/{batchProgress.total}</Tag>}
@@ -407,6 +409,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     <Title level={4}>{storyUnit.title}</Title>
     <Paragraph>{storyUnit.storyCore}</Paragraph>
     <Paragraph type="secondary">核心矛盾：{storyUnit.centralConflict}</Paragraph>
+    {!canonContractReady&&<Alert type="warning" showIcon message="旧版故事设计不符合新的原作类型契约" description="当前设计缺少可验证的超凡机制及其因果必要性。为避免继续生成现实主义题材偏移的章节，请先点击“重新推演故事设计”；章节生成与完整故事执行已暂时禁用。"/>}
     <Collapse items={[
      {key:"canon",label:"原作类型契约与超凡机制",children:<div><Paragraph>世界类型定位：{storyUnit.canonTypeFit.worldIdentity}</Paragraph><Paragraph>超凡机制：{storyUnit.canonTypeFit.supernaturalEngine}</Paragraph><Paragraph>因果必要性：{storyUnit.canonTypeFit.causalNecessity}</Paragraph><Paragraph>移除机制后的因果断裂：{storyUnit.canonTypeFit.removalTest}</Paragraph><Paragraph>异常现象：{storyUnit.supernaturalEngine.phenomenon}</Paragraph><Paragraph>规则：{storyUnit.supernaturalEngine.rules.join("；")}</Paragraph><Paragraph>边界：{storyUnit.supernaturalEngine.boundaries.join("；")}</Paragraph><Paragraph>代价：{storyUnit.supernaturalEngine.cost.join("；")}</Paragraph><Paragraph>可观察证据：{storyUnit.supernaturalEngine.observableEvidence}</Paragraph><Paragraph>因果作用：{storyUnit.supernaturalEngine.causalRole}</Paragraph></div>},
      {key:"world",label:"果实、场景与社会生活",children:<div><Paragraph>{storyUnit.fruitOrSetting.premise}</Paragraph><Paragraph>历史：{storyUnit.fruitOrSetting.historicalContext}</Paragraph><Paragraph>地理与日常：{storyUnit.fruitOrSetting.geographyAndDailyLife}</Paragraph><Paragraph>社会关系：{storyUnit.fruitOrSetting.powerAndSocialRelations}</Paragraph><Paragraph>规则：{storyUnit.fruitOrSetting.abilitiesAndRules.join("；")}</Paragraph><Paragraph>代价：{storyUnit.fruitOrSetting.costsAndLimits.join("；")}</Paragraph></div>},
@@ -423,7 +426,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
      {storyUnit.execution.nextDirection&&<Paragraph type="secondary" style={{marginBottom:0}}>下一步自然方向：{storyUnit.execution.nextDirection}</Paragraph>}
       {!!storyUnit.execution.characterArcHistory?.length&&<div><Text strong>人物发展记录</Text>{storyUnit.execution.characterArcHistory.slice(-12).reverse().map((item,index)=><div key={item.chapterId+item.name+index}><Text strong>{item.name}</Text><Text type="secondary"> · {item.chapterId}</Text><div>{item.observedChange}</div>{item.futurePossibilities.length>0&&<Text type="secondary">后续可能：{item.futurePossibilities.join("；")}</Text>}</div>)}</div>}
      <Button onClick={()=>void generateStoryUnit()} loading={generatingStoryUnit} disabled={generatingStoryUnit||Boolean(activeStoryExecution)}>重新推演故事设计</Button>
-     <Button type="primary" onClick={()=>void startCompleteStory()} loading={startingStoryExecution} disabled={startingStoryExecution||batchRunning||busy||!["not_started","in_progress"].includes(storyUnit.execution.status)||Boolean(activeStoryExecution)||Boolean(activeUniverse?.archivedAt)}>自动完成整个故事</Button>
+     <Button type="primary" onClick={()=>void startCompleteStory()} loading={startingStoryExecution} disabled={startingStoryExecution||batchRunning||busy||!canonContractReady||!["not_started","in_progress"].includes(storyUnit.execution.status)||Boolean(activeStoryExecution)||Boolean(activeUniverse?.archivedAt)}>自动完成整个故事</Button>
     </Space>
    </Space>}
   </Card>
