@@ -21,7 +21,7 @@ All production novel-generation LLM text calls use `src/generate.ts` `runAgentTe
 
 Trace persistence is part of the call path. If the local trace cannot be initialized or streamed to disk, the model call is not allowed to proceed as an unrecorded generation. A failed model attempt is recorded before the fallback is tried.
 
-CLI and Workbench startup scan this directory and mark records left in `running` as `interrupted`, including their in-flight attempt records. This closes the process-kill/restart gap; it does not attempt to resume a model request.
+CLI and Workbench startup scan this directory, check the recorded PID, and mark only orphaned records left in `running` as `interrupted`, including their in-flight attempt records. A second live Workbench instance will not invalidate another instance's active calls. This closes the process-kill/restart gap; it does not attempt to resume a model request.
 
 ## Parent-run correlation
 
