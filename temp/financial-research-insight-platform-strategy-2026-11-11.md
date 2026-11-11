@@ -309,7 +309,7 @@ ChatGPT Financial Services 内建数据的索引和托管安排，可能与企�
 不应把 LangGraph 当作金融领域语义、数据授权或合规状态系统，也不应因为使用了 LangSmith 就认为拥有完整的监管审计记录。生产平台需要把关键流程事件、输入输出、数据版本、模型版本、工具结果、权限判定和审批动作写入机构控制的权威存储。LangSmith 可以用作可观测和评测工具，但必须明确其数据处理合同、部署方式和日志保留边界。
 
 
-### 6.4 参考落地架构：Snowflake + Amazon Bedrock + LangGraph + LangSmith
+### 6.4 参考落地架构：Snowflake + LiteLLM + LangGraph + LangSmith
 
 如果机构已经把 Bloomberg、LSEG、MSCI 等外部金融数据以及内部持仓、风险和研究数据集中在 Snowflake，建议采用 **Snowflake-centric Data Plane + 自建 Agent Plane + 独立 AI Control Plane**。模型侧以 Claude 或 OpenAI 当前最强、且经过机构评测与合同批准的模型为主，通过 LiteLLM Proxy 统一路由和治理；不把模型厂商的 Agent 产品当作企业运行时。Agent 的执行、状态、工具调用和审批由机构自己的服务负责。
 
@@ -343,7 +343,7 @@ Research Workbench / Insight Hub
        (institution-operated)
           /       |       \
          /        |        \
- Financial Tools  Bedrock   LangSmith
+ Financial Tools  LiteLLM   LangSmith
   / MCP Gateway   Runtime   Traces / Evals
        |
   Policy Enforcement
@@ -468,12 +468,12 @@ LangSmith 的 Trace 需要脱敏，避免将未授权的 Bloomberg / LSEG / MSCI
 - Policy Service 先决定该用户可读取哪些供应商数据、内部研究和组合信息。
 - LangGraph 调用 Entity、Fundamentals、News / Filings、MSCI、Portfolio 和 Research Memory 工具；工具只返回授权后的最小必要数据及其来源元数据。
 - 确定性计算服务计算增长率、Margin、FCF、估值输入变化和组合敞口。
-- Bedrock 上的模型基于统一 Evidence Pack 生成分析，必须区分来源事实、计算结果、分析判断和待验证假设。
+- 经 LiteLLM 路由的 Claude / OpenAI 模型基于统一 Evidence Pack 生成分析，必须区分来源事实、计算结果、分析判断和待验证假设。
 - VerifyClaims 节点核验关键数字和结论，识别相互冲突的数据与反面证据。
 - 按业务风险进入 Human Review；分析师确认后，系统保存研究版本、Claim、Thesis Delta 和证据关联。
 - Insight Hub 根据用户权限、Portfolio / Watchlist 关联和重要性策略生成洞察；发布动作由独立策略服务控制。
 
-这条链路中，Bedrock 是可替换的模型推理供应商；LangGraph 是机构自己运营的工作流；Snowflake 是金融事实和语义底座；LangSmith 是可替换的观测与评测工具。任何一个模型供应商升级、降级或退出，都不应该导致研究记忆、金融数据定义、授权逻辑和研究状态丢失。
+这条链路中，Claude / OpenAI 经 LiteLLM 提供可替换的模型推理；LangGraph 是机构自己运营的工作流；Snowflake 是金融事实和语义底座；LangSmith 是可替换的观测与评测工具。任何一个模型供应商升级、降级或退出，都不应该导致研究记忆、金融数据定义、授权逻辑和研究状态丢失。
 
 #### 6.4.9 分阶段落地顺序
 
@@ -482,7 +482,7 @@ LangSmith 的 Trace 需要脱敏，避免将未授权的 Bloomberg / LSEG / MSCI
 | 1 | 盘点 Bloomberg / LSEG / MSCI 数据对象、接入方式、许可、用户 entitlement；确认 Snowflake 现有数据模型 | 不先做大规模向量化或跨供应商数据复制 |
 | 2 | 建立 Entity Master、As-of / Source Version 元数据和 2–3 个核心 Semantic Views | 不试图一次性统一所有金融指标 |
 | 3 | 建立 Financial Tool Gateway、Policy Enforcement 和最小权限 Snowflake 访问 | 不让 Agent 直连高权限 Snowflake 账号 |
-| 4 | 用 LangGraph + Bedrock 完成一个财报研究闭环，LangSmith 接入 Trace / Eval | 不引入 AgentCore，不先建设多 Agent Mesh |
+| 4 | 用 LangGraph + LiteLLM（Claude / OpenAI）完成一个财报研究闭环，LangSmith 接入 Trace / Eval | 不引入 AgentCore，不先建设多 Agent Mesh |
 | 5 | 加入 Claim Ledger、Research Memory、Thesis Delta 和人工复核 | 不把生成报告直接当正式研究记录 |
 | 6 | 接入组合关联和 Insight Hub，逐步扩大资产类别与团队 | 不在没有 Precision / Recall 基线时大规模推送自动告警 |
 
@@ -810,8 +810,6 @@ Claude 和 OpenAI 提供模型能力、部分金融工作流、数据连接和�
 11. Snowflake, [Semantic Views Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices)。
 12. Snowflake, [Cortex Search Query Access Control](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/query-cortex-search-service)。
 13. Snowflake, [Row Access Policies](https://docs.snowflake.com/en/user-guide/security-row-intro)。
-14. AWS, [Amazon Bedrock APIs](https://docs.aws.amazon.com/bedrock/latest/userguide/apis.html)。
-15. AWS, [Amazon Bedrock Converse API](https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html)。
 16. LangChain, [LangGraph Overview](https://docs.langchain.com/oss/python/langgraph/overview)。
 17. LangChain, [LangGraph Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts)。
 18. LangChain, [LangSmith Observability](https://docs.langchain.com/langsmith/observability)。
