@@ -5,7 +5,7 @@ import { access, readFile, mkdir, writeFile } from "node:fs/promises";
 import { databaseStatus, readAnnotationsByChunkIds, readStoryAnalysis, saveStoryAnalysis, listNovelCharacters, listNovelThreads, listNovelForeshadowings, listNovelBeats, readNovelKbMeta, novelKnowledgeOverview, exportNovelKnowledge, listNovelCharacterProfiles, listNovelCharacterChapterStates } from "./database.js";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { generateStory, runAgentText, type GenerationMode } from "./generate.js";
+import { generateStory, recoverInterruptedAgentCalls, runAgentText, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
 import { writeChapter } from "./workflow.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
@@ -219,6 +219,8 @@ async function waitForWritingKnowledgeReadiness(worldId: string): Promise<void> 
 async function main(): Promise<void> {
   const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   process.chdir(projectRoot);
+  const interruptedAgentCalls = await recoverInterruptedAgentCalls();
+  if (interruptedAgentCalls) console.warn("[agent-trace] 已将 " + interruptedAgentCalls + " 条上次进程遗留的模型调用标记为 interrupted。");
   const command = process.argv[2];
   if (!COMMANDS.has(command as string)) usage();
 
