@@ -18,7 +18,7 @@ import {
   WORKBENCH_BODY_LIMIT, KNOWLEDGE_BUILD_IDLE_TIMEOUT_MS, CHILD_PROCESS_KILL_GRACE_MS
 } from "./constants.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
-import { dreamOnCompletedRun, readCreativeCompass } from "./story-memory.js";
+import { dreamOnCompletedRun, readCreativeCompass, readCreativeCompassVersion } from "./story-memory.js";
 import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, splitCanonLines, type CanonChunk } from "./canon-chapters.js";
 import { chunkText, ensurePrivateLibraryIsolation } from "./library.js";
 import { chapterId as catalogChapterId, ensureSourceCanonLibraryIndex, indexNovelStructure, loadChapterCatalog, loadChapterCatalogDocument, prepareCanonIndexInputs, type CatalogChapter } from "./novel-kb.js";
@@ -446,6 +446,14 @@ app.get("/api/worlds/:worldId/story-memory/compass", async (req, res) => {
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
     res.json(await readCreativeCompass(worldDir(id)));
+  } catch (error) { sendError(res, error); }
+});
+
+app.get("/api/worlds/:worldId/story-memory/compass/history/:version", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    const content = await readCreativeCompassVersion(worldDir(id), decodeURIComponent(req.params.version));
+    res.json({ content });
   } catch (error) { sendError(res, error); }
 });
 
