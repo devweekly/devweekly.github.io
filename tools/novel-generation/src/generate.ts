@@ -201,7 +201,8 @@ export async function runAgentText(
     schemaVersion: 1, callId, status: "running", startedAt, updatedAt: startedAt,
     requestedModel: model ?? null, resolvedModel: resolved.model, modelSource: resolved.source,
     modelAttempts: attempts, timeoutMs, allowFallback,
-    taskProfile: profile ?? null, caller
+    taskProfile: profile ?? null, caller, cwd: process.cwd(), pid: process.pid,
+    nodeVersion: process.version, argv: process.argv.slice(0, 3)
   };
   await mkdir(callDir, { recursive: true });
   await atomicText(resolve(callDir, "prompt.txt"), prompt);
@@ -332,6 +333,16 @@ export async function recoverInterruptedAgentCalls(): Promise<number> {
       const error = "进程在模型调用完成前退出；已在下次启动时标记为 interrupted。";
       await atomicJson(resolve(dir, "run.json"), { ...raw, status: "interrupted", updatedAt: at, error });
       await atomicText(resolve(dir, "failure.txt"), error);
+      const attemptEntries = await readdir(dir, { withFileTypes: true });
+      for (const attemptEntry of attemptEntries.filter(item => item.isDirectory() && /^attempt-\\d+$/.test(item.name))) {
+        const attemptPath = resolve(dir, attemptEntry.name, "attempt.json");
+        try {
+          const attempt = JSON.parse(await readFile(attemptPath, "utf8")) as Record<string, unknown>;
+          if (attempt.status === "running") await atomicJson(attemptPath, { ...attempt, status: "interrupted", finishedAt: at, error });
+        } catch (attemptError) {
+          if ((attemptError as NodeJS.ErrnoException).code !== "ENOENT") console.error("[agent-trace] 无法恢复尝试记录 " + attemptPath + ": " + String(attemptError));
+        }
+      }
       recovered += 1;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
