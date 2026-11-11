@@ -2,7 +2,7 @@
 // 中断重试与心跳都收在这里）。其他模块一律经 runAgentText 取模型文本，避免各处自建调用策略。
 import { query } from "@tencent-ai/agent-sdk";
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, rename, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { buildQueryOptions, resolveAgentModel } from "./agent-runtime.js";
 import { thinkingOption, type TaskProfile } from "./task-profiles.js";
@@ -164,6 +164,7 @@ export function resolveModelAttempts(model?: string, allowFallback = true): stri
 }
 
 export interface AgentTextTrace {
+  callId?: string;
   prompt?: string;
   rawResponse?: string;
   attempts: Array<{ model: string; mode: "normal" | "thinking-disabled-retry"; startedAt: string; finishedAt?: string; durationMs?: number; status: "running" | "succeeded" | "failed"; error?: string }>;
@@ -191,7 +192,7 @@ export async function runAgentText(
   const callId = randomUUID();
   const callDir = resolve(".output", "agent-calls", callId);
   const startedAt = new Date().toISOString();
-  if (trace) trace.prompt = prompt;
+  if (trace) { trace.callId = callId; trace.prompt = prompt; }
   const resolved = resolveAgentModel(model);
   const attempts = resolveModelAttempts(model, allowFallback);
   const failures: string[] = [];
@@ -224,9 +225,10 @@ export async function runAgentText(
     for (const candidate of attempts) {
       attemptIndex += 1;
       const fallback = attempts.find(item => item !== candidate);
-      const attemptDir = resolve(callDir, "attempt-" + String(attemptIndex).padStart(2, "0"));
-      await mkdir(attemptDir, { recursive: true });
       const execute = async (mode: "normal" | "thinking-disabled-retry", attemptProfile?: TaskProfile): Promise<string> => {
+        attemptIndex += 1;
+        const attemptDir = resolve(callDir, "attempt-" + String(attemptIndex).padStart(2, "0"));
+        await mkdir(attemptDir, { recursive: true });
         const attempt = {
           model: candidate, mode, startedAt: new Date().toISOString(),
           status: "running" as "running" | "succeeded" | "failed"
@@ -263,7 +265,7 @@ export async function runAgentText(
           const message = error instanceof Error ? error.message : String(error);
           attempt.status = "failed";
           Object.assign(attempt, { finishedAt: new Date().toISOString(), error: message });
-          const partial = await import("node:fs/promises").then(fs => fs.readFile(resolve(attemptDir, "partial-response.txt"), "utf8")).catch(() => "");
+          const partial = await readFile(resolve(attemptDir, "partial-response.txt"), "utf8").catch(() => "");
           await atomicText(resolve(attemptDir, "failure.txt"), message);
           await atomicJson(resolve(attemptDir, "attempt.json"), { ...attempt, partialResponseChars: partial.length, observedLength });
           throw error;
