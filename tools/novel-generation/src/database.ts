@@ -495,7 +495,7 @@ export function updateStoryMemory(
   return listStoryMemories(worldDir, worldId, "all").find(item => item.memoryId === memoryId);
 }
 
-export function listStoryMemories(worldDir: string, worldId: string, status: "candidate" | "active" | "all" = "active"): StoryMemoryRow[] {
+export function listStoryMemories(worldDir: string, worldId: string, status: StoryMemoryRow["status"] | "all" = "active"): StoryMemoryRow[] {
   const db = openStateDatabase(worldDir, worldId);
   try {
     const rows = status === "all"
