@@ -165,7 +165,7 @@ async function main(): Promise<void> {
   if (models.length && !models.includes(localModel)) throw new Error("指定模型不在 LM Studio /v1/models 列表中：" + localModel);
   await mkdir(outDir, { recursive: true });
   const records: any[] = [];
-  const manifest: any = { schemaVersion:1, runId, world, createdAt:new Date().toISOString(),
+  const manifest: any = { schemaVersion:1, runId, world, status:"running", createdAt:new Date().toISOString(),
     host:{platform:process.platform,arch:process.arch,node:process.version,os:os.release(),totalMemoryBytes:os.totalmem()},
     settings:{localBaseUrl:base,localModel,deepseekModel,maxChars,timeoutMs,maxTokens,localTemperature:0.2,deepseekSampling:"CodeBuddy SDK defaults; temperature not exposed"},
     localModelsVisibleAtStart:models,localModelInventory:modelInventory,chapters:[] };
@@ -209,6 +209,7 @@ async function main(): Promise<void> {
     "- 分析只服务续写，不是正史，不是人物行为约束；文学性始终优先。",""];
   const report=lines.join("\n");
   await writeFile(join(outDir,"REPORT.md"),report,"utf8");
+  manifest.status="completed";manifest.completedAt=new Date().toISOString();
   const files=[{path:"REPORT.md",data:Buffer.from(report)},{path:"manifest.json",data:Buffer.from(json(manifest))},
     ...records.map(r=>({path:r.chapterId+".json",data:Buffer.from(json(r))}))];
   await mkdir(dirname(zipPath),{recursive:true});await writeFile(zipPath,zip(files));
