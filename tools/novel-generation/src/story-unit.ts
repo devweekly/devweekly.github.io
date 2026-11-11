@@ -111,7 +111,7 @@ export async function generateStoryUnit(input: {
     ["异常现象", engine.phenomenon, 8], ["可观察证据", engine.observableEvidence, 8],
     ["机制因果作用", engine.causalRole, 16]
   ] as const;
-  const missing = required.filter(([, value, min]) => value.trim().length < min).map(([name]) => name);
+  const missing: string[] = required.filter(([, value, min]) => value.trim().length < min).map(([name]) => name);
   if (engine.rules.length === 0 || engine.boundaries.length === 0 || engine.cost.length === 0) {
     missing.push("规则、边界或代价");
   }
