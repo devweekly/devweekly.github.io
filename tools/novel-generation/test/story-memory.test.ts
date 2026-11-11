@@ -39,6 +39,7 @@ test("story memory requires independent run evidence before context injection", 
       scope: "人物关系与互动", status: "superseded"
     });
     assert.equal(edited?.status, "superseded");
+    assert.equal(listStoryMemories(worldDir, "test-world", "superseded").length, 1, "Workbench 可单独筛选已替代记忆");
     assert.equal(edited?.evidence.length, 2, "修订记忆不得覆盖或丢失来源证据");
     assert.equal(edited?.content, "人物的信任变化更适合通过行动、选择与代价逐步显露，而不是直接解释心理。");
 
