@@ -84,6 +84,7 @@ export function applyAgentMessage(message: unknown, state: AgentStreamState): vo
  * 只让 Promise.race 拒绝而不收尾，卡住的子进程会在后台继续烧额度。
  */
 type AgentMessageObserver = (message: unknown, state: AgentStreamState, previousText: string) => Promise<void>;
+type AgentHeartbeatObserver = (event: { elapsedMs: number; messageCount: number; textChars: number }) => Promise<void>;
 
 async function callOnce(
   prompt: string,
@@ -91,7 +92,8 @@ async function callOnce(
   fallbackModel: string | undefined,
   timeoutMs: number,
   profile?: TaskProfile,
-  observeMessage?: AgentMessageObserver
+  observeMessage?: AgentMessageObserver,
+  observeHeartbeat?: AgentHeartbeatObserver
 ): Promise<string> {
   const abortController = new AbortController();
   const stream = query({
@@ -126,8 +128,12 @@ async function callOnce(
   timer.unref?.();
   if (timeoutMs > HEARTBEAT_AFTER_MS) {
     heartbeat = setInterval(() => {
-      const seconds = ((Date.now() - startedAt) / 1000).toFixed(0);
+      const elapsedMs = Date.now() - startedAt;
+      const seconds = (elapsedMs / 1000).toFixed(0);
       console.error(`[agent] ${model} 已等待 ${seconds}s · 事件 ${state.messageCount} 条 · 已收文本 ${state.text.length} 字`);
+      void observeHeartbeat?.({ elapsedMs, messageCount: state.messageCount, textChars: state.text.length }).catch(error =>
+        console.error("[agent-trace] heartbeat 写入失败：" + String(error))
+      );
     }, HEARTBEAT_INTERVAL_MS);
     heartbeat.unref?.();
   }
@@ -267,6 +273,10 @@ export async function runAgentText(
               await appendFile(resolve(attemptDir, "partial-response.txt"), delta, "utf8");
               observedLength = state.text.length;
             }
+          }, async heartbeat => {
+            await appendFile(resolve(attemptDir, "events.jsonl"), JSON.stringify({
+              at: new Date().toISOString(), type: "heartbeat", ...heartbeat
+            }) + "\n", "utf8");
           });
           attempt.status = "succeeded";
           Object.assign(attempt, { finishedAt: new Date().toISOString(), durationMs: Date.parse(new Date().toISOString()) - Date.parse(attempt.startedAt) });
