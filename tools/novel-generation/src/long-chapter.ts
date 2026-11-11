@@ -1,7 +1,7 @@
 // 万字章节流水线：一次规划、逐场成文与修订、保守局部文学 Patch、一次全章硬伤终审。
 // 不复用 SDK session；场景之间靠落盘的原文结尾与事实清单显式交接，可逐场重跑。
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { commitStoryStateAndArc, parseStoryStateUpdate } from "./story-state.js";
 
 import { runAgentText, resolveModelAttempts, type GenerationMode } from "./generate.js";
@@ -118,8 +118,12 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   const profiles = readTaskProfiles();
   const laws = loadIronLaws(input.worldDir ?? resolve("worlds", input.worldId));
   await mkdir(input.outputDir, { recursive: true });
-  const call = (stage: StageKey, parts: string[]): Promise<string> =>
-    runAgentText(parts.join("\n\n"), input.model, input.timeoutMs, profiles[stage], !input.strictModel);
+  const call = (stage: StageKey, parts: string[]): Promise<string> => {
+    const trace: import("./generate.js").AgentTextTrace = {
+      attempts: [], context: { worldId: input.worldId, runId: basename(input.outputDir), outputDir: input.outputDir, kind: "long-chapter", stage }
+    };
+    return runAgentText(parts.join("\n\n"), input.model, input.timeoutMs, profiles[stage], !input.strictModel, trace);
+  };
   const cachedCall = (key: string, outputFile: string, stage: StageKey, parts: string[], validate?: (output: string) => void): Promise<string> => {
     const prompt = parts.join("\n\n");
     return runCachedStage({
