@@ -303,7 +303,7 @@ export async function readCreativeCompass(worldDir: string): Promise<{ content: 
   let versions: string[] = [];
   try { versions = await readdir(resolve(directory, ".history")); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  const history = await Promise.all(versions.filter(name => /^[a-zA-Z0-9T_.-]+\\.md$/.test(name)).sort().reverse().map(async version => {
+  const history = await Promise.all(versions.filter(name => /^[a-zA-Z0-9T_.-]+\.md$/.test(name)).sort().reverse().map(async version => {
     const path = resolve(directory, ".history", version);
     const [body, metadata] = await Promise.all([readFile(path, "utf8"), stat(path)]);
     return { version, chars: body.length, updatedAt: metadata.mtime.toISOString() };
