@@ -1527,12 +1527,40 @@ app.post("/api/worlds/:worldId/story-unit/generate", async (req, res) => {
       const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(dir, id), query);
       const brief = typeof req.body?.brief === "string" ? req.body.brief.trim().slice(0, 8000) : "";
       const model = typeof req.body?.model === "string" ? req.body.model : undefined;
-      const unit = await generateStoryUnit({ worldId: id, worldBible, state, storyAnalysisContext, previous, brief, model });
-      const target = storyUnitPath(id);
-      const temporary = target + "." + randomUUID() + ".tmp";
-      await writeFile(temporary, JSON.stringify(unit, null, 2) + "\n", "utf8");
-      await rename(temporary, target);
-      res.json({ storyUnit: unit });
+      const runId = randomUUID();
+      const outputDir = path.resolve(".output", id, "story-unit-legacy-" + runId);
+      const trace: import("./generate.js").AgentTextTrace = {
+        attempts: [], context: { worldId: id, runId, outputDir, kind: "story-unit-legacy", stage: "story-unit-design" }
+      };
+      const startedAt = new Date().toISOString();
+      await mkdir(outputDir, { recursive: true });
+      const runRecord = { runId, worldId: id, kind: "story-unit-legacy", status: "running", startedAt, outputDir };
+      await writeFile(path.join(outputDir, "run.json"), JSON.stringify(runRecord, null, 2) + "\n", "utf8");
+      try {
+        await writeFile(path.join(outputDir, "input-snapshot.json"), JSON.stringify({
+          worldId: id, worldBible, state, storyAnalysisContext, previous: previous ?? null, brief, requestedModel: model ?? null
+        }, null, 2) + "\n", "utf8");
+        const unit = await generateStoryUnit({ worldId: id, worldBible, state, storyAnalysisContext, previous, brief, model, trace });
+        await writeFile(path.join(outputDir, "prompt.txt"), trace.prompt ?? "", "utf8");
+        await writeFile(path.join(outputDir, "raw-response.txt"), trace.rawResponse ?? "", "utf8");
+        await writeFile(path.join(outputDir, "model-trace.json"), JSON.stringify({ callId: trace.callId ?? null, requestedModel: model ?? null, attempts: trace.attempts }, null, 2) + "\n", "utf8");
+        await writeFile(path.join(outputDir, "story-unit.json"), JSON.stringify(unit, null, 2) + "\n", "utf8");
+        const target = storyUnitPath(id);
+        const temporary = target + "." + randomUUID() + ".tmp";
+        await writeFile(temporary, JSON.stringify(unit, null, 2) + "\n", "utf8");
+        await rename(temporary, target);
+        await writeFile(path.join(outputDir, "run.json"), JSON.stringify({
+          ...runRecord, status: "completed", agentCallId: trace.callId ?? null, updatedAt: new Date().toISOString()
+        }, null, 2) + "\n", "utf8");
+        res.json({ storyUnit: unit, generationRunId: runId });
+      } catch (generationError) {
+        const message = generationError instanceof Error ? generationError.message : String(generationError);
+        await writeFile(path.join(outputDir, "failure.json"), JSON.stringify({ error: message, failedAt: new Date().toISOString() }, null, 2) + "\n", "utf8").catch(() => undefined);
+        await writeFile(path.join(outputDir, "run.json"), JSON.stringify({
+          ...runRecord, status: "failed", agentCallId: trace.callId ?? null, error: message, updatedAt: new Date().toISOString()
+        }, null, 2) + "\n", "utf8").catch(() => undefined);
+        throw generationError;
+      }
       });
     } finally { chapterGenerationReservations.delete(id); }
   } catch (error) { sendError(res, error); }
