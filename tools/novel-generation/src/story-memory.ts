@@ -52,21 +52,28 @@ export function buildNarrativeMemoryContext(worldDir: string, worldId: string, q
 
 /** Dreaming over one completed run. Facts, summaries and transient character states are explicitly out of scope. */
 export async function dreamOnCompletedRun(input: {
-  worldId: string; worldDir: string; runDir: string; model?: string; timeoutMs?: number;
+  worldId: string; worldDir: string; runDir: string; runDirs?: string[]; memoryRunId?: string; model?: string; timeoutMs?: number;
 }): Promise<{ recorded: number; candidates: number }> {
-  const chapterPath = resolve(input.runDir, "chapter.md");
-  const chapter = await readFile(chapterPath, "utf8");
-  const files = await readdir(input.runDir);
-  const reviewFiles = files.filter(name => /review|reader|literary|revision/i.test(name) && /\.(md|txt|json)$/i.test(name)).slice(0, 5);
-  const evidenceFiles = [
-    { source: relative(process.cwd(), chapterPath), content: chapter.slice(0, 26000) },
-    ...await Promise.all(reviewFiles.map(async name => ({
-      source: relative(process.cwd(), resolve(input.runDir, name)),
-      content: (await readFile(resolve(input.runDir, name), "utf8")).slice(0, 5000)
-    })))
-  ];
+  const runDirs = [...new Set((input.runDirs?.length ? input.runDirs : [input.runDir]).map(dir => resolve(dir)))];
+  const evidenceFiles: Array<{ source: string; content: string }> = [];
+  for (const runDir of runDirs) {
+    const chapterPath = resolve(runDir, "chapter.md");
+    try {
+      const chapter = await readFile(chapterPath, "utf8");
+      evidenceFiles.push({ source: relative(process.cwd(), chapterPath), content: chapter.slice(0, 7000) });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    const names = await readdir(runDir);
+    const reviewFiles = names.filter(name => /review|reader|literary|revision/i.test(name) && /\.(md|txt|json)$/i.test(name)).slice(0, 2);
+    for (const name of reviewFiles) {
+      const path = resolve(runDir, name);
+      evidenceFiles.push({ source: relative(process.cwd(), path), content: (await readFile(path, "utf8")).slice(0, 2200) });
+    }
+  }
+  if (!evidenceFiles.some(file => file.source.endsWith("/chapter.md"))) throw new Error("Completed run has no chapter.md evidence.");
   const evidenceSource = evidenceFiles.map(file => "## " + file.source + "\n" + file.content).join("\n\n").slice(0, 36000);
-  const runId = basename(resolve(input.runDir));
+  const runId = input.memoryRunId ?? basename(runDirs.at(-1)!);
   const prompt = [
     "你是小说项目的离线记忆整理器（Dreaming），不是剧情总结器。",
     "从本次已完成章节及其审核/修改记录中，最多提炼 3 条未来创作仍有价值的隐性经验。",

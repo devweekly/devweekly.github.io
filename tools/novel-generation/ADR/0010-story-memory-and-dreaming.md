@@ -65,7 +65,7 @@ Canon 事实仍由现有 writing brief、Story State、Graph 和原文检索提�
 
 - Phase 1：Story DB 记忆表、证据关联、Dreaming 候选提取、重复证据晋级。
 - Phase 2：将动态 Memory Context Builder 接入普通章节和长章节写作。
-- Phase 3：完整故事单元自动触发 Dreaming、记忆修订/淘汰及生成质量对照评估。
+- Phase 3：完整故事单元自然收束后自动触发一次 Dreaming（跨章节聚合，不对每章单独调用）；Workbench API 支持查看证据、修订内容及淘汰/恢复记忆。生成质量对照评估仍作为下一阶段。
 
 ## 明确不做
 
@@ -77,3 +77,11 @@ Canon 事实仍由现有 writing brief、Story State、Graph 和原文检索提�
 - 不让 Memory 成为写作门禁，不因记忆缺失阻断生成。
 
 **最终目标：让系统从长期创作中积累少量真正有用的隐性经验，并在未来创作中灵活运用，而不是让模型服从一套越来越庞大的规则。**
+
+
+## Phase 3 实施补充（2026-11-11）
+
+- 只有 `complete_story` 模式经过故事进展评估、自然收束并进入 `completed` 后，才自动触发一次 Dreaming；固定数量批次、暂停、失败和停滞均不触发。
+- Dreaming 聚合该故事执行已完成章节的正文及有限审核材料，在一个故事单元结束时调用一次，不增加逐章 LLM 开销。
+- 通过 `.output/<world>/story-memory-dreaming/<execution-id>.json` 保存执行结果/失败状态；同一执行恢复时可识别已处理记录。Dreaming 失败只留下诊断，不影响已经完成的故事。
+- Workbench API：`GET /api/worlds/:worldId/story-memories?status=all|candidate|active`；`PATCH /api/worlds/:worldId/story-memories/:memoryId` 支持修订内容/范围以及 candidate、active、superseded、rejected 状态。来源证据与原始引用不可由编辑接口覆盖。

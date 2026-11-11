@@ -474,6 +474,25 @@ export function recordStoryMemoryCandidates(
   } finally { db.close(); }
 }
 
+/** User review edits tacit knowledge without changing its provenance trail. */
+export function updateStoryMemory(
+  worldDir: string, worldId: string, memoryId: string,
+  update: { content?: string; scope?: string; status?: StoryMemoryRow["status"] }
+): StoryMemoryRow | undefined {
+  const db = openStateDatabase(worldDir, worldId);
+  try {
+    if (!db.prepare("SELECT 1 FROM story_memories WHERE memory_id=?").get(memoryId)) return undefined;
+    const sets: string[] = ["updated_at=?"];
+    const values: string[] = [new Date().toISOString()];
+    if (update.content !== undefined) { sets.push("content=?"); values.push(update.content.trim()); }
+    if (update.scope !== undefined) { sets.push("scope=?"); values.push(update.scope.trim()); }
+    if (update.status !== undefined) { sets.push("status=?"); values.push(update.status); }
+    values.push(memoryId);
+    db.prepare("UPDATE story_memories SET " + sets.join(",") + " WHERE memory_id=?").run(...values);
+  } finally { db.close(); }
+  return listStoryMemories(worldDir, worldId, "all").find(item => item.memoryId === memoryId);
+}
+
 export function listStoryMemories(worldDir: string, worldId: string, status: "candidate" | "active" | "all" = "active"): StoryMemoryRow[] {
   const db = openStateDatabase(worldDir, worldId);
   try {
