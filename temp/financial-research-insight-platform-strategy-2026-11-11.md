@@ -437,7 +437,7 @@ Financial Tool Gateway 是 Agent 与 Snowflake 之间唯一的业务访问入口
 4. `PlanResearch`：LLM 提出检索计划；服务端校验计划只包含允许的工具和参数。
 5. `Retrieve`：并行调用 Fundamental、Market / News、MSCI、Portfolio、Internal Research 工具。
 6. `NormalizeAndCalculate`：对齐币种、期间、单位和会计口径；调用确定性计算服务。
-7. `Analyze`：Bedrock 模型基于证据包分析变化、支持和反对论据及 Thesis 影响。
+7. `Analyze`：经 LiteLLM 路由的 Claude / OpenAI 模型基于证据包分析变化、支持和反对论据及 Thesis 影响。
 8. `VerifyClaims`：逐条核对关键 Claim、数值、来源位置、计算输入和反面证据。
 9. `HumanReview`：按风险等级暂停图执行，等待分析师或授权人员修改、批准或拒绝。
 10. `PersistArtifacts`：保存 Research Artifact、Claim Ledger、Thesis Delta、来源版本和审计关联 ID。
