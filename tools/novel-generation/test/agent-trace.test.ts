@@ -22,7 +22,13 @@ test("recovers interrupted model calls and their in-flight attempts", async () =
     assert.equal(run.status, "interrupted");
     assert.match(run.error ?? "", /进程/);
     assert.equal(attempt.status, "interrupted");
+
+    const liveDir = resolve(".output", "agent-calls", "live-call");
+    await mkdir(liveDir, { recursive: true });
+    await writeFile(join(liveDir, "run.json"), JSON.stringify({ callId: "live-call", status: "running", pid: process.pid }));
     assert.equal(await recoverInterruptedAgentCalls(), 0);
+    const live = JSON.parse(await readFile(join(liveDir, "run.json"), "utf8")) as { status: string };
+    assert.equal(live.status, "running");
   } finally {
     process.chdir(originalCwd);
     await rm(root, { recursive: true, force: true });
