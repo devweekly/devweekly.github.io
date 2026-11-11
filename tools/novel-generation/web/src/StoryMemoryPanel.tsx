@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Input, List, Select, Space, Spin, Tag, Typography, message } from "antd";
 
 type Evidence = { runId: string; quote: string; source: string };
+type Compass = { content: string; history: Array<{ version: string; chars: number; updatedAt: string }> };
 type Memory = {
   memoryId: string; memoryType: "narrative" | "creative" | "operational";
   content: string; scope: string; evidence: Evidence[]; occurrences: number;
@@ -23,6 +24,7 @@ const typeLabel: Record<Memory["memoryType"], string> = {
 
 export default function StoryMemoryPanel({ worldId }: { worldId: string }) {
   const [memories, setMemories] = useState<Memory[]>([]);
+  const [compass, setCompass] = useState<Compass>({ content: "", history: [] });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState("");
   const [drafts, setDrafts] = useState<Record<string, { content: string; scope: string }>>({});
@@ -31,8 +33,12 @@ export default function StoryMemoryPanel({ worldId }: { worldId: string }) {
     if (!worldId) return;
     setLoading(true);
     try {
-      const data = await api<{ memories: Memory[] }>(`/api/worlds/${worldId}/story-memories?status=${filter}`);
+      const [data, compassData] = await Promise.all([
+        api<{ memories: Memory[] }>(`/api/worlds/${worldId}/story-memories?status=${filter}`),
+        api<Compass>(`/api/worlds/${worldId}/story-memory/compass`)
+      ]);
       setMemories(data.memories);
+      setCompass(compassData);
       setDrafts(Object.fromEntries(data.memories.map(item => [item.memoryId, { content: item.content, scope: item.scope }])));
     } catch (error) { message.error(error instanceof Error ? error.message : String(error)); }
     finally { setLoading(false); }
@@ -57,6 +63,27 @@ export default function StoryMemoryPanel({ worldId }: { worldId: string }) {
         message="记忆是可修订的创作经验，不是剧情事实或写作规则"
         description="只有跨独立故事单元重复得到证据支持的候选记忆才会自动进入写作检索。原始引用始终保留；当前人物状态、事件和伏笔仍以 Story State 与故事图谱为准。"
       />
+      <Card title="Creative Compass" extra={<Tag>{compass.history.length} 个历史版本</Tag>}>
+        {compass.content.trim()
+          ? <Typography.Paragraph style={{ whiteSpace: "pre-wrap", marginBottom: 12 }}>{compass.content}</Typography.Paragraph>
+          : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未形成创作方向摘要；完整故事单元自然收束后会自动整理。" />}
+        {compass.history.length > 0 && (
+          <>
+            <Typography.Text type="secondary">历史版本（仅供追溯，不参与写作检索）</Typography.Text>
+            <List
+              size="small"
+              dataSource={compass.history}
+              rowKey="version"
+              renderItem={item => <List.Item>
+                <Space direction="vertical" size={0}>
+                  <Typography.Text code>{item.version}</Typography.Text>
+                  <Typography.Text type="secondary">{item.chars} 字 · {new Date(item.updatedAt).toLocaleString()}</Typography.Text>
+                </Space>
+              </List.Item>}
+            />
+          </>
+        )}
+      </Card>
       <Card title="Story Memory" extra={<Space><Select value={filter} style={{ width: 130 }} onChange={setFilter} options={[{value:"all",label:"全部状态"},{value:"candidate",label:"待观察"},{value:"active",label:"可检索"},{value:"superseded",label:"已替代"},{value:"rejected",label:"已淘汰"}]} /><Button onClick={() => void refresh()}>刷新</Button></Space>}>
         <Spin spinning={loading}>
           {memories.length === 0 ? <Empty description="还没有可用的长期记忆；故事单元自然收束后会自动整理，宁缺毋滥。" /> : (
