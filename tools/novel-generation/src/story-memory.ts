@@ -102,8 +102,8 @@ export function buildNarrativeMemoryContext(worldDir: string, worldId: string, q
         if (own.has(term)) contentHits++;
         if (scope.has(term)) scopeHits++;
       }
-      const contentCoverage = contentHits / queryTerms.size;
-      const scopeCoverage = scopeHits / queryTerms.size;
+      const contentCoverage = contentHits / Math.max(1, own.size);
+      const scopeCoverage = scopeHits / Math.max(1, scope.size);
       const typeBonus = operationalQuery && memory.memoryType === "operational" ? 0.12 : 0;
       return { memory, score: contentCoverage + scopeCoverage * 0.65 + typeBonus };
     })
