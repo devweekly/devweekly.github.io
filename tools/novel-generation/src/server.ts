@@ -591,7 +591,7 @@ async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUnive
       (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string; asOfEntryChapterId?: string }) | undefined;
     if (!imported || !hasBoundedStoryAnalysis(bounded, universe)) {
       throw new Error(
-        "无法从已有分析安全构建当前章节时点的知识快照。已停止知识构建，不会在新宇宙从第一章重新分析。请检查当前宇宙的旧批次缓存、来源原著批次缓存，以及所选章节 ID 是否与原著目录一致。"
+        "禁止在新故事宇宙重新分析整本原著。无法从已有分析安全构建当前章节时点的知识快照；已停止知识构建，不会从第一章重新分析。请检查当前宇宙的旧批次缓存、来源原著批次缓存，以及所选章节 ID 是否与原著目录一致。"
       );
     }
   })();
