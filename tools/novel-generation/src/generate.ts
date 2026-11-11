@@ -1,6 +1,9 @@
 // 唯一调用 @tencent-ai/agent-sdk 的模块：query() 封装 + runAgentText（模型链解析、超时、
 // 中断重试与心跳都收在这里）。其他模块一律经 runAgentText 取模型文本，避免各处自建调用策略。
 import { query } from "@tencent-ai/agent-sdk";
+import { randomUUID } from "node:crypto";
+import { appendFile, mkdir, rename, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { buildQueryOptions, resolveAgentModel } from "./agent-runtime.js";
 import { thinkingOption, type TaskProfile } from "./task-profiles.js";
 import { GENERATION_DEFAULT_TIMEOUT_MS, HEARTBEAT_AFTER_MS, HEARTBEAT_INTERVAL_MS } from "./constants.js";
@@ -80,12 +83,15 @@ export function applyAgentMessage(message: unknown, state: AgentStreamState): vo
  * 一次性调用：逐条消息与超时竞速，超时或异常时 interrupt CLI 并停止本地消费。
  * 只让 Promise.race 拒绝而不收尾，卡住的子进程会在后台继续烧额度。
  */
+type AgentMessageObserver = (message: unknown, state: AgentStreamState, previousText: string) => Promise<void>;
+
 async function callOnce(
   prompt: string,
   model: string,
   fallbackModel: string | undefined,
   timeoutMs: number,
-  profile?: TaskProfile
+  profile?: TaskProfile,
+  observeMessage?: AgentMessageObserver
 ): Promise<string> {
   const abortController = new AbortController();
   const stream = query({
@@ -131,7 +137,9 @@ async function callOnce(
     for (;;) {
       const next = await Promise.race([iterator.next(), timeoutPromise]);
       if (next.done) break;
-      applyAgentMessage(next.value, state);
+      const previousText = state.text;
+      try { applyAgentMessage(next.value, state); }
+      finally { await observeMessage?.(next.value, state, previousText); }
     }
     if (timedOut) throw timeoutError();
     const output = state.text.trim();
@@ -161,53 +169,136 @@ export interface AgentTextTrace {
   attempts: Array<{ model: string; mode: "normal" | "thinking-disabled-retry"; startedAt: string; finishedAt?: string; durationMs?: number; status: "running" | "succeeded" | "failed"; error?: string }>;
 }
 
+async function atomicText(path: string, content: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const temporary = path + "." + randomUUID() + ".tmp";
+  await writeFile(temporary, content, "utf8");
+  await rename(temporary, path);
+}
+async function atomicJson(path: string, value: unknown): Promise<void> {
+  await atomicText(path, JSON.stringify(value, null, 2) + "\n");
+}
+
+/**
+ * Every SDK model call gets a durable local trace, regardless of which feature
+ * invoked it. Feature-specific stage artifacts remain useful, but are not a
+ * substitute for the exact prompt, raw response, attempt chain and failure data.
+ */
 export async function runAgentText(
   prompt: string, model?: string, timeoutMs = GENERATION_DEFAULT_TIMEOUT_MS, profile?: TaskProfile, allowFallback = true,
   trace?: AgentTextTrace
 ): Promise<string> {
+  const callId = randomUUID();
+  const callDir = resolve(".output", "agent-calls", callId);
+  const startedAt = new Date().toISOString();
   if (trace) trace.prompt = prompt;
   const resolved = resolveAgentModel(model);
   const attempts = resolveModelAttempts(model, allowFallback);
   const failures: string[] = [];
-  for (const candidate of attempts) {
-    const fallback = attempts.find(item => item !== candidate);
-    const attempt = (mode: "normal" | "thinking-disabled-retry") => {
-      const item = { model: candidate, mode, startedAt: new Date().toISOString(), status: "running" as const };
-      trace?.attempts.push(item);
-      return item;
-    };
-    const finish = (item: AgentTextTrace["attempts"][number], status: "succeeded" | "failed", error?: string, raw?: string) => {
-      item.finishedAt = new Date().toISOString();
-      item.durationMs = Math.max(0, Date.parse(item.finishedAt) - Date.parse(item.startedAt));
-      item.status = status;
-      if (error) item.error = error;
-      if (raw !== undefined && trace) trace.rawResponse = raw;
-    };
-    const normalAttempt = attempt("normal");
-    try {
-      const output = await callOnce(prompt, candidate, fallback, timeoutMs, profile);
-      finish(normalAttempt, "succeeded", undefined, output);
-      return output;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      finish(normalAttempt, "failed", message);
-      if (message.includes("TOOL_LEAK") && profile && profile.thinkingMode !== "disabled") {
-        const retryAttempt = attempt("thinking-disabled-retry");
+  const caller = new Error("Agent call origin").stack?.split("\n").slice(2, 9) ?? [];
+  const record: Record<string, unknown> = {
+    schemaVersion: 1, callId, status: "running", startedAt, updatedAt: startedAt,
+    requestedModel: model ?? null, resolvedModel: resolved.model, modelSource: resolved.source,
+    modelAttempts: attempts, timeoutMs, allowFallback,
+    taskProfile: profile ?? null, caller
+  };
+  await mkdir(callDir, { recursive: true });
+  await atomicText(resolve(callDir, "prompt.txt"), prompt);
+  await atomicJson(resolve(callDir, "run.json"), record);
+  await atomicText(resolve(callDir, "model-trace.json"), JSON.stringify({ requestedModel: model ?? null, resolvedModel: resolved.model, modelSource: resolved.source, attempts: [] }, null, 2) + "\n");
+
+  const persistTrace = async (status: "running" | "completed" | "failed", error?: string, result?: string) => {
+    const updatedAt = new Date().toISOString();
+    const completed = { ...record, status, updatedAt, ...(error ? { error } : {}), ...(result !== undefined ? { responseChars: result.length } : {}) };
+    await atomicJson(resolve(callDir, "run.json"), completed);
+    await atomicJson(resolve(callDir, "model-trace.json"), {
+      requestedModel: model ?? null, resolvedModel: resolved.model, modelSource: resolved.source,
+      timeoutMs, allowFallback, taskProfile: profile ?? null, attempts: trace?.attempts ?? attemptRecords
+    });
+    if (result !== undefined) await atomicText(resolve(callDir, "response.txt"), result);
+    if (error) await atomicText(resolve(callDir, "failure.txt"), error);
+  };
+  const attemptRecords: AgentTextTrace["attempts"] = trace?.attempts ?? [];
+  let attemptIndex = 0;
+  try {
+    for (const candidate of attempts) {
+      attemptIndex += 1;
+      const fallback = attempts.find(item => item !== candidate);
+      const attemptDir = resolve(callDir, "attempt-" + String(attemptIndex).padStart(2, "0"));
+      await mkdir(attemptDir, { recursive: true });
+      const execute = async (mode: "normal" | "thinking-disabled-retry", attemptProfile?: TaskProfile): Promise<string> => {
+        const attempt = {
+          model: candidate, mode, startedAt: new Date().toISOString(),
+          status: "running" as "running" | "succeeded" | "failed"
+        };
+        attemptRecords.push(attempt);
+        await atomicJson(resolve(attemptDir, "attempt.json"), attempt);
+        await atomicText(resolve(attemptDir, "partial-response.txt"), "");
+        await atomicText(resolve(attemptDir, "events.jsonl"), "");
+        let observedLength = 0;
         try {
-          const output = await callOnce(prompt, candidate, fallback, timeoutMs, { ...profile, thinkingMode: "disabled", effort: "low" });
-          finish(retryAttempt, "succeeded", undefined, output);
+          const output = await callOnce(prompt, candidate, fallback, timeoutMs, attemptProfile, async (message, state, previousText) => {
+            const raw = (message && typeof message === "object" ? message : {}) as Record<string, any>;
+            const delta = state.text.length > previousText.length ? state.text.slice(previousText.length) : "";
+            const event = {
+              at: new Date().toISOString(), type: typeof raw.type === "string" ? raw.type : "unknown",
+              subtype: typeof raw.subtype === "string" ? raw.subtype : undefined,
+              textDelta: delta || undefined,
+              error: raw.type === "result" && raw.subtype !== "success" ? (raw.errors ?? raw.error ?? raw.subtype) : undefined,
+              messageCount: state.messageCount
+            };
+            await appendFile(resolve(attemptDir, "events.jsonl"), JSON.stringify(event) + "\n", "utf8");
+            if (delta) {
+              await appendFile(resolve(attemptDir, "partial-response.txt"), delta, "utf8");
+              observedLength = state.text.length;
+            }
+          });
+          attempt.status = "succeeded";
+          Object.assign(attempt, { finishedAt: new Date().toISOString(), durationMs: Date.parse(new Date().toISOString()) - Date.parse(attempt.startedAt) });
+          if (trace) trace.rawResponse = output;
+          await atomicText(resolve(attemptDir, "raw-response.txt"), output);
+          await atomicJson(resolve(attemptDir, "attempt.json"), attempt);
           return output;
-        } catch (retryError) {
-          const retryMessage = retryError instanceof Error ? retryError.message : String(retryError);
-          finish(retryAttempt, "failed", retryMessage);
-          failures.push(`${candidate}（关闭思考重试）: ${retryMessage}`);
-          continue;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          attempt.status = "failed";
+          Object.assign(attempt, { finishedAt: new Date().toISOString(), error: message });
+          const partial = await import("node:fs/promises").then(fs => fs.readFile(resolve(attemptDir, "partial-response.txt"), "utf8")).catch(() => "");
+          await atomicText(resolve(attemptDir, "failure.txt"), message);
+          await atomicJson(resolve(attemptDir, "attempt.json"), { ...attempt, partialResponseChars: partial.length, observedLength });
+          throw error;
+        }
+      };
+      try {
+        const output = await execute("normal", profile);
+        await persistTrace("completed", undefined, output);
+        return output;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        failures.push(`${candidate}: ${message}`);
+        if (message.includes("TOOL_LEAK") && profile && profile.thinkingMode !== "disabled") {
+          try {
+            const output = await execute("thinking-disabled-retry", { ...profile, thinkingMode: "disabled", effort: "low" });
+            await persistTrace("completed", undefined, output);
+            return output;
+          } catch (retryError) {
+            const retryMessage = retryError instanceof Error ? retryError.message : String(retryError);
+            failures.push(`${candidate}（关闭思考重试）: ${retryMessage}`);
+          }
         }
       }
-      failures.push(`${candidate}: ${message}`);
+      await persistTrace("running");
     }
+    const error = `模型链均失败（${attempts.join(" → ")}，来源 ${resolved.source}）：${failures.join(" | ")}；用 npm run dev -- check-runtime 检查 CLI 登录与模型目录`;
+    await persistTrace("failed", error);
+    throw new Error(error);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if ((record.status as string) === "running") await persistTrace("failed", message).catch(persistError => {
+      console.error("[agent-trace] 无法写入失败记录 " + callDir + ": " + String(persistError));
+    });
+    throw error;
   }
-  throw new Error(`模型链均失败（${attempts.join(" → ")}，来源 ${resolved.source}）：${failures.join(" | ")}；用 npm run dev -- check-runtime 检查 CLI 登录与模型目录`);
 }
 
 export async function generateStory(input: GenerateStoryInput): Promise<string> {
