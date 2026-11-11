@@ -1457,10 +1457,10 @@ app.post("/api/worlds/:worldId/story-units/generate", async (req, res) => {
       await mkdir(outputDir, { recursive: true });
       const runRecord = { id: runId, worldId: id, kind: "story-unit", status: "running", startedAt, updatedAt: startedAt, outputDir, storyUnitId: previousId ?? null };
       await writeFile(path.join(outputDir, "run.json"), JSON.stringify(runRecord, null, 2) + "\n", "utf8");
-      await writeFile(path.join(outputDir, "input-snapshot.json"), JSON.stringify({
-        worldId: id, worldBible, state, storyAnalysisContext, previous: previous ?? null, brief, requestedModel: model ?? null
-      }, null, 2) + "\n", "utf8");
       try {
+        await writeFile(path.join(outputDir, "input-snapshot.json"), JSON.stringify({
+          worldId: id, worldBible, state, storyAnalysisContext, previous: previous ?? null, brief, requestedModel: model ?? null
+        }, null, 2) + "\n", "utf8");
         const generated = await generateStoryUnit({ worldId: id, worldBible, state, storyAnalysisContext, previous, brief, model, trace });
         await writeFile(path.join(outputDir, "prompt.txt"), trace.prompt ?? "", "utf8");
         await writeFile(path.join(outputDir, "raw-response.txt"), trace.rawResponse ?? "", "utf8");
