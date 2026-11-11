@@ -129,6 +129,7 @@ function usage(): never {
     "  npm run dev -- style-reference --world conghuoniao --list | --history [dialogue.md] | --add ./samples/dialogue.md [more files] | --remove dialogue.md",
     "  npm run dev -- roleplay-sandbox --world conghuoniao --brief \"场景设定\" --characters 人物甲,人物乙 [--model model] [--out file]",
     "  npm run dev -- dream-memory --world conghuoniao --run-dir .output/<world>/<completed-run> [--model model]",
+    "  npm run evaluate-story-memory -- --world conghuoniao --brief \"same task\" [--command write|write-long] [--model model]  # paired blind A/B; isolated runs",
     "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000] [--max-chars 14000] [--shard 0/4] [--merge-only] [--delta]",
     "  npm run dev -- plan-story --world conghuoniao [--model model] [--draft] [--activate-candidate <file>]  # 默认生成后自动激活；--draft 仅保存实验草稿",
     "  npm run dev -- index-story --world conghuoniao [--catalog analysis/conghuoniao/chapter-index.json]",
@@ -1021,7 +1022,7 @@ async function main(): Promise<void> {
     ].join("\n");
     const retrieved = await searchLibrary(libraryDir, retrievalQuery, retrievalLimit);
     let storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), retrievalQuery);
-    const narrativeMemoryContext = buildNarrativeMemoryContext(resolve("worlds", worldId), worldId, retrievalQuery);
+    const narrativeMemoryContext = process.argv.includes("--no-story-memory") ? "" : buildNarrativeMemoryContext(resolve("worlds", worldId), worldId, retrievalQuery);
     if (narrativeMemoryContext) storyAnalysisContext += "\n\n## 经过多次创作验证的叙事经验（仅供参考）\n" + narrativeMemoryContext;
     const corpusCraftContext = await buildCorpusCraftContext(worldId, retrievalQuery);
     if (corpusCraftContext) storyAnalysisContext += "\n\n" + corpusCraftContext;
@@ -1085,7 +1086,7 @@ async function main(): Promise<void> {
       ...longState.characters.slice(0, QUERY_CONTEXT_CHARACTERS).map(character => character.name)
     ].join("\n");
     let storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), storyAnalysisQuery);
-    const narrativeMemoryContext = buildNarrativeMemoryContext(resolve("worlds", worldId), worldId, storyAnalysisQuery);
+    const narrativeMemoryContext = process.argv.includes("--no-story-memory") ? "" : buildNarrativeMemoryContext(resolve("worlds", worldId), worldId, storyAnalysisQuery);
     if (narrativeMemoryContext) storyAnalysisContext += "\n\n## 经过多次创作验证的叙事经验（仅供参考）\n" + narrativeMemoryContext;
     const corpusCraftContext = await buildCorpusCraftContext(worldId, storyAnalysisQuery);
     if (corpusCraftContext) storyAnalysisContext += "\n\n" + corpusCraftContext;

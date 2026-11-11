@@ -85,3 +85,13 @@ Canon 事实仍由现有 writing brief、Story State、Graph 和原文检索提�
 - Dreaming 聚合该故事执行已完成章节的正文及有限审核材料，在一个故事单元结束时调用一次，不增加逐章 LLM 开销。
 - 通过 `.output/<world>/story-memory-dreaming/<execution-id>.json` 保存执行结果/失败状态；同一执行恢复时可识别已处理记录。Dreaming 失败只留下诊断，不影响已经完成的故事。
 - Workbench API：`GET /api/worlds/:worldId/story-memories?status=all|candidate|active`；`PATCH /api/worlds/:worldId/story-memories/:memoryId` 支持修订内容/范围以及 candidate、active、superseded、rejected 状态。来源证据与原始引用不可由编辑接口覆盖。
+
+
+## Phase 4 实施补充：成对盲测（2026-11-11）
+
+- 新增 `evaluate-story-memory` 成对实验脚本：使用相同 world、Story State、brief、来源材料、检索参数和模型，分别执行 Memory On / Off 两次完整写作 pipeline。
+- 两臂都使用 `--no-apply-state`，不提交 Canon / Story State / Story Arc，不污染后续生成；唯一计划变量是是否注入长期 Story Memory 上下文。
+- 执行顺序和 A/B 标签分别随机化；盲评材料与 assignment key 分开保存，避免评审者先知道哪版注入记忆。
+- 评估维度聚焦人物复杂度、互动张力、叙事节奏、语言力量、创意意外性和整体文学完成度；保留具体段落证据和反证检查。
+- 不使用同一个模型自动给自己评分，不把一次实验结果自动写回记忆库。应在不同故事任务上重复实验，只有稳定改善文学质量且没有明显损害意外性时，才认为记忆机制有效。
+- 实验产物和两臂完整原始日志保存在 `.output/<world>/story-memory-evaluation/<run-id>/`；A/B 正文位于 `blind/`，映射密钥单独存放。

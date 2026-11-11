@@ -15,6 +15,22 @@ npm run start:web     # 启动生产 Web 服务
 
 长期创作经验记忆与 Dreaming 的设计见 [ADR-0010](./ADR/0010-story-memory-and-dreaming.md)。首次使用可在完整章节生成后执行 `npm run dev -- dream-memory --world <world> --run-dir .output/<world>/<run-id>`，从已完成章节及审核记录提炼有逐字证据的候选经验；同一经验需在不同运行中重复出现后才会进入后续写作上下文。\n\n续写架构与实现差距审计见 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。 小说创作的最高原则及全文分析设计决策见 [`ADR-0001`](./ADR/0001-literary-priority-and-corpus-analysis.md)。续写默认全自动：章节完成后自动提取并提交故事状态；只有模型对照实验等隔离场景才使用 `--no-apply-state`。
 
+
+### Story Memory 有效性盲测
+
+不要以记忆条数、检索命中率或 Prompt 长度判断 Dreaming 是否有价值。先让同一世界积累至少两次独立故事执行的 active memory，再用相同故事起点、同一模型和同一份 Story State 运行成对盲测：
+
+```bash
+npm run evaluate-story-memory -- --world conghuoniao \
+  --command write --mode derivative \
+  --brief "在这里写入完全相同的故事任务" \
+  --model <固定模型> --max-words 3500
+```
+
+也可将 `--command write-long` 用于长章节；支持 `--source`、`--context`、`--state-file`、`--story-unit-file`、`--story-arc-file`、`--scenes`、`--timeout-ms`、`--strict-model`。两组均使用 `--no-apply-state`，不会污染正史或改变下一组输入。执行顺序和 A/B 标签随机化，原始运行目录与日志完整保留在 `.output/<world>/story-memory-evaluation/<run-id>/`。
+
+先盲读 `blind/A.md`、`blind/B.md` 并填写 `blind-review.md`，完成评分后才查看单独保存的 `assignment-key.json`。重点比较人物复杂度、互动张力、叙事节奏、语言力量和意外性；若只是更贴近旧经验却损失新鲜感，应判为负收益。一次对照只能作为个案证据，建议不同故事任务重复多轮后再决定是否保留或调整记忆机制。实验不自动让 LLM 给自己的输出打分，也不自动修改 Memory。
+
 ## 1. 导入小说资料
 
 只导入你合法取得且有权使用的 TXT 或 Markdown 文本。公开语料索引保存在 `worlds/<world>/library/index.json`，故事状态保存在 `worlds/<world>/story-state.json`；这些是可提交的项目资产。`original.txt` 原始全文和 `private/` 目录不入库。

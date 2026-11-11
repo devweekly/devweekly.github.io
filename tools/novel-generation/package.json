@@ -18,7 +18,8 @@
     "start:web": "NODE_ENV=production node dist/server-main.js",
     "compare-models": "node --import tsx scripts/compare-models.ts",
     "evaluate-retrieval": "node --import tsx scripts/evaluate-retrieval.ts",
-    "benchmark-local-models": "node --import tsx scripts/benchmark-local-models.ts"
+    "benchmark-local-models": "node --import tsx scripts/benchmark-local-models.ts",
+    "evaluate-story-memory": "node --import tsx scripts/evaluate-story-memory.ts"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
