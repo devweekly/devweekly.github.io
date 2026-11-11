@@ -131,7 +131,7 @@ async function callOnce(
       const elapsedMs = Date.now() - startedAt;
       const seconds = (elapsedMs / 1000).toFixed(0);
       console.error(`[agent] ${model} 已等待 ${seconds}s · 事件 ${state.messageCount} 条 · 已收文本 ${state.text.length} 字`);
-      void observeHeartbeat?.({ elapsedMs, messageCount: state.messageCount, textChars: state.text.length }).catch(error =>
+      if (observeHeartbeat) void observeHeartbeat({ elapsedMs, messageCount: state.messageCount, textChars: state.text.length }).catch(error =>
         console.error("[agent-trace] heartbeat 写入失败：" + String(error))
       );
     }, HEARTBEAT_INTERVAL_MS);
