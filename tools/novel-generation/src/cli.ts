@@ -16,6 +16,7 @@ import { loadRunStoryState } from "./stage-cache.js";
 import { analyzeLibrary } from "./analysis.js";
 import { analyzeStoryCorpus } from "./story-analysis.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
+import { buildNarrativeMemoryContext, dreamOnCompletedRun } from "./story-memory.js";
 import { buildWritingBrief } from "./writing-brief.js";
 import {
   MAX_AGENT_TIMEOUT_MS,
@@ -184,7 +185,7 @@ const COMMANDS = new Set([
   "generate", "write", "write-long", "regress", "ingest", "search", "analyze", "analyze-story",
   "index-story", "story-kb", "story-state", "analyze-arcs", "analyze-profiles", "analyze-character-states",
   "analyze-world", "models", "check-runtime", "db-status", "verify-world", "plan-story", "distill-style",
-  "style-regress", "roleplay-sandbox", "style-reference", "style-trend", "analyze-corpus-craft", "vane-index", "ensure-style-profile", "export-asof-dossier"
+  "style-regress", "roleplay-sandbox", "dream-memory", "style-reference", "style-trend", "analyze-corpus-craft", "vane-index", "ensure-style-profile", "export-asof-dossier"
 ]);
 
 async function waitForWritingKnowledgeReadiness(worldId: string): Promise<void> {
@@ -233,6 +234,19 @@ async function main(): Promise<void> {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   const libraryDir = await resolveWorldLibraryDir(worldId, resolve("worlds"));
+  if (command === "dream-memory") {
+    const requested = arg("--run-dir");
+    if (!requested) throw new Error("dream-memory requires --run-dir pointing to a completed write/write-long run.");
+    const runDir = resolve(requested);
+    const outputRoot = resolve(".output", worldId) + sep;
+    if (!runDir.startsWith(outputRoot)) throw new Error("--run-dir must point inside .output/" + worldId + ".");
+    const result = await dreamOnCompletedRun({
+      worldId, worldDir: resolve("worlds", worldId), runDir, model: arg("--model"),
+      timeoutMs: Number(arg("--timeout-ms") ?? 120000)
+    });
+    console.log(JSON.stringify({ worldId, ...result, memories: "story.db" }, null, 2));
+    return;
+  }
   if (canonWorldId !== worldId && (command === "ingest" || command === "analyze")) {
     throw new Error("故事宇宙共享原文资料库为只读；请回到原文项目导入原文或执行原文分块标注。");
   }
@@ -1003,6 +1017,8 @@ async function main(): Promise<void> {
     ].join("\n");
     const retrieved = await searchLibrary(libraryDir, retrievalQuery, retrievalLimit);
     let storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), retrievalQuery);
+    const narrativeMemoryContext = buildNarrativeMemoryContext(resolve("worlds", worldId), worldId, retrievalQuery);
+    if (narrativeMemoryContext) storyAnalysisContext += "\\n\\n## 经过多次创作验证的叙事经验（仅供参考）\\n" + narrativeMemoryContext;
     const corpusCraftContext = await buildCorpusCraftContext(worldId, retrievalQuery);
     if (corpusCraftContext) storyAnalysisContext += "\n\n" + corpusCraftContext;
     try {
@@ -1065,6 +1081,8 @@ async function main(): Promise<void> {
       ...longState.characters.slice(0, QUERY_CONTEXT_CHARACTERS).map(character => character.name)
     ].join("\n");
     let storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), storyAnalysisQuery);
+    const narrativeMemoryContext = buildNarrativeMemoryContext(resolve("worlds", worldId), worldId, storyAnalysisQuery);
+    if (narrativeMemoryContext) storyAnalysisContext += "\\n\\n## 经过多次创作验证的叙事经验（仅供参考）\\n" + narrativeMemoryContext;
     const corpusCraftContext = await buildCorpusCraftContext(worldId, storyAnalysisQuery);
     if (corpusCraftContext) storyAnalysisContext += "\n\n" + corpusCraftContext;
     try {
