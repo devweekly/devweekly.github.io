@@ -147,13 +147,30 @@ export async function dreamOnCompletedRun(input: {
   worldId: string; worldDir: string; runDir: string; runDirs?: string[]; memoryRunId?: string; model?: string; timeoutMs?: number;
 }): Promise<{ recorded: number; candidates: number; compassUpdated: boolean }> {
   const allRunDirs = [...new Set((input.runDirs?.length ? input.runDirs : [input.runDir]).map(dir => resolve(dir)))];
-  // Keep a small arc sample (opening, middle and ending), rather than turning Dreaming
-  // into a second transcript store or letting early chapters crowd out the ending.
-  const runDirs = allRunDirs.length <= 5 ? allRunDirs : [...new Set([
-    allRunDirs[0]!, allRunDirs[Math.floor((allRunDirs.length - 1) / 4)]!,
-    allRunDirs[Math.floor((allRunDirs.length - 1) / 2)]!,
-    allRunDirs[Math.floor(3 * (allRunDirs.length - 1) / 4)]!, allRunDirs.at(-1)!
-  ])];
+  // Preserve the arc (opening, middle, ending), then spend the remaining slots on
+  // chapters whose own review artifacts point to distinctive literary or dramatic value.
+  let runDirs = allRunDirs;
+  if (allRunDirs.length > 5) {
+    const anchors = [allRunDirs[0]!, allRunDirs[Math.floor((allRunDirs.length - 1) / 2)]!, allRunDirs.at(-1)!];
+    const scored: Array<{ dir: string; score: number }> = [];
+    for (const dir of allRunDirs) {
+      if (anchors.includes(dir)) continue;
+      let score = 0;
+      try {
+        const names = (await readdir(dir)).filter(name => /review|reader|literary|revision/i.test(name) && /\\.(md|txt|json)$/i.test(name));
+        for (const name of names.slice(0, 3)) {
+          const review = await readFile(resolve(dir, name), "utf8");
+          for (const pattern of [/亮点|精彩|出色|有力|值得保留|文学性/giu, /人物互动|人物变化|关系转折|意外选择/giu, /创意|独特|新颖|反常/giu, /叙事张力|节奏变化|场景突破/giu]) {
+            score += [...review.matchAll(pattern)].length;
+          }
+        }
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+      scored.push({ dir, score });
+    }
+    const qualityPicks = scored.sort((a, b) => b.score - a.score).slice(0, 2).map(item => item.dir);
+    const fallback = [allRunDirs[Math.floor((allRunDirs.length - 1) / 4)]!, allRunDirs[Math.floor(3 * (allRunDirs.length - 1) / 4)]!];
+    runDirs = [...new Set([...anchors, ...qualityPicks, ...fallback])].slice(0, 5);
+  }
   const evidenceFiles: Array<{ source: string; content: string; promptContent: string }> = [];
   for (const runDir of runDirs) {
     const chapterPath = resolve(runDir, "chapter.md");
