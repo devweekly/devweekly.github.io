@@ -1,6 +1,7 @@
 // Long-term narrative memory: retain reusable tacit patterns, never chapter facts or transient state.
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readFileSync, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { resolve, basename, relative } from "node:path";
 import { jsonrepair } from "jsonrepair";
 import { z } from "zod";
