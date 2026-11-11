@@ -1022,7 +1022,8 @@ async function main(): Promise<void> {
     ].join("\n");
     const retrieved = await searchLibrary(libraryDir, retrievalQuery, retrievalLimit);
     let storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), retrievalQuery);
-    const narrativeMemoryContext = process.argv.includes("--no-story-memory") ? "" : buildNarrativeMemoryContext(resolve("worlds", worldId), worldId, retrievalQuery);
+    const memoryQuery = [brief, state.currentPosition, ...activeThreads].filter(Boolean).join("\n").slice(0, 1200);
+    const narrativeMemoryContext = process.argv.includes("--no-story-memory") ? "" : buildNarrativeMemoryContext(resolve("worlds", worldId), worldId, memoryQuery);
     if (narrativeMemoryContext) storyAnalysisContext += "\n\n## 长期创作经验与创作方向（仅供参考）\n" + narrativeMemoryContext;
     const corpusCraftContext = await buildCorpusCraftContext(worldId, retrievalQuery);
     if (corpusCraftContext) storyAnalysisContext += "\n\n" + corpusCraftContext;
@@ -1086,7 +1087,8 @@ async function main(): Promise<void> {
       ...longState.characters.slice(0, QUERY_CONTEXT_CHARACTERS).map(character => character.name)
     ].join("\n");
     let storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), storyAnalysisQuery);
-    const narrativeMemoryContext = process.argv.includes("--no-story-memory") ? "" : buildNarrativeMemoryContext(resolve("worlds", worldId), worldId, storyAnalysisQuery);
+    const memoryQuery = [brief, longState.currentPosition, ...longState.plotThreads.filter(thread => thread.status === "open" || thread.status === "active").map(thread => thread.title)].filter(Boolean).join("\n").slice(0, 1200);
+    const narrativeMemoryContext = process.argv.includes("--no-story-memory") ? "" : buildNarrativeMemoryContext(resolve("worlds", worldId), worldId, memoryQuery);
     if (narrativeMemoryContext) storyAnalysisContext += "\n\n## 长期创作经验与创作方向（仅供参考）\n" + narrativeMemoryContext;
     const corpusCraftContext = await buildCorpusCraftContext(worldId, storyAnalysisQuery);
     if (corpusCraftContext) storyAnalysisContext += "\n\n" + corpusCraftContext;
