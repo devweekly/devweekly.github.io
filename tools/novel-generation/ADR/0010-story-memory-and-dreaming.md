@@ -105,3 +105,13 @@ Canon 事实仍由现有 writing brief、Story State、Graph 和原文检索提�
 - Workbench 支持按 candidate、active、superseded、rejected 分别筛选，证据可查看，内容/范围可修订，记忆可淘汰或恢复；恢复 active 仍需至少两次独立执行证据。
 - 不设置简单的按时间自动过期：隐性经验不是人物当前状态，不能因为久未调用就判定失效。若经验被新证据推翻，应在 Workbench 标记为 superseded/rejected；当前尚不自动推断语义矛盾，避免错误地删除仍有价值的经验。
 - 章节状态快照替换不影响记忆表；记忆的晋级、修订、淘汰和证据保留均独立于 Canon / Story State。
+
+
+## Phase 6 实施补充：文学经验综合与 Creative Compass（2026-11-11）
+
+- Dreaming 在提炼新经验时同时读取少量既有 active memories，尝试跨故事单元发现语言气质、人物复杂性、叙事张力和创意潜力；保留情境差异与表面矛盾，不把不同经验平均成固定套路。
+- 同一轮 Dreaming 可生成一个不超过 1200 字的 creative-compass.md，保存于 worlds/<world>/story-memory/。它是由原始创作材料和既有记忆派生的轻量创作方向摘要，不是 Canon、事实源或强制 Style Rules；缺失或生成失败不影响章节写作。
+- 普通章节和长章节通过现有 Memory Context Builder 读取 Creative Compass，与相关 active memories 一起作为可选启发注入；继续遵守原有上下文预算，不增加 Agent、数据库表或审核阶段。
+- 检索根据当前 brief 中的对白、冲突、动作、情绪转折、信息揭示、场景转换、环境氛围等线索补充少量意图词，帮助 scope 匹配当前戏剧情境；不引入新向量服务。
+- 明确允许 Dreaming 提出只出现一次、但有强原文证据和文学启发价值的 creative candidate。它仍然遵守原有候选/晋级机制，不会因一次出现直接成为 active。
+- 不引入自动风格打分、句式配额、人物行为模板、创作门禁或自动淘汰旧记忆。
