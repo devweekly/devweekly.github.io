@@ -23,6 +23,7 @@ export interface DatabaseStatus {
   novelChapters: number; novelCharacters: number; novelMentions: number; novelThreads: number;
   novelForeshadowings: number; novelBeats: number; novelRelations: number; novelArcs: number;
   novelCharacterProfiles: number; novelCharacterChapterStates: number;
+  storyMemories: number;
 }
 
 // ── 并发与事务基础 ────────────────────────────────────────────
@@ -74,7 +75,7 @@ const LEGACY_CHUNK_TABLES = ["library_chunks"];
 /** 图谱是快照 `storyGraph` 的规范化副本，只被写入、没有任何读者；v7 起只保留快照里的那份。 */
 const LEGACY_GRAPH_TABLES = ["story_graph_nodes", "story_graph_edges"];
 /** 写作状态结构版本：与知识库分开演进。 */
-const STATE_SCHEMA_VERSION = 1;
+const STATE_SCHEMA_VERSION = 2;
 /** v4 之前状态表与知识表同库，迁移时按这个顺序搬。 */
 const LEGACY_STATE_TABLES = ["story_state", "characters", "canon_facts", "story_events", "plot_threads", "continuity_notes"];
 
@@ -89,7 +90,9 @@ const STATE_TABLES = [
   "CREATE INDEX IF NOT EXISTS idx_story_events_position ON story_events(position)",
   "CREATE TABLE IF NOT EXISTS plot_threads(id TEXT PRIMARY KEY,title TEXT NOT NULL,status TEXT NOT NULL,last_updated TEXT NOT NULL,notes TEXT NOT NULL)",
   "CREATE INDEX IF NOT EXISTS idx_plot_threads_status ON plot_threads(status)",
-  "CREATE TABLE IF NOT EXISTS continuity_notes(ordinal INTEGER PRIMARY KEY,note TEXT NOT NULL)"
+  "CREATE TABLE IF NOT EXISTS continuity_notes(ordinal INTEGER PRIMARY KEY,note TEXT NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS story_memories(memory_id TEXT PRIMARY KEY,memory_type TEXT NOT NULL,content TEXT NOT NULL,scope TEXT NOT NULL,evidence_json TEXT NOT NULL,occurrences INTEGER NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,last_seen_at TEXT NOT NULL)",
+  "CREATE INDEX IF NOT EXISTS idx_story_memories_status_type ON story_memories(status,memory_type)"
 ].join(";\n") + ";";
 
 function tableExists(db: DatabaseSync, name: string): boolean {
@@ -427,6 +430,66 @@ export function readStoryState(worldDir: string, worldId: string): StoryState | 
   }
 }
 
+
+export type StoryMemoryType = "narrative" | "creative" | "operational";
+export interface StoryMemoryEvidence { runId: string; quote: string; source: string; }
+export interface StoryMemoryRow {
+  memoryId: string; memoryType: StoryMemoryType; content: string; scope: string;
+  evidence: StoryMemoryEvidence[]; occurrences: number; status: "candidate" | "active" | "superseded" | "rejected";
+  createdAt: string; updatedAt: string; lastSeenAt: string;
+}
+
+/** Store only evidence-backed tacit experience; repeated independent runs promote a candidate. */
+export function recordStoryMemoryCandidates(
+  worldDir: string, worldId: string,
+  candidates: Array<{ memoryId: string; memoryType: StoryMemoryType; content: string; scope?: string; evidence: StoryMemoryEvidence }>
+): number {
+  const db = openStateDatabase(worldDir, worldId);
+  const now = new Date().toISOString();
+  let changed = 0;
+  try {
+    transaction(db, () => {
+      const get = db.prepare("SELECT evidence_json,occurrences,status FROM story_memories WHERE memory_id=?");
+      const put = db.prepare(
+        "INSERT INTO story_memories(memory_id,memory_type,content,scope,evidence_json,occurrences,status,created_at,updated_at,last_seen_at) VALUES(?,?,?,?,?,1,'candidate',?,?,?) " +
+        "ON CONFLICT(memory_id) DO UPDATE SET evidence_json=excluded.evidence_json,occurrences=excluded.occurrences,status=CASE WHEN excluded.occurrences>=2 AND story_memories.status='candidate' THEN 'active' ELSE story_memories.status END,updated_at=excluded.updated_at,last_seen_at=excluded.last_seen_at"
+      );
+      for (const candidate of candidates) {
+        if (!candidate.memoryId || !candidate.content.trim() || !candidate.evidence.quote.trim() || !candidate.evidence.runId.trim()) continue;
+        const old = get.get(candidate.memoryId) as { evidence_json: string; occurrences: number; status: string } | undefined;
+        const evidence = old ? JSON.parse(old.evidence_json) as StoryMemoryEvidence[] : [];
+        if (evidence.some(item => item.runId === candidate.evidence.runId)) continue;
+        const next = [...evidence, candidate.evidence].slice(-8);
+        const occurrences = next.length;
+        if (old) {
+          db.prepare("UPDATE story_memories SET evidence_json=?,occurrences=?,status=CASE WHEN ? >= 2 AND status='candidate' THEN 'active' ELSE status END,updated_at=?,last_seen_at=? WHERE memory_id=?")
+            .run(JSON.stringify(next), occurrences, occurrences, now, now, candidate.memoryId);
+        } else {
+          put.run(candidate.memoryId, candidate.memoryType, candidate.content.trim(), candidate.scope?.trim() ?? "world", JSON.stringify(next), now, now, now);
+        }
+        changed++;
+      }
+    });
+    return changed;
+  } finally { db.close(); }
+}
+
+export function listStoryMemories(worldDir: string, worldId: string, status: "candidate" | "active" | "all" = "active"): StoryMemoryRow[] {
+  const db = openStateDatabase(worldDir, worldId);
+  try {
+    const rows = status === "all"
+      ? db.prepare("SELECT * FROM story_memories ORDER BY occurrences DESC,last_seen_at DESC").all()
+      : db.prepare("SELECT * FROM story_memories WHERE status=? ORDER BY occurrences DESC,last_seen_at DESC").all(status);
+    return (rows as Array<Record<string, unknown>>).map(row => ({
+      memoryId: String(row.memory_id), memoryType: String(row.memory_type) as StoryMemoryType,
+      content: String(row.content), scope: String(row.scope),
+      evidence: JSON.parse(String(row.evidence_json)) as StoryMemoryEvidence[],
+      occurrences: Number(row.occurrences), status: String(row.status) as StoryMemoryRow["status"],
+      createdAt: String(row.created_at), updatedAt: String(row.updated_at), lastSeenAt: String(row.last_seen_at)
+    }));
+  } finally { db.close(); }
+}
+
 // ── 全书分析快照 ─────────────────────────────────────────────
 
 export interface StoryAnalysisSnapshot {
@@ -520,7 +583,8 @@ export function databaseStatus(worldDir: string, worldId: string): DatabaseStatu
       characters: countRows(state, "characters"),
       canonFacts: countRows(state, "canon_facts"),
       events: countRows(state, "story_events"),
-      plotThreads: countRows(state, "plot_threads")
+      plotThreads: countRows(state, "plot_threads"),
+      storyMemories: countRows(state, "story_memories")
     };
   } finally {
     knowledge.close();
