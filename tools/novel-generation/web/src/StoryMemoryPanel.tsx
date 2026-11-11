@@ -33,7 +33,7 @@ export default function StoryMemoryPanel({ worldId }: { worldId: string }) {
     try {
       const data = await api<{ memories: Memory[] }>(`/api/worlds/${worldId}/story-memories?status=${filter}`);
       setMemories(data.memories);
-      setDrafts(current => Object.fromEntries(data.memories.map(item => [item.memoryId, current[item.memoryId] ?? { content: item.content, scope: item.scope }])));
+      setDrafts(Object.fromEntries(data.memories.map(item => [item.memoryId, { content: item.content, scope: item.scope }])));
     } catch (error) { message.error(error instanceof Error ? error.message : String(error)); }
     finally { setLoading(false); }
   }, [worldId, filter]);
@@ -57,7 +57,7 @@ export default function StoryMemoryPanel({ worldId }: { worldId: string }) {
         message="记忆是可修订的创作经验，不是剧情事实或写作规则"
         description="只有跨独立故事单元重复得到证据支持的候选记忆才会自动进入写作检索。原始引用始终保留；当前人物状态、事件和伏笔仍以 Story State 与故事图谱为准。"
       />
-      <Card title="Story Memory" extra={<Space><Select value={filter} style={{ width: 130 }} onChange={setFilter} options={[{value:"all",label:"全部状态"},{value:"candidate",label:"待观察"},{value:"active",label:"可检索"}]} /><Button onClick={() => void refresh()}>刷新</Button></Space>}>
+      <Card title="Story Memory" extra={<Space><Select value={filter} style={{ width: 130 }} onChange={setFilter} options={[{value:"all",label:"全部状态"},{value:"candidate",label:"待观察"},{value:"active",label:"可检索"},{value:"superseded",label:"已替代"},{value:"rejected",label:"已淘汰"}]} /><Button onClick={() => void refresh()}>刷新</Button></Space>}>
         <Spin spinning={loading}>
           {memories.length === 0 ? <Empty description="还没有可用的长期记忆；故事单元自然收束后会自动整理，宁缺毋滥。" /> : (
             <List
