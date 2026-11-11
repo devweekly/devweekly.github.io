@@ -165,7 +165,7 @@ export function isStoryUnitNaturallyComplete(assessment: StoryProgressAssessment
 /** Judge narrative closure from actual completed text and committed story state, never chapter count. */
 export async function assessStoryUnitProgress(input: {
   unit: StoryUnit; chapterText: string; chapterTitle: string; completedChapterCount: number;
-  storyState: StoryState; model?: string;
+  storyState: StoryState; model?: string; trace?: import("./generate.js").AgentTextTrace;
 }): Promise<StoryProgressAssessment> {
   const prompt = [
     "你是长篇小说的责任编辑，判断当前完整故事是否真正写完。只输出 JSON。",
@@ -190,7 +190,7 @@ export async function assessStoryUnitProgress(input: {
     "已提交 Story State：", JSON.stringify(input.storyState),
     "请在 revisedStorySpine 中输出重规划后的完整阶段列表；如果没有必要改变结构，可返回原列表并更新 status。"
   ].join("\n\n");
-  const raw = await runAgentText(prompt, input.model, DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().plot, true);
+  const raw = await runAgentText(prompt, input.model, DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().plot, true, input.trace);
   return StoryProgressAssessmentSchema.parse(parseJsonObject(raw));
 }
 
