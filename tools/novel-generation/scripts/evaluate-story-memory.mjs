@@ -47,7 +47,9 @@ await mkdir(blindDir, { recursive: true });
 const activeMemories = listStoryMemories(resolve(projectRoot, "worlds", world), world, "all")
   .filter(memory => memory.status === "active");
 if (!activeMemories.length) throw new Error("No active Story Memories exist for this world. Complete multiple story units first.");
-const previewQuery = [brief, context, source].filter(Boolean).join("\n");
+const sourceText = source ? await readFile(resolve(projectRoot, source), "utf8") : "";
+const contextText = context ? await readFile(resolve(projectRoot, context), "utf8") : "";
+const previewQuery = [brief, contextText, sourceText].filter(Boolean).join("\n");
 const memoryPreview = buildNarrativeMemoryContext(resolve(projectRoot, "worlds", world), world, previewQuery);
 if (!memoryPreview) {
   console.warn("Warning: no active memory matched the brief/context preview. The memory-enabled arm may receive no memory; inspect its recorded prompt before interpreting the pair.");
