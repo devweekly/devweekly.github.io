@@ -18,6 +18,23 @@ Claude 和 OpenAI 都已经跨过了“通用大模型加一个金融 Prompt”�
 
 建议把产品定位成一个机构级 Research Intelligence Platform，面向用户提供两个入口：供分析师主动探索的 Research Workbench，以及面向投资经理、风险人员和管理层持续推送的 Insight Hub。两者共享同一套可信数据、研究记忆、授权、计算、证据和治理底座。
 
+### 先区分：哪些应该复用，哪些必须自己建设
+
+| 能力领域 | 可直接采用的产品 / Building Block | 金融机构必须掌握的 Differentiator | 建设策略 |
+| --- | --- | --- | --- |
+| 基础模型与推理 | Claude、OpenAI；通过 LiteLLM 做模型别名、路由、Fallback、预算和供应商切换 | 机构任务上的模型选择策略、数据处理边界、模型变更回归集、风险分级 | 不训练通用基础模型；保留模型可替换性，把预算投入任务评测和路由策略 |
+| 金融工作流模板 | Anthropic Financial Services / Financial Advisors Skills、OpenAI 金融工作环境、LangGraph 工作流 | 本机构的研究方法、审批规则、投资授权、岗位职责、例外处理和工作流状态 | 复用模板与 Skill 作为起点；业务规则、权限检查和关键状态迁入受控服务 |
+| 金融数据与研究内容 | Bloomberg、LSEG、MSCI、FactSet、S&P、Morningstar、PitchBook、Daloopa、AlphaSense 等 | 数据许可与用途约束、跨供应商实体映射、历史版本、Point-in-Time、来源优先级 | 采购专业数据，不复制供应商内容产品；自建统一数据契约、Entitlement 和时间语义 |
+| 企业数据平台与语义 | Snowflake、Semantic Views、Catalog、dbt、SQL / Python 计算服务 | 企业 Metric / Entity / Period Contract、指标口径、关系基数、计算规则和跨仓库语义 | 复用 Snowflake 执行与治理能力；业务语义定义放在仓库无关的 Git / Registry |
+| Agent Runtime 与工具接入 | LangGraph、MCP、Skills、容器化 Runtime、现有 SaaS Connector | Capability Registry、工具信任分级、工具权限、版本审批、网络出口、运行隔离 | 采用成熟运行时和协议；自建注册、策略执行、发布治理，不自研 Agent 框架 |
+| 身份、授权与合规控制 | 企业 IdP、IAM、KMS、DLP、SIEM、工作流审批产品 | 用户 / 账户 / 组合 / 客户 / 数据许可的组合授权；Purpose Limitation；PDP / PEP；可证明的控制执行 | 集成企业安全产品；自建金融业务授权决策与执行适配层，不能让 Prompt 或 Skill 充当安全边界 |
+| 研究记忆与知识资产 | 搜索引擎、向量数据库、图数据库、文档管理和数据目录 | Thesis Ledger、研究观点、假设变化、反证、研究结果、责任人和历史回放 | 这是核心 Differentiator，应由机构拥有数据模型、生命周期和反馈闭环 |
+| 证据、计算与验证 | LangSmith 等 Trace / Evaluation、文档解析、OCR、SQL / Python | Claim-to-Evidence、计算可复现、Point-in-Time 回放、冲突处理、审计证据链 | 复用可观测和计算组件；建立机构级验证契约、黄金测试集与审计记录 |
+| Insight 分发与业务闭环 | CRM、Portfolio / Risk 系统、通知平台、BI 产品 | 结合持仓、客户关系、风险预算、研究 Thesis 的重要性排序；确认、处置与结果反馈 | 不重复造 CRM / OMS / 风险系统；自建洞察编排、业务影响关联和闭环状态 |
+
+这里的分界不是“买还是自建”的二选一。原则是：**采购通用能力，复用成熟 Building Block；自己拥有金融业务语义、授权规则、研究记忆、证据链和业务结果闭环。** 这些资产决定平台是否真正理解本机构，而不是仅仅把 Claude 或 GPT 接到企业数据上。
+
+
 ## 1. 市场已经走到哪里
 
 ### 1.1 Claude：从金融 Skill 扩展到金融工作流产品
@@ -29,6 +46,22 @@ Anthropic 的金融服务方案已经包含专门的 Financial Analysis 能力�
 Anthropic 的公开仓库 [anthropics/financial-services](https://github.com/anthropics/financial-services) 把这些资产组织为可复用的插件和 Skill。金融分析插件覆盖 Comps、DCF、LBO、三表模型和 Excel 检查；其他垂直插件覆盖投行、股票研究和私募股权工作。仓库也明确鼓励机构替换数据连接器、加入公司自身上下文、调整模型和流程标准。
 
 **对金融机构的含义：** Claude 的金融 Skill 已经能显著压缩通用工作流从零搭建的时间。机构可以把它作为分析师个人效率工具、标准流程模板和原型起点。但公开 Skill 本身并不包含本机构完整的历史投研判断、内部研究方法、数据许可边界、投资组合上下文和业务审批责任。它是可复用的工作流资产，不等于机构自己的 Research Intelligence Core。
+
+### 1.1.1 Claude for Financial Advisors：财富管理工作流的可复用参考实现
+
+除了通用的 Financial Services 插件仓库，Anthropic 还有一个更贴近财富管理顾问场景的独立仓库：[anthropics/claude-for-financial-advisors](https://github.com/anthropics/claude-for-financial-advisors)。它是 Claude Cowork 插件，提供可直接运行的 Skills，并通过第三方 Connector 读取机构已经使用的系统。它覆盖客户会前准备、会后 CRM 记录、合规材料预检、潜在客户信息整理、投资组合再平衡审阅、另类投资简报、遗产与税务材料整理等工作流。
+
+这个仓库值得分析的不是“又多了几组 Prompt”，而是它展示了一个相对完整的顾问工作模式：
+
+- **Workflow / Skill 层：** 把岗位任务拆成明确的输入、步骤、输出和交付模板，例如 Pre-meeting、Post-meeting、Compliance、Portfolio Rebalance Review。
+- **Connector 层：** 不把客户和组合数据复制进 Skill，而是在运行时从 Addepar、Black Diamond、Schwab、Tamarac、Orion、Wealthbox、MSCI、iCapital 等已连接系统读取；未连接时才回退到用户粘贴或上传。
+- **专业计算与领域工具：** 尽量调用托管组合、财务规划、税务转型和另类投资平台已有能力，而不是让模型凭文本重新实现所有计算。
+- **人机责任边界：** 模型整理、比较、识别问题并起草材料；顾问负责判断和建议。写回 CRM 或其他外部系统前需要明确批准。
+- **安全设计提醒：** 仓库说明部分限制由只读工具白名单、子 Agent 工具隔离等结构性方式实现；但有些审批和禁止写操作仍依赖模型遵循 Skill 指令。它明确提醒第三方邮件、客户材料和 CRM 内容是不可信输入。
+
+**对企业架构的启示：** 这类 Skill 和 Connector 是可以复用的前端工作流 Building Block，但不能直接作为金融机构的 Control Plane。仓库自己也标明是 Reference Implementation、未主动维护或监控，并且不持有客户数据。企业采用时应 fork / adapt 并纳入自己的版本、评测和发布流程；更重要的是，把关键授权、审批、只读约束、写操作门禁和审计事件放到 Runtime / Policy Service 中强制执行，而不是仅依赖 Skill 文本。对于财富管理机构，它是顾问工作台的高价值原型；对于银行、资管、券商和保险资管，还需要扩展到研究、交易、风险、组合、法人实体和跨业务条线的权限及数据语义。
+
+它与 [anthropics/financial-services](https://github.com/anthropics/financial-services) 应并列理解：后者更偏金融服务通用岗位和专业分析插件；前者更聚焦财富顾问的客户与组合服务流程。两者都能缩短工作流原型开发时间，但都没有替代机构自己的身份授权、数据许可、业务语义、研究记忆、控制执行和监管责任。
 
 ### 1.2 OpenAI：金融服务已经成为独立产品形态
 
@@ -794,6 +827,7 @@ Claude 和 OpenAI 提供模型能力、部分金融工作流、数据连接和�
 33. Snowflake, [Semantic Views Developing and Deploying Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices-dev)。
 34. Snowflake, [Access Control Privileges](https://docs.snowflake.com/en/user-guide/security-access-control-privileges)。
 35. Anthropic, [API and Data Retention](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention)。
+36. Anthropic, [Claude for Financial Advisors](https://github.com/anthropics/claude-for-financial-advisors)（Cowork Skills、第三方 Connectors、顾问审批与安全边界；仓库标注为非主动维护的参考实现）。
 
 ### 官方产品与工程文档
 
