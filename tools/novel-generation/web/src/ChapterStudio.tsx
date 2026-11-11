@@ -480,7 +480,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   <Modal title="Story Unit 创意生成审计" open={Boolean(storyUnitGenerationDetail)} onCancel={()=>setStoryUnitGenerationDetail(null)} footer={<Button onClick={()=>setStoryUnitGenerationDetail(null)}>关闭</Button>} width={960}>
    {storyUnitGenerationDetail&&<Space direction="vertical" style={{width:"100%"}} size="middle">
     <Space wrap><Tag color={storyUnitGenerationDetail.run.status==="completed"?"success":"error"}>{storyUnitGenerationDetail.run.status}</Tag><Text type="secondary">{storyUnitGenerationDetail.run.id} · {new Date(storyUnitGenerationDetail.run.startedAt).toLocaleString()}</Text></Space>
-    {storyUnitGenerationDetail.failure&&<Alert type="error" showIcon message="生成失败" description={<pre style={{whiteSpace:"pre-wrap",margin:0}}>{JSON.stringify(storyUnitGenerationDetail.failure,null,2)}</pre>}/>}
+    {storyUnitGenerationDetail.failure!==null&&storyUnitGenerationDetail.failure!==undefined&&<Alert type="error" showIcon message="生成失败" description={<pre style={{whiteSpace:"pre-wrap",margin:0}}>{JSON.stringify(storyUnitGenerationDetail.failure,null,2)}</pre>}/>}
     <Collapse items={[
      {key:"input",label:"输入快照（世界设定、Story State、原著分析上下文）",children:<pre style={{whiteSpace:"pre-wrap",maxHeight:280,overflow:"auto"}}>{JSON.stringify(storyUnitGenerationDetail.input,null,2)}</pre>},
      {key:"prompt",label:"完整 Prompt",children:<pre style={{whiteSpace:"pre-wrap",maxHeight:360,overflow:"auto"}}>{storyUnitGenerationDetail.prompt??"无记录"}</pre>},
