@@ -18,7 +18,7 @@ import {
   WORKBENCH_BODY_LIMIT, KNOWLEDGE_BUILD_IDLE_TIMEOUT_MS, CHILD_PROCESS_KILL_GRACE_MS
 } from "./constants.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
-import { dreamOnCompletedRun } from "./story-memory.js";
+import { dreamOnCompletedRun, readCreativeCompass } from "./story-memory.js";
 import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, splitCanonLines, type CanonChunk } from "./canon-chapters.js";
 import { chunkText, ensurePrivateLibraryIsolation } from "./library.js";
 import { chapterId as catalogChapterId, ensureSourceCanonLibraryIndex, indexNovelStructure, loadChapterCatalog, loadChapterCatalogDocument, prepareCanonIndexInputs, type CatalogChapter } from "./novel-kb.js";
@@ -442,6 +442,13 @@ app.get("/api/worlds/:worldId/dashboard", async (req, res) => {
 });
 
 // ── Story Memory：查看隐性经验、证据与人工修订 ───────────────
+app.get("/api/worlds/:worldId/story-memory/compass", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    res.json(await readCreativeCompass(worldDir(id)));
+  } catch (error) { sendError(res, error); }
+});
+
 app.get("/api/worlds/:worldId/story-memories", (req, res) => {
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
