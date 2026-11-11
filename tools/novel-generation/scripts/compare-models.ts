@@ -210,6 +210,7 @@ async function main(): Promise<void> {
   const report=lines.join("\n");
   await writeFile(join(outDir,"REPORT.md"),report,"utf8");
   manifest.status="completed";manifest.completedAt=new Date().toISOString();
+  await writeFile(join(outDir,"manifest.json"),json(manifest),"utf8");
   const files=[{path:"REPORT.md",data:Buffer.from(report)},{path:"manifest.json",data:Buffer.from(json(manifest))},
     ...records.map(r=>({path:r.chapterId+".json",data:Buffer.from(json(r))}))];
   await mkdir(dirname(zipPath),{recursive:true});await writeFile(zipPath,zip(files));
