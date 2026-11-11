@@ -33,21 +33,26 @@ async function embed(
   const runId=randomUUID();
   const runDir=resolve(".output",context.worldId,"vane-embedding-runs",runId);
   const startedAt=new Date().toISOString();
-  const runRecord={runId,worldId:context.worldId,kind:context.kind,status:"running",startedAt,model,endpoint:base.replace(/\/$/,""),timeoutMs:Number(process.env.VANE_EMBEDDING_TIMEOUT_MS??30000),inputCount:texts.length};
+  const endpoint=(()=>{try{const url=new URL(base);return url.origin+url.pathname;}catch{return "configured endpoint";}})();
+  const runRecord={runId,worldId:context.worldId,kind:context.kind,status:"running",startedAt,model,endpoint,timeoutMs:Number(process.env.VANE_EMBEDDING_TIMEOUT_MS??30000),inputCount:texts.length};
   await mkdir(runDir,{recursive:true});
   await writeFile(resolve(runDir,"run.json"),JSON.stringify(runRecord,null,2)+"\n","utf8");
   await writeFile(resolve(runDir,"inputs.json"),JSON.stringify(texts.map((text,index)=>({
     id:context.inputIds?.[index]??String(index),text,sha256:createHash("sha256").update(text).digest("hex"),chars:text.length
   })),null,2)+"\n","utf8");
   const results:number[][]=[];
+  let activeBatchDir:string|undefined;
+  let activeBatchStartedAt:string|undefined;
   try {
     for(let offset=0;offset<texts.length;offset+=32){
       const batch=texts.slice(offset,offset+32);
       const batchNo=Math.floor(offset/32)+1;
       const batchDir=resolve(runDir,"batch-"+String(batchNo).padStart(3,"0"));
+      activeBatchDir=batchDir;
+      activeBatchStartedAt=new Date().toISOString();
       await mkdir(batchDir,{recursive:true});
       await writeFile(resolve(batchDir,"batch.json"),JSON.stringify({
-        batchNo,offset,count:batch.length,status:"running",startedAt:new Date().toISOString()
+        batchNo,offset,count:batch.length,status:"running",startedAt:activeBatchStartedAt
       },null,2)+"\n","utf8");
       const timeoutMs=Number(process.env.VANE_EMBEDDING_TIMEOUT_MS??30000);
       if(!Number.isInteger(timeoutMs)||timeoutMs<1000||timeoutMs>300000)throw new Error("VANE_EMBEDDING_TIMEOUT_MS must be between 1000 and 300000.");
@@ -61,10 +66,13 @@ async function embed(
       const ordered=[...payload.data].sort((left,right)=>(left.index??0)-(right.index??0));
       const vectors=ordered.map(item=>item.embedding as number[]);
       await writeFile(resolve(batchDir,"vectors.json"),JSON.stringify({vectors,usage:payload.usage??null},null,2)+"\n","utf8");
+      const completedAt=new Date().toISOString();
       await writeFile(resolve(batchDir,"batch.json"),JSON.stringify({
-        batchNo,offset,count:batch.length,status:"completed",startedAt:new Date().toISOString(),
-        completedAt:new Date().toISOString(),dimensions:vectors[0]?.length??0
+        batchNo,offset,count:batch.length,status:"completed",startedAt:activeBatchStartedAt,
+        completedAt,dimensions:vectors[0]?.length??0
       },null,2)+"\n","utf8");
+      activeBatchDir=undefined;
+      activeBatchStartedAt=undefined;
       results.push(...vectors);
     }
     await writeFile(resolve(runDir,"run.json"),JSON.stringify({
@@ -73,6 +81,9 @@ async function embed(
     return results;
   } catch(error) {
     const message=error instanceof Error?error.message:String(error);
+    if(activeBatchDir)await writeFile(resolve(activeBatchDir,"batch.json"),JSON.stringify({
+      status:"failed",startedAt:activeBatchStartedAt,failedAt:new Date().toISOString(),error:message
+    },null,2)+"\n","utf8").catch(()=>undefined);
     await writeFile(resolve(runDir,"failure.json"),JSON.stringify({error:message,failedAt:new Date().toISOString()},null,2)+"\n","utf8").catch(()=>undefined);
     await writeFile(resolve(runDir,"run.json"),JSON.stringify({
       ...runRecord,status:"failed",updatedAt:new Date().toISOString(),error:message
