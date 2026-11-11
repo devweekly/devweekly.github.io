@@ -2141,7 +2141,7 @@ async function executeStoryUnitTask(initial: StoryExecution, signal?: AbortSigna
       await saveExecutionStoryUnit(unit);
       const assessed = await assessStoryExecutionCheckpoint(worldId, task, unit, checkpoint);
       task = assessed.task; unit = assessed.unit;
-      if (assessed.terminal) { await dreamOnCompletedStoryExecution(task); return; }
+      if (assessed.terminal) { void dreamOnCompletedStoryExecution(task).catch(error => console.warn("[story-memory] Background Dreaming failed:", error)); return; }
       await saveStoryExecution(task);
     }
   } catch (error) {
