@@ -275,7 +275,7 @@ Workbench 和 Insight Hub 共享底层能力，但面向的工作方式不同。
 | Frontier LLM | Claude、OpenAI，必要时其他合规供应商 | 维护统一模型接口、路由、评测、降级和合同约束，不训练一个通用大模型来重复供应商工作。 |
 | 金融市场与专业内容 | Bloomberg、FactSet、S&P、LSEG、Morningstar、PitchBook、Daloopa、AlphaSense 等现有许可 | 做好数据目录、Entitlement、语义映射和按需调用；不复制无权存储或再分发的内容。 |
 | 通用文档解析、搜索和存储 | 成熟 OCR / 文档解析、全文检索、向量数据库、关系数据库和对象存储 | 为金融表格、复杂披露和证据定位补充领域适配及评测。 |
-| Agent 工作流框架 | LangGraph 或供应商 Agent Runtime | 工作流定义、业务状态、权限与审批契约由机构掌握。 |
+| Agent 工作流框架 | LangGraph，自行部署和运营 | 不采用 Bedrock AgentCore 或其他供应商 Agent Runtime；工作流定义、业务状态、权限与审批契约由机构掌握。 |
 | Trace 与评测平台 | LangSmith、OpenTelemetry 生态及企业监控工具 | 观测工具可以被替换；合规要求的权威记录和关键事件副本不能只存在第三方 SaaS。 |
 | Office 与产出物生成 | Claude / ChatGPT Office 能力、机构模板和办公套件 API | 机构模板、发布权限、数据范围和最终文件的责任归属由内部治理。 |
 | 身份与密钥管理 | 企业 IAM、Secrets Manager、KMS 等 | 身份、角色、工作负载和数据访问的权威判断由企业控制。 |
@@ -308,7 +308,187 @@ ChatGPT Financial Services 内建数据的索引和托管安排，可能与企�
 
 不应把 LangGraph 当作金融领域语义、数据授权或合规状态系统，也不应因为使用了 LangSmith 就认为拥有完整的监管审计记录。生产平台需要把关键流程事件、输入输出、数据版本、模型版本、工具结果、权限判定和审批动作写入机构控制的权威存储。LangSmith 可以用作可观测和评测工具，但必须明确其数据处理合同、部署方式和日志保留边界。
 
-### 6.4 不要先建一个多 Agent 大系统
+
+### 6.4 参考落地架构：Snowflake + Amazon Bedrock + LangGraph + LangSmith
+
+如果机构已经把 Bloomberg、LSEG、MSCI 等外部金融数据以及内部持仓、风险和研究数据集中在 Snowflake，建议采用 **Snowflake-centric Data Plane + 自建 AWS Agent Plane**。这里的 Bedrock 只作为模型供应商和推理 API，不采用 Amazon Bedrock AgentCore，不使用 Bedrock 托管 Agent Runtime、Gateway、Memory 或 Orchestration。Agent 的执行、状态、工具调用和审批由机构自己的服务负责。
+
+#### 6.4.1 架构边界与组件职责
+
+| 架构层 | 建议组件 | 主要职责 | 归属 |
+| --- | --- | --- | --- |
+| 用户体验 | Research Workbench、Insight Hub、Portfolio / Risk views | 研究问答、研究交付物、持续洞察、组合关联 | 机构自建 |
+| 应用接入 | Web BFF、API Gateway、企业 SSO | 用户身份、会话、请求入口、速率限制 | 机构自建 / 企业标准服务 |
+| Policy & Entitlement | Identity Context、Policy Decision Service、Data Entitlement Service | 用户、Desk、Portfolio、客户、数据供应商许可、Information Barrier 判定 | 机构自建权威服务 |
+| Agent Orchestration | LangGraph | 研究任务状态图、节点编排、并行任务、重试、检查点、人工复核和恢复 | 机构自建并部署 |
+| Model Access | Amazon Bedrock Runtime | 通过 Converse / ConverseStream 或适用的模型 API 调用 Claude 等模型；统一模型配置、限额和模型版本 | 纯模型供应商 |
+| Tool Gateway | Financial Tool API / MCP Server（可选协议） | 提供经过授权的金融查询、文档检索和计算工具；执行输入校验、权限检查和输出裁剪 | 机构自建 |
+| Data & Semantic Plane | Snowflake | 供应商数据、内部金融数据、标准化数据产品、Semantic Views、历史快照 | 企业金融数据底座 |
+| Retrieval | Snowflake SQL / Semantic Views、Cortex Search（经安全验证后）、全文检索 | 结构化查询与文档证据检索分流 | 以 Snowflake 为主，必要时补充检索服务 |
+| Observability & Evaluation | LangSmith + OpenTelemetry | Agent trace、节点耗时、Prompt / 模型评测、回归和运行质量分析 | LangSmith 为观测工具；机构保留权威记录 |
+| Durable State & Audit | PostgreSQL / Aurora、S3 Object Lock 或等效归档 | 任务状态、审批、研究对象、证据快照、审计事件和正式交付物 | 机构自建 / 自主管理 |
+
+建议的部署拓扑：
+
+```text
+Research Workbench / Insight Hub
+              |
+        BFF + Enterprise SSO
+              |
+   Identity / Entitlement / Policy
+              |
+       Research API / Job API
+              |
+       LangGraph Application
+       (institution-operated)
+          /       |       \
+         /        |        \
+ Financial Tools  Bedrock   LangSmith
+  / MCP Gateway   Runtime   Traces / Evals
+       |
+  Policy Enforcement
+       |
+ Snowflake Query / Semantic / Search APIs
+       |
+ Bloomberg | LSEG | MSCI | Internal Data
+
+ LangGraph State -> PostgreSQL / Checkpoint Store
+ Evidence / Research Artifacts -> S3 + Snowflake metadata
+ Authoritative Audit Events -> Institution-controlled Audit Store
+```
+
+LangGraph 可以运行在机构现有的 Kubernetes / EKS 或 ECS 服务环境中。它是应用运行时，不是一个额外的供应商 Agent 平台。对长时间研究任务，使用 LangGraph Checkpointer 持久化状态；将任务状态、人工审批和业务结果写入 PostgreSQL 等权威业务存储。不要把 LangSmith Trace 当作唯一的 Checkpoint 或审计记录。
+
+Amazon Bedrock 仅负责推理。应用通过 Bedrock Runtime API 调用模型，建议优先评估统一的 Converse / ConverseStream 接口，以减少不同模型消息格式的耦合；模型能力和接口支持范围仍需按所选模型核对。参考 [Amazon Bedrock APIs](https://docs.aws.amazon.com/bedrock/latest/userguide/apis.html) 和 [Converse API](https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html)。
+
+明确排除：**不使用 Bedrock AgentCore。** 不让 Bedrock 接管 Agent 生命周期、工具网关、身份、会话记忆或工作流。若未来确实需要托管运行时，应作为单独架构决策重新评估，而不是默认引入。
+
+#### 6.4.2 Snowflake 数据分层
+
+Snowflake 内部建议至少划分以下逻辑层。实际可映射到独立 Database / Schema / Data Product，避免把所有内容堆在一个宽表或一个 Schema 中。
+
+| 层 | 典型对象 | 设计要求 |
+| --- | --- | --- |
+| PROVIDER_RAW / SHARED | Bloomberg、LSEG、MSCI 原始共享对象或供应商落地数据 | 尽量保留来源结构、Provider ID、许可标识、接入方式和来源版本；共享数据不因进入 Snowflake 就自动获得复制、Embedding 或再分发权 |
+| CANONICAL | Issuer、Legal Entity、Security、Instrument、Fund、Portfolio、Benchmark、Industry、Event | 建立机构自己的统一实体 ID 和跨供应商 ID 映射，保留历史关系和生效时间 |
+| CURATED_FINANCIAL | Fundamentals、Market Data、Estimates、Ownership、Index Constituents、ESG、Risk、Holdings | 统一期间、币种、单位、会计口径和数据质量规则；保存来源与时间元数据 |
+| SEMANTIC | 公司基本面、市场情报、组合分析、风险和研究语义视图 | 按业务领域拆分 Semantic Views，定义 Metrics、Dimensions、Relationships、Filters 和验证查询 |
+| RESEARCH | Documents、Research Notes、Claims、Thesis、Catalysts、Forecasts、Research Runs | 研究对象版本化，明确区分来源事实、分析师判断、模型推断和待验证假设 |
+| AUDIT_METADATA | 数据产品目录、许可元数据、查询记录索引、证据引用、模型运行关联 ID | 存放元数据和关联键；正式审计事件及不可变归档由机构控制 |
+
+外部数据接入优先使用供应商许可允许的 Snowflake Secure Data Sharing / Marketplace 方式；如果数据已由内部管道落地，则保留原始记录和接收批次。对共享对象不要为了方便 Agent 而默认全量复制。Secure Data Sharing 的技术可用性与 Bloomberg / LSEG / MSCI 合同授予的使用权是两个问题，必须逐项核对存储、查询、衍生、Embedding、模型上下文、缓存、导出、展示和用户分发权利。
+
+#### 6.4.3 Semantic Views 与金融领域语义
+
+建议按业务域建立多个小而清晰的 Semantic Views，而不是一个 Enterprise Mega View：
+
+- `SV_COMPANY_FUNDAMENTALS`：Revenue、EBITDA、FCF、Margin、Growth、Debt、ROIC，显式定义财年、季度、币种、GAAP / Non-GAAP 和重述规则。
+- `SV_MARKET_INTELLIGENCE`：Price、Return、Volume、Yield、Spread、Volatility、FX，明确市场时区、交易日历和价格类型。
+- `SV_PORTFOLIO_ANALYTICS`：Holdings、Exposure、Performance、Attribution、Concentration，明确组合授权和估值时点。
+- `SV_RISK_ANALYTICS`：Factor Exposure、VaR、Stress Scenario、Liquidity、Issuer Concentration，保留模型版本和风险计算日期。
+- `SV_RESEARCH_INTELLIGENCE`：Coverage、Thesis、Catalyst、Forecast、Historical View，区分分析师观点与模型生成的候选观点。
+
+Semantic View 的定义、YAML / DDL、验证问题和部署脚本纳入 Git 版本管理，采用 CI/CD 发布。Snowflake 文档将 Semantic Views 定位为数据库内的业务语义对象，支持 Metrics、实体关系和权限控制；新建设计优先采用 Semantic Views，而不是沿用旧式 Semantic Model YAML 作为唯一运行时定义。参考 [Semantic Views Overview](https://docs.snowflake.com/en/user-guide/views-semantic/overview)、[YAML Specification](https://docs.snowflake.com/en/user-guide/views-semantic/semantic-view-yaml-spec) 和 [Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices)。
+
+关键原则是：Semantic View 是 Snowflake 内的执行和查询语义；机构仍需维护独立于 Snowflake 的领域定义、指标目录和 API 契约。不要让 LangGraph 业务代码依赖 Semantic View 的内部 YAML 结构或特定 SQL 生成细节。
+
+#### 6.4.4 数据访问与 Entitlement：最重要的安全设计
+
+不要让 Agent 获得 Snowflake 高权限通用账号，也不要把用户权限简化成一个固定的服务角色。推荐采用两层控制：
+
+1. **应用层 Policy Enforcement：** 根据企业 SSO 身份解析用户、Desk、Portfolio、Legal Entity、客户范围、数据订阅和用途限制，生成服务端签名的授权上下文。
+2. **数据层 Enforcement：** 通过 Snowflake Role、Database Role、Secure View、Row Access Policy、Masking Policy、受控查询服务和必要的独立数据产品，实施真正的数据访问约束。
+
+Financial Tool Gateway 只暴露有业务语义的工具，例如 `get_fundamentals`、`get_market_data`、`get_portfolio_exposure`、`search_filings` 和 `search_internal_research`。每次调用都要验证当前用户、研究任务、数据来源许可、Portfolio / Desk 范围、As-of 时间和允许的输出用途。模型只能选择工具和提供业务参数，不能决定授权范围、覆盖过滤条件或任意指定 Snowflake Role。
+
+**特别注意 Snowflake 的 Owner's Rights 语义。** Semantic Views 和 Cortex Search 等对象的访问模型需要逐个核实，不能简单推断“用户有底层表权限”或“用户没有底层表权限”就能决定服务返回结果。Snowflake 文档明确说明，Semantic View 的 SELECT 权限可独立于底层对象权限授予；Cortex Search Service 也以 Owner's Rights 执行，获得 Service 使用权限的角色可能查询到服务所有者所索引的数据。因此：
+- 不允许把跨 Entitlement 的内容放入一个宽权限 Cortex Search Service，再依赖调用者的底层表权限自动过滤。
+- 可按数据许可 / Desk / 信息隔离边界拆分 Search Service，或使用经过验证的服务端授权过滤机制；过滤条件必须来自可信身份与策略服务，不能由模型生成。
+- 对高敏感持仓、客户、研究隔离内容，优先使用显式授权的结构化查询 API 或独立索引边界。
+- 建立跨角色、跨 Desk、跨 Portfolio 的负向测试，证明越权内容不会进入模型上下文、日志、缓存或生成文件。
+
+参考 Snowflake [Semantic View Privileges](https://docs.snowflake.com/en/user-guide/security-access-control-privileges)、[Cortex Search Query Access Control](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/query-cortex-search-service) 和 [Row Access Policies](https://docs.snowflake.com/en/user-guide/security-row-intro)。
+
+#### 6.4.5 金融工具层：不要让 LLM 直接写任意 SQL
+
+Financial Tool Gateway 是 Agent 与 Snowflake 之间唯一的业务访问入口。它可以内部使用参数化 SQL、Semantic Views、受控存储过程或 Snowflake SQL API，但对 Agent 暴露稳定的领域 API：
+
+| Tool API | 数据 / 计算职责 | 重要约束 |
+| --- | --- | --- |
+| `resolve_entity` | 统一 Issuer、Security、Fund 标识 | 返回匹配置信度和冲突，不允许模糊匹配直接触发业务动作 |
+| `get_fundamentals` | 财务指标、期间比较、历史重述 | 必须要求报告期间、币种和 As-of 参数 |
+| `get_market_data` | Bloomberg / LSEG 市场数据 | 校验订阅、市场时区、延迟级别和数据用途 |
+| `get_index_and_esg_data` | MSCI 指数、行业和 ESG 数据 | 校验数据许可、版本和分发范围 |
+| `search_filings_and_news` | 披露、新闻和研究文件检索 | 返回原文位置、来源版本、时间戳和授权标签 |
+| `get_portfolio_exposure` | 持仓、敞口和组合风险 | 强制 Portfolio entitlement；禁止模型自行扩大组合范围 |
+| `run_financial_calculation` | DCF、WACC、FCF、收益率、风险和情景计算 | 使用版本化公式和确定性代码，返回输入、公式版本和结果 |
+| `search_research_memory` | 内部研究、Thesis、Forecast 和历史判断 | 依据作者、团队、Desk、实体和有效时间执行权限过滤 |
+| `write_research_draft` | 保存研究草稿和候选 Thesis Delta | 只写入草稿区；正式发布或变更权威研究状态需审批 |
+
+可以支持受控的 Text-to-SQL，但不应将其作为默认主路径。若确有 ad hoc 分析需求，应限定到只读的分析 Schema、只读角色、SQL AST 校验、表 / 列 allowlist、查询成本上限、超时、行数限制和结果脱敏，并将生成 SQL 与执行结果记录下来。面向生产研究流程，优先使用参数化领域工具和经过验证的 Semantic Views。
+
+#### 6.4.6 LangGraph 研究工作流
+
+首个版本采用一个主 Research Graph，以确定性节点为主，少数 LLM 节点负责需要语言理解和综合判断的任务。典型工作流：
+
+1. `Intake`：解析研究问题、目标对象、业务用途和期望交付物。
+2. `ResolveEntity`：解析实体、证券、报告期间和 As-of 时间。
+3. `Authorize`：Policy Service 判定用户可访问的数据、组合和内容用途。
+4. `PlanResearch`：LLM 提出检索计划；服务端校验计划只包含允许的工具和参数。
+5. `Retrieve`：并行调用 Fundamental、Market / News、MSCI、Portfolio、Internal Research 工具。
+6. `NormalizeAndCalculate`：对齐币种、期间、单位和会计口径；调用确定性计算服务。
+7. `Analyze`：Bedrock 模型基于证据包分析变化、支持和反对论据及 Thesis 影响。
+8. `VerifyClaims`：逐条核对关键 Claim、数值、来源位置、计算输入和反面证据。
+9. `HumanReview`：按风险等级暂停图执行，等待分析师或授权人员修改、批准或拒绝。
+10. `PersistArtifacts`：保存 Research Artifact、Claim Ledger、Thesis Delta、来源版本和审计关联 ID。
+11. `PublishInsight`：通过独立策略检查后，向被授权用户发布或推送 Insight。
+
+不是每个步骤都需要 LLM。实体解析、权限判定、数据查询、计算、版本比较、审批和状态迁移应尽量确定性实现。LLM 不得生成授权决定，不得绕过验证节点，也不能自行将草稿升级为正式研究观点。
+
+#### 6.4.7 LangSmith、业务状态和审计记录分开
+
+LangSmith 用于观察 LangGraph 的节点执行、模型调用、工具调用、延迟、Token、错误和评测结果；它不承担权威业务状态，也不应成为监管审计唯一存储。
+
+| 数据类型 | 权威位置 | LangSmith 是否保存 |
+| --- | --- | --- |
+| Agent Trace、模型请求和响应元数据、节点耗时 | LangSmith 可作为观测副本；按敏感度决定是否记录完整内容 | 是，遵循数据最小化与保留策略 |
+| LangGraph Checkpoint | 机构控制的持久化 Checkpointer / 数据库 | 不作为唯一位置 |
+| Research Run 状态、审批、任务结果 | PostgreSQL / Aurora | 只记录必要关联 ID |
+| 原始证据、来源版本、文档位置 | Snowflake 元数据 + 机构控制的对象归档 | 避免把完整许可内容无差别复制到 Trace |
+| Claim Ledger、Thesis 版本、正式研究结果 | Research 数据产品和权威业务存储 | 可记录 Trace / Run ID 关联 |
+| 监管审计事件、访问授权、人工审批、发布动作 | 机构控制的 Audit Store，配置保留、访问控制和防篡改能力 | 不以 LangSmith 替代 |
+
+LangSmith 的 Trace 需要脱敏，避免将未授权的 Bloomberg / LSEG / MSCI 原文、客户信息、组合持仓和内部研究材料不加区分地发送到第三方 SaaS。应评估 LangSmith 部署形态、数据处理条款、区域、保留和删除策略；必要时使用 OpenTelemetry 将运行指标和 Trace 元数据汇入企业可控的观测平台。
+
+#### 6.4.8 推荐的端到端研究流程
+
+例如分析师要求“分析某公司最新财报，并判断是否改变当前投资 Thesis”：
+
+- Workbench 将请求提交给 Research API，服务端解析用户身份、研究对象和 As-of 时间。
+- Policy Service 先决定该用户可读取哪些供应商数据、内部研究和组合信息。
+- LangGraph 调用 Entity、Fundamentals、News / Filings、MSCI、Portfolio 和 Research Memory 工具；工具只返回授权后的最小必要数据及其来源元数据。
+- 确定性计算服务计算增长率、Margin、FCF、估值输入变化和组合敞口。
+- Bedrock 上的模型基于统一 Evidence Pack 生成分析，必须区分来源事实、计算结果、分析判断和待验证假设。
+- VerifyClaims 节点核验关键数字和结论，识别相互冲突的数据与反面证据。
+- 按业务风险进入 Human Review；分析师确认后，系统保存研究版本、Claim、Thesis Delta 和证据关联。
+- Insight Hub 根据用户权限、Portfolio / Watchlist 关联和重要性策略生成洞察；发布动作由独立策略服务控制。
+
+这条链路中，Bedrock 是可替换的模型推理供应商；LangGraph 是机构自己运营的工作流；Snowflake 是金融事实和语义底座；LangSmith 是可替换的观测与评测工具。任何一个模型供应商升级、降级或退出，都不应该导致研究记忆、金融数据定义、授权逻辑和研究状态丢失。
+
+#### 6.4.9 分阶段落地顺序
+
+| 顺序 | 交付 | 不建议提前做的事 |
+| --- | --- | --- |
+| 1 | 盘点 Bloomberg / LSEG / MSCI 数据对象、接入方式、许可、用户 entitlement；确认 Snowflake 现有数据模型 | 不先做大规模向量化或跨供应商数据复制 |
+| 2 | 建立 Entity Master、As-of / Source Version 元数据和 2–3 个核心 Semantic Views | 不试图一次性统一所有金融指标 |
+| 3 | 建立 Financial Tool Gateway、Policy Enforcement 和最小权限 Snowflake 访问 | 不让 Agent 直连高权限 Snowflake 账号 |
+| 4 | 用 LangGraph + Bedrock 完成一个财报研究闭环，LangSmith 接入 Trace / Eval | 不引入 AgentCore，不先建设多 Agent Mesh |
+| 5 | 加入 Claim Ledger、Research Memory、Thesis Delta 和人工复核 | 不把生成报告直接当正式研究记录 |
+| 6 | 接入组合关联和 Insight Hub，逐步扩大资产类别与团队 | 不在没有 Precision / Recall 基线时大规模推送自动告警 |
+
+**推荐首个技术切片：** 选一个行业、一个研究团队和一组授权发行人，使用 Snowflake 中已有的 Bloomberg / LSEG / MSCI 数据及内部研究材料；先交付“财报分析 → 证据核验 → Thesis Delta 草稿 → 分析师批准”的完整闭环。该切片能够同时验证数据口径、PIT、权限、模型质量、工作流恢复和 LangSmith 观测，比先搭一个通用聊天机器人更能暴露真实架构问题。
+
+### 6.5 不要先建一个多 Agent 大系统
 
 研究任务经常被设计成 Researcher、Analyst、Risk Agent、Reviewer、Writer 等多个 Agent 相互对话。角色划分容易理解，但多 Agent 不一定能提高结果质量；如果各 Agent 共享同一批错误证据，或在串行过滤中提前丢掉关键材料，增加角色只会放大错误传播、延迟和成本。
 
@@ -456,25 +636,32 @@ Claude 和 OpenAI 提供模型能力、部分金融工作流、数据连接和�
 6. FactSet, [FactSet Intelligence / AI Solutions](https://www.factset.com/ai)。
 7. AlphaSense, [Generative AI for Industry and Company Research](https://www.alpha-sense.com/solutions/generative-ai-industry-company-research/)。
 8. S&P Global, [Capital IQ Pro](https://www.spglobal.com/market-intelligence/en/solutions/products/sp-capital-iq-pro)。
-9. LangChain, [LangGraph Overview](https://docs.langchain.com/oss/python/langgraph/overview)。
-10. LangChain, [LangGraph Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts)。
-11. LangChain, [LangSmith Observability](https://docs.langchain.com/langsmith/observability)。
+9. Snowflake, [Semantic Views Overview](https://docs.snowflake.com/en/user-guide/views-semantic/overview)。
+10. Snowflake, [Semantic Views YAML Specification](https://docs.snowflake.com/en/user-guide/views-semantic/semantic-view-yaml-spec)。
+11. Snowflake, [Semantic Views Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices)。
+12. Snowflake, [Cortex Search Query Access Control](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/query-cortex-search-service)。
+13. Snowflake, [Row Access Policies](https://docs.snowflake.com/en/user-guide/security-row-intro)。
+14. AWS, [Amazon Bedrock APIs](https://docs.aws.amazon.com/bedrock/latest/userguide/apis.html)。
+15. AWS, [Amazon Bedrock Converse API](https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html)。
+16. LangChain, [LangGraph Overview](https://docs.langchain.com/oss/python/langgraph/overview)。
+17. LangChain, [LangGraph Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts)。
+18. LangChain, [LangSmith Observability](https://docs.langchain.com/langsmith/observability)。
 
 ### 监管与指导材料
 
-12. FINRA, [2026 Annual Regulatory Oversight Report: GenAI](https://www.finra.org/rules-guidance/guidance/reports/2026-finra-annual-regulatory-oversight-report/gen-ai)。
-13. Federal Reserve, [SR 26-2: Revised Guidance on Model Risk Management](https://www.federalreserve.gov/supervisionreg/srletters/SR2602.htm), 2026-04-17。
-14. OCC, [Bulletin 2026-13: Model Risk Management—Revised Guidance](https://www.occ.gov/news-issuances/bulletins/2026/bulletin-2026-13.html), 2026-04-17。
-15. MAS, [Guidelines on Artificial Intelligence Risk Management for Financial Institutions](https://www.mas.gov.sg/regulation/guidelines/guidelines-on-artificial-intelligence-risk-management-for-financial-institutions), 2026-10-07。
-16. FCA, [AI in financial services: good practice and areas for improvement](https://www.fca.org.uk/publications/good-poor-practice/ai-financial-services)。
+19. FINRA, [2026 Annual Regulatory Oversight Report: GenAI](https://www.finra.org/rules-guidance/guidance/reports/2026-finra-annual-regulatory-oversight-report/gen-ai)。
+20. Federal Reserve, [SR 26-2: Revised Guidance on Model Risk Management](https://www.federalreserve.gov/supervisionreg/srletters/SR2602.htm), 2026-04-17。
+21. OCC, [Bulletin 2026-13: Model Risk Management—Revised Guidance](https://www.occ.gov/news-issuances/bulletins/2026/bulletin-2026-13.html), 2026-04-17。
+22. MAS, [Guidelines on Artificial Intelligence Risk Management for Financial Institutions](https://www.mas.gov.sg/regulation/guidelines/guidelines-on-artificial-intelligence-risk-management-for-financial-institutions), 2026-10-07。
+23. FCA, [AI in financial services: good practice and areas for improvement](https://www.fca.org.uk/publications/good-poor-practice/ai-financial-services)。
 
 ### 最新研究（预印本，研究结论应结合论文范围解读）
 
-17. [AgenticFinBench: Benchmarking Financial Agents on Diverse Tasks from Real-World Requests](https://arxiv.org/abs/2611.04813), 2026-11。
-18. [LLM-Generated Investment Research Memos Need Validation](https://arxiv.org/abs/2611.04375), 2026-11-03。
-19. [Investor's Last Exam: Can AI Agents Do Equity Investment Without Seeing the Future?](https://arxiv.org/abs/2610.38342), 2026-10。
-20. [Enhancing Financial Question Answering: A Novel Benchmark Dataset of Banks' Financial Statements](https://arxiv.org/abs/2609.03654), 2026-09。
-21. [PRISM: Prompt-Refined In-Context System Modelling for Financial Retrieval](https://arxiv.org/abs/2511.14130)。
-22. [FinReflectKG / MultiHop: Financial QA Benchmark for Reasoning with Knowledge Graph Evidence](https://arxiv.org/abs/2510.02906)。
+24. [AgenticFinBench: Benchmarking Financial Agents on Diverse Tasks from Real-World Requests](https://arxiv.org/abs/2611.04813), 2026-11。
+25. [LLM-Generated Investment Research Memos Need Validation](https://arxiv.org/abs/2611.04375), 2026-11-03。
+26. [Investor's Last Exam: Can AI Agents Do Equity Investment Without Seeing the Future?](https://arxiv.org/abs/2610.38342), 2026-10。
+27. [Enhancing Financial Question Answering: A Novel Benchmark Dataset of Banks' Financial Statements](https://arxiv.org/abs/2609.03654), 2026-09。
+28. [PRISM: Prompt-Refined In-Context System Modelling for Financial Retrieval](https://arxiv.org/abs/2511.14130)。
+29. [FinReflectKG / MultiHop: Financial QA Benchmark for Reasoning with Knowledge Graph Evidence](https://arxiv.org/abs/2510.02906)。
 
 **研究限制：** 厂商网页主要用于确认公开产品能力和供应商自述，不用于证明跨机构的实际效果；厂商发布的 Benchmark 使用不同任务集和评分方法，不能直接横向排名。以上 2026 年最新学术资料多数为预印本，样本范围、评测者、数据来源和实验模型均有限，适合作为架构设计和企业评测集的参考，不应直接作为生产性能承诺。
