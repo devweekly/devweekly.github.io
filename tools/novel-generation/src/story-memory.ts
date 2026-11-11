@@ -1,5 +1,5 @@
 // Long-term narrative memory: retain reusable tacit patterns, never chapter facts or transient state.
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { resolve, basename, relative } from "node:path";
@@ -282,7 +282,7 @@ export async function dreamOnCompletedRun(input: {
       if (previous !== nextContent) {
         const historyDir = resolve(compassDir, ".history");
         await mkdir(historyDir, { recursive: true });
-        const version = new Date().toISOString().replace(/[:.]/g, "-") + "-" + createHash("sha256").update(previous).digest("hex").slice(0, 8) + ".md";
+        const version = new Date().toISOString().replace(/[:.]/g, "-") + "-" + randomUUID().slice(0, 8) + ".md";
         await writeFile(resolve(historyDir, version), previous, { encoding: "utf8", flag: "wx" });
       }
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
