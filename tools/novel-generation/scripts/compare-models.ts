@@ -178,13 +178,30 @@ async function main(): Promise<void> {
     console.log("\n[" + unit.chapterId + "] " + unit.title);
     record.local={status:"running",startedAt:new Date().toISOString()};
     await writeFile(join(outDir,unit.chapterId+".json"),json(record),"utf8");
-    try { const r=await localCall(prompt,localModel);record.local={...r,status:"completed",finishedAt:new Date().toISOString(),evaluation:parseResult(r.text,source.text)};console.log("  LM Studio: "+r.elapsedMs+"ms"); }
-    catch(e){const error=e as any;record.local={status:"failed",finishedAt:new Date().toISOString(),error:e instanceof Error?e.message:String(e),diagnostics:error?.diagnostics};console.error("  LM Studio 失败："+record.local.error);}
+    try {
+      const r=await localCall(prompt,localModel);
+      record.local={...r,status:"completed",finishedAt:new Date().toISOString()};
+      try { record.local.evaluation=parseResult(r.text,source.text); }
+      catch(e) { record.local.evaluationError=e instanceof Error?e.message:String(e); }
+      console.log("  LM Studio: "+r.elapsedMs+"ms");
+    } catch(e) {
+      const error=e as any;
+      record.local={status:"failed",finishedAt:new Date().toISOString(),error:e instanceof Error?e.message:String(e),diagnostics:error?.diagnostics};
+      console.error("  LM Studio 失败："+record.local.error);
+    }
     await writeFile(join(outDir,unit.chapterId+".json"),json(record),"utf8");
     record.deepseek={status:"running",startedAt:new Date().toISOString()};
     await writeFile(join(outDir,unit.chapterId+".json"),json(record),"utf8");
-    try { const r=await deepseekCall(prompt);record.deepseek={...r,status:"completed",finishedAt:new Date().toISOString(),evaluation:parseResult(r.text,source.text)};console.log("  DeepSeek: "+r.elapsedMs+"ms"); }
-    catch(e){record.deepseek={status:"failed",finishedAt:new Date().toISOString(),error:e instanceof Error?e.message:String(e)};console.error("  DeepSeek 失败："+record.deepseek.error);}
+    try {
+      const r=await deepseekCall(prompt);
+      record.deepseek={...r,status:"completed",finishedAt:new Date().toISOString()};
+      try { record.deepseek.evaluation=parseResult(r.text,source.text); }
+      catch(e) { record.deepseek.evaluationError=e instanceof Error?e.message:String(e); }
+      console.log("  DeepSeek: "+r.elapsedMs+"ms");
+    } catch(e) {
+      record.deepseek={status:"failed",finishedAt:new Date().toISOString(),error:e instanceof Error?e.message:String(e)};
+      console.error("  DeepSeek 失败："+record.deepseek.error);
+    }
     records.push(record);
     await writeFile(join(outDir,unit.chapterId+".json"),json(record),"utf8");
     manifest.chapters.push({chapterId:unit.chapterId,title:unit.title,local:record.local.evaluation??{error:record.local.error},deepseek:record.deepseek.evaluation??{error:record.deepseek.error}});
