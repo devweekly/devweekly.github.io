@@ -169,6 +169,7 @@ async function main(): Promise<void> {
     host:{platform:process.platform,arch:process.arch,node:process.version,os:os.release(),totalMemoryBytes:os.totalmem()},
     settings:{localBaseUrl:base,localModel,deepseekModel,maxChars,timeoutMs,maxTokens,localTemperature:0.2,deepseekSampling:"CodeBuddy SDK defaults; temperature not exposed"},
     localModelsVisibleAtStart:models,localModelInventory:modelInventory,chapters:[] };
+  await writeFile(join(outDir,"manifest.json"),json(manifest),"utf8");
   for (const unit of selected) {
     const source = excerpt(unit.text), prompt = promptFor(unit, source.text);
     const record: any = { chapterId:unit.chapterId,ordinal:unit.ordinal,title:unit.title,originalCharCount:unit.text.length,
