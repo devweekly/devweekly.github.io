@@ -353,6 +353,14 @@ export async function recoverInterruptedAgentCalls(): Promise<number> {
     try {
       const raw = JSON.parse(await readFile(resolve(dir, "run.json"), "utf8")) as Record<string, unknown>;
       if (raw.status !== "running") continue;
+      const ownerPid = Number(raw.pid);
+      if (Number.isInteger(ownerPid) && ownerPid > 0) {
+        try { process.kill(ownerPid, 0); continue; }
+        catch (processError) {
+          if ((processError as NodeJS.ErrnoException).code !== "ESRCH" && (processError as NodeJS.ErrnoException).code !== "EPERM") throw processError;
+          if ((processError as NodeJS.ErrnoException).code === "EPERM") continue;
+        }
+      }
       const at = new Date().toISOString();
       const error = "进程在模型调用完成前退出；已在下次启动时标记为 interrupted。";
       await atomicJson(resolve(dir, "run.json"), { ...raw, status: "interrupted", updatedAt: at, error });
