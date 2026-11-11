@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { emptyStoryState } from "../src/story-state.js";
 import { listStoryMemories, recordStoryMemoryCandidates, syncStoryState, updateStoryMemory } from "../src/database.js";
-import { buildNarrativeMemoryContext } from "../src/story-memory.js";
+import { buildNarrativeMemoryContext, readCreativeCompass } from "../src/story-memory.js";
 
 test("story memory requires independent run evidence before context injection", async () => {
   const root = await mkdtemp(join(tmpdir(), "novel-memory-"));
@@ -107,6 +107,26 @@ test("scene intent retrieval and creative compass add literary guidance without 
     const context = buildNarrativeMemoryContext(worldDir, "compass-world", "一场谈判中的人物对白");
     assert.match(context, /人物对白与对峙/);
     assert.match(context, /情境差异/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test("Creative Compass exposes current content and timestamped history metadata", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-compass-history-"));
+  try {
+    const directory = join(root, "story-memory");
+    const history = join(directory, ".history");
+    await mkdir(history, { recursive: true });
+    await writeFile(join(directory, "creative-compass.md"), "当前创作方向", "utf8");
+    await writeFile(join(history, "2026-11-11T10-00-00-000Z-ab12cd34.md"), "旧版创作方向", "utf8");
+    const result = await readCreativeCompass(root);
+    assert.equal(result.content, "当前创作方向");
+    assert.equal(result.history.length, 1);
+    assert.equal(result.history[0]?.chars, 5);
+    assert.equal(result.history[0]?.version, "2026-11-11T10-00-00-000Z-ab12cd34.md");
+    assert.ok(result.history[0]?.updatedAt);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
