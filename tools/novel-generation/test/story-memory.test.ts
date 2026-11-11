@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { emptyStoryState } from "../src/story-state.js";
@@ -72,6 +72,38 @@ test("story memory retrieval includes matching scope, not only matching prose", 
     }]);
     const context = buildNarrativeMemoryContext(worldDir, "scope-world", "人物互动");
     assert.match(context, /场景转换时保留人物选择带来的未知后果/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test("scene intent retrieval and creative compass add literary guidance without requiring active memories", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-memory-compass-"));
+  try {
+    const worldDir = join(root, "world");
+    syncStoryState(worldDir, emptyStoryState("compass-world"));
+    const compassDir = join(worldDir, "story-memory");
+    await mkdir(compassDir, { recursive: true });
+    await writeFile(join(compassDir, "creative-compass.md"), "人物冲突应保留情境差异，不把沉默写成固定模板。", "utf8");
+    const compassOnly = buildNarrativeMemoryContext(worldDir, "compass-world", "一场谈判中的人物对白");
+    assert.match(compassOnly, /Creative Compass/);
+    assert.match(compassOnly, /情境差异/);
+
+    const candidate = {
+      memoryId: "scene-intent-memory", memoryType: "creative" as const,
+      content: "场景推进时让人物的选择留下无法立即解释的后果。",
+      scope: "人物对白与对峙",
+      evidence: { runId: "scene-run-1", quote: "他没有接过那杯茶。", source: "chapter.md" }
+    };
+    recordStoryMemoryCandidates(worldDir, "compass-world", [candidate]);
+    recordStoryMemoryCandidates(worldDir, "compass-world", [{
+      ...candidate,
+      evidence: { runId: "scene-run-2", quote: "她把茶杯放回原处。", source: "chapter-2.md" }
+    }]);
+    const context = buildNarrativeMemoryContext(worldDir, "compass-world", "一场谈判中的人物对白");
+    assert.match(context, /人物对白与对峙/);
+    assert.match(context, /情境差异/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
