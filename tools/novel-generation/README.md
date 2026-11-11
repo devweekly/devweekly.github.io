@@ -13,7 +13,7 @@ npm run build        # TypeScript + Vite 生产构建
 npm run start:web     # 启动生产 Web 服务
 ```
 
-续写架构与实现差距审计见 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。 小说创作的最高原则及全文分析设计决策见 [`ADR-0001`](./ADR/0001-literary-priority-and-corpus-analysis.md)。续写默认全自动：章节完成后自动提取并提交故事状态；只有模型对照实验等隔离场景才使用 `--no-apply-state`。
+长期创作经验记忆与 Dreaming 的设计见 [ADR-0010](./ADR/0010-story-memory-and-dreaming.md)。首次使用可在完整章节生成后执行 `npm run dev -- dream-memory --world <world> --run-dir .output/<world>/<run-id>`，从已完成章节及审核记录提炼有逐字证据的候选经验；同一经验需在不同运行中重复出现后才会进入后续写作上下文。\n\n续写架构与实现差距审计见 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。 小说创作的最高原则及全文分析设计决策见 [`ADR-0001`](./ADR/0001-literary-priority-and-corpus-analysis.md)。续写默认全自动：章节完成后自动提取并提交故事状态；只有模型对照实验等隔离场景才使用 `--no-apply-state`。
 
 ## 1. 导入小说资料
 
