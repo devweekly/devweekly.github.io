@@ -51,3 +51,27 @@ test("story memory requires independent run evidence before context injection", 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+
+test("story memory retrieval includes matching scope, not only matching prose", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-memory-scope-"));
+  try {
+    const worldDir = join(root, "world");
+    syncStoryState(worldDir, emptyStoryState("scope-world"));
+    const candidate = {
+      memoryId: "scope-memory", memoryType: "creative" as const,
+      content: "场景转换时保留人物选择带来的未知后果，让读者自行拼合信息。",
+      scope: "人物互动与关系",
+      evidence: { runId: "scope-run-1", quote: "他把话咽了回去。", source: "chapter.md" }
+    };
+    recordStoryMemoryCandidates(worldDir, "scope-world", [candidate]);
+    recordStoryMemoryCandidates(worldDir, "scope-world", [{
+      ...candidate,
+      evidence: { runId: "scope-run-2", quote: "门外的人没有敲门。", source: "chapter-2.md" }
+    }]);
+    const context = buildNarrativeMemoryContext(worldDir, "scope-world", "人物互动");
+    assert.match(context, /场景转换时保留人物选择带来的未知后果/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
