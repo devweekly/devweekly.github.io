@@ -1,6 +1,6 @@
 // Long-term narrative memory: retain reusable tacit patterns, never chapter facts or transient state.
 import { createHash } from "node:crypto";
-import { readFile, readdir } from "node:fs/promises";
+import { mkdir, readFile, readFileSync, readdir, writeFile } from "node:fs/promises";
 import { resolve, basename, relative } from "node:path";
 import { jsonrepair } from "jsonrepair";
 import { z } from "zod";
@@ -13,7 +13,7 @@ const CandidateSchema = z.object({
   scope: z.string().max(120).optional(),
   evidence: z.string().min(12).max(500)
 });
-const OutputSchema = z.object({ memories: z.array(CandidateSchema).max(3) });
+const OutputSchema = z.object({ memories: z.array(CandidateSchema).max(3), creativeCompass: z.string().max(1200).optional() });
 
 function memoryId(type: StoryMemoryType, content: string): string {
   const normalized = content.toLocaleLowerCase().replace(/\s+/gu, "").replace(/[，。！？；：、“”‘’]/gu, "");
@@ -66,10 +66,29 @@ function excerpt(value: string, budget: number): string {
   ].join("");
 }
 
+/** Add a few scene-intent cues so retrieval follows dramatic intent, not only literal word overlap. */
+function sceneIntentHints(query: string): string[] {
+  const hints: string[] = [];
+  const patterns: Array<[RegExp, string]> = [
+    [/对白|交谈|谈判|质问|争执|对话|言语交锋/iu, "人物对白 对峙 谈判"],
+    [/冲突|对抗|敌对|威胁|压迫|较量/iu, "人物冲突 利益 选择"],
+    [/战斗|厮杀|追逐|逃亡|动作|搏斗/iu, "动作 战斗 危险"],
+    [/情绪|悲伤|愤怒|恐惧|动摇|情感|关系变化/iu, "情绪转折 人物关系"],
+    [/反转|揭露|真相|秘密|意外|惊讶/iu, "信息揭示 意外 创意"],
+    [/转场|过渡|节奏|推进|承接/iu, "叙事节奏 场景转换"],
+    [/环境|氛围|街道|城市|历史|风俗|社会|世界观/iu, "环境氛围 社会质感"],
+    [/铺垫|悬念|伏笔|高潮|收束/iu, "叙事张力 情节结构"]
+  ];
+  for (const [pattern, hint] of patterns) if (pattern.test(query)) hints.push(hint);
+  return hints;
+}
+
 /** Rank by normalized content overlap and scope relevance; avoid rewarding long memories. */
 export function buildNarrativeMemoryContext(worldDir: string, worldId: string, query: string, maxChars = 1800): string {
   if (!query.trim()) return "";
-  const queryTerms = terms(query);
+  const intentHints = sceneIntentHints(query);
+  const retrievalQuery = [query, ...intentHints].join("\n");
+  const queryTerms = terms(retrievalQuery);
   if (!queryTerms.size) return "";
   const operationalQuery = /工具|流程|工作流|审核|修订|生成|agent|prompt|pipeline|workflow/iu.test(query);
   const selected = listStoryMemories(worldDir, worldId, "active")
@@ -92,10 +111,14 @@ export function buildNarrativeMemoryContext(worldDir: string, worldId: string, q
     .slice(0, 5)
     .map(({ memory }) => "- " + memory.content + "（适用范围：" + memory.scope + "；独立创作记录：" + memory.occurrences + " 次）");
   if (!selected.length) return "";
+  let compass = "";
+  try { compass = readFileSync(resolve(worldDir, "story-memory", "creative-compass.md"), "utf8").trim(); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const text = [
     "以下是从多次创作中提炼的经验，仅供当前创作参考，不是规则、要求或验收清单。可以忽略、改造或有意识地突破；不要为了体现这些经验而牺牲人物真实感、意外性或文学表达。",
+    compass ? "## Creative Compass（派生创作方向，仅供启发）\n" + compass : "",
     ...selected
-  ].join("\n");
+  ].filter(Boolean).join("\n\n");
   return text.length <= maxChars ? text : text.slice(0, maxChars);
 }
 
@@ -153,22 +176,28 @@ export async function dreamOnCompletedRun(input: {
     .join("\n\n")
     .slice(0, 36000);
   const runId = input.memoryRunId ?? basename(runDirs.at(-1)!);
+  const existing = listStoryMemories(input.worldDir, input.worldId, "all");
+  const activeMemoryContext = existing.filter(memory => memory.status === "active")
+    .slice(0, 12).map(memory => "- [" + memory.memoryType + "] " + memory.content + "（范围：" + memory.scope + "）").join("\n");
   const prompt = [
     "你是小说项目的离线记忆整理器（Dreaming），不是剧情总结器。",
     "从本次已完成章节及其审核/修改记录中，最多提炼 3 条未来创作仍有价值的隐性经验。",
+    "同时参考已有 active memories，做跨故事单元的经验综合：寻找不同故事中反复出现的文学表现、人物复杂性、叙事优势和创意潜力；也识别表面矛盾但可能体现人物变化或情境差异的经验。不要把差异平均成固定套路。",
+    "额外生成 creativeCompass（最多 1200 字）：综合已有记忆与本次材料，概括值得延续的语言气质、人物塑造方式、叙事张力和创意探索方向。它是可修改、可忽略的启发性摘要，不是风格规则，不得规定必须使用的句式、节奏、桥段或人物行为。避免重复记忆，避免总结剧情事实。",
     "严格区分：不要记章节发生了什么、人物当前状态/位置/关系、装备、时间线、具体事件、伏笔状态或剧情事实；这些属于易变 Canon，应由故事数据库和原文检索提供。",
     "只考虑可复用但不僵化的经验，例如人物在特定压力下呈现出的复杂行为倾向、人物互动产生张力的方式、有效的叙事处理、创意探索方向，或经审核证实的生成流程经验。",
     "不要把观察改写成必须遵守的写作规则，不要发明固定 Prompt、人物模板或风格配额。经验应允许反例、变化和主动突破。",
     "没有真正值得长期保留的经验时返回空数组。宁可不记，不要为了填满数量而总结。",
     "每条 evidence 必须是下方材料中的连续逐字片段，用来说明这条经验从何而来。不要输出正文摘要。",
-    "只输出 JSON：{memories:[{type:'narrative'|'creative'|'operational',content:string,scope?:string,evidence:string}]}",
+    "罕见但有文学价值的创意、独特人物互动或一次性叙事突破，即使只出现一次，也可以作为 creative candidate 提出；它会保持 candidate 状态，不要求直接晋级 active。不要为了重复次数而忽略独特的创作发现。",
+    "已有 active memories（用于跨故事综合，不代表不可修改）：\n" + (activeMemoryContext || "暂无"),
+    "只输出 JSON：{memories:[{type:'narrative'|'creative'|'operational',content:string,scope?:string,evidence:string}],creativeCompass?:string}",
     "材料：\n" + boundedEvidenceSource
   ].join("\n\n");
   const raw = await runAgentText(prompt, input.model, input.timeoutMs ?? 120000, undefined, true, {
     attempts: [], context: { worldId: input.worldId, runId, kind: "memory-dreaming", stage: "consolidation" }
   });
   const parsed = OutputSchema.parse(JSON.parse(jsonrepair(raw)));
-  const existing = listStoryMemories(input.worldDir, input.worldId, "all");
   const candidates = parsed.memories.flatMap(memory => {
     const source = evidenceFiles.find(file => file.content.includes(memory.evidence))?.source;
     if (!source) return [];
@@ -182,5 +211,12 @@ export async function dreamOnCompletedRun(input: {
     }];
   });
   const recorded = recordStoryMemoryCandidates(input.worldDir, input.worldId, candidates);
-  return { recorded, candidates: candidates.length };
+  let compassUpdated = false;
+  if (parsed.creativeCompass?.trim()) {
+    const compassDir = resolve(input.worldDir, "story-memory");
+    await mkdir(compassDir, { recursive: true });
+    await writeFile(resolve(compassDir, "creative-compass.md"), parsed.creativeCompass.trim() + "\n", "utf8");
+    compassUpdated = true;
+  }
+  return { recorded, candidates: candidates.length, compassUpdated };
 }
