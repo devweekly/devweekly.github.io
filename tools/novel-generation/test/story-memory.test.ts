@@ -97,6 +97,9 @@ test("scene intent retrieval and creative compass add literary guidance without 
       evidence: { runId: "scene-run-1", quote: "他没有接过那杯茶。", source: "chapter.md" }
     };
     recordStoryMemoryCandidates(worldDir, "compass-world", [candidate]);
+    const unverifiedContext = buildNarrativeMemoryContext(worldDir, "compass-world", "人物对白与对峙");
+    assert.match(unverifiedContext, /未验证创意火花/);
+    assert.match(unverifiedContext, /可忽略或改造/);
     recordStoryMemoryCandidates(worldDir, "compass-world", [{
       ...candidate,
       evidence: { runId: "scene-run-2", quote: "她把茶杯放回原处。", source: "chapter-2.md" }
