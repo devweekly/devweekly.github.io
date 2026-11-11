@@ -279,23 +279,24 @@ export async function runAgentText(
           throw error;
         }
       };
+      let output: string | undefined;
       try {
-        const output = await execute("normal", profile);
-        await persistTrace("completed", undefined, output);
-        return output;
+        output = await execute("normal", profile);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         failures.push(`${candidate}: ${message}`);
         if (message.includes("TOOL_LEAK") && profile && profile.thinkingMode !== "disabled") {
           try {
-            const output = await execute("thinking-disabled-retry", { ...profile, thinkingMode: "disabled", effort: "low" });
-            await persistTrace("completed", undefined, output);
-            return output;
+            output = await execute("thinking-disabled-retry", { ...profile, thinkingMode: "disabled", effort: "low" });
           } catch (retryError) {
             const retryMessage = retryError instanceof Error ? retryError.message : String(retryError);
             failures.push(`${candidate}（关闭思考重试）: ${retryMessage}`);
           }
         }
+      }
+      if (output !== undefined) {
+        await persistTrace("completed", undefined, output);
+        return output;
       }
       await persistTrace("running");
     }
