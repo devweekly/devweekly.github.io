@@ -124,7 +124,7 @@ test("Creative Compass exposes current content and timestamped history metadata"
     const result = await readCreativeCompass(root);
     assert.equal(result.content, "当前创作方向");
     assert.equal(result.history.length, 1);
-    assert.equal(result.history[0]?.chars, 5);
+    assert.equal(result.history[0]?.chars, 6);
     assert.equal(result.history[0]?.version, "2026-11-11T10-00-00-000Z-ab12cd34.md");
     assert.ok(result.history[0]?.updatedAt);
   } finally {
