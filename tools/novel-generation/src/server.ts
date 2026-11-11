@@ -2797,6 +2797,8 @@ interface StoryPlanTaskInput {
 
 /** 规划任务第 2 步：加载世界资料与旧状态，生成并激活新计划，登记候选与运行结果。 */
 async function generateStoryPlanTask({ run, worldId, model }: StoryPlanTaskInput): Promise<void> {
+  const outputDir = run.outputDir ?? path.resolve(".output", worldId, "story-plan-" + run.id);
+  const trace: import("./generate.js").AgentTextTrace = { attempts: [] };
   try {
     await saveRun({ ...run, status: "running", updatedAt: new Date().toISOString() });
     const dir = worldDir(worldId);
@@ -2807,18 +2809,12 @@ async function generateStoryPlanTask({ run, worldId, model }: StoryPlanTaskInput
     ]);
     const query = storyPlanQuery(state);
     const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(dir, worldId), query);
-    const outputDir = run.outputDir ?? path.resolve(".output", worldId, "story-plan-" + run.id);
     await mkdir(outputDir, { recursive: true });
-    const trace: import("./generate.js").AgentTextTrace = { attempts: [] };
     await writeFile(path.join(outputDir, "input-snapshot.json"), JSON.stringify({
       worldId, worldBible, state, storyAnalysisContext, previousPlan: previousPlan ?? null, requestedModel: model ?? null
     }, null, 2) + "\n", "utf8");
     const plan = await generateStoryPlan({ worldId, worldBible, state, storyAnalysisContext, previousPlan, model, trace });
     await writeFile(path.join(outputDir, "story-plan.json"), JSON.stringify(plan, null, 2) + "\n", "utf8");
-    await writeFile(path.join(outputDir, "run.json"), JSON.stringify({
-      runId: run.id, worldId, kind: "story-plan", status: "completed", agentCallId: trace.callId ?? null,
-      updatedAt: new Date().toISOString()
-    }, null, 2) + "\n", "utf8");
     const now = new Date().toISOString();
     const activePlan = { ...plan, status: "active" as const, updatedAt: now };
     if (previousPlan) await archivePreviousPlan(previousPlan, dir);
@@ -2829,11 +2825,23 @@ async function generateStoryPlanTask({ run, worldId, model }: StoryPlanTaskInput
     };
     await saveCandidate(candidate);
     await saveRun({ ...run, status: "completed", candidateId: candidate.id, agentCallId: trace.callId, updatedAt: now });
+    await writeFile(path.join(outputDir, "run.json"), JSON.stringify({
+      runId: run.id, worldId, kind: "story-plan", status: "completed", agentCallId: trace.callId ?? null,
+      candidateId: candidate.id, updatedAt: now
+    }, null, 2) + "\n", "utf8");
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await mkdir(outputDir, { recursive: true }).catch(() => undefined);
+    await writeFile(path.join(outputDir, "failure.json"), JSON.stringify({
+      runId: run.id, worldId, error: message, failedAt: new Date().toISOString(), agentCallId: trace.callId ?? null
+    }, null, 2) + "\n", "utf8").catch(() => undefined);
+    await writeFile(path.join(outputDir, "run.json"), JSON.stringify({
+      runId: run.id, worldId, kind: "story-plan", status: "failed", error: message,
+      agentCallId: trace.callId ?? null, updatedAt: new Date().toISOString()
+    }, null, 2) + "\n", "utf8").catch(() => undefined);
     await saveRun({
-      ...run, status: "failed",
-      error: error instanceof Error ? error.message : String(error),
-      updatedAt: new Date().toISOString()
+      ...run, status: "failed", agentCallId: trace.callId,
+      error: message, updatedAt: new Date().toISOString()
     });
   }
 }
