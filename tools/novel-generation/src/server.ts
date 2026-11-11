@@ -1813,6 +1813,9 @@ async function assessStoryExecutionCheckpoint(
     storyState: state, model: taskInput.model
   });
   const assessedAt = new Date().toISOString();
+  await writeFile(path.join(path.dirname(checkpoint.chapterPath), "story-progress-assessment.json"), JSON.stringify({
+    runId: checkpoint.runId, storyUnitId: taskInput.storyUnitId ?? null, assessedAt, assessment
+  }, null, 2) + "\n", "utf8");
   const latestTask = await getStoryExecution(worldId, taskInput.id);
   let task: StoryExecution = latestTask
     ? { ...taskInput, pauseRequested: latestTask.pauseRequested, cancelRequested: latestTask.cancelRequested }
