@@ -3,7 +3,7 @@
 // 各阶段按职责裁剪上下文：创意阶段不给逐条证据，对白编辑只看人物状态，只有事实核对类
 // 阶段才保留证据材料。每阶段走 stage-cache 指纹缓存；未通过终审不写 Story State。
 import { mkdir, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { commitStoryStateAndArc, parseStoryStateUpdate, type StoryState } from "./story-state.js";
 import { runAgentText, resolveModelAttempts, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
@@ -197,8 +197,12 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   const state = await loadRunStoryState(input.statePath, input.worldId, input.outputDir, "write");
   const profiles = readTaskProfiles();
   const laws = loadIronLaws(input.worldDir ?? resolve("worlds", input.worldId));
-  const call = (stage: StageKey, parts: string[]): Promise<string> =>
-    runAgentText(parts.join("\n\n"), input.model, undefined, profiles[stage], !input.strictModel);
+  const call = (stage: StageKey, parts: string[]): Promise<string> => {
+    const trace: import("./generate.js").AgentTextTrace = {
+      attempts: [], context: { worldId: input.worldId, runId: basename(input.outputDir), outputDir: input.outputDir, kind: "chapter", stage }
+    };
+    return runAgentText(parts.join("\n\n"), input.model, undefined, profiles[stage], !input.strictModel, trace);
+  };
   const cachedCall = (key: string, outputFile: string, stage: StageKey, parts: string[], validate?: (output: string) => void): Promise<string> => {
     const prompt = parts.join("\n\n");
     return runCachedStage({
