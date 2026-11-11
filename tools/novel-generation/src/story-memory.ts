@@ -143,7 +143,7 @@ export async function dreamOnCompletedRun(input: {
   // excerpted first, and the complete source remains available for exact quote checks.
   const evidenceSource = evidenceFiles.map(file => "## " + file.source + "\n" + file.promptContent).join("\n\n");
   const boundedEvidenceSource = evidenceSource.length <= 36000 ? evidenceSource : evidenceFiles
-    .map(file => "## " + file.source + "\n" + excerpt(file.promptContent, Math.max(1200, Math.floor(36000 / evidenceFiles.length))))
+    .map(file => "## " + file.source + "\n" + excerpt(file.promptContent, Math.max(900, Math.floor(33000 / evidenceFiles.length))))
     .join("\n\n")
     .slice(0, 36000);
   const runId = input.memoryRunId ?? basename(runDirs.at(-1)!);
