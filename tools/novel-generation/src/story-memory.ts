@@ -313,7 +313,7 @@ export async function readCreativeCompass(worldDir: string): Promise<{ content: 
 
 
 export async function readCreativeCompassVersion(worldDir: string, version: string): Promise<string> {
-  if (!/^[a-zA-Z0-9T_.-]+\\.md$/.test(version) || version !== basename(version)) {
+  if (!/^[a-zA-Z0-9T_.-]+\.md$/.test(version) || version !== basename(version)) {
     throw new Error("Invalid Creative Compass history version.");
   }
   return readFile(resolve(worldDir, "story-memory", ".history", version), "utf8");
