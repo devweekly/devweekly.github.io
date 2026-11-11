@@ -230,8 +230,8 @@ export async function runAgentText(
         const attemptDir = resolve(callDir, "attempt-" + String(attemptIndex).padStart(2, "0"));
         await mkdir(attemptDir, { recursive: true });
         const attempt = {
-          model: candidate, mode, startedAt: new Date().toISOString(),
-          status: "running" as "running" | "succeeded" | "failed"
+          model: candidate, fallbackModel: fallback ?? null, mode, taskProfile: attemptProfile ?? null,
+          startedAt: new Date().toISOString(), status: "running" as "running" | "succeeded" | "failed"
         };
         attemptRecords.push(attempt);
         await atomicJson(resolve(attemptDir, "attempt.json"), attempt);
