@@ -2807,7 +2807,18 @@ async function generateStoryPlanTask({ run, worldId, model }: StoryPlanTaskInput
     ]);
     const query = storyPlanQuery(state);
     const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(dir, worldId), query);
-    const plan = await generateStoryPlan({ worldId, worldBible, state, storyAnalysisContext, previousPlan, model });
+    const outputDir = run.outputDir ?? path.resolve(".output", worldId, "story-plan-" + run.id);
+    await mkdir(outputDir, { recursive: true });
+    const trace: import("./generate.js").AgentTextTrace = { attempts: [] };
+    await writeFile(path.join(outputDir, "input-snapshot.json"), JSON.stringify({
+      worldId, worldBible, state, storyAnalysisContext, previousPlan: previousPlan ?? null, requestedModel: model ?? null
+    }, null, 2) + "\n", "utf8");
+    const plan = await generateStoryPlan({ worldId, worldBible, state, storyAnalysisContext, previousPlan, model, trace });
+    await writeFile(path.join(outputDir, "story-plan.json"), JSON.stringify(plan, null, 2) + "\n", "utf8");
+    await writeFile(path.join(outputDir, "run.json"), JSON.stringify({
+      runId: run.id, worldId, kind: "story-plan", status: "completed", agentCallId: trace.callId ?? null,
+      updatedAt: new Date().toISOString()
+    }, null, 2) + "\n", "utf8");
     const now = new Date().toISOString();
     const activePlan = { ...plan, status: "active" as const, updatedAt: now };
     if (previousPlan) await archivePreviousPlan(previousPlan, dir);
@@ -2817,7 +2828,7 @@ async function generateStoryPlanTask({ run, worldId, model }: StoryPlanTaskInput
       createdAt: now, updatedAt: now, baseUpdatedAt: previousPlan?.updatedAt ?? null, plan: activePlan, runId: run.id
     };
     await saveCandidate(candidate);
-    await saveRun({ ...run, status: "completed", candidateId: candidate.id, updatedAt: now });
+    await saveRun({ ...run, status: "completed", candidateId: candidate.id, agentCallId: trace.callId, updatedAt: now });
   } catch (error) {
     await saveRun({
       ...run, status: "failed",
@@ -2832,8 +2843,9 @@ async function generateStoryPlanHandler(req: Request<WorldIdParams>, res: Respon
   const id = worldIdOf(req.params.worldId);
   assertInsideWorld(id);
   const runId = randomUUID();
+  const outputDir = path.resolve(".output", id, "story-plan-" + runId);
   const run: WorkbenchRun = {
-    id: runId, worldId: id, kind: "story-plan", status: "queued",
+    id: runId, worldId: id, kind: "story-plan", status: "queued", outputDir,
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
   };
   await saveRun(run);
