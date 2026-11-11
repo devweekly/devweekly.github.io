@@ -45,7 +45,9 @@ Thus a cache hit is distinguishable from a new model call, and its exact input f
 
 Because they use `runAgentText()`, the central trace also covers Story Unit progress evaluation, Story Plan generation, annotation extraction/evidence review, original-story analysis, world analysis evidence review, character profiles and chapter states, volume arcs, corpus craft, style profile reconstruction, rhythm repair, roleplay turns, regression writing/review, and CLI generation commands.
 
-The local-model benchmark uses direct LM Studio HTTP requests rather than the Agent SDK. It separately saves chat prompts/source excerpts/results/errors and persists in-flight rows before each request; embedding inputs are saved to `embedding-inputs.json` and each model's progress/results to `embedding-results.json`.
+The local-model benchmark and model-comparison script use direct LM Studio HTTP requests rather than the Agent SDK. They save prompts/source excerpts/results/errors and persist in-flight rows before each request. Benchmark embedding inputs and per-model progress are saved separately.
+
+Vane embedding calls also bypass the Agent SDK. Each indexing or query-embedding operation now writes `.output/<worldId>/vane-embedding-runs/<runId>/`, including exact input texts and IDs, sanitized endpoint/model/timeout metadata, per-batch state, returned vectors/usage, and failure details. The Vane index itself continues to store the vectors used for retrieval.
 
 ## Boundaries
 
