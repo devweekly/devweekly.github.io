@@ -1808,13 +1808,17 @@ async function assessStoryExecutionCheckpoint(
   const chapterText = await readFile(chapterPath, "utf8");
   const chapterTitle = chapterText.split("\n").find(line => /^#\s+/.test(line))?.replace(/^#\s+/,"").trim() || "章节";
   const state = await loadStoryState(taskInput.storyUnitId ? path.join(dir, ".story-units", taskInput.storyUnitId, "story-state.json") : path.join(dir, "story-state.json"), worldId);
+  const assessmentTrace: import("./generate.js").AgentTextTrace = {
+    attempts: [], context: { worldId, runId: checkpoint.runId, outputDir: path.dirname(checkpoint.chapterPath), kind: "story-progress-assessment", stage: "story-progress-assessment" }
+  };
   const assessment = await storyProgressAssessor({
     unit: unitInput, chapterText, chapterTitle, completedChapterCount: taskInput.completedChapters.length,
-    storyState: state, model: taskInput.model
+    storyState: state, model: taskInput.model, trace: assessmentTrace
   });
   const assessedAt = new Date().toISOString();
   await writeFile(path.join(path.dirname(checkpoint.chapterPath), "story-progress-assessment.json"), JSON.stringify({
-    runId: checkpoint.runId, storyUnitId: taskInput.storyUnitId ?? null, assessedAt, assessment
+    runId: checkpoint.runId, storyUnitId: taskInput.storyUnitId ?? null, agentCallId: assessmentTrace.callId ?? null,
+    assessedAt, assessment
   }, null, 2) + "\n", "utf8");
   const latestTask = await getStoryExecution(worldId, taskInput.id);
   let task: StoryExecution = latestTask
