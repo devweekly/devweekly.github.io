@@ -115,12 +115,23 @@ export function buildNarrativeMemoryContext(worldDir: string, worldId: string, q
   try { compass = readFileSync(resolve(worldDir, "story-memory", "creative-compass.md"), "utf8").trim(); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   if (!selected.length && !compass) return "";
-  const text = [
-    "以下是从多次创作中提炼的经验，仅供当前创作参考，不是规则、要求或验收清单。可以忽略、改造或有意识地突破；不要为了体现这些经验而牺牲人物真实感、意外性或文学表达。",
-    compass ? "## Creative Compass（派生创作方向，仅供启发）\n" + compass : "",
-    ...selected
-  ].filter(Boolean).join("\n\n");
-  return text.length <= maxChars ? text : text.slice(0, maxChars);
+  const parts = [
+    "以下是从多次创作中提炼的经验，仅供当前创作参考，不是规则、要求或验收清单。可以忽略、改造或有意识地突破；不要为了体现这些经验而牺牲人物真实感、意外性或文学表达。"
+  ];
+  let remaining = Math.max(0, maxChars - parts[0]!.length);
+  if (compass && remaining > 100) {
+    const compassBudget = Math.min(700, Math.floor(remaining * 0.48));
+    const compassPart = "## Creative Compass（派生创作方向，仅供启发）\\n" + compass.slice(0, compassBudget);
+    parts.push(compassPart);
+    remaining -= compassPart.length + 2;
+  }
+  for (const item of selected) {
+    const cost = item.length + 2;
+    if (cost > remaining) continue;
+    parts.push(item);
+    remaining -= cost;
+  }
+  return parts.join("\\n\\n");
 }
 
 /** Dreaming over one completed run. Facts, summaries and transient character states are explicitly out of scope. */
