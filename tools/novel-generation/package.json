@@ -12,13 +12,14 @@
     "build": "tsc -p tsconfig.json && tsc -p web/tsconfig.json && vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p web/tsconfig.json",
     "start": "node dist/cli.js",
-    "test": "node --import tsx --test test/*.test.ts",
+    "test": "node --import tsx --test test/*.test.ts && node --import tsx scripts/evaluate-story-memory.mjs --help",
     "package-review": "node --import tsx scripts/package-review.ts",
     "dev:web": "tsx src/server-main.ts",
     "start:web": "NODE_ENV=production node dist/server-main.js",
     "compare-models": "node --import tsx scripts/compare-models.ts",
     "evaluate-retrieval": "node --import tsx scripts/evaluate-retrieval.ts",
-    "benchmark-local-models": "node --import tsx scripts/benchmark-local-models.ts"
+    "benchmark-local-models": "node --import tsx scripts/benchmark-local-models.ts",
+    "evaluate-story-memory": "node --import tsx scripts/evaluate-story-memory.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",

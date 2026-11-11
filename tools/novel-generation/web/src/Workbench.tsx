@@ -8,12 +8,13 @@ import {
 } from "antd";
 import {
   ApartmentOutlined, BookOutlined, DashboardOutlined, FileTextOutlined,
-  HistoryOutlined, PlayCircleOutlined, ReloadOutlined, UserOutlined
+  HistoryOutlined, PlayCircleOutlined, ReloadOutlined, UserOutlined, BulbOutlined
 } from "@ant-design/icons";
 import CharactersPanel, { type Character, type CharacterDetail } from "./CharactersPanel";
 import GraphExplorer from "./GraphExplorer";
 import StyleReferencesPanel from "./StyleReferencesPanel";
 import ChapterStudio from "./ChapterStudio";
+import StoryMemoryPanel from "./StoryMemoryPanel";
 import { DASHBOARD_POLL_INTERVAL_MS, RECENT_RUNS_DISPLAY_LIMIT } from "./constants";
 
 const { Header, Sider, Content } = Layout;
@@ -183,6 +184,7 @@ export default function Workbench() {
     { key: "characters", icon: <UserOutlined />, label: "人物" },
     { key: "graph", icon: <ApartmentOutlined />, label: "故事图谱" },
     { key: "style-references", icon: <FileTextOutlined />, label: "文风样本" },
+    { key: "story-memory", icon: <BulbOutlined />, label: "创作记忆" },
     { key: "versions", icon: <HistoryOutlined />, label: "规划版本" },
     { key: "runs", icon: <PlayCircleOutlined />, label: "运行记录" }
   ];
@@ -391,6 +393,7 @@ export default function Workbench() {
   function body() {
     if (active === "chapter") return <ChapterStudio worldId={worldId} />;
     if (active === "style-references") return <StyleReferencesPanel worldId={worldId} />;
+    if (active === "story-memory") return <StoryMemoryPanel worldId={worldId} />;
     if (active === "graph") return <GraphExplorer worldId={worldId} />;
     if (active === "characters") {
       return (
@@ -418,6 +421,7 @@ export default function Workbench() {
   function pageHint(): string {
     if (active === "chapter") return "一键生成下一章；规划、正文、自动修订与状态更新由系统完成";
     if (active === "characters") return "人物档案、人物关系与正文事件时间线";
+    if (active === "story-memory") return "从完整故事单元中提炼的长期创作经验及其原始证据";
     if (active === "graph") return "原著故事结构与续写动态关系的交互式浏览";
     if (active === "style-references") return "管理认可样本及历史版本；只有活动样本进入风格回归";
     return "自主创作、运行观察与版本追溯";

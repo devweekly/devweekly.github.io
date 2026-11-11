@@ -11,13 +11,14 @@ import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { loadStoryPlan, saveStoryPlan, generateStoryPlan } from "./story-plan.js";
 import { loadStoryState, validateStoryState } from "./story-state.js";
-import { readStoryAnalysis, saveStoryAnalysis, listNovelCharacters, countNovelCharacters, readNovelCharacterWorkbenchDetail } from "./database.js";
+import { readStoryAnalysis, saveStoryAnalysis, listNovelCharacters, countNovelCharacters, readNovelCharacterWorkbenchDetail, listStoryMemories, updateStoryMemory } from "./database.js";
 import {
   CHARACTER_LIST_MAX_LIMIT, CHARACTER_LIST_DEFAULT_LIMIT, DASHBOARD_PLAN_VERSIONS_LIMIT, DASHBOARD_RECENT_RUNS_LIMIT,
   STORY_ANALYSIS_QUERY_CHARACTERS,
   WORKBENCH_BODY_LIMIT, KNOWLEDGE_BUILD_IDLE_TIMEOUT_MS, CHILD_PROCESS_KILL_GRACE_MS
 } from "./constants.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
+import { dreamOnCompletedRun, readCreativeCompass, readCreativeCompassVersion } from "./story-memory.js";
 import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, splitCanonLines, type CanonChunk } from "./canon-chapters.js";
 import { chunkText, ensurePrivateLibraryIsolation } from "./library.js";
 import { chapterId as catalogChapterId, ensureSourceCanonLibraryIndex, indexNovelStructure, loadChapterCatalog, loadChapterCatalogDocument, prepareCanonIndexInputs, type CatalogChapter } from "./novel-kb.js";
@@ -438,6 +439,55 @@ async function dashboardHandler(req: Request<WorldIdParams>, res: Response): Pro
 }
 app.get("/api/worlds/:worldId/dashboard", async (req, res) => {
   try { await dashboardHandler(req, res); } catch (error) { sendError(res, error); }
+});
+
+// ── Story Memory：查看隐性经验、证据与人工修订 ───────────────
+app.get("/api/worlds/:worldId/story-memory/compass", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    res.json(await readCreativeCompass(worldDir(id)));
+  } catch (error) { sendError(res, error); }
+});
+
+app.get("/api/worlds/:worldId/story-memory/compass/history/:version", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    const content = await readCreativeCompassVersion(worldDir(id), decodeURIComponent(req.params.version));
+    res.json({ content });
+  } catch (error) { sendError(res, error); }
+});
+
+app.get("/api/worlds/:worldId/story-memories", (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    const status = ["candidate", "active", "superseded", "rejected"].includes(String(req.query.status)) ? req.query.status as "candidate" | "active" | "superseded" | "rejected" : "all";
+    res.json({ memories: listStoryMemories(worldDir(id), id, status) });
+  } catch (error) { sendError(res, error); }
+});
+app.patch("/api/worlds/:worldId/story-memories/:memoryId", (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    const memoryId = req.params.memoryId;
+    if (!/^[a-f0-9]{24}$/.test(memoryId)) throw Object.assign(new Error("Invalid memory id."), { status: 400 });
+    const body = req.body ?? {};
+    const update: { content?: string; scope?: string; status?: "candidate" | "active" | "superseded" | "rejected" } = {};
+    if (body.content !== undefined) {
+      if (typeof body.content !== "string" || body.content.trim().length < 24 || body.content.trim().length > 600) throw Object.assign(new Error("content must be 24-600 characters."), { status: 400 });
+      update.content = body.content;
+    }
+    if (body.scope !== undefined) {
+      if (typeof body.scope !== "string" || body.scope.trim().length > 120) throw Object.assign(new Error("scope must be at most 120 characters."), { status: 400 });
+      update.scope = body.scope;
+    }
+    if (body.status !== undefined) {
+      if (!["candidate", "active", "superseded", "rejected"].includes(body.status)) throw Object.assign(new Error("Invalid memory status."), { status: 400 });
+      update.status = body.status;
+    }
+    if (!Object.keys(update).length) throw Object.assign(new Error("No memory changes supplied."), { status: 400 });
+    const memory = updateStoryMemory(worldDir(id), id, memoryId, update);
+    if (!memory) return void res.status(404).json({ error: "Story memory not found." });
+    res.json({ memory });
+  } catch (error) { sendError(res, error); }
 });
 
 // ── 独立故事宇宙 ──────────────────────────────────────────
@@ -1987,6 +2037,38 @@ async function reconcileStoryExecutionCurrentRun(input: StoryExecution): Promise
   return cleared;
 }
 
+async function dreamOnCompletedStoryExecution(task: StoryExecution): Promise<void> {
+  if (task.mode !== "complete_story" || task.status !== "completed" || !task.completedChapters.length) return;
+  const root = path.resolve(".output", task.worldId);
+  const markerDir = path.join(root, "story-memory-dreaming");
+  const markerPath = path.join(markerDir, task.id + ".json");
+  try {
+    const previous = JSON.parse(await readFile(markerPath, "utf8")) as { status?: string };
+    if (previous.status !== "failed") return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  try {
+    const runs = await Promise.all(task.completedChapters.map(checkpoint => getRun(task.worldId, checkpoint.runId)));
+    const runDirs = runs.flatMap(run => {
+      if (!run || run.status !== "completed" || !run.outputDir) return [];
+      const outputDir = path.resolve(run.outputDir);
+      return outputDir.startsWith(root + path.sep) ? [outputDir] : [];
+    });
+    if (!runDirs.length) throw new Error("No completed chapter run directories could be verified.");
+    const result = await dreamOnCompletedRun({
+      worldId: task.worldId, worldDir: worldDir(task.worldId), runDir: runDirs.at(-1)!,
+      runDirs, memoryRunId: task.id, model: task.model
+    });
+    await mkdir(markerDir, { recursive: true });
+    await writeFile(markerPath, JSON.stringify({ storyExecutionId: task.id, storyUnitId: task.storyUnitId, completedAt: task.completedAt, status: "completed", ...result }, null, 2) + "\n", "utf8");
+  } catch (error) {
+    await mkdir(markerDir, { recursive: true }).catch(() => undefined);
+    await writeFile(markerPath, JSON.stringify({ storyExecutionId: task.id, status: "failed", error: error instanceof Error ? error.message : String(error), attemptedAt: new Date().toISOString() }, null, 2) + "\n", "utf8").catch(() => undefined);
+    console.warn("[story-memory] Dreaming failed without affecting completed story:", error);
+  }
+}
+
 async function executeStoryUnitTask(initial: StoryExecution, signal?: AbortSignal): Promise<void> {
   const worldId = initial.worldId;
   let task = initial;
@@ -2019,13 +2101,15 @@ async function executeStoryUnitTask(initial: StoryExecution, signal?: AbortSigna
     if (pendingAssessment) {
       const recoveredAssessment = await ensureStoryExecutionCheckpointAssessed(worldId, task, unit, pendingAssessment);
       task = recoveredAssessment.task; unit = recoveredAssessment.unit;
-      if (recoveredAssessment.terminal) return;
+      if (recoveredAssessment.terminal) { void dreamOnCompletedStoryExecution(task).catch(error => console.warn("[story-memory] Background Dreaming failed:", error)); return; }
     }
     if (task.mode === "complete_story" && unit.execution.status === "completed") {
       task = appendStoryExecutionEvent({ ...task, status: "completed", completedAt: unit.execution.completedAt ?? new Date().toISOString(),
         updatedAt: new Date().toISOString(), lastAssessment: unit.execution.lastAssessment ?? task.lastAssessment,
         nextDirection: "故事已自然收束。" }, { at: new Date().toISOString(), type: "completed", message: "故事单元已在前次评估中自然收束" });
-      await saveStoryExecution(task); return;
+      await saveStoryExecution(task);
+      void dreamOnCompletedStoryExecution(task).catch(error => console.warn("[story-memory] Background Dreaming failed:", error));
+      return;
     }
     while (true) {
       task = (await getStoryExecution(worldId, task.id)) ?? task;
@@ -2072,7 +2156,7 @@ async function executeStoryUnitTask(initial: StoryExecution, signal?: AbortSigna
       await saveExecutionStoryUnit(unit);
       const assessed = await assessStoryExecutionCheckpoint(worldId, task, unit, checkpoint);
       task = assessed.task; unit = assessed.unit;
-      if (assessed.terminal) return;
+      if (assessed.terminal) { void dreamOnCompletedStoryExecution(task).catch(error => console.warn("[story-memory] Background Dreaming failed:", error)); return; }
       await saveStoryExecution(task);
     }
   } catch (error) {

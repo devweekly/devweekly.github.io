@@ -25,7 +25,7 @@ CLI 命令（均经 `npm run dev --`）：
 | `analyze-story --world <id> [--model m] [--timeout-ms 180000] [--shard i/n] [--merge-only] [--delta]` | CodeBuddy SDK 自动分析人物小传/成长可能性、主线、伏笔与后续发展并保存 SQLite；`--delta` 复用旧批次长文本，只重抽 v6 新增字段 |
 | `analyze-world --world <id> --phase prepare/status/collect [--evidence-review]` | 多 Agent 文本分析（文件交接；默认确定性校验，`--evidence-review` 才调模型） |
 | `analyze-arcs / index-story / story-kb / db-status / check-runtime` | 卷级梗概、章节索引入库、知识库查询（`story-kb --type graph` 可查完整 v6 原著图谱）、DB 状态、运行时自检 |
-| `story-state --world <id> [--type overview/characters/events/threads/relationships/foreshadowings/macguffins/graph] [--query q]` | 只读查看续写 Story State、动态关系/伏笔/MacGuffin 记录及派生图谱 |
+| `dream-memory --world <id> --run-dir <completed-run>` | 从已完成章节和审核记录提炼带逐字证据的隐性经验；不同运行重复出现后才进入写作上下文 |\n| `story-state --world <id> [--type overview/characters/events/threads/relationships/foreshadowings/macguffins/graph] [--query q]` | 只读查看续写 Story State、动态关系/伏笔/MacGuffin 记录及派生图谱 |
 | `write-long --brief "" [--scenes n] [--max-words n] [--strict-model] [--no-apply-state] [--reader-experience] [--resume-dir dir]` | 万字长章节逐场生成；Reader 体验报告默认关闭 |
 | `regress --world <id> --chapter n` | 单章盲写回归对照 |
 | `write --brief "" [--mode continuation/derivative] [--source f] [--context f] [--model m] [--max-words n] [--strict-model] [--no-apply-state] [--reader-experience] [--resume-dir dir]` | 多阶段章节写作、自动复查与有限修复；Reader 默认关闭 |
@@ -274,3 +274,12 @@ CLI 命令（均经 `npm run dev --`）：
 - 每章不再自动运行只读 Style Regression 和 Post-review Literary Check；它们不改稿、不影响验收，移至专项评估。Reader 仍为显式可选的盲读观察。
 - 新宇宙章节生成自动等待最低知识准备：style-profile、character-profiles、character-states、as-of-dossier。等待在 CLI 子进程内进行，API 先返回 queued/running 任务；可选 corpus-craft/Vane 不阻塞。失败则安全停止并保留已完成阶段缓存；重新触发构建时复用缓存。
 - 相关实现以 `src/literary-edit.ts`、`src/workflow.ts`、`src/long-chapter.ts`、`src/cli.ts`、`src/server.ts` 和 ADR 0007 为准。旧版关于每章 Anti-AI 三阶段、每章自动 Style Regression、两轮终审修复的描述已被 ADR 0007 取代。
+
+
+## Story Memory 与 Dreaming 原则
+
+- 不需要记下所有细节：完整正文、Transcript、原文和审核记录仍是事实来源；长期 Memory 只保存有复用价值的隐性经验。
+- 只记隐性规则，不记易变事实：人物当前状态、位置、装备、关系快照、事件和伏笔状态属于 Canon / Story State，不得复制到经验记忆。
+- 别用死板的 Prompt 限制模型：Memory 只能作为可选启发，模型可以忽略、改造或突破；不得将其变成人物模板、强制剧情清单或文风配额。
+- Dreaming 产出的记忆必须关联来源运行记录和逐字证据；不同运行的重复证据才可晋级到常规上下文。无价值时不记。
+- Memory 只写入 story.db 的独立表，不得被每章 Story State 快照替换操作清空；不得修改 Canon。

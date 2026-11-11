@@ -16,6 +16,7 @@ import { loadRunStoryState } from "./stage-cache.js";
 import { analyzeLibrary } from "./analysis.js";
 import { analyzeStoryCorpus } from "./story-analysis.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
+import { buildNarrativeMemoryContext, dreamOnCompletedRun } from "./story-memory.js";
 import { buildWritingBrief } from "./writing-brief.js";
 import {
   MAX_AGENT_TIMEOUT_MS,
@@ -127,6 +128,8 @@ function usage(): never {
     "  npm run dev -- export-asof-dossier --world conghuoniao  # 从当前宇宙完整分析快照导出人物/关系/时间线/主线/伏笔/MacGuffin/故事核心资料",
     "  npm run dev -- style-reference --world conghuoniao --list | --history [dialogue.md] | --add ./samples/dialogue.md [more files] | --remove dialogue.md",
     "  npm run dev -- roleplay-sandbox --world conghuoniao --brief \"场景设定\" --characters 人物甲,人物乙 [--model model] [--out file]",
+    "  npm run dev -- dream-memory --world conghuoniao --run-dir .output/<world>/<completed-run> [--model model]",
+    "  npm run evaluate-story-memory -- --world conghuoniao --brief \"same task\" [--command write|write-long] [--model model]  # paired blind A/B; isolated runs",
     "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000] [--max-chars 14000] [--shard 0/4] [--merge-only] [--delta]",
     "  npm run dev -- plan-story --world conghuoniao [--model model] [--draft] [--activate-candidate <file>]  # 默认生成后自动激活；--draft 仅保存实验草稿",
     "  npm run dev -- index-story --world conghuoniao [--catalog analysis/conghuoniao/chapter-index.json]",
@@ -184,7 +187,7 @@ const COMMANDS = new Set([
   "generate", "write", "write-long", "regress", "ingest", "search", "analyze", "analyze-story",
   "index-story", "story-kb", "story-state", "analyze-arcs", "analyze-profiles", "analyze-character-states",
   "analyze-world", "models", "check-runtime", "db-status", "verify-world", "plan-story", "distill-style",
-  "style-regress", "roleplay-sandbox", "style-reference", "style-trend", "analyze-corpus-craft", "vane-index", "ensure-style-profile", "export-asof-dossier"
+  "style-regress", "roleplay-sandbox", "dream-memory", "style-reference", "style-trend", "analyze-corpus-craft", "vane-index", "ensure-style-profile", "export-asof-dossier"
 ]);
 
 async function waitForWritingKnowledgeReadiness(worldId: string): Promise<void> {
@@ -233,6 +236,22 @@ async function main(): Promise<void> {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   const libraryDir = await resolveWorldLibraryDir(worldId, resolve("worlds"));
+  if (command === "dream-memory") {
+    const requested = arg("--run-dir");
+    if (!requested) throw new Error("dream-memory requires --run-dir pointing to a completed write/write-long run.");
+    const runDir = resolve(requested);
+    const outputRoot = resolve(".output", worldId) + sep;
+    if (!runDir.startsWith(outputRoot)) throw new Error("--run-dir must point inside .output/" + worldId + ".");
+    const timeoutMs = Number(arg("--timeout-ms") ?? 120000);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_AGENT_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
+      throw new Error("--timeout-ms must be between " + MIN_AGENT_TIMEOUT_MS + " and " + MAX_AGENT_TIMEOUT_MS + ".");
+    }
+    const result = await dreamOnCompletedRun({
+      worldId, worldDir: resolve("worlds", worldId), runDir, model: arg("--model"), timeoutMs
+    });
+    console.log(JSON.stringify({ worldId, ...result, memories: "story.db" }, null, 2));
+    return;
+  }
   if (canonWorldId !== worldId && (command === "ingest" || command === "analyze")) {
     throw new Error("故事宇宙共享原文资料库为只读；请回到原文项目导入原文或执行原文分块标注。");
   }
@@ -1003,6 +1022,9 @@ async function main(): Promise<void> {
     ].join("\n");
     const retrieved = await searchLibrary(libraryDir, retrievalQuery, retrievalLimit);
     let storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), retrievalQuery);
+    const memoryQuery = [brief, state.currentPosition, ...activeThreads].filter(Boolean).join("\n").slice(0, 1200);
+    const narrativeMemoryContext = process.argv.includes("--no-story-memory") ? "" : buildNarrativeMemoryContext(resolve("worlds", worldId), worldId, memoryQuery);
+    if (narrativeMemoryContext) storyAnalysisContext += "\n\n## 长期创作经验与创作方向（仅供参考）\n" + narrativeMemoryContext;
     const corpusCraftContext = await buildCorpusCraftContext(worldId, retrievalQuery);
     if (corpusCraftContext) storyAnalysisContext += "\n\n" + corpusCraftContext;
     try {
@@ -1065,6 +1087,9 @@ async function main(): Promise<void> {
       ...longState.characters.slice(0, QUERY_CONTEXT_CHARACTERS).map(character => character.name)
     ].join("\n");
     let storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), storyAnalysisQuery);
+    const memoryQuery = [brief, longState.currentPosition, ...longState.plotThreads.filter(thread => thread.status === "open" || thread.status === "active").map(thread => thread.title)].filter(Boolean).join("\n").slice(0, 1200);
+    const narrativeMemoryContext = process.argv.includes("--no-story-memory") ? "" : buildNarrativeMemoryContext(resolve("worlds", worldId), worldId, memoryQuery);
+    if (narrativeMemoryContext) storyAnalysisContext += "\n\n## 长期创作经验与创作方向（仅供参考）\n" + narrativeMemoryContext;
     const corpusCraftContext = await buildCorpusCraftContext(worldId, storyAnalysisQuery);
     if (corpusCraftContext) storyAnalysisContext += "\n\n" + corpusCraftContext;
     try {
