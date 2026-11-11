@@ -1,6 +1,6 @@
 // Long-term narrative memory: retain reusable tacit patterns, never chapter facts or transient state.
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { resolve, basename, relative } from "node:path";
 import { jsonrepair } from "jsonrepair";
@@ -273,4 +273,21 @@ export async function dreamOnCompletedRun(input: {
     compassUpdated = true;
   }
   return { recorded, candidates: candidates.length, compassUpdated };
+}
+
+
+export async function readCreativeCompass(worldDir: string): Promise<{ content: string; history: Array<{ version: string; chars: number; updatedAt: string }> }> {
+  const directory = resolve(worldDir, "story-memory");
+  let content = "";
+  try { content = await readFile(resolve(directory, "creative-compass.md"), "utf8"); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  let versions: string[] = [];
+  try { versions = await readdir(resolve(directory, ".history")); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  const history = await Promise.all(versions.filter(name => /^[a-zA-Z0-9T_.-]+\\.md$/.test(name)).sort().reverse().map(async version => {
+    const path = resolve(directory, ".history", version);
+    const [body, metadata] = await Promise.all([readFile(path, "utf8"), stat(path)]);
+    return { version, chars: body.length, updatedAt: metadata.mtime.toISOString() };
+  }));
+  return { content, history };
 }
