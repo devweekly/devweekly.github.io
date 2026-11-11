@@ -205,7 +205,7 @@ export async function dreamOnCompletedRun(input: {
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   try {
     const styleDir = resolve(input.worldDir, "style-references");
-    const names = (await readdir(styleDir)).filter(name => /\\.(md|txt)$/i.test(name) && !name.startsWith(".")).sort().slice(0, 3);
+    const names = (await readdir(styleDir)).filter(name => /\.(md|txt)$/i.test(name) && !name.startsWith(".")).sort().slice(0, 3);
     for (const name of names) {
       const sample = (await readFile(resolve(styleDir, name), "utf8")).trim();
       if (sample) styleAnchors.push("## 已认可原文风格样本：" + name + "\n" + excerpt(sample, Math.floor(2400 / Math.max(1, names.length))));
