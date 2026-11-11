@@ -1,6 +1,6 @@
 // Long-term narrative memory: retain reusable tacit patterns, never chapter facts or transient state.
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { resolve, basename, relative } from "node:path";
 import { jsonrepair } from "jsonrepair";
@@ -93,7 +93,11 @@ export function buildNarrativeMemoryContext(worldDir: string, worldId: string, q
   const queryTerms = terms(retrievalQuery);
   if (!queryTerms.size) return "";
   const operationalQuery = /工具|流程|工作流|审核|修订|生成|agent|prompt|pipeline|workflow/iu.test(query);
-  const selected = listStoryMemories(worldDir, worldId, "active")
+  const eligible = [
+    ...listStoryMemories(worldDir, worldId, "active"),
+    ...listStoryMemories(worldDir, worldId, "candidate").filter(memory => memory.memoryType === "creative")
+  ];
+  const selected = eligible
     .map(memory => {
       const own = terms(memory.content);
       const scope = terms(memory.scope);
@@ -106,12 +110,15 @@ export function buildNarrativeMemoryContext(worldDir: string, worldId: string, q
       const contentCoverage = contentHits / Math.max(1, own.size);
       const scopeCoverage = scopeHits / Math.max(1, scope.size);
       const typeBonus = operationalQuery && memory.memoryType === "operational" ? 0.12 : 0;
-      return { memory, score: contentCoverage + scopeCoverage * 0.65 + typeBonus };
+      const unverifiedSpark = memory.status === "candidate" && memory.memoryType === "creative";
+      return { memory, score: (contentCoverage + scopeCoverage * 0.65 + typeBonus) * (unverifiedSpark ? 0.42 : 1), unverifiedSpark };
     })
     .filter(item => item.score >= 0.045)
     .sort((a, b) => b.score - a.score || b.memory.occurrences - a.memory.occurrences)
-    .slice(0, 5)
-    .map(({ memory }) => "- " + memory.content + "（适用范围：" + memory.scope + "；独立创作记录：" + memory.occurrences + " 次）");
+    .slice(0, 7)
+    .map(({ memory, unverifiedSpark }) => unverifiedSpark
+      ? "- [未验证创意火花，仅供灵感，可忽略或改造] " + memory.content + "（适用范围：" + memory.scope + "；目前仅有 " + memory.occurrences + " 次独立创作记录）"
+      : "- " + memory.content + "（适用范围：" + memory.scope + "；独立创作记录：" + memory.occurrences + " 次）");
   let compass = "";
   try { compass = readFileSync(resolve(worldDir, "story-memory", "creative-compass.md"), "utf8").trim(); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
@@ -191,6 +198,19 @@ export async function dreamOnCompletedRun(input: {
   const runId = input.memoryRunId ?? basename(runDirs.at(-1)!);
   const existing = listStoryMemories(input.worldDir, input.worldId, "all");
   let previousCompass = "";
+  const styleAnchors: string[] = [];
+  try {
+    const profile = (await readFile(resolve(input.worldDir, "style-profile.md"), "utf8")).trim();
+    if (profile) styleAnchors.push("## 已激活 Style Profile（抽象风格锚点）\\n" + excerpt(profile, 2600));
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  try {
+    const styleDir = resolve(input.worldDir, "style-references");
+    const names = (await readdir(styleDir)).filter(name => /\\.(md|txt)$/i.test(name) && !name.startsWith(".")).sort().slice(0, 3);
+    for (const name of names) {
+      const sample = (await readFile(resolve(styleDir, name), "utf8")).trim();
+      if (sample) styleAnchors.push("## 已认可原文风格样本：" + name + "\\n" + excerpt(sample, Math.floor(2400 / Math.max(1, names.length))));
+    }
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   try { previousCompass = readFileSync(resolve(input.worldDir, "story-memory", "creative-compass.md"), "utf8").trim(); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const activeMemoryContext = [
@@ -201,6 +221,7 @@ export async function dreamOnCompletedRun(input: {
   const prompt = [
     "你是小说项目的离线记忆整理器（Dreaming），不是剧情总结器。",
     "从本次已完成章节及其审核/修改记录中，最多提炼 3 条未来创作仍有价值的隐性经验。",
+    "风格判断必须以本次提供的正式 Style Profile 和已认可原文样本为首要锚点。生成章节只能用于观察本次执行表现，不能反过来取代原著风格来源；当生成文本与锚点冲突时，不要把模型偏差提炼成长期风格。原文样本用于观察叙述气质、节奏、视角、对白和动作/环境/心理的组织方式，不得复制独特句式。",
     "同时参考已有 active memories，做跨故事单元的经验综合：寻找不同故事中反复出现的文学表现、人物复杂性、叙事优势和创意潜力；也识别表面矛盾但可能体现人物变化或情境差异的经验。不要把差异平均成固定套路。",
     "额外生成 creativeCompass（最多 1200 字）：综合已有记忆与本次材料，概括值得延续的语言气质、人物塑造方式、叙事张力和创意探索方向。它是可修改、可忽略的启发性摘要，不是风格规则，不得规定必须使用的句式、节奏、桥段或人物行为。避免重复记忆，避免总结剧情事实。",
     "严格区分：不要记章节发生了什么、人物当前状态/位置/关系、装备、时间线、具体事件、伏笔状态或剧情事实；这些属于易变 Canon，应由故事数据库和原文检索提供。",
