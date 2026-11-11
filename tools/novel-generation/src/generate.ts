@@ -334,7 +334,7 @@ export async function recoverInterruptedAgentCalls(): Promise<number> {
       await atomicJson(resolve(dir, "run.json"), { ...raw, status: "interrupted", updatedAt: at, error });
       await atomicText(resolve(dir, "failure.txt"), error);
       const attemptEntries = await readdir(dir, { withFileTypes: true });
-      for (const attemptEntry of attemptEntries.filter(item => item.isDirectory() && /^attempt-\\d+$/.test(item.name))) {
+      for (const attemptEntry of attemptEntries.filter(item => item.isDirectory() && /^attempt-\d+$/.test(item.name))) {
         const attemptPath = resolve(dir, attemptEntry.name, "attempt.json");
         try {
           const attempt = JSON.parse(await readFile(attemptPath, "utf8")) as Record<string, unknown>;
