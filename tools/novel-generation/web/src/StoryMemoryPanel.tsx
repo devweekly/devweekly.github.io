@@ -25,6 +25,8 @@ const typeLabel: Record<Memory["memoryType"], string> = {
 export default function StoryMemoryPanel({ worldId }: { worldId: string }) {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [compass, setCompass] = useState<Compass>({ content: "", history: [] });
+  const [historyVersion, setHistoryVersion] = useState("");
+  const [historyContent, setHistoryContent] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState("");
   const [drafts, setDrafts] = useState<Record<string, { content: string; scope: string }>>({});
@@ -44,6 +46,14 @@ export default function StoryMemoryPanel({ worldId }: { worldId: string }) {
     finally { setLoading(false); }
   }, [worldId, filter]);
   useEffect(() => { void refresh(); }, [refresh]);
+
+  const showHistory = async (version: string) => {
+    try {
+      const result = await api<{ content: string }>(`/api/worlds/${worldId}/story-memory/compass/history/${encodeURIComponent(version)}`);
+      setHistoryVersion(version);
+      setHistoryContent(result.content);
+    } catch (error) { message.error(error instanceof Error ? error.message : String(error)); }
+  };
 
   const update = async (memory: Memory, changes: Partial<Pick<Memory, "status">> & { content?: string; scope?: string }) => {
     setSaving(memory.memoryId);
@@ -77,10 +87,15 @@ export default function StoryMemoryPanel({ worldId }: { worldId: string }) {
               renderItem={item => <List.Item>
                 <Space direction="vertical" size={0}>
                   <Typography.Text code>{item.version}</Typography.Text>
-                  <Typography.Text type="secondary">{item.chars} 字 · {new Date(item.updatedAt).toLocaleString()}</Typography.Text>
+                  <Space><Typography.Text type="secondary">{item.chars} 字 · {new Date(item.updatedAt).toLocaleString()}</Typography.Text><Button type="link" size="small" onClick={() => void showHistory(item.version)}>查看</Button></Space>
                 </Space>
               </List.Item>}
             />
+            {historyVersion && (
+              <Card size="small" title={`历史版本：${historyVersion}`} extra={<Button type="link" onClick={() => { setHistoryVersion(""); setHistoryContent(""); }}>关闭</Button>}>
+                <Typography.Paragraph style={{ whiteSpace: "pre-wrap", marginBottom: 0 }}>{historyContent}</Typography.Paragraph>
+              </Card>
+            )}
           </>
         )}
       </Card>
