@@ -1452,7 +1452,9 @@ app.post("/api/worlds/:worldId/story-units/generate", async (req, res) => {
       const model = typeof req.body?.model === "string" ? req.body.model : undefined;
       const runId = randomUUID();
       const outputDir = path.resolve(".output", id, "story-unit-" + runId);
-      const trace: import("./generate.js").AgentTextTrace = { attempts: [] };
+      const trace: import("./generate.js").AgentTextTrace = {
+        attempts: [], context: { worldId: id, runId, outputDir, kind: "story-unit", stage: "story-unit-design" }
+      };
       const startedAt = new Date().toISOString();
       await mkdir(outputDir, { recursive: true });
       const runRecord = { id: runId, worldId: id, kind: "story-unit", status: "running", startedAt, updatedAt: startedAt, outputDir, storyUnitId: previousId ?? null };
@@ -2802,7 +2804,9 @@ interface StoryPlanTaskInput {
 /** 规划任务第 2 步：加载世界资料与旧状态，生成并激活新计划，登记候选与运行结果。 */
 async function generateStoryPlanTask({ run, worldId, model }: StoryPlanTaskInput): Promise<void> {
   const outputDir = run.outputDir ?? path.resolve(".output", worldId, "story-plan-" + run.id);
-  const trace: import("./generate.js").AgentTextTrace = { attempts: [] };
+  const trace: import("./generate.js").AgentTextTrace = {
+    attempts: [], context: { worldId, runId: run.id, outputDir, kind: "story-plan", stage: "story-plan" }
+  };
   try {
     await saveRun({ ...run, status: "running", updatedAt: new Date().toISOString() });
     const dir = worldDir(worldId);
