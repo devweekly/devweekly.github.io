@@ -97,7 +97,7 @@ export function buildNarrativeMemoryContext(worldDir: string, worldId: string, q
     ...listStoryMemories(worldDir, worldId, "active"),
     ...listStoryMemories(worldDir, worldId, "candidate").filter(memory => memory.memoryType === "creative")
   ];
-  const selected = eligible
+  const ranked = eligible
     .map(memory => {
       const own = terms(memory.content);
       const scope = terms(memory.scope);
@@ -114,11 +114,13 @@ export function buildNarrativeMemoryContext(worldDir: string, worldId: string, q
       return { memory, score: (contentCoverage + scopeCoverage * 0.65 + typeBonus) * (unverifiedSpark ? 0.42 : 1), unverifiedSpark };
     })
     .filter(item => item.score >= 0.045)
-    .sort((a, b) => b.score - a.score || b.memory.occurrences - a.memory.occurrences)
-    .slice(0, 7)
-    .map(({ memory, unverifiedSpark }) => unverifiedSpark
-      ? "- [未验证创意火花，仅供灵感，可忽略或改造] " + memory.content + "（适用范围：" + memory.scope + "；目前仅有 " + memory.occurrences + " 次独立创作记录）"
-      : "- " + memory.content + "（适用范围：" + memory.scope + "；独立创作记录：" + memory.occurrences + " 次）");
+    .sort((a, b) => b.score - a.score || b.memory.occurrences - a.memory.occurrences);
+  const selected = [
+    ...ranked.filter(item => !item.unverifiedSpark).slice(0, 5),
+    ...ranked.filter(item => item.unverifiedSpark).slice(0, 2)
+  ].map(({ memory, unverifiedSpark }) => unverifiedSpark
+    ? "- [未验证创意火花，仅供灵感，可忽略或改造] " + memory.content + "（适用范围：" + memory.scope + "；目前仅有 " + memory.occurrences + " 次独立创作记录）"
+    : "- " + memory.content + "（适用范围：" + memory.scope + "；独立创作记录：" + memory.occurrences + " 次）");
   let compass = "";
   try { compass = readFileSync(resolve(worldDir, "story-memory", "creative-compass.md"), "utf8").trim(); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
