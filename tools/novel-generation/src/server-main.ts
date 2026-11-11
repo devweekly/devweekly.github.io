@@ -8,6 +8,7 @@ import express, { type RequestHandler } from "express";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
 import { createApp, recoverWorkbenchRuns, recoverKnowledgeBuilds } from "./server.js";
 import { WORKBENCH_DEFAULT_PORT, WORKBENCH_MAX_PORT } from "./constants.js";
+import { recoverInterruptedAgentCalls } from "./generate.js";
 import { ensurePrivateLibraryIsolation } from "./library.js";
 
 const here=path.dirname(fileURLToPath(import.meta.url));
@@ -27,6 +28,8 @@ async function main():Promise<void>{
    await ensurePrivateLibraryIsolation(path.join(worldsRoot,entry.name,"library"),entry.name);
   }
  }
+ const interruptedAgentCalls=await recoverInterruptedAgentCalls();
+ if(interruptedAgentCalls)console.warn("[agent-trace] 已将 "+interruptedAgentCalls+" 条上次进程遗留的模型调用标记为 interrupted。");
  await recoverWorkbenchRuns();
  await recoverKnowledgeBuilds();
  const app=createApp();
