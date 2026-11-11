@@ -2,8 +2,8 @@
 // 未配置真实 embedding 时用 SHA-256 派生的稳定伪向量兜底——索引可用但排序只有词面意义，
 // 结果不能当语义检索引用。manifest 记录 embedding 模型与维度；模型不匹配时自动退回
 // 纯文本检索，避免新旧向量混入同一索引。
-import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { loadLibraryChunks } from "./library.js";
 import { buildAnalysisUnits, ensureSourceCanonLibraryIndex } from "./novel-kb.js";
@@ -23,26 +23,73 @@ function stableVector(text:string, dim=8): number[] {
   const bytes=createHash("sha256").update(text).digest();
   return Array.from({length:dim},(_,i)=>((bytes[i%bytes.length]??0)/127.5)-1);
 }
-async function embed(texts:string[]):Promise<number[][]|undefined> {
+async function embed(
+  texts:string[],
+  context:{worldId:string;kind:"index-build"|"query";inputIds?:string[]}
+):Promise<number[][]|undefined> {
   const base=process.env.VANE_EMBEDDING_BASE_URL;
   const model=process.env.VANE_EMBEDDING_MODEL;
   if(!base||!model)return undefined;
+  const runId=randomUUID();
+  const runDir=resolve(".output",context.worldId,"vane-embedding-runs",runId);
+  const startedAt=new Date().toISOString();
+  const endpoint=(()=>{try{const url=new URL(base);return url.origin+url.pathname;}catch{return "configured endpoint";}})();
+  const runRecord={runId,worldId:context.worldId,kind:context.kind,status:"running",startedAt,model,endpoint,timeoutMs:Number(process.env.VANE_EMBEDDING_TIMEOUT_MS??30000),inputCount:texts.length};
+  await mkdir(runDir,{recursive:true});
+  await writeFile(resolve(runDir,"run.json"),JSON.stringify(runRecord,null,2)+"\n","utf8");
+  await writeFile(resolve(runDir,"inputs.json"),JSON.stringify(texts.map((text,index)=>({
+    id:context.inputIds?.[index]??String(index),text,sha256:createHash("sha256").update(text).digest("hex"),chars:text.length
+  })),null,2)+"\n","utf8");
   const results:number[][]=[];
-  for(let offset=0;offset<texts.length;offset+=32){
-    const batch=texts.slice(offset,offset+32);
-    const timeoutMs=Number(process.env.VANE_EMBEDDING_TIMEOUT_MS??30000);
-    if(!Number.isInteger(timeoutMs)||timeoutMs<1000||timeoutMs>300000)throw new Error("VANE_EMBEDDING_TIMEOUT_MS must be between 1000 and 300000.");
-    const response=await fetch(base.replace(/\/$/,"")+"/embeddings",{
-      method:"POST",headers:{"content-type":"application/json",...(process.env.VANE_EMBEDDING_API_KEY?{authorization:"Bearer "+process.env.VANE_EMBEDDING_API_KEY}:{})},
-      body:JSON.stringify({model,input:batch}),signal:AbortSignal.timeout(timeoutMs)
-    });
-    if(!response.ok)throw new Error("Embedding endpoint returned "+response.status);
-    const payload=await response.json() as {data?:Array<{embedding?:number[];index?:number}>};
-    if(!Array.isArray(payload.data)||payload.data.length!==batch.length||payload.data.some(x=>!Array.isArray(x.embedding)))throw new Error("Invalid embeddings response.");
-    const ordered=[...payload.data].sort((left,right)=>(left.index??0)-(right.index??0));
-    results.push(...ordered.map(item=>item.embedding as number[]));
+  let activeBatchDir:string|undefined;
+  let activeBatchStartedAt:string|undefined;
+  try {
+    for(let offset=0;offset<texts.length;offset+=32){
+      const batch=texts.slice(offset,offset+32);
+      const batchNo=Math.floor(offset/32)+1;
+      const batchDir=resolve(runDir,"batch-"+String(batchNo).padStart(3,"0"));
+      activeBatchDir=batchDir;
+      activeBatchStartedAt=new Date().toISOString();
+      await mkdir(batchDir,{recursive:true});
+      await writeFile(resolve(batchDir,"batch.json"),JSON.stringify({
+        batchNo,offset,count:batch.length,status:"running",startedAt:activeBatchStartedAt
+      },null,2)+"\n","utf8");
+      const timeoutMs=Number(process.env.VANE_EMBEDDING_TIMEOUT_MS??30000);
+      if(!Number.isInteger(timeoutMs)||timeoutMs<1000||timeoutMs>300000)throw new Error("VANE_EMBEDDING_TIMEOUT_MS must be between 1000 and 300000.");
+      const response=await fetch(base.replace(/\/$/,"")+"/embeddings",{
+        method:"POST",headers:{"content-type":"application/json",...(process.env.VANE_EMBEDDING_API_KEY?{authorization:"Bearer "+process.env.VANE_EMBEDDING_API_KEY}:{})},
+        body:JSON.stringify({model,input:batch}),signal:AbortSignal.timeout(timeoutMs)
+      });
+      if(!response.ok){const errorBody=await response.text();throw new Error("Embedding endpoint returned "+response.status+": "+errorBody.slice(0,4000));}
+      const payload=await response.json() as {data?:Array<{embedding?:number[];index?:number}>;usage?:unknown};
+      if(!Array.isArray(payload.data)||payload.data.length!==batch.length||payload.data.some(x=>!Array.isArray(x.embedding)))throw new Error("Invalid embeddings response.");
+      const ordered=[...payload.data].sort((left,right)=>(left.index??0)-(right.index??0));
+      const vectors=ordered.map(item=>item.embedding as number[]);
+      await writeFile(resolve(batchDir,"vectors.json"),JSON.stringify({vectors,usage:payload.usage??null},null,2)+"\n","utf8");
+      const completedAt=new Date().toISOString();
+      await writeFile(resolve(batchDir,"batch.json"),JSON.stringify({
+        batchNo,offset,count:batch.length,status:"completed",startedAt:activeBatchStartedAt,
+        completedAt,dimensions:vectors[0]?.length??0
+      },null,2)+"\n","utf8");
+      activeBatchDir=undefined;
+      activeBatchStartedAt=undefined;
+      results.push(...vectors);
+    }
+    await writeFile(resolve(runDir,"run.json"),JSON.stringify({
+      ...runRecord,status:"completed",updatedAt:new Date().toISOString(),dimensions:results[0]?.length??0
+    },null,2)+"\n","utf8");
+    return results;
+  } catch(error) {
+    const message=error instanceof Error?error.message:String(error);
+    if(activeBatchDir)await writeFile(resolve(activeBatchDir,"batch.json"),JSON.stringify({
+      status:"failed",startedAt:activeBatchStartedAt,failedAt:new Date().toISOString(),error:message
+    },null,2)+"\n","utf8").catch(()=>undefined);
+    await writeFile(resolve(runDir,"failure.json"),JSON.stringify({error:message,failedAt:new Date().toISOString()},null,2)+"\n","utf8").catch(()=>undefined);
+    await writeFile(resolve(runDir,"run.json"),JSON.stringify({
+      ...runRecord,status:"failed",updatedAt:new Date().toISOString(),error:message
+    },null,2)+"\n","utf8").catch(()=>undefined);
+    throw error;
   }
-  return results;
 }
 async function openVane(worldId:string,dim:number,indexDir=resolve("worlds",worldId,"vane-index")):Promise<{db:VaneDb;col:VaneCollection}> {
   let module:VaneModule;
@@ -127,7 +174,7 @@ export async function rebuildVaneIndex(worldId:string,worldDir=resolve("worlds",
     }catch(error){
       if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;
     }
-    const vectors=await embed(docs.map(x=>x.text));
+    const vectors=await embed(docs.map(x=>x.text),{worldId,kind:"index-build",inputIds:docs.map(x=>x.id)});
     if(vectors){
       const expected=vectors[0]?.length??0;
       if(!expected||vectors.some(v=>v.length!==expected))throw new Error("Embedding dimensions are inconsistent.");
@@ -171,7 +218,7 @@ export async function searchVane(worldId:string,query:string,limit=6):Promise<Ar
     const {db,col}=await openVane(worldId,dim);
     try{
       const canUseVectors=Boolean(manifest?.vectorMode && manifest.embeddingModel && manifest.embeddingModel===process.env.VANE_EMBEDDING_MODEL);
-      const vectors=canUseVectors?await embed([query]):undefined;
+      const vectors=canUseVectors?await embed([query],{worldId,kind:"query",inputIds:["query"]}):undefined;
       const hits=await col.search({text:query,...(vectors?{vector:vectors[0]}:{}),topK:limit,mode:vectors?"hybrid":"text"});
       return hits.map(hit=>({id:hit.id,score:hit.score,text:String(hit.fields?.body??"")}));
     }finally{await db.close();}

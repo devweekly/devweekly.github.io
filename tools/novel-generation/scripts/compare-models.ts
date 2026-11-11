@@ -165,20 +165,43 @@ async function main(): Promise<void> {
   if (models.length && !models.includes(localModel)) throw new Error("指定模型不在 LM Studio /v1/models 列表中：" + localModel);
   await mkdir(outDir, { recursive: true });
   const records: any[] = [];
-  const manifest: any = { schemaVersion:1, runId, world, createdAt:new Date().toISOString(),
+  const manifest: any = { schemaVersion:1, runId, world, status:"running", createdAt:new Date().toISOString(),
     host:{platform:process.platform,arch:process.arch,node:process.version,os:os.release(),totalMemoryBytes:os.totalmem()},
     settings:{localBaseUrl:base,localModel,deepseekModel,maxChars,timeoutMs,maxTokens,localTemperature:0.2,deepseekSampling:"CodeBuddy SDK defaults; temperature not exposed"},
     localModelsVisibleAtStart:models,localModelInventory:modelInventory,chapters:[] };
+  await writeFile(join(outDir,"manifest.json"),json(manifest),"utf8");
   for (const unit of selected) {
     const source = excerpt(unit.text), prompt = promptFor(unit, source.text);
     const record: any = { chapterId:unit.chapterId,ordinal:unit.ordinal,title:unit.title,originalCharCount:unit.text.length,
       inputCharCount:source.text.length,inputTruncated:source.truncated,sourceHash:sha(unit.text),promptHash:sha(prompt),
-      sourceExcerpt:source.text,prompt,local:null,deepseek:null };
+      sourceExcerpt:source.text,prompt,local:{status:"queued"},deepseek:{status:"queued"} };
     console.log("\n[" + unit.chapterId + "] " + unit.title);
-    try { const r=await localCall(prompt,localModel);record.local={...r,evaluation:parseResult(r.text,source.text)};console.log("  LM Studio: "+r.elapsedMs+"ms"); }
-    catch(e){const error=e as any;record.local={error:e instanceof Error?e.message:String(e),diagnostics:error?.diagnostics};console.error("  LM Studio 失败："+record.local.error);}
-    try { const r=await deepseekCall(prompt);record.deepseek={...r,evaluation:parseResult(r.text,source.text)};console.log("  DeepSeek: "+r.elapsedMs+"ms"); }
-    catch(e){record.deepseek={error:e instanceof Error?e.message:String(e)};console.error("  DeepSeek 失败："+record.deepseek.error);}
+    record.local={status:"running",startedAt:new Date().toISOString()};
+    await writeFile(join(outDir,unit.chapterId+".json"),json(record),"utf8");
+    try {
+      const r=await localCall(prompt,localModel);
+      record.local={...r,status:"completed",finishedAt:new Date().toISOString()};
+      try { record.local.evaluation=parseResult(r.text,source.text); }
+      catch(e) { record.local.evaluationError=e instanceof Error?e.message:String(e); }
+      console.log("  LM Studio: "+r.elapsedMs+"ms");
+    } catch(e) {
+      const error=e as any;
+      record.local={status:"failed",finishedAt:new Date().toISOString(),error:e instanceof Error?e.message:String(e),diagnostics:error?.diagnostics};
+      console.error("  LM Studio 失败："+record.local.error);
+    }
+    await writeFile(join(outDir,unit.chapterId+".json"),json(record),"utf8");
+    record.deepseek={status:"running",startedAt:new Date().toISOString()};
+    await writeFile(join(outDir,unit.chapterId+".json"),json(record),"utf8");
+    try {
+      const r=await deepseekCall(prompt);
+      record.deepseek={...r,status:"completed",finishedAt:new Date().toISOString()};
+      try { record.deepseek.evaluation=parseResult(r.text,source.text); }
+      catch(e) { record.deepseek.evaluationError=e instanceof Error?e.message:String(e); }
+      console.log("  DeepSeek: "+r.elapsedMs+"ms");
+    } catch(e) {
+      record.deepseek={status:"failed",finishedAt:new Date().toISOString(),error:e instanceof Error?e.message:String(e)};
+      console.error("  DeepSeek 失败："+record.deepseek.error);
+    }
     records.push(record);
     await writeFile(join(outDir,unit.chapterId+".json"),json(record),"utf8");
     manifest.chapters.push({chapterId:unit.chapterId,title:unit.title,local:record.local.evaluation??{error:record.local.error},deepseek:record.deepseek.evaluation??{error:record.deepseek.error}});
@@ -203,6 +226,8 @@ async function main(): Promise<void> {
     "- 分析只服务续写，不是正史，不是人物行为约束；文学性始终优先。",""];
   const report=lines.join("\n");
   await writeFile(join(outDir,"REPORT.md"),report,"utf8");
+  manifest.status="completed";manifest.completedAt=new Date().toISOString();
+  await writeFile(join(outDir,"manifest.json"),json(manifest),"utf8");
   const files=[{path:"REPORT.md",data:Buffer.from(report)},{path:"manifest.json",data:Buffer.from(json(manifest))},
     ...records.map(r=>({path:r.chapterId+".json",data:Buffer.from(json(r))}))];
   await mkdir(dirname(zipPath),{recursive:true});await writeFile(zipPath,zip(files));

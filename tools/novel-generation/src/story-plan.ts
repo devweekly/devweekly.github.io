@@ -120,6 +120,7 @@ export function formatStoryPlan(plan: StoryPlan | undefined): string {
 export async function generateStoryPlan(input: {
   worldId: string; worldBible: string; state: StoryState;
   storyAnalysisContext?: string; previousPlan?: StoryPlan; model?: string;
+  trace?: import("./generate.js").AgentTextTrace;
 }): Promise<StoryPlan> {
   const fieldShape = JSON.stringify({
     corePremise: "string", centralConflict: "string", protagonistLongTermGoal: "string",
@@ -144,7 +145,7 @@ export async function generateStoryPlan(input: {
     "生成可直接生效、供后续章节创作参考的完整规划；规划是方向性参考，不是逐章任务清单。"
   ];
 
-  const raw = await runAgentText(sections.join("\n\n"), input.model, DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().plot, true);
+  const raw = await runAgentText(sections.join("\n\n"), input.model, DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().plot, true, input.trace);
   return PlanSchema.parse({
     ...BodySchema.parse(parseJsonObject(raw)),
     schemaVersion: 1,

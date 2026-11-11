@@ -62,7 +62,7 @@ test("recent event context is bounded, chronological, and permits meaningful cal
   assert.ok(buildRecentEventContinuityContext(state, 8, 40).length <= 40);
 });
 
-test("recent event context is empty when there is no recorded history or the limit is zero", () => {
+test("recent event context is empty when there is no recorded history or the limit is zero", async () => {
   const { buildRecentEventContinuityContext } = await import("../src/world-situation.js");
   const state = emptyStoryState("test-world");
   assert.equal(buildRecentEventContinuityContext(state), "");

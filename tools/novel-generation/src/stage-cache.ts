@@ -2,7 +2,7 @@
 // 命中还要过阶段级语义校验——结构合法但内容无效的输出被复用会污染下游所有阶段。
 // 输出 tmp+rename 原子写入并校验哈希；并行阶段更新 manifest 时串行合并防止互相覆盖。
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { loadStoryState, validateStoryState, type StoryState } from "./story-state.js";
 
@@ -71,31 +71,61 @@ export async function runCachedStage(input: {
   const inputHash = hash(input.fingerprint);
   const manifest = await readManifest(manifestPath);
   const previous = manifest.stages[input.key];
+  const safeKey = input.key.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const eventPath = resolve(input.dir, "stage-events.jsonl");
+  const inputPath = resolve(input.dir, "stage-" + safeKey + ".input.txt");
+  // Keep the exact prompt + model/profile fingerprint even on cache hits.
+  await atomicWrite(inputPath, input.fingerprint);
+  const event = async (status: string, details: Record<string, unknown> = {}) => {
+    await appendFile(eventPath, JSON.stringify({
+      at: new Date().toISOString(), stage: input.key, status, inputHash,
+      outputFile: input.outputFile, ...details
+    }) + "\n", "utf8");
+  };
   if (previous && previous.inputHash === inputHash && previous.outputFile === input.outputFile) {
     try {
       const cached = await readFile(resolve(input.dir, input.outputFile), "utf8");
       if (hash(cached) === previous.outputHash && cached.trim()) {
         const value = cached.trimEnd();
-        try { input.validate?.(value); return value; }
-        catch (error) { console.warn("[stage-cache] 阶段缓存语义校验失败，重新执行 " + input.key, error); }
+        try {
+          input.validate?.(value);
+          await event("cache_hit", { outputHash: previous.outputHash, cachedAt: previous.completedAt });
+          return value;
+        } catch (error) {
+          await event("cache_invalid", { error: error instanceof Error ? error.message : String(error) });
+          console.warn("[stage-cache] 阶段缓存语义校验失败，重新执行 " + input.key, error);
+        }
+      } else {
+        await event("cache_corrupt", { expectedOutputHash: previous.outputHash, actualOutputHash: hash(cached) });
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      await event("cache_missing");
     }
+  } else {
+    await event("cache_miss", { previousInputHash: previous?.inputHash ?? null });
   }
 
-  const generated = (await input.execute()).trim();
-  if (!generated) throw new Error("Stage " + input.key + " returned empty output; it was not checkpointed.");
-  input.validate?.(generated);
-  const output = generated + "\n";
-  await atomicWrite(resolve(input.dir, input.outputFile), output);
-  await updateManifest(manifestPath, input.key, {
-    inputHash,
-    outputFile: input.outputFile,
-    outputHash: hash(output),
-    completedAt: new Date().toISOString()
-  });
-  return generated;
+  await event("started");
+  try {
+    const generated = (await input.execute()).trim();
+    if (!generated) throw new Error("Stage " + input.key + " returned empty output; it was not checkpointed.");
+    input.validate?.(generated);
+    const output = generated + "\n";
+    await atomicWrite(resolve(input.dir, input.outputFile), output);
+    const completedAt = new Date().toISOString();
+    await updateManifest(manifestPath, input.key, {
+      inputHash,
+      outputFile: input.outputFile,
+      outputHash: hash(output),
+      completedAt
+    });
+    await event("completed", { outputHash: hash(output), completedAt, outputChars: generated.length });
+    return generated;
+  } catch (error) {
+    await event("failed", { error: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
 }
 
 
