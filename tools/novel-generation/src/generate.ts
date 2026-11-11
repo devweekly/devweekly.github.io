@@ -167,6 +167,7 @@ export interface AgentTextTrace {
   callId?: string;
   prompt?: string;
   rawResponse?: string;
+  context?: { worldId?: string; runId?: string; outputDir?: string; kind?: string; stage?: string };
   attempts: Array<{ model: string; mode: "normal" | "thinking-disabled-retry"; startedAt: string; finishedAt?: string; durationMs?: number; status: "running" | "succeeded" | "failed"; error?: string }>;
 }
 
@@ -201,7 +202,7 @@ export async function runAgentText(
     schemaVersion: 1, callId, status: "running", startedAt, updatedAt: startedAt,
     requestedModel: model ?? null, resolvedModel: resolved.model, modelSource: resolved.source,
     modelAttempts: attempts, timeoutMs, allowFallback,
-    taskProfile: profile ?? null, caller, cwd: process.cwd(), pid: process.pid,
+    taskProfile: profile ?? null, context: trace?.context ?? null, caller, cwd: process.cwd(), pid: process.pid,
     nodeVersion: process.version, argv: process.argv.slice(0, 3)
   };
   await mkdir(callDir, { recursive: true });
