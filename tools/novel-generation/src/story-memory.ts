@@ -121,7 +121,7 @@ export function buildNarrativeMemoryContext(worldDir: string, worldId: string, q
   let remaining = Math.max(0, maxChars - parts[0]!.length);
   if (compass && remaining > 100) {
     const compassBudget = Math.min(700, Math.floor(remaining * 0.48));
-    const compassPart = "## Creative Compass（派生创作方向，仅供启发）\\n" + compass.slice(0, compassBudget);
+    const compassPart = "## Creative Compass（派生创作方向，仅供启发）\n" + compass.slice(0, compassBudget);
     parts.push(compassPart);
     remaining -= compassPart.length + 2;
   }
@@ -131,7 +131,7 @@ export function buildNarrativeMemoryContext(worldDir: string, worldId: string, q
     parts.push(item);
     remaining -= cost;
   }
-  return parts.join("\\n\\n");
+  return parts.join("\n\n");
 }
 
 /** Dreaming over one completed run. Facts, summaries and transient character states are explicitly out of scope. */
