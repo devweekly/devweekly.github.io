@@ -2846,6 +2846,10 @@ async function generateStoryPlanTask({ run, worldId, model }: StoryPlanTaskInput
     const query = storyPlanQuery(state);
     const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(dir, worldId), query);
     await mkdir(outputDir, { recursive: true });
+    await writeFile(path.join(outputDir, "run.json"), JSON.stringify({
+      runId: run.id, worldId, kind: "story-plan", status: "running", startedAt: run.createdAt,
+      agentCallId: null, updatedAt: new Date().toISOString()
+    }, null, 2) + "\n", "utf8");
     await writeFile(path.join(outputDir, "input-snapshot.json"), JSON.stringify({
       worldId, worldBible, state, storyAnalysisContext, previousPlan: previousPlan ?? null, requestedModel: model ?? null
     }, null, 2) + "\n", "utf8");
