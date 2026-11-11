@@ -248,6 +248,15 @@ export async function runAgentText(
               subtype: typeof raw.subtype === "string" ? raw.subtype : undefined,
               textDelta: delta || undefined,
               error: raw.type === "result" && raw.subtype !== "success" ? (raw.errors ?? raw.error ?? raw.subtype) : undefined,
+              resultMetadata: raw.type === "result" ? {
+                durationMs: raw.duration_ms ?? raw.durationMs,
+                totalCostUsd: raw.total_cost_usd ?? raw.totalCostUsd,
+                usage: raw.usage ?? null,
+                modelUsage: raw.modelUsage ?? null,
+                numTurns: raw.num_turns ?? raw.numTurns,
+                stopReason: raw.stop_reason ?? raw.stopReason,
+                isError: raw.is_error ?? raw.isError
+              } : undefined,
               messageCount: state.messageCount
             };
             await appendFile(resolve(attemptDir, "events.jsonl"), JSON.stringify(event) + "\n", "utf8");
