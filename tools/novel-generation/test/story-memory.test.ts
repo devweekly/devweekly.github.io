@@ -45,7 +45,8 @@ test("story memory requires independent run evidence before context injection", 
     const nextState = emptyStoryState("test-world");
     nextState.currentPosition = "下一章";
     syncStoryState(worldDir, nextState);
-    assert.equal(listStoryMemories(worldDir, "test-world", "active").length, 1, "章节状态替换不得清空长期记忆");
+    assert.equal(listStoryMemories(worldDir, "test-world", "all").length, 1, "章节状态替换不得清空长期记忆");
+    assert.equal(listStoryMemories(worldDir, "test-world", "active").length, 0, "已淘汰记忆不得重新进入检索");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
