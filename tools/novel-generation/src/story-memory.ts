@@ -1,7 +1,7 @@
 // Long-term narrative memory: retain reusable tacit patterns, never chapter facts or transient state.
 import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
-import { resolve, basename } from "node:path";
+import { resolve, basename, relative } from "node:path";
 import { jsonrepair } from "jsonrepair";
 import { z } from "zod";
 import { listStoryMemories, recordStoryMemoryCandidates, type StoryMemoryType } from "./database.js";
@@ -85,7 +85,7 @@ export async function dreamOnCompletedRun(input: {
     return [{
       memoryId: memoryId(type, memory.content), memoryType: type, content: memory.content,
       scope: memory.scope ?? "world",
-      evidence: { runId, quote: memory.evidence, source: chapterPath }
+      evidence: { runId, quote: memory.evidence, source: relative(process.cwd(), chapterPath) }
     }];
   });
   const recorded = recordStoryMemoryCandidates(input.worldDir, input.worldId, candidates);
