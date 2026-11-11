@@ -274,3 +274,12 @@ CLI 命令（均经 `npm run dev --`）：
 - 每章不再自动运行只读 Style Regression 和 Post-review Literary Check；它们不改稿、不影响验收，移至专项评估。Reader 仍为显式可选的盲读观察。
 - 新宇宙章节生成自动等待最低知识准备：style-profile、character-profiles、character-states、as-of-dossier。等待在 CLI 子进程内进行，API 先返回 queued/running 任务；可选 corpus-craft/Vane 不阻塞。失败则安全停止并保留已完成阶段缓存；重新触发构建时复用缓存。
 - 相关实现以 `src/literary-edit.ts`、`src/workflow.ts`、`src/long-chapter.ts`、`src/cli.ts`、`src/server.ts` 和 ADR 0007 为准。旧版关于每章 Anti-AI 三阶段、每章自动 Style Regression、两轮终审修复的描述已被 ADR 0007 取代。
+
+
+## Story Memory 与 Dreaming 原则
+
+- 不需要记下所有细节：完整正文、Transcript、原文和审核记录仍是事实来源；长期 Memory 只保存有复用价值的隐性经验。
+- 只记隐性规则，不记易变事实：人物当前状态、位置、装备、关系快照、事件和伏笔状态属于 Canon / Story State，不得复制到经验记忆。
+- 别用死板的 Prompt 限制模型：Memory 只能作为可选启发，模型可以忽略、改造或突破；不得将其变成人物模板、强制剧情清单或文风配额。
+- Dreaming 产出的记忆必须关联来源运行记录和逐字证据；不同运行的重复证据才可晋级到常规上下文。无价值时不记。
+- Memory 只写入 story.db 的独立表，不得被每章 Story State 快照替换操作清空；不得修改 Canon。
