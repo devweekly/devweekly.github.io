@@ -4,7 +4,7 @@ import { query } from "@tencent-ai/agent-sdk";
 import { randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { buildQueryOptions, resolveAgentModel } from "./agent-runtime.js";
+import { buildQueryOptions, resolveAgentModel, TEXT_ONLY_SYSTEM_PROMPT, isManagedSession } from "./agent-runtime.js";
 import { thinkingOption, type TaskProfile } from "./task-profiles.js";
 import { GENERATION_DEFAULT_TIMEOUT_MS, HEARTBEAT_AFTER_MS, HEARTBEAT_INTERVAL_MS } from "./constants.js";
 
@@ -203,10 +203,13 @@ export async function runAgentText(
     requestedModel: model ?? null, resolvedModel: resolved.model, modelSource: resolved.source,
     modelAttempts: attempts, timeoutMs, allowFallback,
     taskProfile: profile ?? null, context: trace?.context ?? null, caller, cwd: process.cwd(), pid: process.pid,
-    nodeVersion: process.version, argv: process.argv.slice(0, 3)
+    nodeVersion: process.version, argv: process.argv.slice(0, 3), managedSession: isManagedSession(),
+    sdkPolicy: { permissionMode: "default", settingSources: [], persistSession: false, tools: [], allowedTools: [], maxTurns: 1 },
+    thinking: profile ? thinkingOption(profile) : { type: "disabled" }, effort: profile?.effort ?? "low"
   };
   await mkdir(callDir, { recursive: true });
   await atomicText(resolve(callDir, "prompt.txt"), prompt);
+  await atomicText(resolve(callDir, "system-prompt.txt"), TEXT_ONLY_SYSTEM_PROMPT);
   await atomicJson(resolve(callDir, "run.json"), record);
   await atomicText(resolve(callDir, "model-trace.json"), JSON.stringify({ requestedModel: model ?? null, resolvedModel: resolved.model, modelSource: resolved.source, attempts: [] }, null, 2) + "\n");
 
