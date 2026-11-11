@@ -4,7 +4,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { resolve, basename, relative } from "node:path";
 import { jsonrepair } from "jsonrepair";
 import { z } from "zod";
-import { listStoryMemories, recordStoryMemoryCandidates, type StoryMemoryType } from "./database.js";
+import { listStoryMemories, recordStoryMemoryCandidates, type StoryMemoryType, type StoryMemoryRow } from "./database.js";
 import { runAgentText } from "./generate.js";
 
 const CandidateSchema = z.object({
@@ -28,6 +28,29 @@ function terms(value: string): Set<string> {
   return result;
 }
 
+function similarity(left: string, right: string): number {
+  const a = terms(left);
+  const b = terms(right);
+  if (!a.size || !b.size) return 0;
+  let intersection = 0;
+  for (const term of a) if (b.has(term)) intersection++;
+  return intersection / (a.size + b.size - intersection);
+}
+
+function matchingMemory(
+  candidate: { memoryType: StoryMemoryType; content: string; scope: string },
+  existing: StoryMemoryRow[]
+): StoryMemoryRow | undefined {
+  let best: { memory: StoryMemoryRow; score: number } | undefined;
+  for (const memory of existing) {
+    if (memory.memoryType !== candidate.memoryType) continue;
+    const contentScore = similarity(candidate.content, memory.content);
+    const scopeScore = similarity(candidate.scope, memory.scope);
+    const score = contentScore * 0.88 + scopeScore * 0.12;
+    if (score >= 0.72 && (!best || score > best.score)) best = { memory, score };
+  }
+  return best?.memory;
+}
 function excerpt(value: string, budget: number): string {
   if (value.length <= budget) return value;
   const head = Math.floor(budget * 0.42);
@@ -139,13 +162,16 @@ export async function dreamOnCompletedRun(input: {
     attempts: [], context: { worldId: input.worldId, runId, kind: "memory-dreaming", stage: "consolidation" }
   });
   const parsed = OutputSchema.parse(JSON.parse(jsonrepair(raw)));
+  const existing = listStoryMemories(input.worldDir, input.worldId, "all");
   const candidates = parsed.memories.flatMap(memory => {
     const source = evidenceFiles.find(file => file.content.includes(memory.evidence))?.source;
     if (!source) return [];
     const type = memory.type as StoryMemoryType;
+    const scope = memory.scope ?? "world";
+    const match = matchingMemory({ memoryType: type, content: memory.content, scope }, existing);
     return [{
-      memoryId: memoryId(type, memory.content), memoryType: type, content: memory.content,
-      scope: memory.scope ?? "world",
+      memoryId: match?.memoryId ?? memoryId(type, memory.content),
+      memoryType: type, content: memory.content, scope,
       evidence: { runId, quote: memory.evidence, source }
     }];
   });
