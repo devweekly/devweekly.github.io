@@ -22,6 +22,12 @@ test("stage cache reuses only matching prompt fingerprints and intact output", a
     await writeFile(resolve(dir, "draft.md"), "corrupted\n", "utf8");
     assert.equal(await run("prompt-b"), "chapter 3");
     assert.equal(calls, 3);
+    assert.equal(await readFile(resolve(dir, "stage-draft.input.txt"), "utf8"), "prompt-b");
+    const events = (await readFile(resolve(dir, "stage-events.jsonl"), "utf8")).trim().split("\n")
+      .map(line => JSON.parse(line) as {status:string});
+    assert.ok(events.some(event => event.status === "cache_hit"));
+    assert.ok(events.some(event => event.status === "cache_miss"));
+    assert.ok(events.some(event => event.status === "completed"));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
