@@ -201,14 +201,14 @@ export async function dreamOnCompletedRun(input: {
   const styleAnchors: string[] = [];
   try {
     const profile = (await readFile(resolve(input.worldDir, "style-profile.md"), "utf8")).trim();
-    if (profile) styleAnchors.push("## 已激活 Style Profile（抽象风格锚点）\\n" + excerpt(profile, 2600));
+    if (profile) styleAnchors.push("## 已激活 Style Profile（抽象风格锚点）\n" + excerpt(profile, 2600));
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   try {
     const styleDir = resolve(input.worldDir, "style-references");
     const names = (await readdir(styleDir)).filter(name => /\\.(md|txt)$/i.test(name) && !name.startsWith(".")).sort().slice(0, 3);
     for (const name of names) {
       const sample = (await readFile(resolve(styleDir, name), "utf8")).trim();
-      if (sample) styleAnchors.push("## 已认可原文风格样本：" + name + "\\n" + excerpt(sample, Math.floor(2400 / Math.max(1, names.length))));
+      if (sample) styleAnchors.push("## 已认可原文风格样本：" + name + "\n" + excerpt(sample, Math.floor(2400 / Math.max(1, names.length))));
     }
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   try { previousCompass = readFileSync(resolve(input.worldDir, "story-memory", "creative-compass.md"), "utf8").trim(); }
@@ -216,7 +216,7 @@ export async function dreamOnCompletedRun(input: {
   const activeMemoryContext = [
     ...existing.filter(memory => memory.status === "active").slice(0, 12)
       .map(memory => "- [" + memory.memoryType + "] " + memory.content + "（范围：" + memory.scope + "）"),
-    previousCompass ? "既有 Creative Compass（请在保留仍有价值内容的基础上修订，不要无故丢弃）：\\n" + previousCompass : ""
+    previousCompass ? "既有 Creative Compass（请在保留仍有价值内容的基础上修订，不要无故丢弃）：\n" + previousCompass : ""
   ].filter(Boolean).join("\n");
   const prompt = [
     "你是小说项目的离线记忆整理器（Dreaming），不是剧情总结器。",
@@ -231,6 +231,7 @@ export async function dreamOnCompletedRun(input: {
     "每条 evidence 必须是下方材料中的连续逐字片段，用来说明这条经验从何而来。不要输出正文摘要。",
     "罕见但有文学价值的创意、独特人物互动或一次性叙事突破，即使只出现一次，也可以作为 creative candidate 提出；它会保持 candidate 状态，不要求直接晋级 active。不要为了重复次数而忽略独特的创作发现。",
     "已有 active memories（用于跨故事综合，不代表不可修改）：\n" + (activeMemoryContext || "暂无"),
+    "正式风格锚点（优先于生成结果）：\n" + (styleAnchors.join("\n\n") || "当前 world 没有已激活的 Style Profile 或认可样本；不要臆造原作者风格判断。"),
     "只输出 JSON：{memories:[{type:'narrative'|'creative'|'operational',content:string,scope?:string,evidence:string}],creativeCompass?:string}",
     "材料：\n" + boundedEvidenceSource
   ].join("\n\n");
@@ -255,7 +256,20 @@ export async function dreamOnCompletedRun(input: {
   if (parsed.creativeCompass?.trim()) {
     const compassDir = resolve(input.worldDir, "story-memory");
     await mkdir(compassDir, { recursive: true });
-    await writeFile(resolve(compassDir, "creative-compass.md"), parsed.creativeCompass.trim().slice(0, 1200) + "\n", "utf8");
+    const target = resolve(compassDir, "creative-compass.md");
+    const nextContent = parsed.creativeCompass.trim().slice(0, 1200) + "\n";
+    try {
+      const previous = await readFile(target, "utf8");
+      if (previous !== nextContent) {
+        const historyDir = resolve(compassDir, ".history");
+        await mkdir(historyDir, { recursive: true });
+        const version = new Date().toISOString().replace(/[:.]/g, "-") + "-" + createHash("sha256").update(previous).digest("hex").slice(0, 8) + ".md";
+        await writeFile(resolve(historyDir, version), previous, { encoding: "utf8", flag: "wx" });
+      }
+    } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    const temporary = target + ".tmp-" + createHash("sha256").update(nextContent).digest("hex").slice(0, 8);
+    await writeFile(temporary, nextContent, "utf8");
+    await rename(temporary, target);
     compassUpdated = true;
   }
   return { recorded, candidates: candidates.length, compassUpdated };
