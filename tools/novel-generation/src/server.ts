@@ -445,7 +445,7 @@ app.get("/api/worlds/:worldId/dashboard", async (req, res) => {
 app.get("/api/worlds/:worldId/story-memories", (req, res) => {
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
-    const status = req.query.status === "candidate" || req.query.status === "active" ? req.query.status : "all";
+    const status = ["candidate", "active", "superseded", "rejected"].includes(String(req.query.status)) ? req.query.status as "candidate" | "active" | "superseded" | "rejected" : "all";
     res.json({ memories: listStoryMemories(worldDir(id), id, status) });
   } catch (error) { sendError(res, error); }
 });
