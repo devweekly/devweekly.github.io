@@ -62,7 +62,14 @@ export async function dreamOnCompletedRun(input: {
     const value = await readFile(resolve(input.runDir, name), "utf8");
     return "\n\n## " + name + "\n" + value.slice(0, 5000);
   }));
-  const evidenceSource = chapter.slice(0, 26000) + reviews.join("").slice(0, 10000);
+  const evidenceFiles = [
+    { source: relative(process.cwd(), chapterPath), content: chapter.slice(0, 26000) },
+    ...await Promise.all(reviewFiles.map(async name => ({
+      source: relative(process.cwd(), resolve(input.runDir, name)),
+      content: (await readFile(resolve(input.runDir, name), "utf8")).slice(0, 5000)
+    })))
+  ];
+  const evidenceSource = evidenceFiles.map(file => "## " + file.source + "\\n" + file.content).join("\\n\\n").slice(0, 36000);
   const runId = basename(resolve(input.runDir));
   const prompt = [
     "你是小说项目的离线记忆整理器（Dreaming），不是剧情总结器。",
@@ -80,12 +87,13 @@ export async function dreamOnCompletedRun(input: {
   });
   const parsed = OutputSchema.parse(JSON.parse(jsonrepair(raw)));
   const candidates = parsed.memories.flatMap(memory => {
-    if (!evidenceSource.includes(memory.evidence)) return [];
+    const source = evidenceFiles.find(file => file.content.includes(memory.evidence))?.source;
+    if (!source) return [];
     const type = memory.type as StoryMemoryType;
     return [{
       memoryId: memoryId(type, memory.content), memoryType: type, content: memory.content,
       scope: memory.scope ?? "world",
-      evidence: { runId, quote: memory.evidence, source: relative(process.cwd(), chapterPath) }
+      evidence: { runId, quote: memory.evidence, source }
     }];
   });
   const recorded = recordStoryMemoryCandidates(input.worldDir, input.worldId, candidates);
