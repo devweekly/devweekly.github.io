@@ -2,7 +2,7 @@
 // 中断重试与心跳都收在这里）。其他模块一律经 runAgentText 取模型文本，避免各处自建调用策略。
 import { query } from "@tencent-ai/agent-sdk";
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { buildQueryOptions, resolveAgentModel } from "./agent-runtime.js";
 import { thinkingOption, type TaskProfile } from "./task-profiles.js";
@@ -223,7 +223,6 @@ export async function runAgentText(
   let attemptIndex = 0;
   try {
     for (const candidate of attempts) {
-      attemptIndex += 1;
       const fallback = attempts.find(item => item !== candidate);
       const execute = async (mode: "normal" | "thinking-disabled-retry", attemptProfile?: TaskProfile): Promise<string> => {
         attemptIndex += 1;
@@ -260,6 +259,10 @@ export async function runAgentText(
           if (trace) trace.rawResponse = output;
           await atomicText(resolve(attemptDir, "raw-response.txt"), output);
           await atomicJson(resolve(attemptDir, "attempt.json"), attempt);
+          await atomicJson(resolve(callDir, "model-trace.json"), {
+            requestedModel: model ?? null, resolvedModel: resolved.model, modelSource: resolved.source,
+            timeoutMs, allowFallback, taskProfile: profile ?? null, attempts: attemptRecords
+          });
           return output;
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -268,6 +271,10 @@ export async function runAgentText(
           const partial = await readFile(resolve(attemptDir, "partial-response.txt"), "utf8").catch(() => "");
           await atomicText(resolve(attemptDir, "failure.txt"), message);
           await atomicJson(resolve(attemptDir, "attempt.json"), { ...attempt, partialResponseChars: partial.length, observedLength });
+          await atomicJson(resolve(callDir, "model-trace.json"), {
+            requestedModel: model ?? null, resolvedModel: resolved.model, modelSource: resolved.source,
+            timeoutMs, allowFallback, taskProfile: profile ?? null, attempts: attemptRecords
+          });
           throw error;
         }
       };
@@ -301,6 +308,37 @@ export async function runAgentText(
     });
     throw error;
   }
+}
+
+/**
+ * Called once before a CLI/Workbench process begins accepting work. Any call
+ * still marked running belongs to a process that died before finalization.
+ */
+export async function recoverInterruptedAgentCalls(): Promise<number> {
+  const root = resolve(".output", "agent-calls");
+  let entries: string[];
+  try { entries = await readdir(root); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    throw error;
+  }
+  let recovered = 0;
+  for (const entry of entries) {
+    const dir = resolve(root, entry);
+    try {
+      const raw = JSON.parse(await readFile(resolve(dir, "run.json"), "utf8")) as Record<string, unknown>;
+      if (raw.status !== "running") continue;
+      const at = new Date().toISOString();
+      const error = "进程在模型调用完成前退出；已在下次启动时标记为 interrupted。";
+      await atomicJson(resolve(dir, "run.json"), { ...raw, status: "interrupted", updatedAt: at, error });
+      await atomicText(resolve(dir, "failure.txt"), error);
+      recovered += 1;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      console.error("[agent-trace] 无法恢复调用记录 " + dir + ": " + String(error));
+    }
+  }
+  return recovered;
 }
 
 export async function generateStory(input: GenerateStoryInput): Promise<string> {
