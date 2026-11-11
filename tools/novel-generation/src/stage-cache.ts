@@ -80,7 +80,7 @@ export async function runCachedStage(input: {
     await appendFile(eventPath, JSON.stringify({
       at: new Date().toISOString(), stage: input.key, status, inputHash,
       outputFile: input.outputFile, ...details
-    }) + "\\n", "utf8");
+    }) + "\n", "utf8");
   };
   if (previous && previous.inputHash === inputHash && previous.outputFile === input.outputFile) {
     try {
@@ -111,7 +111,7 @@ export async function runCachedStage(input: {
     const generated = (await input.execute()).trim();
     if (!generated) throw new Error("Stage " + input.key + " returned empty output; it was not checkpointed.");
     input.validate?.(generated);
-    const output = generated + "\\n";
+    const output = generated + "\n";
     await atomicWrite(resolve(input.dir, input.outputFile), output);
     const completedAt = new Date().toISOString();
     await updateManifest(manifestPath, input.key, {
