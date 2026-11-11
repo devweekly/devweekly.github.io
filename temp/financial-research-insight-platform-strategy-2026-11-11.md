@@ -311,7 +311,7 @@ ChatGPT Financial Services 内建数据的索引和托管安排，可能与企�
 
 ### 6.4 参考落地架构：Snowflake + Amazon Bedrock + LangGraph + LangSmith
 
-如果机构已经把 Bloomberg、LSEG、MSCI 等外部金融数据以及内部持仓、风险和研究数据集中在 Snowflake，建议采用 **Snowflake-centric Data Plane + 自建 AWS Agent Plane**。这里的 Bedrock 只作为模型供应商和推理 API，不采用 Amazon Bedrock AgentCore，不使用 Bedrock 托管 Agent Runtime、Gateway、Memory 或 Orchestration。Agent 的执行、状态、工具调用和审批由机构自己的服务负责。
+如果机构已经把 Bloomberg、LSEG、MSCI 等外部金融数据以及内部持仓、风险和研究数据集中在 Snowflake，建议采用 **Snowflake-centric Data Plane + 自建 Agent Plane + 独立 AI Control Plane**。模型侧以 Claude 或 OpenAI 当前最强、且经过机构评测与合同批准的模型为主，通过 LiteLLM Proxy 统一路由和治理；不把模型厂商的 Agent 产品当作企业运行时。Agent 的执行、状态、工具调用和审批由机构自己的服务负责。
 
 #### 6.4.1 架构边界与组件职责
 
@@ -321,7 +321,7 @@ ChatGPT Financial Services 内建数据的索引和托管安排，可能与企�
 | 应用接入 | Web BFF、API Gateway、企业 SSO | 用户身份、会话、请求入口、速率限制 | 机构自建 / 企业标准服务 |
 | Policy & Entitlement | Identity Context、Policy Decision Service、Data Entitlement Service | 用户、Desk、Portfolio、客户、数据供应商许可、Information Barrier 判定 | 机构自建权威服务 |
 | Agent Orchestration | LangGraph | 研究任务状态图、节点编排、并行任务、重试、检查点、人工复核和恢复 | 机构自建并部署 |
-| Model Access | Amazon Bedrock Runtime | 通过 Converse / ConverseStream 或适用的模型 API 调用 Claude 等模型；统一模型配置、限额和模型版本 | 纯模型供应商 |
+| Model Access | LiteLLM Proxy + Claude API / OpenAI API | 统一模型别名、路由、超时、重试、Fallback、预算、速率限制、密钥隔离和调用日志 | 机构运营的模型访问网关；模型由供应商提供 |
 | Tool Gateway | Financial Tool API / MCP Server（可选协议） | 提供经过授权的金融查询、文档检索和计算工具；执行输入校验、权限检查和输出裁剪 | 机构自建 |
 | Data & Semantic Plane | Snowflake | 供应商数据、内部金融数据、标准化数据产品、Semantic Views、历史快照 | 企业金融数据底座 |
 | Retrieval | Snowflake SQL / Semantic Views、Cortex Search（经安全验证后）、全文检索 | 结构化查询与文档证据检索分流 | 以 Snowflake 为主，必要时补充检索服务 |
@@ -359,9 +359,9 @@ Research Workbench / Insight Hub
 
 LangGraph 可以运行在机构现有的 Kubernetes / EKS 或 ECS 服务环境中。它是应用运行时，不是一个额外的供应商 Agent 平台。对长时间研究任务，使用 LangGraph Checkpointer 持久化状态；将任务状态、人工审批和业务结果写入 PostgreSQL 等权威业务存储。不要把 LangSmith Trace 当作唯一的 Checkpoint 或审计记录。
 
-Amazon Bedrock 仅负责推理。应用通过 Bedrock Runtime API 调用模型，建议优先评估统一的 Converse / ConverseStream 接口，以减少不同模型消息格式的耦合；模型能力和接口支持范围仍需按所选模型核对。参考 [Amazon Bedrock APIs](https://docs.aws.amazon.com/bedrock/latest/userguide/apis.html) 和 [Converse API](https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html)。
+Amazon LiteLLM 是模型访问网关，不是完整的 AI Control Plane。应用只调用内部 LiteLLM Proxy 的稳定模型别名，不直接持有 Claude / OpenAI API Key，也不把供应商模型 ID 写进业务工作流。平台团队维护模型别名映射、模型版本、Fallback、速率和预算策略。复杂研究任务路由到经评测批准的 Claude 或 OpenAI 高端模型；升级必须经过金融任务回归评测和灰度。参考 [LiteLLM Router](https://docs.litellm.ai/docs/routing) 和 [LiteLLM Key / Team Router Settings](https://docs.litellm.ai/docs/proxy/keys_teams_router_settings)。
 
-明确排除：**不使用 Bedrock AgentCore。** 不让 Bedrock 接管 Agent 生命周期、工具网关、身份、会话记忆或工作流。若未来确实需要托管运行时，应作为单独架构决策重新评估，而不是默认引入。
+明确排除：**不使用 Bedrock AgentCore。** 不让模型供应商接管企业 Agent 生命周期、工具网关、身份、会话记忆或工作流。Claude / OpenAI 是可替换的模型供应商；LiteLLM 负责模型接入和路由，企业 Control Plane 负责策略治理，企业 Agent Runtime 负责执行。
 
 #### 6.4.2 Snowflake 数据分层
 
@@ -488,7 +488,167 @@ LangSmith 的 Trace 需要脱敏，避免将未授权的 Bloomberg / LSEG / MSCI
 
 **推荐首个技术切片：** 选一个行业、一个研究团队和一组授权发行人，使用 Snowflake 中已有的 Bloomberg / LSEG / MSCI 数据及内部研究材料；先交付“财报分析 → 证据核验 → Thesis Delta 草稿 → 分析师批准”的完整闭环。该切片能够同时验证数据口径、PIT、权限、模型质量、工作流恢复和 LangSmith 观测，比先搭一个通用聊天机器人更能暴露真实架构问题。
 
-### 6.5 不要先建一个多 Agent 大系统
+
+### 6.5 面向 Claude / OpenAI 最强模型的三种企业架构
+
+当机构把 Claude 或 OpenAI 的高端模型作为主要推理引擎，架构重点不是“怎样部署一个 Agent”，而是怎样在模型持续升级、供应商可能切换、金融业务不断扩展的情况下保持企业控制权。三种方案共享相同安全底线，区别在于组织边界、领域自治和长期资产沉淀方式。
+
+共同原则：所有服务端模型调用经过企业运营的 LiteLLM Proxy；应用只使用内部模型别名，不直接连接供应商 API，不在浏览器、Skill、MCP 配置或 Agent Prompt 中保存供应商密钥。最强模型用于复杂研究、跨文档推理和关键论证；抽取、分类、格式转换等任务使用成本更低的模型。模型别名是企业内部服务合同，具体模型 ID、版本、区域、Fallback 和参数由平台配置控制。升级先跑金融任务评测，再灰度，最后全量。LiteLLM 解决模型接入、路由、预算和供应商抽象，不承担用户授权、金融数据 entitlement、Agent 生命周期、业务审批或监管审计的最终责任。
+
+#### 6.5.1 方案 A：Centralized AI Platform（集中式企业 AI 平台）
+
+适合大型银行、保险集团、资产管理集团，或希望统一建设企业 AI 基础设施的机构。平台团队统一运营模型网关、Agent Runtime、工具目录、策略服务、审计和数据访问入口；业务团队通过注册的 Agent、Skill 和 Workflow 使用平台能力。
+
+优点是治理一致、成本集中、模型切换简单、审计和运营标准统一。代价是平台团队容易成为瓶颈；必须提供领域自助注册、测试、评测和发布机制，不能让所有工作流修改都排队等待中央团队。
+
+<figure><a href="diagrams/financial-ai-architecture-centralized.html"><img src="diagrams/financial-ai-architecture-centralized.svg" alt="集中式企业 AI 平台架构图" /></a><figcaption>图：集中式企业 AI 平台。点击打开可缩放的完整 HTML 架构图。</figcaption></figure>
+
+#### 6.5.2 方案 B：Federated Domain AI（联邦式领域 AI）
+
+适合已经有成熟投研、组合管理、风险、财富管理、合规等领域技术团队的金融集团。中央平台提供统一 Control Plane、模型网关、身份和数据契约；各领域运行自己的 Agent Runtime、工作流、Skill、领域工具和评测集。
+
+优点是领域团队拥有业务语义和工作流所有权，能够独立迭代。代价是需要严格的注册协议、策略执行点、工具合同和审计事件格式，否则每个领域都会自建模型代理、权限、日志和 MCP 服务，形成新的影子 IT。
+
+<figure><a href="diagrams/financial-ai-architecture-federated.html"><img src="diagrams/financial-ai-architecture-federated.svg" alt="联邦式领域 AI 架构图" /></a><figcaption>图：联邦式领域 AI。点击打开可缩放的完整 HTML 架构图。</figcaption></figure>
+
+#### 6.5.3 方案 C：Research Intelligence Fabric（研究智能能力网络）
+
+适合把研究能力作为长期机构资产，而不只是一个 Agent 平台的金融机构。它将模型和 Agent 视为可替换的计算层，把差异化沉淀在金融数据产品、实体与指标语义、Point-in-Time、Research Memory、Claim & Evidence、确定性计算和业务反馈中。Workbench、Insight Hub、Portfolio、Risk 等应用通过同一组领域能力组合服务。
+
+优点是长期竞争壁垒最强；即使从 Claude 切换 OpenAI，研究记忆、证据链、计算规则和业务语义仍然连续。代价是需要逐步建设领域数据产品、时间语义和证据服务，不能只部署模型网关就宣称拥有 Fabric。
+
+<figure><a href="diagrams/financial-ai-architecture-fabric.html"><img src="diagrams/financial-ai-architecture-fabric.svg" alt="Research Intelligence Fabric 架构图" /></a><figcaption>图：Research Intelligence Fabric。点击打开可缩放的完整 HTML 架构图。</figcaption></figure>
+
+#### 6.5.4 选择与演进
+
+| 维度 | 集中式平台 | 联邦式领域 AI | Research Intelligence Fabric |
+| --- | --- | --- | --- |
+| 组织方式 | 中央平台运营一套运行时 | 中央治理、领域自治运行 | 共享领域能力网络，应用自由组合 |
+| Agent Runtime | 集中托管 | 各领域可独立选择 | 可集中或联邦，统一运行合同 |
+| 模型访问 | 统一 LiteLLM | 共享 LiteLLM，可按领域策略路由 | 统一模型接口、多供应商 |
+| 语义与记忆 | 中央数据 / 研究服务 | 领域语义自治，共享实体标准 | 统一金融语义、PIT、Memory、Evidence |
+| 主要难点 | 中央团队瓶颈 | 策略一致性和影子平台 | 领域资产质量、版本兼容和跨域授权 |
+
+不必一次性三选一。建议先以集中式平台建立 LiteLLM、身份、Policy、Tool Gateway、审计和 Agent Runtime；领域成熟后演进为联邦执行；实体、指标、研究记忆、证据和计算服务成熟后形成 Fabric。最终可以是“联邦式执行 + 集中式控制 + Fabric 式领域资产”。
+
+### 6.6 Control Plane：企业应该自己建设什么
+
+Control Plane 不是管理后台，也不是 LiteLLM、LangSmith 或 MCP Registry 中任意一个产品。它是企业对 AI 能力进行注册、授权、发布、运行约束、监控、撤销和追责的权威控制面。Control Plane 管理规则和期望状态；Data Plane 在每次请求、工具调用、查询和业务写入时执行规则。
+
+<figure><a href="diagrams/financial-ai-control-plane.html"><img src="diagrams/financial-ai-control-plane.svg" alt="金融企业 AI Control Plane 架构图" /></a><figcaption>图：Control Plane 管理策略，Data Plane 逐跳执行策略。</figcaption></figure>
+
+#### 6.6.1 核心组件
+
+| 组件 | 管理职责 |
+| --- | --- |
+| Identity & Context | SSO 身份、组织、Desk、Portfolio、Legal Entity、区域、设备和会话上下文 |
+| Policy Administration | 策略定义、版本、审批、发布、回滚、例外到期 |
+| Policy Decision Service（PDP） | 基于主体、资源、动作、用途、数据许可和风险等级作出 Allow / Deny / Mask / Filter / Require Approval 决策 |
+| Policy Enforcement Points（PEP） | 在 API Gateway、Agent Runtime、Tool Gateway、SQL Gateway、结果输出和 Write-back 处执行决策 |
+| Capability Registry | Agent、Workflow、Skill、MCP Server、Tool、Model Alias、Semantic Data Product 的注册、Owner、版本、风险级别和状态 |
+| Model Gateway | LiteLLM 配置、模型别名、供应商凭证、路由、Fallback、预算、速率和使用统计 |
+| Release & Runtime Governance | Agent 代码 / 镜像、Prompt / Skill、工具 Schema、依赖、环境、发布通道、回滚和 Kill Switch |
+| Evaluation & Observability | 离线评测、红队测试、线上质量、延迟、Token 成本、异常率、漂移和告警 |
+| Audit & Evidence | 策略判定、模型调用关联、工具输入输出摘要、数据版本、审批、结果和业务回执 |
+
+建议采用独立管理 API 和策略服务；注册信息可先由 PostgreSQL 保存，策略以 Git 管理，经 CI 校验后发布。策略引擎可评估 OPA 或 Cedar；金融业务 entitlement 由机构自己的授权服务提供权威数据。
+
+#### 6.6.2 PDP / PEP：逐跳执行授权
+
+统一授权上下文至少包括 Subject（已认证用户或服务身份、组织、Desk、角色）、Resource（Agent、Tool、MCP、Semantic View、Portfolio、Issuer、Document）、Action（read、search、calculate、export、write、approve）、Purpose（投研、组合监控、客户服务、风险审查等）、Data Entitlements（供应商许可、订阅范围、地域、再分发和派生内容限制）、Context（As-of 时间、信息隔离墙、风险级别、任务 ID）和 Decision（Allow、Deny、Mask、Filter、Require Approval，带 Policy ID / Version、理由码和有效期）。
+
+典型链路：用户请求进入 API PEP → PDP 判断能否启动 Agent → Agent Runtime 在每次 Tool Call 前经过 Tool PEP → Tool Gateway 按用户和任务上下文请求 PDP → SQL / Semantic Query PEP 执行数据过滤 → 输出 PEP 检查敏感字段、许可和导出范围 → 高风险写入进入独立审批和业务系统 PEP。
+
+授权必须在每一个边界重新执行，而不是只在登录时执行一次。用户可以访问某个研究 Agent，不代表该 Agent 自动有权读取所有组合；Agent 可以查询某个 Semantic View，也不代表可以导出供应商原始数据或用于对外报告。
+
+#### 6.6.3 LiteLLM 在 Control Plane 中的位置
+
+LiteLLM 是 Model Gateway 的实现选项，不是完整 Control Plane。内部模型别名可包括：
+
+| 模型别名 | 典型用途 | 路由原则 |
+| --- | --- | --- |
+| reasoning-premium | 复杂投研、跨文件分析、重要假设推理 | Claude / OpenAI 高端模型，以质量评测为首要标准 |
+| long-context-premium | 大型年报、研究材料和长上下文综合 | 按上下文能力、数据处理条件和成本选择 |
+| fast-extract | 文档字段抽取、分类、轻量转换 | 低时延、低成本模型 |
+| structured-output | JSON、工具参数和标准化结果 | 结构化输出能力和 Schema 通过率优先 |
+| embedding-finance | 金融文档向量化 | 单独评测模型、维度、语言和许可条件 |
+
+模型路由可按任务类型、数据分类、区域、延迟、质量门槛、预算和供应商健康度选择。Fallback 不能无条件降级：若任务要求最高质量、特定数据处理条件或特定能力，备用模型不满足约束时应失败关闭，而不是静默切换到不合格模型。
+
+LiteLLM 的 Virtual Keys / Teams、预算、速率限制、Router、Fallback 和日志能力可作为实现基础；用户身份、业务用途、数据 entitlement、Information Barrier、审批、模型风险等级和最终审计由外围 Control Plane 决定。密钥保存在 Vault / AWS Secrets Manager 等秘密管理服务，按供应商和环境隔离，定期轮换；上游密钥不得返回客户端。
+
+#### 6.6.4 Agent、Skill、MCP 和 Tool 的注册与发布
+
+每个可运行能力都应有机器可读的注册描述：唯一 ID、业务 Owner、技术 Owner、用途、风险等级、输入输出 Schema、所需权限、允许调用的模型别名、允许使用的数据产品、工具清单、网络出口范围、运行环境、版本、评测结果、审批人、发布日期和退役时间。
+
+注册状态采用 Draft → Validated → Approved → Published → Deprecated / Revoked。生产环境只允许运行 Published 版本。MCP 是协议，不是信任边界；必须校验 Server 身份、Tool Schema、调用主体、授权上下文、出站网络、返回数据分类和工具版本。未注册工具不能因为模型发现一个 URL 就自动调用。
+
+高风险 Tool（组合写入、客户沟通、研究发布、交易指令、账户或权限变更）需要独立风险分类、审批和幂等执行。审批通过后，业务动作仍由权威领域 API 执行，Agent 不持有生产数据库写权限。
+
+#### 6.6.5 Control Plane 与 Data Plane 边界
+
+| Control Plane：管理和决策 | Data Plane：实际执行 |
+| --- | --- |
+| 注册 Agent / Skill / MCP / Tool / Model | 运行 Agent、加载批准版本、执行工具调用 |
+| 管理身份映射、策略、风险等级和审批规则 | 每次请求和工具调用执行 PEP |
+| 发布模型别名、路由策略和预算 | LiteLLM 转发模型请求并记录调用元数据 |
+| 注册 Semantic Data Product 和授权合同 | 查询服务执行 SQL、行列过滤和数据裁剪 |
+| 发布评测门槛、版本和回滚策略 | Runtime 执行工作流、Checkpoint、重试和人工暂停 |
+| 定义审计事件 Schema 和保留策略 | 产生事件并写入权威 Audit Store |
+
+两者通过版本化 API、策略包、注册清单和事件 Schema 交互。Control Plane 不应成为所有推理请求的同步中心：策略判定可在区域内 PDP 执行，注册配置可分发到 Runtime；紧急撤销通过短 TTL 缓存、版本失效和 Kill Switch 传播。无法取得必要策略状态的高风险操作必须 Fail Closed。
+
+### 6.7 Snowflake Semantic Views：不要把 Semantic Layer 当作 SQL 生成配置
+
+Snowflake Semantic Views 是重要的执行层能力，但不是企业完整的金融本体、主数据管理系统，也不是所有业务授权规则的唯一载体。建议采用 **Enterprise Semantic Contract + Snowflake Semantic Views**：企业维护跨仓库的实体、指标、期间和授权定义；Snowflake Semantic Views 将其中适合分析查询的部分映射为 Snowflake 内可执行的逻辑模型。
+
+#### 6.7.1 先定义金融语义，再写 Semantic View
+
+每个 Metric 至少需要业务名称、定义、公式、事实粒度、聚合方式、币种、单位、期间类型、会计口径、来源优先级、适用资产类别、时间有效性、允许维度、空值规则、重述处理和 Owner。
+
+Revenue 不能只是 SUM(revenue)。需要明确这是季度值还是 YTD、财年还是自然年、Reported 还是 Restated、GAAP 还是 Adjusted、报告币种还是标准化币种、合并口径是否一致、是否允许跨分部相加。Metric Contract 应由领域数据 Owner 与 Finance / Research SME 共同负责；Semantic View 是该契约的部署产物，而不是唯一的定义源。
+
+#### 6.7.2 按业务问题拆分，避免 Mega View
+
+建议从以下领域开始：SV_COMPANY_FUNDAMENTALS（收入、利润、现金流、负债、资本回报、财务期间和披露版本）；SV_MARKET_DATA（价格、收益率、成交量、FX、交易日历、估值时点和价格类型）；SV_ESTIMATES（分析师预测、共识、预测机构、发布日期、修订时间和有效期间）；SV_OWNERSHIP（机构持仓、所有权比例、披露时点和供应商口径）；SV_PORTFOLIO_EXPOSURE（组合、持仓、风险因子、基准、估值时点和组合授权）；SV_RISK_ANALYTICS（VaR、Stress、流动性、集中度、模型版本和计算日期）；SV_RESEARCH_CONTEXT（Coverage、Thesis、Catalyst、Forecast、历史观点和研究状态）。
+
+不要把财务事实、市场行情、预测、组合持仓和研究观点塞进一个巨大 Semantic View。领域拆分有助于控制 Join 范围、Metric 粒度、授权范围和版本变更影响。
+
+#### 6.7.3 金融语义最容易出错的地方
+
+1. **Grain / Join Cardinality：** 明确每张逻辑表的粒度。事实表之间不要直接多对多 Join；需要桥接表、有效关系和明确聚合路径。测试重复计数、Fan-out 和指标膨胀。
+2. **时间语义：** 同时保留 Period Start / End、Published At、Observed At、Effective Time、Revision Time 和 As-of Time。历史研究必须能查询当时可见的数据，不能使用今天的最新修订值。
+3. **金融期间：** 区分 FY、FQ、CY、TTM、YTD、LTM、Fiscal Calendar、Trading Calendar 和自然日。
+4. **单位与币种：** 明确报告币种 / 标准币种、百分比 / Basis Points、金额单位和 FX Rate Date。换算由确定性服务执行。
+5. **Reported / Adjusted：** 区分 GAAP、IFRS、Non-GAAP、Adjusted、Company-defined 和 Vendor-normalized 指标，保留调整项与来源。
+6. **Reported / Estimate：** 实际披露、公司指引、分析师预测、供应商共识必须是不同数据类别。
+7. **Null / Missing / Not Applicable：** 缺失值、零、不可适用、供应商未覆盖和被权限过滤是不同状态。不能把 NULL 自动变成 0。
+8. **实体映射：** Issuer、Legal Entity、Security、Share Class、ADR、债券和基金不能混为一谈；历史关系需要带有效期。
+9. **指标聚合：** 比率不能简单对明细行求和或平均；应根据分子、分母和目标粒度重新计算。
+10. **供应商差异：** Bloomberg、LSEG、MSCI 对同一指标的定义、覆盖范围、更新时间和许可可能不同。保留 Provider Metric 与 Canonical Metric 的映射和冲突，不要静默覆盖。
+
+#### 6.7.4 Owner's Rights 与数据授权：最容易留下的安全缺口
+
+Snowflake Semantic View 使用 Owner's Rights 语义：对 Semantic View 拥有 SELECT 权限的角色可以查询该对象，而不必单独拥有底层表的 SELECT 权限。底层表上的 Row Access Policy 和 Masking Policy 可以向 Semantic View 查询传播，但必须在真实角色和真实查询路径上验证。**不能把“没有底层表权限”误认为“无法通过 Semantic View 读取数据”。**
+
+建议将 Semantic View 放在受控 Schema，采用最小权限 Owner Role；消费者只获得经过审批的 View SELECT 权限。对底层敏感表设置 Row Access Policy / Masking Policy，并验证其在 Semantic View 查询路径中实际生效。不同 Desk、Portfolio、客户或区域范围需要可验证的底层策略、隔离数据产品或受控查询服务，不能只靠不同 Prompt 或 View 描述实现隔离。
+
+用户身份和数据 entitlement 必须传到查询服务，防止 Agent 通过共享高权限服务账号扩大数据范围。分开管理 Semantic View 的 OWNERSHIP、SELECT、REFERENCES、MONITOR 权限；生产 Runtime 不应拥有修改 Semantic View 定义的权限。Cortex Analyst / Search 等服务也要逐一核查执行身份、对象权限、Owner's Rights、日志和数据保留行为，不能把不同 Snowflake 产品的授权模式混为一谈。
+
+#### 6.7.5 Verified Queries、评测和 CI/CD
+
+每个领域维护 Gold Questions、预期 SQL / 结果和业务解释，覆盖常见问题、边界期间、复杂 Join、空值、币种、重述、权限差异和历史 As-of 查询。发布流水线至少包括：静态检查（对象引用、定义和描述）；SQL 验证（语法、Join、聚合和结果）；语义回归（生成 SQL、结果正确性和解释一致性）；安全回归（不同角色、Desk、Portfolio 和许可的行列可见范围）；兼容性检查（字段、指标、关系、权限变化对下游影响）；发布控制（Dev → Test → Prod，记录 Commit、DDL 版本、发布人、评测结果和回滚版本）。
+
+Verified Queries 能提高相似问题的 SQL 生成质量，但不能替代好的数据模型、准确描述和金融领域验证。先把 Grain、Metric、Relationship 和权限建正确，再用 Gold Queries 优化覆盖率和准确率。
+
+#### 6.7.6 不要把 Snowflake 语义对象变成平台锁定点
+
+企业应把 Metric Contract、Entity Contract、时间定义、数据产品接口和授权语义保存在仓库无关的目录或 Git 中。Snowflake Semantic View、dbt Model、内部 SQL API 或其他分析引擎只是这些契约的执行映射。Agent 不应直接读取 Semantic View YAML 并把内部结构当作永久 API；应通过 Financial Data API / Semantic Query Service 请求稳定的业务查询合同。
+
+**官方文档：** [Semantic Views Overview](https://docs.snowflake.com/en/user-guide/views-semantic/overview)、[Modeling Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices-modeling)、[Developing and Deploying Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices-dev)、[Access Control Privileges](https://docs.snowflake.com/en/user-guide/security-access-control-privileges)。
+
+
+### 6.8 不要先建一个多 Agent 大系统
 
 研究任务经常被设计成 Researcher、Analyst、Risk Agent、Reviewer、Writer 等多个 Agent 相互对话。角色划分容易理解，但多 Agent 不一定能提高结果质量；如果各 Agent 共享同一批错误证据，或在串行过滤中提前丢掉关键材料，增加角色只会放大错误传播、延迟和成本。
 
@@ -625,6 +785,15 @@ Claude 和 OpenAI 提供模型能力、部分金融工作流、数据连接和�
 ---
 
 ## 参考资料
+
+### 本次架构增强补充的工程文档
+
+30. LiteLLM, [Router / Load Balancing](https://docs.litellm.ai/docs/routing)。
+31. LiteLLM, [Router Settings for Keys and Teams](https://docs.litellm.ai/docs/proxy/keys_teams_router_settings)。
+32. Snowflake, [Semantic Views Modeling Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices-modeling)。
+33. Snowflake, [Semantic Views Developing and Deploying Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices-dev)。
+34. Snowflake, [Access Control Privileges](https://docs.snowflake.com/en/user-guide/security-access-control-privileges)。
+35. Anthropic, [API and Data Retention](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention)。
 
 ### 官方产品与工程文档
 
