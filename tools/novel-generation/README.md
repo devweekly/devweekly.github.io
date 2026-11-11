@@ -16,7 +16,12 @@ npm run start:web     # 启动生产 Web 服务
 长期创作经验记忆与 Dreaming 的设计见 [ADR-0010](./ADR/0010-story-memory-and-dreaming.md)。首次使用可在完整章节生成后执行 `npm run dev -- dream-memory --world <world> --run-dir .output/<world>/<run-id>`，从已完成章节及审核记录提炼有逐字证据的候选经验；同一经验需在不同运行中重复出现后才会进入后续写作上下文。\n\n续写架构与实现差距审计见 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。 小说创作的最高原则及全文分析设计决策见 [`ADR-0001`](./ADR/0001-literary-priority-and-corpus-analysis.md)。续写默认全自动：章节完成后自动提取并提交故事状态；只有模型对照实验等隔离场景才使用 `--no-apply-state`。
 
 
-### Story Memory 有效性盲测
+### Story Memory 管理
+
+完整故事单元自然收束后，系统会在后台自动执行一次 Dreaming；固定章节批次、暂停、失败或停滞不会触发。Workbench 的「创作记忆」页可按待观察、可检索、已替代和已淘汰筛选，查看每条记忆的原始证据，修订内容/适用范围，或淘汰与恢复。相似措辞的同类型经验会在高置信阈值下合并到既有记忆，避免近重复条目分散证据；来源 run 和逐字引用持续保留。
+
+检索会综合记忆内容与适用范围的相关性，并对流程类任务适度优先考虑 operational 经验。它仍然只提供少量可选启发，不参与 Canon 事实判断。记忆不按时间自动过期；发现经验被反例推翻时，应在 Workbench 中标记为已替代或淘汰。
+## Story Memory 有效性盲测
 
 不要以记忆条数、检索命中率或 Prompt 长度判断 Dreaming 是否有价值。先让同一世界积累至少两次独立故事执行的 active memory，再用相同故事起点、同一模型和同一份 Story State 运行成对盲测：
 
