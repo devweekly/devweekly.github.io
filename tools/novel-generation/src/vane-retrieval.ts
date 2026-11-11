@@ -60,7 +60,7 @@ async function embed(
         method:"POST",headers:{"content-type":"application/json",...(process.env.VANE_EMBEDDING_API_KEY?{authorization:"Bearer "+process.env.VANE_EMBEDDING_API_KEY}:{})},
         body:JSON.stringify({model,input:batch}),signal:AbortSignal.timeout(timeoutMs)
       });
-      if(!response.ok)throw new Error("Embedding endpoint returned "+response.status);
+      if(!response.ok){const errorBody=await response.text();throw new Error("Embedding endpoint returned "+response.status+": "+errorBody.slice(0,4000));}
       const payload=await response.json() as {data?:Array<{embedding?:number[];index?:number}>;usage?:unknown};
       if(!Array.isArray(payload.data)||payload.data.length!==batch.length||payload.data.some(x=>!Array.isArray(x.embedding)))throw new Error("Invalid embeddings response.");
       const ordered=[...payload.data].sort((left,right)=>(left.index??0)-(right.index??0));
