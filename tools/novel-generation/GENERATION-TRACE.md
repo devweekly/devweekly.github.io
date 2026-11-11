@@ -8,8 +8,9 @@ All production novel-generation LLM text calls use `src/generate.ts` `runAgentTe
 
 `.output/agent-calls/<callId>/`
 
-- `run.json`: status, timestamps, requested/resolved model, fallback chain, timeout, task profile, caller stack, process/runtime metadata and optional parent run context.
-- `prompt.txt`: exact prompt sent to the model.
+- `run.json`: status, timestamps, requested/resolved model, fallback chain, timeout, task profile, effective thinking/effort, SDK tool/session policy, caller stack, process/runtime metadata and optional parent run context.
+- `prompt.txt`: exact task prompt sent to the model.
+- `system-prompt.txt`: exact shared system prompt used by the text-only runtime.
 - `model-trace.json`: ordered model attempts, normal/thinking-disabled retry mode, effective task profile, fallback model, timing, status and error.
 - `response.txt`: final assistant text returned to the caller.
 - `failure.txt`: terminal error when the call fails or is interrupted.
