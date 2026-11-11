@@ -241,9 +241,12 @@ async function main(): Promise<void> {
     const runDir = resolve(requested);
     const outputRoot = resolve(".output", worldId) + sep;
     if (!runDir.startsWith(outputRoot)) throw new Error("--run-dir must point inside .output/" + worldId + ".");
+    const timeoutMs = Number(arg("--timeout-ms") ?? 120000);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_AGENT_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
+      throw new Error("--timeout-ms must be between " + MIN_AGENT_TIMEOUT_MS + " and " + MAX_AGENT_TIMEOUT_MS + ".");
+    }
     const result = await dreamOnCompletedRun({
-      worldId, worldDir: resolve("worlds", worldId), runDir, model: arg("--model"),
-      timeoutMs: Number(arg("--timeout-ms") ?? 120000)
+      worldId, worldDir: resolve("worlds", worldId), runDir, model: arg("--model"), timeoutMs
     });
     console.log(JSON.stringify({ worldId, ...result, memories: "story.db" }, null, 2));
     return;
