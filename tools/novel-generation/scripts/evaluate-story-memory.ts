@@ -76,6 +76,7 @@ function runArm(arm: Arm): Promise<{ stdout: string; stderr: string; code: numbe
   return new Promise((resolvePromise, reject) => {
     const child = spawn(process.execPath, args, { cwd: projectRoot, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "", stderr = "";
+    if (!child.stdout || !child.stderr) return reject(new Error("Unable to capture CLI output streams."));
     child.stdout.setEncoding("utf8").on("data", chunk => { stdout += chunk; });
     child.stderr.setEncoding("utf8").on("data", chunk => { stderr += chunk; });
     child.on("error", reject);
