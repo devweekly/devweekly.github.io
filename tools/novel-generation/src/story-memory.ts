@@ -127,7 +127,7 @@ export async function dreamOnCompletedRun(input: {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
     const names = await readdir(runDir);
-    const reviewFiles = names.filter(name => /review|reader|literary|revision/i.test(name) && /\\.(md|txt|json)$/i.test(name)).slice(0, 1);
+    const reviewFiles = names.filter(name => /review|reader|literary|revision/i.test(name) && /\.(md|txt|json)$/i.test(name)).slice(0, 1);
     for (const name of reviewFiles) {
       const path = resolve(runDir, name);
       const review = await readFile(path, "utf8");
