@@ -116,7 +116,7 @@ await writeFile(resolve(outputRoot, "assignment-key.json"), JSON.stringify({
 }, null, 2) + "\n", "utf8");
 await writeFile(resolve(outputRoot, "blind-review.md"), `# Blind review — Story Memory A/B
 
-请先只阅读 `blind/A.md` 与 `blind/B.md`，不要查看 `assignment-key.json` 或各臂日志。两篇使用相同故事起点、世界状态、模型和写作参数；实验唯一计划差异是是否注入已激活的长期创作记忆。
+请先只阅读 blind/A.md 与 blind/B.md，不要查看 assignment-key.json 或各臂日志。两篇使用相同故事起点、世界状态、模型和写作参数；实验唯一计划差异是是否注入已激活的长期创作记忆。
 
 每项按 1–5 分评分（1 明显较弱，3 相当，5 明显较强）；不要因某一版更长或更“符合设定”自动加分。
 
