@@ -58,10 +58,6 @@ export async function dreamOnCompletedRun(input: {
   const chapter = await readFile(chapterPath, "utf8");
   const files = await readdir(input.runDir);
   const reviewFiles = files.filter(name => /review|reader|literary|revision/i.test(name) && /\.(md|txt|json)$/i.test(name)).slice(0, 5);
-  const reviews = await Promise.all(reviewFiles.map(async name => {
-    const value = await readFile(resolve(input.runDir, name), "utf8");
-    return "\n\n## " + name + "\n" + value.slice(0, 5000);
-  }));
   const evidenceFiles = [
     { source: relative(process.cwd(), chapterPath), content: chapter.slice(0, 26000) },
     ...await Promise.all(reviewFiles.map(async name => ({
@@ -69,7 +65,7 @@ export async function dreamOnCompletedRun(input: {
       content: (await readFile(resolve(input.runDir, name), "utf8")).slice(0, 5000)
     })))
   ];
-  const evidenceSource = evidenceFiles.map(file => "## " + file.source + "\\n" + file.content).join("\\n\\n").slice(0, 36000);
+  const evidenceSource = evidenceFiles.map(file => "## " + file.source + "\n" + file.content).join("\n\n").slice(0, 36000);
   const runId = basename(resolve(input.runDir));
   const prompt = [
     "你是小说项目的离线记忆整理器（Dreaming），不是剧情总结器。",
