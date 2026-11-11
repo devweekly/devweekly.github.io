@@ -111,10 +111,10 @@ export function buildNarrativeMemoryContext(worldDir: string, worldId: string, q
     .sort((a, b) => b.score - a.score || b.memory.occurrences - a.memory.occurrences)
     .slice(0, 5)
     .map(({ memory }) => "- " + memory.content + "（适用范围：" + memory.scope + "；独立创作记录：" + memory.occurrences + " 次）");
-  if (!selected.length) return "";
   let compass = "";
   try { compass = readFileSync(resolve(worldDir, "story-memory", "creative-compass.md"), "utf8").trim(); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  if (!selected.length && !compass) return "";
   const text = [
     "以下是从多次创作中提炼的经验，仅供当前创作参考，不是规则、要求或验收清单。可以忽略、改造或有意识地突破；不要为了体现这些经验而牺牲人物真实感、意外性或文学表达。",
     compass ? "## Creative Compass（派生创作方向，仅供启发）\n" + compass : "",
