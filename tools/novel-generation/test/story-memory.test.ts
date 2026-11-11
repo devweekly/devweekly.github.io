@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { emptyStoryState } from "../src/story-state.js";
 import { listStoryMemories, recordStoryMemoryCandidates, syncStoryState, updateStoryMemory } from "../src/database.js";
-import { buildNarrativeMemoryContext, readCreativeCompass } from "../src/story-memory.js";
+import { buildNarrativeMemoryContext, readCreativeCompass, readCreativeCompassVersion } from "../src/story-memory.js";
 
 test("story memory requires independent run evidence before context injection", async () => {
   const root = await mkdtemp(join(tmpdir(), "novel-memory-"));
@@ -127,6 +127,8 @@ test("Creative Compass exposes current content and timestamped history metadata"
     assert.equal(result.history[0]?.chars, 6);
     assert.equal(result.history[0]?.version, "2026-11-11T10-00-00-000Z-ab12cd34.md");
     assert.ok(result.history[0]?.updatedAt);
+    assert.equal(await readCreativeCompassVersion(root, result.history[0]!.version), "旧版创作方向");
+    await assert.rejects(() => readCreativeCompassVersion(root, "../creative-compass.md"), /Invalid Creative Compass history version/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
