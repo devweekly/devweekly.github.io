@@ -126,7 +126,7 @@ export function buildNarrativeMemoryContext(worldDir: string, worldId: string, q
 /** Dreaming over one completed run. Facts, summaries and transient character states are explicitly out of scope. */
 export async function dreamOnCompletedRun(input: {
   worldId: string; worldDir: string; runDir: string; runDirs?: string[]; memoryRunId?: string; model?: string; timeoutMs?: number;
-}): Promise<{ recorded: number; candidates: number }> {
+}): Promise<{ recorded: number; candidates: number; compassUpdated: boolean }> {
   const allRunDirs = [...new Set((input.runDirs?.length ? input.runDirs : [input.runDir]).map(dir => resolve(dir)))];
   // Keep a small arc sample (opening, middle and ending), rather than turning Dreaming
   // into a second transcript store or letting early chapters crowd out the ending.
@@ -178,8 +178,14 @@ export async function dreamOnCompletedRun(input: {
     .slice(0, 36000);
   const runId = input.memoryRunId ?? basename(runDirs.at(-1)!);
   const existing = listStoryMemories(input.worldDir, input.worldId, "all");
-  const activeMemoryContext = existing.filter(memory => memory.status === "active")
-    .slice(0, 12).map(memory => "- [" + memory.memoryType + "] " + memory.content + "（范围：" + memory.scope + "）").join("\n");
+  let previousCompass = "";
+  try { previousCompass = readFileSync(resolve(input.worldDir, "story-memory", "creative-compass.md"), "utf8").trim(); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  const activeMemoryContext = [
+    ...existing.filter(memory => memory.status === "active").slice(0, 12)
+      .map(memory => "- [" + memory.memoryType + "] " + memory.content + "（范围：" + memory.scope + "）"),
+    previousCompass ? "既有 Creative Compass（请在保留仍有价值内容的基础上修订，不要无故丢弃）：\\n" + previousCompass : ""
+  ].filter(Boolean).join("\n");
   const prompt = [
     "你是小说项目的离线记忆整理器（Dreaming），不是剧情总结器。",
     "从本次已完成章节及其审核/修改记录中，最多提炼 3 条未来创作仍有价值的隐性经验。",
