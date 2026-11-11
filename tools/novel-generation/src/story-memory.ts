@@ -16,29 +16,55 @@ const CandidateSchema = z.object({
 const OutputSchema = z.object({ memories: z.array(CandidateSchema).max(3) });
 
 function memoryId(type: StoryMemoryType, content: string): string {
-  const normalized = content.toLocaleLowerCase().replace(/\s+/gu, "").replace(/[，。！？；：、“”‘’]/gu, "");
+  const normalized = content.toLocaleLowerCase().replace(/\\s+/gu, "").replace(/[，。！？；：、“”‘’]/gu, "");
   return createHash("sha256").update(type + ":" + normalized).digest("hex").slice(0, 24);
 }
 
 function terms(value: string): Set<string> {
-  const compact = value.toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  const compact = value.toLocaleLowerCase().replace(/[^\\p{L}\\p{N}]/gu, "");
   const result = new Set<string>();
   for (let i = 0; i < compact.length - 1; i++) result.add(compact.slice(i, i + 2));
+  if (compact.length === 1) result.add(compact);
   return result;
 }
 
-/** Only repeated, evidence-backed experience is offered as optional inspiration. */
+function excerpt(value: string, budget: number): string {
+  if (value.length <= budget) return value;
+  const head = Math.floor(budget * 0.42);
+  const tail = Math.floor(budget * 0.42);
+  const middle = budget - head - tail;
+  const middleStart = Math.max(head, Math.floor((value.length - middle) / 2));
+  return [
+    value.slice(0, head),
+    "\\n[中段摘录，省略部分原文]\\n",
+    value.slice(middleStart, middleStart + middle),
+    "\\n[结尾摘录，省略部分原文]\\n",
+    value.slice(-tail)
+  ].join("");
+}
+
+/** Rank by normalized content overlap and scope relevance; avoid rewarding long memories. */
 export function buildNarrativeMemoryContext(worldDir: string, worldId: string, query: string, maxChars = 1800): string {
   if (!query.trim()) return "";
   const queryTerms = terms(query);
+  if (!queryTerms.size) return "";
+  const operationalQuery = /工具|流程|工作流|审核|修订|生成|agent|prompt|pipeline|workflow/iu.test(query);
   const selected = listStoryMemories(worldDir, worldId, "active")
     .map(memory => {
       const own = terms(memory.content);
-      let score = 0;
-      for (const term of queryTerms) if (own.has(term)) score++;
-      return { memory, score };
+      const scope = terms(memory.scope);
+      let contentHits = 0;
+      let scopeHits = 0;
+      for (const term of queryTerms) {
+        if (own.has(term)) contentHits++;
+        if (scope.has(term)) scopeHits++;
+      }
+      const contentCoverage = contentHits / queryTerms.size;
+      const scopeCoverage = scopeHits / queryTerms.size;
+      const typeBonus = operationalQuery && memory.memoryType === "operational" ? 0.12 : 0;
+      return { memory, score: contentCoverage + scopeCoverage * 0.65 + typeBonus };
     })
-    .filter(item => item.score > 0)
+    .filter(item => item.score >= 0.045)
     .sort((a, b) => b.score - a.score || b.memory.occurrences - a.memory.occurrences)
     .slice(0, 5)
     .map(({ memory }) => "- " + memory.content + "（适用范围：" + memory.scope + "；独立创作记录：" + memory.occurrences + " 次）");
@@ -46,7 +72,7 @@ export function buildNarrativeMemoryContext(worldDir: string, worldId: string, q
   const text = [
     "以下是从多次创作中提炼的经验，仅供当前创作参考，不是规则、要求或验收清单。可以忽略、改造或有意识地突破；不要为了体现这些经验而牺牲人物真实感、意外性或文学表达。",
     ...selected
-  ].join("\n");
+  ].join("\\n");
   return text.length <= maxChars ? text : text.slice(0, maxChars);
 }
 
@@ -62,24 +88,41 @@ export async function dreamOnCompletedRun(input: {
     allRunDirs[Math.floor((allRunDirs.length - 1) / 2)]!,
     allRunDirs[Math.floor(3 * (allRunDirs.length - 1) / 4)]!, allRunDirs.at(-1)!
   ])];
-  const evidenceFiles: Array<{ source: string; content: string }> = [];
+  const evidenceFiles: Array<{ source: string; content: string; promptContent: string }> = [];
   for (const runDir of runDirs) {
     const chapterPath = resolve(runDir, "chapter.md");
     try {
       const chapter = await readFile(chapterPath, "utf8");
-      evidenceFiles.push({ source: relative(process.cwd(), chapterPath), content: chapter.slice(0, 5000) });
+      evidenceFiles.push({
+        source: relative(process.cwd(), chapterPath),
+        content: chapter,
+        // Keep evidence verifiable against the full source while showing the model
+        // representative opening, middle and ending passages from long chapters.
+        promptContent: excerpt(chapter, 5000)
+      });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
     const names = await readdir(runDir);
-    const reviewFiles = names.filter(name => /review|reader|literary|revision/i.test(name) && /\.(md|txt|json)$/i.test(name)).slice(0, 1);
+    const reviewFiles = names.filter(name => /review|reader|literary|revision/i.test(name) && /\\.(md|txt|json)$/i.test(name)).slice(0, 1);
     for (const name of reviewFiles) {
       const path = resolve(runDir, name);
-      evidenceFiles.push({ source: relative(process.cwd(), path), content: (await readFile(path, "utf8")).slice(0, 1800) });
+      const review = await readFile(path, "utf8");
+      evidenceFiles.push({
+        source: relative(process.cwd(), path),
+        content: review,
+        promptContent: excerpt(review, 1800)
+      });
     }
   }
   if (!evidenceFiles.some(file => file.source.endsWith("/chapter.md"))) throw new Error("Completed run has no chapter.md evidence.");
-  const evidenceSource = evidenceFiles.map(file => "## " + file.source + "\n" + file.content).join("\n\n").slice(0, 36000);
+  // Bound the prompt without cutting off the final chapter's evidence: each source is
+  // excerpted first, and the complete source remains available for exact quote checks.
+  const evidenceSource = evidenceFiles.map(file => "## " + file.source + "\\n" + file.promptContent).join("\\n\\n");
+  const boundedEvidenceSource = evidenceSource.length <= 36000 ? evidenceSource : evidenceFiles
+    .map(file => "## " + file.source + "\\n" + excerpt(file.promptContent, Math.max(1200, Math.floor(36000 / evidenceFiles.length))))
+    .join("\\n\\n")
+    .slice(0, 36000);
   const runId = input.memoryRunId ?? basename(runDirs.at(-1)!);
   const prompt = [
     "你是小说项目的离线记忆整理器（Dreaming），不是剧情总结器。",
@@ -90,8 +133,8 @@ export async function dreamOnCompletedRun(input: {
     "没有真正值得长期保留的经验时返回空数组。宁可不记，不要为了填满数量而总结。",
     "每条 evidence 必须是下方材料中的连续逐字片段，用来说明这条经验从何而来。不要输出正文摘要。",
     "只输出 JSON：{memories:[{type:'narrative'|'creative'|'operational',content:string,scope?:string,evidence:string}]}",
-    "材料：\n" + evidenceSource
-  ].join("\n\n");
+    "材料：\\n" + boundedEvidenceSource
+  ].join("\\n\\n");
   const raw = await runAgentText(prompt, input.model, input.timeoutMs ?? 120000, undefined, true, {
     attempts: [], context: { worldId: input.worldId, runId, kind: "memory-dreaming", stage: "consolidation" }
   });
