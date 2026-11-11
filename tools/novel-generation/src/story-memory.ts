@@ -159,7 +159,7 @@ export async function dreamOnCompletedRun(input: {
       if (anchors.includes(dir)) continue;
       let score = 0;
       try {
-        const names = (await readdir(dir)).filter(name => /review|reader|literary|revision/i.test(name) && /\\.(md|txt|json)$/i.test(name));
+        const names = (await readdir(dir)).filter(name => /review|reader|literary|revision/i.test(name) && /\.(md|txt|json)$/i.test(name));
         for (const name of names.slice(0, 3)) {
           const review = await readFile(resolve(dir, name), "utf8");
           for (const pattern of [/亮点|精彩|出色|有力|值得保留|文学性/giu, /人物互动|人物变化|关系转折|意外选择/giu, /创意|独特|新颖|反常/giu, /叙事张力|节奏变化|场景突破/giu]) {
