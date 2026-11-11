@@ -169,8 +169,8 @@ export async function dreamOnCompletedRun(input: {
       } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
       scored.push({ dir, score });
     }
-    const qualityPicks = scored.sort((a, b) => b.score - a.score).slice(0, 2).map(item => item.dir);
     const fallback = [allRunDirs[Math.floor((allRunDirs.length - 1) / 4)]!, allRunDirs[Math.floor(3 * (allRunDirs.length - 1) / 4)]!];
+    const qualityPicks = scored.sort((a, b) => b.score - a.score || Number(fallback.includes(b.dir)) - Number(fallback.includes(a.dir))).slice(0, 2).map(item => item.dir);
     runDirs = [...new Set([...anchors, ...qualityPicks, ...fallback])].slice(0, 5);
   }
   const evidenceFiles: Array<{ source: string; content: string; promptContent: string }> = [];
@@ -286,7 +286,7 @@ export async function dreamOnCompletedRun(input: {
         await writeFile(resolve(historyDir, version), previous, { encoding: "utf8", flag: "wx" });
       }
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-    const temporary = target + ".tmp-" + createHash("sha256").update(nextContent).digest("hex").slice(0, 8);
+    const temporary = target + ".tmp-" + randomUUID();
     await writeFile(temporary, nextContent, "utf8");
     await rename(temporary, target);
     compassUpdated = true;
