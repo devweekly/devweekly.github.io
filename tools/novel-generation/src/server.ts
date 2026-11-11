@@ -2086,14 +2086,14 @@ async function executeStoryUnitTask(initial: StoryExecution, signal?: AbortSigna
     if (pendingAssessment) {
       const recoveredAssessment = await ensureStoryExecutionCheckpointAssessed(worldId, task, unit, pendingAssessment);
       task = recoveredAssessment.task; unit = recoveredAssessment.unit;
-      if (recoveredAssessment.terminal) { await dreamOnCompletedStoryExecution(task); return; }
+      if (recoveredAssessment.terminal) { void dreamOnCompletedStoryExecution(task).catch(error => console.warn("[story-memory] Background Dreaming failed:", error)); return; }
     }
     if (task.mode === "complete_story" && unit.execution.status === "completed") {
       task = appendStoryExecutionEvent({ ...task, status: "completed", completedAt: unit.execution.completedAt ?? new Date().toISOString(),
         updatedAt: new Date().toISOString(), lastAssessment: unit.execution.lastAssessment ?? task.lastAssessment,
         nextDirection: "故事已自然收束。" }, { at: new Date().toISOString(), type: "completed", message: "故事单元已在前次评估中自然收束" });
       await saveStoryExecution(task);
-      await dreamOnCompletedStoryExecution(task);
+      void dreamOnCompletedStoryExecution(task).catch(error => console.warn("[story-memory] Background Dreaming failed:", error));
       return;
     }
     while (true) {
