@@ -1023,7 +1023,7 @@ async function main(): Promise<void> {
     const retrieved = await searchLibrary(libraryDir, retrievalQuery, retrievalLimit);
     let storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), retrievalQuery);
     const narrativeMemoryContext = process.argv.includes("--no-story-memory") ? "" : buildNarrativeMemoryContext(resolve("worlds", worldId), worldId, retrievalQuery);
-    if (narrativeMemoryContext) storyAnalysisContext += "\n\n## 经过多次创作验证的叙事经验（仅供参考）\n" + narrativeMemoryContext;
+    if (narrativeMemoryContext) storyAnalysisContext += "\n\n## 长期创作经验与创作方向（仅供参考）\n" + narrativeMemoryContext;
     const corpusCraftContext = await buildCorpusCraftContext(worldId, retrievalQuery);
     if (corpusCraftContext) storyAnalysisContext += "\n\n" + corpusCraftContext;
     try {
@@ -1087,7 +1087,7 @@ async function main(): Promise<void> {
     ].join("\n");
     let storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), storyAnalysisQuery);
     const narrativeMemoryContext = process.argv.includes("--no-story-memory") ? "" : buildNarrativeMemoryContext(resolve("worlds", worldId), worldId, storyAnalysisQuery);
-    if (narrativeMemoryContext) storyAnalysisContext += "\n\n## 经过多次创作验证的叙事经验（仅供参考）\n" + narrativeMemoryContext;
+    if (narrativeMemoryContext) storyAnalysisContext += "\n\n## 长期创作经验与创作方向（仅供参考）\n" + narrativeMemoryContext;
     const corpusCraftContext = await buildCorpusCraftContext(worldId, storyAnalysisQuery);
     if (corpusCraftContext) storyAnalysisContext += "\n\n" + corpusCraftContext;
     try {
