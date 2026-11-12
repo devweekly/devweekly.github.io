@@ -1,0 +1,49 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>金融数据依赖图</title><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet"><style>*{box-sizing:border-box}body{margin:0;background:#F9F6EF;color:#221C17;font-family:'IBM Plex Mono','Noto Sans SC',monospace}.frame{max-width:1320px;margin:0 auto;padding:32px 20px 24px}.eyebrow{font-size:11px;letter-spacing:.12em;color:#8B5A2B}h1{font-size:22px;font-weight:600;margin:10px 0 6px}p{font-size:13px;color:#65584D;margin:0 0 20px}.diagram-container{width:100%;overflow-x:auto;border:1px solid #D8CFC2;border-radius:10px;background:#F9F6EF}svg{display:block;width:100%;min-width:960px;height:auto}.foot{margin-top:14px;font-size:11px;color:#75695F}</style></head><body><main class="frame"><div class="eyebrow">DATA DEPENDENCY GRAPH</div><h1>金融数据依赖图</h1><p>从源系统、SQL / ETL 和调度任务，到仓库对象、Data Product 与下游消费。边必须标注关系类型与证据来源。</p><div class="diagram-container"><svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="financial-data-dependency-graph-title financial-data-dependency-graph-desc">
+<title id="financial-data-dependency-graph-title">金融数据依赖图：从源系统到研究消费者</title>
+<desc id="financial-data-dependency-graph-desc">依赖关系图展示源数据库和供应商数据经过 SQL、ETL、dbt 与调度系统进入仓库对象，再形成 Data Product、Semantic View，并被 BI 报表和 Agent API 消费。边表示生产、调度、读取和消费关系。</desc>
+<defs>
+<style>@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap');</style>
+<filter id="financial-data-dependency-graph-shadow" x="-12%" y="-12%" width="124%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#221C17" flood-opacity=".10"/></filter>
+<marker id="financial-data-dependency-graph-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6Z" fill="#65584D"/></marker>
+</defs>
+<rect width="1280" height="720" fill="#F9F6EF"/>
+<text x="48" y="54" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="27" font-weight="600" fill="#221C17">金融数据依赖图</text>
+<text x="48" y="80" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">DISCOVERY → LINEAGE → DATA PRODUCT → CONSUMPTION</text>
+<text x="48" y="125" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="10" fill="#75695F">RANK 0 · SOURCES</text>
+<text x="48" y="280" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="10" fill="#75695F">RANK 1 · TRANSFORM &amp; SCHEDULE</text>
+<text x="48" y="440" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="10" fill="#75695F">RANK 2 · WAREHOUSE &amp; PRODUCTS</text>
+<text x="48" y="600" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="10" fill="#75695F">RANK 3 · SEMANTICS &amp; CONSUMERS</text>
+<g fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#financial-data-dependency-graph-arrow)">
+<path d="M290 190 V292 H365 V320"/><path d="M290 190 V250 H760 V320"/>
+<path d="M610 190 V320 H470"/><path d="M610 190 V250 H760 V320"/>
+<path d="M485 390 V455 H490 V480"/><path d="M880 390 V455 H490 V480"/>
+<path d="M620 530 V615 H370 V635"/><path d="M620 530 V635 H780"/>
+<path d="M620 530 V590 H1080 V635"/>
+<path d="M930 390 V455 H1080 V480"/>
+</g>
+<g filter="url(#financial-data-dependency-graph-shadow)">
+<rect x="150" y="145" width="280" height="82" rx="10" fill="#FFFEFA" stroke="#CFC5B8"/>
+<rect x="520" y="145" width="180" height="82" rx="10" fill="#F1EDE4" stroke="#CFC5B8"/>
+<rect x="790" y="145" width="250" height="82" rx="10" fill="#FFFEFA" stroke="#CFC5B8"/>
+<rect x="300" y="320" width="310" height="82" rx="10" fill="#FFFEFA" stroke="#CFC5B8"/>
+<rect x="730" y="320" width="300" height="82" rx="10" fill="#F1EDE4" stroke="#CFC5B8"/>
+<rect x="340" y="480" width="560" height="82" rx="10" fill="#FFFEFA" stroke="#8B5A2B" stroke-width="1.4"/>
+<rect x="210" y="635" width="320" height="66" rx="10" fill="#FFFEFA" stroke="#CFC5B8"/>
+<rect x="650" y="635" width="260" height="66" rx="10" fill="#FFFEFA" stroke="#CFC5B8"/>
+<rect x="950" y="635" width="260" height="66" rx="10" fill="#FFFEFA" stroke="#CFC5B8"/>
+</g>
+<g font-family="'IBM Plex Mono','Noto Sans SC',monospace" fill="#221C17">
+<text x="172" y="176" font-size="10" fill="#75695F">DATABASE / API</text><text x="172" y="203" font-size="16" font-weight="600">业务数据库与供应商</text><text x="172" y="218" font-size="10" fill="#75695F">Oracle · Bloomberg · LSEG · MSCI</text>
+<text x="542" y="176" font-size="10" fill="#75695F">CONTROL</text><text x="542" y="203" font-size="16" font-weight="600">调度系统</text><text x="542" y="218" font-size="10" fill="#75695F">Airflow · Control-M</text>
+<text x="812" y="176" font-size="10" fill="#75695F">CODE REPOSITORY</text><text x="812" y="203" font-size="16" font-weight="600">SQL / ETL / dbt</text><text x="812" y="218" font-size="10" fill="#75695F">Git · compiled SQL · manifests</text>
+<text x="322" y="351" font-size="10" fill="#75695F">TRANSFORMATION</text><text x="322" y="378" font-size="16" font-weight="600">ETL / SQL Job</text><text x="322" y="393" font-size="10" fill="#75695F">table + column lineage</text>
+<text x="752" y="351" font-size="10" fill="#75695F">PHYSICAL ASSETS</text><text x="752" y="378" font-size="16" font-weight="600">Snowflake Objects</text><text x="752" y="393" font-size="10" fill="#75695F">database · schema · table · view</text>
+<text x="366" y="511" font-size="10" fill="#8B5A2B">GOVERNED BUSINESS OUTPUT</text><text x="366" y="540" font-size="19" font-weight="600">Data Product</text><text x="590" y="540" font-size="12" fill="#65584D">owner · contract · quality · SLA · lineage</text>
+<text x="234" y="661" font-size="10" fill="#75695F">SEMANTIC LAYER</text><text x="234" y="686" font-size="15" font-weight="600">Semantic Views</text>
+<text x="674" y="661" font-size="10" fill="#75695F">CONSUMER</text><text x="674" y="686" font-size="15" font-weight="600">BI / Reports</text>
+<text x="974" y="661" font-size="10" fill="#75695F">CONSUMER</text><text x="974" y="686" font-size="15" font-weight="600">API / Agent</text>
+</g>
+<g font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="10" fill="#65584D">
+<text x="48" y="695">Edges are typed relationships, not merely visual arrows: reads · writes · schedules · exposes · consumes</text>
+</g>
+</svg></div><div class="foot">概念模型示意。实际图谱应保留来源、发现方式、置信度、有效时间和最后验证时间。</div></main></body></html>
