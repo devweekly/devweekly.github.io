@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Memory Reference Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;padding:32px;background:#F9F6EF;color:#221C17;font-family:Geist,"Noto Sans SC",sans-serif}
+.frame{max-width:1280px;margin:0 auto}
+.eyebrow{font:500 11px "Geist Mono","Noto Sans SC",sans-serif;letter-spacing:.16em;color:#75695F;margin:0 0 8px}
+h1{font:400 clamp(26px,3vw,36px) "Instrument Serif","Noto Serif SC",serif;margin:0 0 18px}
+.diagram-container{width:100%;overflow-x:auto}
+svg{display:block;width:100%;min-width:1280px}
+@media print{.diagram-container{overflow:visible}svg{min-width:0}}
+</style>
+</head>
+<body>
+<main class="frame">
+<p class="eyebrow">ARCHITECTURE · SOFT DEPENDENCY CANVAS</p>
+<h1>One Memory Core, three Runtime Adapters</h1>
+<div class="diagram-container">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="agent-memory-architecture-title agent-memory-architecture-desc">
+  <title id="agent-memory-architecture-title">统一 Agent Memory 架构</title>
+  <desc id="agent-memory-architecture-desc">Copilot SDK、DeepAgents 和 Pi 通过 Runtime Adapter 接入事件日志、候选记忆提取、Dream Worker、长期 Memory Store 和上下文检索。</desc>
+  <defs>
+    <filter id="agent-memory-node-shadow" x="-12%" y="-12%" width="124%" height="140%" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#221C17" flood-opacity="0.10"/></filter>
+    <marker id="agent-memory-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#65584D"/></marker>
+    <marker id="agent-memory-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#8B5A2B"/></marker>
+    <marker id="agent-memory-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#8B5A2B"/></marker>
+  </defs>
+  <style>
+    .eyebrow{font-family:'Geist Mono','Noto Sans SC',sans-serif;font-size:11px;letter-spacing:1.5px;fill:#75695F}
+    .headline{font-family:'Instrument Serif','Noto Serif SC',serif;font-size:28px;fill:#221C17}
+    .lane-title{font-family:'Geist','Noto Sans SC',sans-serif;font-size:12px;font-weight:600;fill:#65584D;letter-spacing:.8px}
+    .node-title{font-family:'Geist','Noto Sans SC',sans-serif;font-size:16px;font-weight:600;fill:#221C17}
+    .node-sub{font-family:'Geist','Noto Sans SC',sans-serif;font-size:12px;fill:#65584D}
+    .tech{font-family:'Geist Mono','Noto Sans SC',monospace;font-size:10px;fill:#75695F}
+    .lane{fill:#F1EDE4;stroke:#CFC5B8;stroke-width:1}
+    .card{fill:#FFFEFA;stroke:#CFC5B8;stroke-width:1.2;filter:url(#agent-memory-node-shadow)}
+    .focal{fill:#F5E7D4;stroke:#8B5A2B;stroke-width:1.7;filter:url(#agent-memory-node-shadow)}
+    .arrow{fill:none;stroke:#65584D;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#agent-memory-arrow)}
+    .accent-arrow{fill:none;stroke:#8B5A2B;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#agent-memory-arrow-accent)}
+    .async-arrow{fill:none;stroke:#75695F;stroke-width:1.6;stroke-dasharray:5 4;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#agent-memory-arrow)}
+    .chip-blue{fill:#DCE5F4}
+    .chip-green{fill:#D8EEE8}
+    .chip-amber{fill:#F5E7D4}
+    .chip-text{font-family:'Geist','Noto Sans SC',sans-serif;font-size:10px;font-weight:600;fill:#221C17}
+  </style>
+  <rect width="1280" height="720" fill="#F9F6EF"/>
+  <text x="48" y="42" class="eyebrow">REFERENCE ARCHITECTURE · THREE RUNTIMES / ONE MEMORY CORE</text>
+  <text x="48" y="82" class="headline">One Memory Core, three Runtime Adapters</text>
+  <text x="48" y="105" class="node-sub">事件与记忆生命周期统一；框架差异留在 Adapter 层</text>
+
+  <rect x="40" y="132" width="1200" height="178" rx="16" class="lane"/>
+  <text x="60" y="158" class="lane-title">RUNTIME AND CONTEXT BOUNDARY</text>
+  <rect x="70" y="188" width="210" height="86" rx="12" class="card"/>
+  <text x="175" y="216" text-anchor="middle" class="node-title">Agent Runtimes</text>
+  <rect x="91" y="231" width="53" height="22" rx="11" class="chip-blue"/>
+  <text x="117.5" y="246" text-anchor="middle" class="chip-text">Copilot</text>
+  <rect x="151" y="231" width="59" height="22" rx="11" class="chip-green"/>
+  <text x="180.5" y="246" text-anchor="middle" class="chip-text">DeepAgents</text>
+  <rect x="217" y="231" width="45" height="22" rx="11" class="chip-amber"/>
+  <text x="239.5" y="246" text-anchor="middle" class="chip-text">Pi</text>
+
+  <rect x="350" y="188" width="190" height="86" rx="12" class="focal"/>
+  <text x="445" y="218" text-anchor="middle" class="node-title">Runtime Adapter</text>
+  <text x="445" y="242" text-anchor="middle" class="node-sub">事件归一化 · Scope · Hook</text>
+  <text x="445" y="259" text-anchor="middle" class="tech">TS SDK / Python SDK / Extension</text>
+
+  <rect x="800" y="188" width="190" height="86" rx="12" class="card"/>
+  <text x="895" y="218" text-anchor="middle" class="node-title">Recall Planner</text>
+  <text x="895" y="242" text-anchor="middle" class="node-sub">Query · Scope · 时间 · Token Budget</text>
+  <text x="895" y="259" text-anchor="middle" class="tech">hybrid retrieval + rerank</text>
+
+  <rect x="1040" y="188" width="165" height="86" rx="12" class="card"/>
+  <text x="1122.5" y="218" text-anchor="middle" class="node-title">Context Injection</text>
+  <text x="1122.5" y="242" text-anchor="middle" class="node-sub">少量、相关、可追溯</text>
+  <text x="1122.5" y="259" text-anchor="middle" class="tech">startup / before-run</text>
+
+  <rect x="40" y="332" width="1200" height="320" rx="16" class="lane"/>
+  <text x="60" y="358" class="lane-title">MEMORY CORE · APPEND / DISTILL / PUBLISH / RECALL</text>
+
+  <rect x="95" y="455" width="200" height="102" rx="12" class="card"/>
+  <text x="195" y="487" text-anchor="middle" class="node-title">Event Log</text>
+  <text x="195" y="512" text-anchor="middle" class="node-sub">原始消息、工具调用和结果</text>
+  <text x="195" y="534" text-anchor="middle" class="tech">append-only · source refs</text>
+
+  <rect x="365" y="455" width="200" height="102" rx="12" class="card"/>
+  <text x="465" y="487" text-anchor="middle" class="node-title">Candidate Extractor</text>
+  <text x="465" y="512" text-anchor="middle" class="node-sub">偏好、事实、决策、经验</text>
+  <text x="465" y="534" text-anchor="middle" class="tech">typed claims + provenance</text>
+
+  <rect x="635" y="455" width="200" height="102" rx="12" class="focal"/>
+  <text x="735" y="487" text-anchor="middle" class="node-title">Dream Worker</text>
+  <text x="735" y="512" text-anchor="middle" class="node-sub">校验、去重、冲突和时效处理</text>
+  <text x="735" y="534" text-anchor="middle" class="tech">consolidate / supersede</text>
+
+  <rect x="905" y="455" width="270" height="102" rx="12" class="card"/>
+  <text x="1040" y="487" text-anchor="middle" class="node-title">Durable Memory Store</text>
+  <text x="1040" y="512" text-anchor="middle" class="node-sub">Notes · Wiki / Graph · Search Index</text>
+  <text x="1040" y="534" text-anchor="middle" class="tech">records are canonical; views derived</text>
+
+  <path d="M280 231 H350" class="accent-arrow"/>
+  <path d="M445 274 V372 Q445 380 437 380 H195 V455" class="arrow"/>
+  <path d="M295 506 H365" class="arrow"/>
+  <path d="M565 506 H635" class="accent-arrow"/>
+  <path d="M835 506 H905" class="arrow"/>
+  <path d="M1040 455 V382 Q1040 374 1032 374 H895 V274" class="arrow"/>
+  <path d="M990 231 H1040" class="arrow"/>
+  <path d="M1122 274 V620 Q1122 628 1114 628 H175 Q167 628 167 620 V274" class="async-arrow"/>
+
+  <text x="60" y="687" class="tech">SQLite / FTS5 first · add vectors or graph only when measured retrieval needs justify them</text>
+  <text x="1218" y="687" text-anchor="end" class="tech">DEVWEEKLY · 2026</text>
+</svg>
+</div>
+</main>
+</body>
+</html>
