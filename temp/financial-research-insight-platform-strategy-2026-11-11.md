@@ -886,7 +886,239 @@ Order Proposal 的意义是把研究意图转成交易员可以核对的结构�
 **最终边界：** 让 Agent 理解交易上下文、准备更好的决策材料、发现风险和解释结果；让 OMS / EMS、RMS、Compliance、Broker、Custodian 和有权人员继续承担订单、风险、执行、清算和账务的权威职责。平台覆盖完整 Trade Lifecycle，不等于 Agent 执行完整 Trade Lifecycle。
 
 
-## 9. 建设路线图：先形成一个可用的研究闭环，再扩展平台
+
+## 9. Legacy 与技术债并存时，如何加速建设 AI-Native Research Platform
+
+金融机构不可能先把所有老系统、供应商数据和 on-prem 数据库清理干净，再开始建设 AI 平台。大型银行、资管和券商的核心数据库往往运行了十几年甚至几十年，依赖 Oracle、SQL Server、DB2、Sybase、Teradata、Hadoop、内部 PostgreSQL、文件服务器、SFTP、厂商专有接口和大量无人敢动的 ETL。供应商数据还带有独立的许可、用户 entitlement、地域和再分发约束。把“先完成企业数据现代化”作为 AI 项目的前置条件，实际效果通常是让 AI 项目等上数年。
+
+正确策略不是大爆炸式替换，也不是把所有旧数据简单复制进 Snowflake，而是采用 **Parallel Modernization：保留原系统的业务权威性，在其外侧建立新的 AI-Native Data & Research Plane；用标准化接入、数据产品和语义契约逐步吸收价值最高的数据域，之后再有选择地退役旧平台。**
+
+这是一条“先建立新的价值路径，再逐步降低旧系统依赖”的路线。旧系统可以继续处理交易、账务、主数据和运营；新平台负责跨系统分析、研究、AI 检索、历史回放和洞察交付。两者通过受控数据接口、CDC、批量交换和数据产品契约连接，而不是让 Agent 直接连接生产数据库。
+
+### 9.1 先改变现代化目标：不是迁移数据库，而是建立新的分析能力
+
+建议将目标拆成三条并行、但有明确边界的工作流：
+
+1. **Keep the lights on：** 旧系统继续作为权威记录系统运行。只做安全补丁、容量管理、接口稳定、关键知识留存和必要的风险缓解；不因为 AI 项目而改写核心交易路径。
+2. **Build the new data plane：** 在 Snowflake、对象存储、Iceberg、PostgreSQL 等现代组件上建设新的数据接入、历史数据、数据产品、语义、权限、计算和 AI 消费能力。优先让新用例消费新平台，而不是反复给旧系统增加报表、脚本和 Agent 插件。
+3. **Retire selectively：** 只有当旧 ETL、数据集市、报表或数据库对象已被新数据产品替代，完成双跑、差异核对、用户迁移和审计确认后，才退役旧资产。不要把“迁移了多少 TB”当作现代化成功的主要指标。
+
+Deloitte 关于金融机构旧平台现代化的研究强调：新云平台建设应与现有 Run-the-Bank 活动并行，旧系统要被隔离和保护，通过混合云数据接入与 API 逐步支持新流程；不能把所有现代化都压在一次性核心替换上。参见 [Tackling Data Challenges for Modernizing Legacy Technology Platforms](https://www2.deloitte.com/content/dam/Deloitte/us/Documents/process-and-operations/us-tackling-data-challenges-for-modernizing-legacy-technology-platforms.pdf) 和 [Modernizing Legacy Systems in Banking](https://www.deloitte.com/us/en/Industries/financial-services/articles/modernizing-legacy-systems-in-banking.html)。
+
+### 9.2 目标架构：Legacy 保持权威，新平台建立统一分析平面
+
+推荐采用“源系统 + Integration Plane + Open Data Plane + Governed Analytics Plane + AI Consumption Plane”的分层结构。它不是要求每家机构同时部署所有产品，而是明确各组件的职责，避免 Snowflake、PostgreSQL、Iceberg 变成三个互相竞争的数据库。
+
+| 层次 | 主要组件 | 职责 | 关键边界 |
+| --- | --- | --- | --- |
+| Legacy / Vendor Sources | Oracle、DB2、SQL Server、Teradata、内部 PostgreSQL、主机文件、SFTP、Bloomberg / LSEG / MSCI / FactSet 等 | 保持原始业务记录、供应商授权数据和既有运营流程 | 不让 Agent 直连生产源；不绕过供应商许可 |
+| Integration Plane | CDC、批量 ETL / ELT、API、消息队列、SFTP ingestion、Schema Registry、私网连接 | 统一接入、断点续传、重试、增量同步、来源身份和接入审计 | 只读优先；限制源端负载、网络出口和凭证 |
+| Open Data Plane | S3 / ADLS / GCS + Parquet + Apache Iceberg + Iceberg Catalog | 保存大规模历史、跨引擎可共享的数据集，提供快照、Schema Evolution 和 Time Travel | 明确 Catalog Owner、文件生命周期、压缩、快照保留和访问控制 |
+| Governed Analytics Plane | Snowflake、dbt、Semantic Views、SQL / Python 计算服务 | 规范化、实体关联、指标计算、研究数据集、受治理的分析查询 | Snowflake 是重要分析执行层，不应成为唯一业务语义或唯一数据格式 |
+| Application / Agent State | PostgreSQL（可配合 pgvector）、对象存储、任务队列 | 保存平台应用状态、研究对象、工作流、Agent Job、审批、轻量元数据和向量索引 | PostgreSQL 不是企业历史数据湖，也不应成为 Snowflake 的影子数仓 |
+| AI Consumption Plane | Research Workbench、Insight Hub、Agent Runtime、MCP / Tool Gateway、Search / RAG | 通过受控数据产品、语义查询和证据 API 提供研究能力 | Agent 只访问已授权的业务 API / 数据产品，不直接获得数据库通用账号 |
+
+**Snowflake、PostgreSQL、Iceberg 应该分工，而不是三选一：**
+
+- **Snowflake：** 企业级分析、弹性 SQL 计算、数据共享、受控数据产品、语义视图和分析工作负载。它适合承担跨域研究和组合分析的主分析平面，但不要把所有源系统原样复制后就宣布完成现代化。
+- **PostgreSQL：** 平台自身的事务型元数据和工作流存储，例如 Research Thesis、任务、审批、Agent Run、数据产品 Registry、用户收藏、轻量状态和 pgvector 索引。对于小规模、低延迟、应用专属的数据服务也可以使用，但不要用它承载 PB 级历史行情、全企业事实仓库或多个部门共享的重型分析。
+- **Apache Iceberg：** 开放表格式和跨引擎数据互操作层。适合大规模历史数据、供应商许可允许落地的数据、长期归档、跨计算引擎共享和避免某个仓库格式锁定。Iceberg 不是数据库、不是 Catalog，也不会自动解决数据治理；必须配合对象存储、Catalog、权限、维护和计算引擎。
+- **对象存储：** 大文件、原始快照、文档、Parquet、供应商文件和 Iceberg 数据文件的成本可控持久层。它不等于一个可直接供业务人员使用的语义平台。
+- **Semantic / Data Product Layer：** 将源系统字段翻译成机构理解的 Portfolio、Position、Security、Issuer、Transaction、Cash、Exposure、Revenue、Risk 等业务对象和指标。这个层应独立于单一存储引擎，Snowflake Semantic Views 可以是一个消费实现，而不是唯一的定义来源。
+
+Snowflake 官方文档说明 Iceberg 数据和元数据存放在云对象存储中，Catalog 可以由 Snowflake 管理，也可以使用外部 Catalog；外部 Catalog 的生命周期、保留策略和文件管理责任不会自动转移给 Snowflake。跨云、跨区域访问还可能产生数据传输费用；外部 Catalog 与 Snowflake-managed Iceberg 在治理、复制、克隆、恢复等平台能力上也存在差异。因此，先确定 Catalog、存储区域和写入责任，再选择 Iceberg 部署模式。参见 [Snowflake Apache Iceberg Tables](https://docs.snowflake.com/en/user-guide/tables-iceberg) 和 [Catalog-linked Databases](https://docs.snowflake.com/en/user-guide/tables-iceberg-catalog-linked-database)。Apache Iceberg 的快照、Schema Evolution 和 Time Travel 能支持可复现分析，但必须正确管理快照保留和表维护。参见 [Apache Iceberg Documentation](https://iceberg.apache.org/docs/latest/)。
+
+### 9.3 不要让每一种源都走同一种接入方式
+
+接入模式应由源系统能力、数据许可、时效要求、源端负载和网络条件决定。CDC 不是所有问题的答案，虚拟化也不能替代数据产品建设。
+
+| 源系统情况 | 优先接入模式 | 适合场景 | 主要注意事项 |
+| --- | --- | --- | --- |
+| Oracle / SQL Server / PostgreSQL 等数据库 | Log-based CDC + 初始快照；不支持时用增量时间戳或批量抽取 | 持仓、账户、交易、主数据、状态变化 | 复制账号最小权限；监控日志保留、复制延迟、主键、删除事件和源端性能 |
+| DB2 / Mainframe / 老旧商业数据库 | 经认证的 CDC 产品、日志抽取、受控文件批量导出或厂商适配器 | 核心账务、客户、交易和历史系统 | 先做源端可行性与厂商支持验证；不要假设每种数据库都支持相同 CDC 能力 |
+| 内部业务 API / 微服务 | API ingestion、事件订阅、Transactional Outbox | 业务状态、审批、事件、客户和账户变更 | API 限流、分页、幂等、版本兼容、重放与删除语义 |
+| Vendor 数据服务 | Vendor API、受控文件交付、厂商 Snowflake Share / Marketplace、许可允许时的增量 Feed | Bloomberg、LSEG、MSCI、FactSet 等 | 数据许可、Named User / Device / Enterprise entitlement、Derived Data、Redistribution、历史留存、缓存和 AI 使用条款 |
+| 文件、SFTP、Excel、PDF、研究材料 | Landing Zone + 文件指纹 + 解析 / OCR + 元数据注册 | 历史研究、供应商批次文件、非结构化材料 | 保留原文件、版本、来源、接收时间、许可和解析置信度；解析结果必须可回到原文 |
+| 只能留在 On-prem / 受监管区域的数据 | 私网连接、区域内处理、受控 API、必要时只输出批准的聚合结果 | 数据驻留、敏感客户或受限数据 | 不默认复制原始明细到公有云；先明确允许的数据类别、用途和地域 |
+
+**CDC 的正确使用方式：** 对支持日志级变更捕获的数据库，通常采用“初始快照 + 从一致日志位置继续捕获”的模式，而不是先做一份全量拷贝，再随意启动 CDC。PostgreSQL 可使用逻辑复制 / WAL 解码；Debezium PostgreSQL Connector 能将行级变化转换为事件，但生产运行需要管理 replication slot、WAL 保留、复制延迟、快照、主键和故障恢复。复制槽长期不消费会造成 WAL 堆积，影响源端磁盘空间，因此必须设置告警、容量上限和恢复操作手册。参见 [Debezium PostgreSQL Connector](https://debezium.io/documentation/reference/stable/connectors/postgresql.html) 和 [PostgreSQL Logical Replication](https://www.postgresql.org/docs/current/logical-replication.html)。
+
+对于高风险核心数据库，优先评估厂商支持的日志复制、只读副本或专门 CDC 网关；不要未经审批就在生产主库上部署 Agent 自己写的轮询脚本。若只能批量抽取，则把时效性写进 Data Contract，例如 T+1、每小时、15 分钟或事件级，并明确数据延迟对用例是否可接受。
+
+### 9.4 Vendor Data 不只是“接进来”：许可、Entitlement 和 AI 使用权要先于技术管道
+
+金融机构的数据供应商通常有多层使用约束：采购主体、Named User、部门、终端、地域、用途、内部展示、衍生数据、模型训练、模型推理、缓存、导出和再分发可能分别受限。技术上能复制一份数据，不代表法律和合同上允许把它复制到对象存储、Iceberg、向量库或模型上下文。
+
+建议建立 Vendor Data Registry，至少记录：
+
+- Provider、Product、Dataset、Feed / API、Contract ID、采购实体和合同有效期；
+- Named User / Device / Enterprise entitlement、允许的 Desk / Role / Portfolio 和地域；
+- 允许的用途：展示、内部分析、研究、模型推理、Embedding、缓存、衍生计算、导出、外部共享；
+- 复制、留存、历史回溯、删除、衍生数据和审计要求；
+- 数据到期、合同终止、用户离职、权限撤销后的清理与再计算规则；
+- 允许落地的位置：Vendor SaaS、Snowflake Share、私有对象存储、Iceberg、Snowflake Native Table 或仅运行时 API。
+
+**把许可检查做成机器可执行的 Policy，而不是一份没人读取的 PDF。** Data Product、Query Gateway、RAG Retrieval、Export Service 和 Agent Tool Gateway 在读取、计算、缓存、生成文件和分发时都要检查授权上下文。尤其是 RAG：不能因为文档已经进入向量库，就默认所有用户都能检索；向量索引必须继承源数据的访问标签和许可范围。供应商数据不允许用于通用模型训练时，必须从训练数据路径中排除；Embedding、Prompt Context、日志和生成文件是否允许留存，也要按合同确认。
+
+优先采用供应商提供的受控数据共享方式或已授权 API。只有许可明确允许时，才将数据复制到企业对象存储或 Snowflake。对于只能在 Vendor 环境中查询的数据，可考虑受控联邦查询或在供应商环境内执行计算，再把允许的结果返回企业平台；但必须明确查询可用性、性能、成本和可复现性限制。
+
+### 9.5 先做 Source Inventory 和 Dependency Graph，不要一上来全量迁移
+
+第一步不是写迁移脚本，而是用 4–6 周建立可执行的现状清单。不要只统计数据库数量和 TB，要识别哪些资产真正支撑研究、投资、风险和监管报告。
+
+每个源系统 / 数据集至少登记：
+
+- 技术：数据库类型、版本、部署位置、Schema、表、视图、存储过程、ETL Job、接口、批次窗口、网络路径；
+- 业务：Domain Owner、Data Owner、Steward、业务用途、消费团队、关键下游报表和模型；
+- 数据：粒度、主键、更新方式、历史覆盖、删除语义、时间字段、币种、时区、数据质量和缺失；
+- 风险：数据分类、PII / MNPI、地域、保留、访问控制、供应商许可和监管用途；
+- 依赖：上游系统、下游报表、Excel、SAS、Python Notebook、SQL Job、用户自建数据集和人工流程；
+- 运行：数据量、增长、刷新 SLA、故障频率、恢复时间、源端容量和维护窗口；
+- 迁移决策：Retain、Expose、Replicate、Rebuild、Retire、Replace、Archive。
+
+需要自动扫描数据库元数据、ETL / SQL 代码、调度系统和报表依赖；再让业务 Owner 确认真正的业务语义。不要把所有对象默认标成“需要迁移”。长期未使用的表、重复数据集、无人消费的报表和废弃 ETL 应先清理；仍在运行但没有替代方案的关键数据源先保留。
+
+**把依赖关系做成 Graph。** 例如 Oracle table → Informatica mapping → Snowflake staging → Power BI report → Portfolio Manager。这样才能判断某个旧表退役会影响哪些报告、研究 Agent、组合决策和监管产物。AI 可以帮助解释 SQL、存储过程、字段含义和血缘，但自动推断的业务规则必须标记置信度并由 Owner 确认，不能直接当作正式定义。
+
+### 9.6 采用“业务用例驱动 + 数据域分波次”，而不是按数据库逐台搬迁
+
+第一批不要选最容易迁移、却没有业务价值的表。应选择一个端到端研究场景，覆盖多种数据源和治理问题，但控制范围。例如：
+
+- 一个投资组合的 Position、Cash、Transaction、Security Master；
+- 一个发行人的 Fundamentals、Estimates、Corporate Actions、Market Data；
+- 一个风险分析场景的 Exposure、Limits、Historical Risk；
+- 一条研究流程所需的 Bloomberg / LSEG / MSCI 数据、内部研究文档和投资 Thesis。
+
+这些场景能检验平台是否真正具备跨源实体解析、时间一致性、供应商授权、Point-in-Time、计算和证据回溯能力。
+
+推荐优先级模型：
+
+**Priority = Business Value × Reuse Potential × Data Readiness × AI Leverage ÷ (Migration Risk × Source Disruption × License Complexity)**
+
+这不是要做伪精确的财务公式，而是迫使团队同时考虑价值、复用、数据成熟度、源端风险和许可难度。对高价值但暂时无法复制的数据，先用受控 API 或联邦访问建立可用性；对低价值、高维护成本且无下游依赖的数据，优先归档或退役。
+
+### 9.7 建立可复用的 Migration Factory：每个数据域都走同一套工程流水线
+
+不要为每个源数据库重新发明一套脚本。平台团队应提供可复用的 Connector / Ingestion Template、Data Contract、数据质量测试、血缘、部署和运行监控模板。每个数据域只需要补充源端映射和领域规则。
+
+建议流水线：
+
+1. **Discover：** 自动采集 Schema、字段、主键、数据量、更新时间、SQL / ETL 依赖和访问控制。
+2. **Profile：** 分析空值、重复、枚举、时间范围、异常值、主外键完整性和数据漂移。
+3. **Extract：** 选择 CDC、API、批量、文件或共享方式，生成可重放的源数据快照和增量。
+4. **Land：** 原始数据进入不可随意覆盖的 Landing / Bronze 区，保留源系统、源主键、源更新时间、抽取时间、批次 ID、CDC Offset / LSN / SCN 和原始文件指纹。
+5. **Normalize：** 转换为统一的时间、币种、单位、标识符、代码集和事件语义；保留原始值与标准值。
+6. **Conform：** 将 Account、Portfolio、Security、Issuer、Instrument、Trade、Position、Cash、Corporate Action 等实体关联到企业标准 ID。
+7. **Validate：** 与旧平台做 Record Count、金额 / 数量总和、分组汇总、主键覆盖、字段级抽样、业务不变量和历史回放核对。
+8. **Publish：** 发布有 Owner、Schema、SLA、许可、质量状态、血缘和访问策略的数据产品。
+9. **Observe：** 监控延迟、丢数、重复、Schema Drift、质量下降、成本、源端影响和下游使用情况。
+10. **Retire：** 完成双跑、用户迁移、审计确认、回滚窗口和业务签字后，才停止旧管道或旧报表。
+
+所有转换逻辑应版本化（例如 dbt / SQL / Python + Git + CI/CD），环境分为 Dev / Test / Prod；部署使用 Infrastructure as Code。AI 可以辅助 SQL / ETL 代码理解和转换，但必须通过目标引擎真实执行、自动测试和业务对账。Security Benefit 的公开案例显示，团队先花近两个月梳理旧 CDP 字段使用和端到端依赖，再用两周重建一个流程；关键不是 AI 自动转换代码，而是先把依赖、逻辑和验收标准透明化，并建立可重复的转换模式。该案例还强调 lineage、文档、RBAC 和动态脱敏。参见 [Security Benefit: 4× Faster Legacy Migration](https://coalesce.io/customer-stories/security-benefit-achieves-4x-faster-legacy-migration/)。
+
+### 9.8 双跑、对账和逐步切换：金融数据现代化不能只看 Record Count
+
+在金融领域，数据迁移正确性不仅是“行数相同”。不同平台可能存在时区、精度、NULL、舍入、币种、Corporate Action 调整、业务日期、迟到数据、撤销记录和历史修订差异。必须建立业务级 reconciliation，而不是只做技术级复制检查。
+
+建议至少验证：
+
+- **结构：** Schema、字段类型、精度、主键、约束和枚举值；
+- **完整性：** 行数、主键集合、缺失记录、重复记录、删除和撤销；
+- **数值：** 数量、金额、余额、费用、汇总值、币种换算和容差；
+- **时间：** Effective Time、Event Time、Ingestion Time、As-of Time、时区和迟到数据；
+- **业务：** 持仓滚动、现金变动、交易状态、公司行动、风险暴露和报表指标；
+- **历史：** 关键日期快照、Point-in-Time 查询、历史修订和回溯计算；
+- **权限：** 不同用户、Desk、Portfolio、地域和供应商许可下的可见性是否一致；
+- **运行：** 刷新 SLA、延迟、重试、恢复、源端负载和成本。
+
+切换时先 Shadow Read：新平台并行计算但不影响业务决策；再 Canary：少量用户或一个团队采用；随后扩大到更多组合和数据域。保留明确的回滚开关和双跑期限。不能长期让两套平台都成为“权威版本”，否则会制造新的技术债；每个业务对象都必须声明 System of Record。
+
+DBS 的混合平台迁移案例提供了一个有参考价值的实践：在保留新加坡 on-prem 平台的同时，建立云端平台，采用并行运行和自动化数据对账；在迁移过程中把 Hive 数据格式现代化为 Iceberg。案例材料称其在四个月内迁移 1.5 PB、12,000 个数据集。该数字来自案例材料，不应直接当作其他机构可复制的时间承诺；可借鉴的是并行运行、自动核对、区域数据驻留和逐步开放新平台的方式。参见 [DBS hybrid data platform migration case](https://www.wisdominterface.com/wp-content/uploads/2026/03/accelerating_enterprise_data_migration.pdf)。
+
+LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段迁移，并自动核对元数据和数据；公开材料报告迁移 50+ TB、约 60% 自动化和约 300 万欧元成本节省。它同样是供应商发布的单一案例，适合参考迁移工厂与自动对账思路，不宜把结果视为普遍基准。参见 [LTM financial services re-platforming case](https://www.ltm.com/insights/case-studies/re-platforming-program-cost-reduction-for-a-european-financial-services-group)。
+
+### 9.9 AI-Native 要从第一天进入数据平台设计，而不是等数据迁完再加 RAG
+
+新平台的每一个数据产品都应同时具备机器和人能理解的上下文。否则，Snowflake 中只是多了几百张表，Agent 仍然不知道字段含义、数据时间、许可和计算方法。
+
+建议每个 Data Product 的最低契约包括：
+
+- Business Name / Description、Domain、Owner、Steward、Consumer；
+- Schema、数据粒度、主键、实体关系和基数；
+- Source System、Source Table / Feed、字段映射和 Transformation Version；
+- Event Time、Effective Time、Ingestion Time、As-of Time、Timezone；
+- Refresh SLA、Freshness、Quality Status、Known Limitations；
+- Security Classification、Entitlement、Purpose、Region、Retention；
+- Lineage、Data Contract Version、Breaking Change Policy；
+- 可用查询、API、Semantic View、示例问题和黄金测试用例；
+- 是否允许 AI Retrieval、Embedding、Prompt Context、文件导出和外部共享。
+
+**金融研究还需要额外的时间语义：** 对市场数据、基本面、分析师预期、评级、持仓、公司行动和供应商修订，至少要区分数据所描述的有效时间与机构实际获得数据的时间。研究平台必须能够回答“在某个历史决策时点，机构当时实际知道什么”，而不只是读取今天修订后的最新值。需要为 Point-in-Time 数据保留来源版本、有效区间、接收时间、供应商修订和计算版本。
+
+推荐的数据处理层次：
+
+- **Bronze / Raw：** 原始来源快照和增量事件，保留来源、时间、Offset、文件指纹和许可元数据；不可静默覆盖。
+- **Silver / Conformed：** 标准化实体、时间、币种、单位、标识符、事件和质量规则；保留原值和标准值的映射。
+- **Gold / Data Products：** 业务可消费的 Portfolio、Issuer、Security、Position、Transaction、Fundamental、Estimate、Exposure 等数据产品。
+- **Semantic / Metric：** 指标定义、关系、过滤语义、计算逻辑和可访问范围；由 Git / Registry 维护，Snowflake Semantic Views 或其他查询层实现。
+- **Research / Evidence：** 研究 Thesis、Claim、Citation、反证、模型输出、人工审阅、决策和结果反馈。不要把这些研究对象混进原始行情表或仅保存为向量文本。
+
+这意味着 Agent 不应该直接对几十万张源表做 Text-to-SQL。它应先从 Catalog / Data Product Registry 发现已批准的数据产品，再通过 Semantic Query / Domain API 获取数据，最后将每个 Claim 绑定到来源、时间、计算和权限证据。对没有业务定义的数据，Agent 可以提出候选映射，但要标记 Unverified，不能把推断出来的字段含义直接当作权威口径。
+
+### 9.10 在 On-prem、Cloud 和 Vendor 之间建立安全的混合边界
+
+金融机构不应把“云优先”误解成“所有数据都必须离开数据中心”。建议按数据分类和业务目的建立部署策略：
+
+- **可复制到云端的分析数据：** 通过私网、专线或受控出口进入 Landing Zone；执行加密、Tokenization、最小化和数据用途控制。
+- **必须留在本地的数据：** 在本地部署 Connector / Query Service 或受控执行代理；云端只接收批准的聚合、脱敏或特征结果。
+- **供应商托管数据：** 优先通过官方 API / Share / 授权服务消费；不允许的原始数据不落地、不进入向量库、不进入 Agent Trace。
+- **跨境和区域限制：** 在数据产品层记录 residency 标签，按区域部署计算和存储；跨区域共享需单独审批。
+- **生产系统保护：** 通过只读副本、CDC 网关、限速、查询白名单、连接池和网络隔离保护 OLTP；禁止 Agent 直接连接生产数据库。
+- **身份与凭证：** 采用短期凭证、服务身份、Secrets Vault、KMS 和可撤销授权；凭证不进入 Prompt、Notebook、日志或 Agent 容器环境。
+
+### 9.11 12 个月可执行路线图：先交付一个研究域，再扩展数据域
+
+不要以“完成全企业数据迁移”作为 AI 平台上线门槛。建议用一个投资研究场景做贯穿式试点，再按数据域复制方法。
+
+| 时间 | 重点任务 | 可验收交付 |
+| --- | --- | --- |
+| 0–30 天 | 建立 Legacy / Vendor Source Inventory；选定一个投资研究场景；确认数据许可、Owner、源端访问和目标用户 | 数据源清单、依赖图、风险与许可矩阵、首批 Data Product Backlog |
+| 31–60 天 | 建设 Landing Zone、Catalog、身份与授权；接入一批关键数据；完成 Bronze / Raw 和血缘 | 可追溯的原始数据、接入 SLA、来源与许可标签、自动质量检查 |
+| 61–90 天 | 建设一个 Silver / Gold 数据产品；建立 Security / Issuer / Portfolio 等实体映射；接入 Snowflake Semantic Views 或 Domain API | 可被研究员使用的可信数据产品、Point-in-Time 验证、端到端研究 Demo |
+| 3–6 个月 | 接入第二批内部数据库和 Vendor Feed；引入 CDC / Iceberg；构建 Thesis Ledger、Claim-to-Evidence 和共享研究视图 | 多源研究闭环、自动对账、团队共享、模型与数据评测 |
+| 6–9 个月 | 扩展到更多 Portfolio / Risk / Transaction 数据域；逐步替代旧报表和手工 ETL；增加 Insight 事件 | 业务团队开始使用新平台做日常分析，旧平台消费逐步下降 |
+| 9–12 个月 | 对已替代的数据集和管道执行退役；评估更多跨引擎 Iceberg 场景；形成持续的数据产品运营机制 | 旧资产退役清单、成本与风险改善数据、数据产品 SLA 和持续改进计划 |
+
+每个阶段必须同时交付业务价值和平台能力，避免做成只有数据工程团队在使用的“新数据仓库项目”。建议一个试点团队包括业务 Product Owner、Data Owner、Data Engineer、Platform Engineer、Security / Compliance、Research Analyst 和 AI Engineer。平台团队提供模板、策略和公共组件；领域团队负责业务定义、质量规则和数据产品运营。
+
+### 9.12 衡量进展：不要只报告迁移 TB 和表数量
+
+建议用以下指标判断现代化是否真正加速 AI 研究：
+
+- **Time-to-Data：** 从提出新研究问题到可用数据产品的时间；
+- **Source Onboarding Lead Time：** 新数据库 / Vendor Feed 接入时间；
+- **Data Product Adoption：** 被多个团队、Agent 和研究工作流实际复用的数据产品比例；
+- **Freshness / Completeness：** 数据延迟、缺失、重复和质量问题；
+- **PIT Reproducibility：** 能否复现历史决策时点的输入和计算；
+- **Lineage Coverage：** 关键研究结论和指标是否能追溯到源；
+- **Entitlement Enforcement：** 是否存在未授权检索、导出、缓存或模型上下文暴露；
+- **Reconciliation Pass Rate：** 新旧平台业务级核对通过率和未解决差异；
+- **Legacy Retirement：** 已停止维护的旧 ETL、报表、数据集市和许可成本；
+- **AI Research Productivity：** 研究准备时间、证据核对时间、研究覆盖面和重复劳动变化；
+- **Cost-to-Serve：** 每个数据产品、研究工作流和 Agent Run 的计算、存储、供应商和运营成本。
+
+### 9.13 应避免的五种“现代化陷阱”
+
+1. **Big Bang Migration：** 把全量数据库迁移作为 AI 上线前提，导致业务价值长期无法交付。
+2. **Copy Everything to Snowflake：** 把 Snowflake 当作新的企业垃圾场，复制重复表和无人使用的历史数据，增加成本和治理负担。
+3. **PostgreSQL as Enterprise Lakehouse：** 用一个 PostgreSQL 实例承载全部供应商历史数据、行情和多团队分析，最终形成新的性能和运维瓶颈。
+4. **Iceberg Everywhere：** 为了开放格式而把所有数据都放进 Iceberg，却没有明确 Catalog、Compaction、Snapshot Expiration、权限和跨云成本责任。Iceberg 应用于确有跨引擎、开放格式或存储控制需求的数据域，不是强制标准。
+5. **AI Direct-to-Legacy：** 让 Agent 直接连 Oracle、DB2、生产 PostgreSQL 或供应商数据库做任意 SQL / RAG。它会绕过数据许可、源端负载控制、业务语义和审计边界，也会把旧系统的复杂性直接暴露给模型。
+
+**最终建议：** 不要等 Legacy Debt 消失才开始 AI Native。先在旧系统外建立一个受治理、可追溯、可复用的新分析平面；通过 CDC、API、批量和供应商授权接口逐步接入；用 Snowflake 承担主要分析和语义消费，用 PostgreSQL 管理平台状态与研究应用数据，用 Iceberg 和对象存储解决开放历史数据与跨引擎互操作。每一个新数据域都必须从第一天带有 Owner、许可、时间语义、血缘、质量和机器可读的 Data Contract。这样可以让新平台先创造研究价值，同时逐年减少旧平台的依赖，而不必先承担一次高风险、全企业范围的核心系统替换。
+
+
+## 10. 建设路线图：先形成一个可用的研究闭环，再扩展平台
 
 建议按 12–18 个月分阶段推进。时间是规划窗口，不是供应商交付承诺；实际周期取决于数据许可、内部研究数据质量、遗留系统接口和业务团队投入。
 
@@ -920,7 +1152,7 @@ Order Proposal 的意义是把研究意图转成交易员可以核对的结构�
 
 所有业务目标应在试点开始时依据当前基线和风险偏好设定。对于高影响研究材料，关键事实有明确来源并可复核应作为设计门槛；但不应在没有基线、没有标注数据的情况下，随意承诺一个看似精确的准确率或节省时间比例。
 
-## 10. 评测体系：模型、检索和工作流必须一起评估
+## 11. 评测体系：模型、检索和工作流必须一起评估
 
 ### 9.1 不要只比较模型排行榜
 
@@ -956,7 +1188,7 @@ Order Proposal 的意义是把研究意图转成交易员可以核对的结构�
 
 每个模型都要有实际任务分布下的能力配置，而不是一个笼统的“最强模型”标签。模型版本升级时，应运行企业基准集回归测试；当某家供应商的质量或成本不再满足要求时，应能调整路由而不重写业务逻辑。
 
-## 11. 主要架构决策和不建议做的事
+## 12. 主要架构决策和不建议做的事
 
 **不要建设一个通用 Bloomberg 替代品。** 市场数据覆盖、新闻分发、标准化指标和专业内容是长期积累的产品能力，自建平台更应该利用已有供应商，把差异化放在机构自己的研究上下文和业务流程。
 
@@ -972,7 +1204,7 @@ Order Proposal 的意义是把研究意图转成交易员可以核对的结构�
 
 **不要用“人类在环”作为抽象口号。** 每个复核节点要定义触发条件、审批角色、允许修改范围、拒绝后的状态、恢复方式和最终责任人。否则审批按钮并不能提供有效控制。
 
-## 12. 推荐的目标状态
+## 13. 推荐的目标状态
 
 目标产品不是让分析师把所有问题都交给某一个模型，而是让机构拥有一个统一、可信、可替换的金融研究能力层。
 
@@ -999,6 +1231,17 @@ Claude 和 OpenAI 提供模型能力、部分金融工作流、数据连接和�
 38. Anthropic Help Center, [Use Personal Finance in Claude](https://support.claude.com/en/articles/18185620-use-personal-finance-in-claude)（账户数据范围、只读限制、Team / Enterprise 可用性及产品限制）。
 39. SEC, [Rule 15c3-5: Risk Management Controls for Brokers or Dealers With Market Access](https://www.sec.gov/rules-regulations/2011/06/risk-management-controls-brokers-or-dealers-market-access)。
 40. SEC, [Responses to FAQs Concerning Risk Management Controls for Brokers or Dealers With Market Access](https://www.sec.gov/rules-regulations/staff-guidance/trading-markets-frequently-asked-questions/divisionsmarketregfaq-0)。
+41. Deloitte, [Tackling Data Challenges for Modernizing Legacy Technology Platforms](https://www2.deloitte.com/content/dam/Deloitte/us/Documents/process-and-operations/us-tackling-data-challenges-for-modernizing-legacy-technology-platforms.pdf)。
+42. Deloitte, [Modernizing Legacy Systems in Banking](https://www.deloitte.com/us/en/Industries/financial-services/articles/modernizing-legacy-systems-in-banking.html)。
+43. Snowflake, [Apache Iceberg Tables](https://docs.snowflake.com/en/user-guide/tables-iceberg)。
+44. Snowflake, [Catalog-linked Databases for Apache Iceberg](https://docs.snowflake.com/en/user-guide/tables-iceberg-catalog-linked-database)。
+45. Apache Iceberg, [Documentation](https://iceberg.apache.org/docs/latest/)。
+46. Debezium, [PostgreSQL Connector Documentation](https://debezium.io/documentation/reference/stable/connectors/postgresql.html)。
+47. PostgreSQL, [Logical Replication](https://www.postgresql.org/docs/current/logical-replication.html)。
+48. Coalesce, [Security Benefit Achieves 4× Faster Legacy Migration](https://coalesce.io/customer-stories/security-benefit-achieves-4x-faster-legacy-migration/), 2026-02-27（供应商发布的客户案例）。
+49. TCS, [An Approach to Implementing Data Mesh in Financial Services](https://www.tcs.com/what-we-do/industries/banking/white-paper/data-mesh-implementation-bfsi)。
+50. Google Cloud / DBS case material, [How DBS Bank is Scaling a Hybrid Data Platform for Growth and Regulatory Compliance](https://www.wisdominterface.com/wp-content/uploads/2026/03/accelerating_enterprise_data_migration.pdf)（二手案例材料，含并行迁移和 Iceberg 经验）。
+51. LTM, [Re-Platforming Program Cost Reduction for a European Financial Services Group](https://www.ltm.com/insights/case-studies/re-platforming-program-cost-reduction-for-a-european-financial-services-group), 2024-06-03（供应商发布的客户案例）。
 
 ### 官方产品与工程文档
 
