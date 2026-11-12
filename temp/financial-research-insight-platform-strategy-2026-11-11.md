@@ -324,7 +324,7 @@ Insight 还要记录后续处理：谁查看了、是否确认、是否形成研
 
 这些内容可以由关系数据库、数据仓库、文档索引、搜索服务和图数据库共同实现。不要因为研究中存在实体关系就将所有内容强行放进图数据库；先保证主键、关系、版本、查询合同和变更历史可靠，再按多跳研究场景引入图能力。
 
-### 4.3 多路检索，而不是单一向量 RAG
+### 4.3 检索路由：结构化、词法、向量与关系查询
 
 金融研究并非所有问题都需要向量检索。对明确的财务数字和期间，直接查询标准化指标或供应商 API 更可靠；对精确术语、条款编号、证券代码和披露用语，需要词法检索；对语义相似的研究主题，可以使用向量检索；对于跨公司、跨期间和实体关系问题，则可能需要知识图谱或显式关系查询。
 
@@ -358,7 +358,7 @@ Workbench 和 Insight Hub 共享底层能力，但面向的工作方式不同。
 
 如果机构已经把 Bloomberg、LSEG、MSCI 等外部金融数据以及内部持仓、风险和研究数据集中在 Snowflake，建议采用 **Snowflake-centric Data Plane + 自建 Agent Plane + 独立 AI Control Plane**。模型侧以 Claude 或 OpenAI 当前最强、且经过机构评测与合同批准的模型为主，通过 LiteLLM Proxy 统一路由和治理；不把模型厂商的 Agent 产品当作企业运行时。Agent 的执行、状态、工具调用和审批由机构自己的服务负责。
 
-#### 6.4.1 架构边界与组件职责
+#### 4.7.1 架构边界与组件职责
 
 | 架构层 | 建议组件 | 主要职责 | 归属 |
 | --- | --- | --- | --- |
@@ -409,7 +409,7 @@ Amazon LiteLLM 是模型访问网关，不是完整的 AI Control Plane。应用
 
 明确排除：**不使用 Bedrock AgentCore。** 不让模型供应商接管企业 Agent 生命周期、工具网关、身份、会话记忆或工作流。Claude / OpenAI 是可替换的模型供应商；LiteLLM 负责模型接入和路由，企业 Control Plane 负责策略治理，企业 Agent Runtime 负责执行。
 
-#### 6.4.2 Snowflake 数据分层
+#### 4.7.2 Snowflake 数据分层
 
 Snowflake 内部建议至少划分以下逻辑层。实际可映射到独立 Database / Schema / Data Product，避免把所有内容堆在一个宽表或一个 Schema 中。
 
@@ -424,7 +424,7 @@ Snowflake 内部建议至少划分以下逻辑层。实际可映射到独立 Dat
 
 外部数据接入优先使用供应商许可允许的 Snowflake Secure Data Sharing / Marketplace 方式；如果数据已由内部管道落地，则保留原始记录和接收批次。对共享对象不要为了方便 Agent 而默认全量复制。Secure Data Sharing 的技术可用性与 Bloomberg / LSEG / MSCI 合同授予的使用权是两个问题，必须逐项核对存储、查询、衍生、Embedding、模型上下文、缓存、导出、展示和用户分发权利。
 
-#### 6.4.3 Semantic Views 与金融领域语义
+#### 4.7.3 Semantic Views 与金融领域语义
 
 建议按业务域建立多个小而清晰的 Semantic Views，而不是一个 Enterprise Mega View：
 
@@ -438,7 +438,7 @@ Semantic View 的定义、YAML / DDL、验证问题和部署脚本纳入 Git 版
 
 关键原则是：Semantic View 是 Snowflake 内的执行和查询语义；机构仍需维护独立于 Snowflake 的领域定义、指标目录和 API 契约。不要让 LangGraph 业务代码依赖 Semantic View 的内部 YAML 结构或特定 SQL 生成细节。
 
-#### 6.4.4 数据访问与 Entitlement：最重要的安全设计
+#### 4.7.4 数据访问与 Entitlement：最重要的安全设计
 
 不要让 Agent 获得 Snowflake 高权限通用账号，也不要把用户权限简化成一个固定的服务角色。推荐采用两层控制：
 
@@ -455,7 +455,7 @@ Financial Tool Gateway 只暴露有业务语义的工具，例如 `get_fundament
 
 参考 Snowflake [Semantic View Privileges](https://docs.snowflake.com/en/user-guide/security-access-control-privileges)、[Cortex Search Query Access Control](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/query-cortex-search-service) 和 [Row Access Policies](https://docs.snowflake.com/en/user-guide/security-row-intro)。
 
-#### 6.4.5 金融工具层：不要让 LLM 直接写任意 SQL
+#### 4.7.5 金融工具层：不要让 LLM 直接写任意 SQL
 
 Financial Tool Gateway 是 Agent 与 Snowflake 之间唯一的业务访问入口。它可以内部使用参数化 SQL、Semantic Views、受控存储过程或 Snowflake SQL API，但对 Agent 暴露稳定的领域 API：
 
@@ -473,7 +473,7 @@ Financial Tool Gateway 是 Agent 与 Snowflake 之间唯一的业务访问入口
 
 可以支持受控的 Text-to-SQL，但不应将其作为默认主路径。若确有 ad hoc 分析需求，应限定到只读的分析 Schema、只读角色、SQL AST 校验、表 / 列 allowlist、查询成本上限、超时、行数限制和结果脱敏，并将生成 SQL 与执行结果记录下来。面向生产研究流程，优先使用参数化领域工具和经过验证的 Semantic Views。
 
-#### 6.4.6 LangGraph 研究工作流
+#### 4.7.6 LangGraph 研究工作流
 
 首个版本采用一个主 Research Graph，以确定性节点为主，少数 LLM 节点负责需要语言理解和综合判断的任务。典型工作流：
 
@@ -491,7 +491,7 @@ Financial Tool Gateway 是 Agent 与 Snowflake 之间唯一的业务访问入口
 
 不是每个步骤都需要 LLM。实体解析、权限判定、数据查询、计算、版本比较、审批和状态迁移应尽量确定性实现。LLM 不得生成授权决定，不得绕过验证节点，也不能自行将草稿升级为正式研究观点。
 
-#### 6.4.7 LangSmith、业务状态和审计记录分开
+#### 4.7.7 LangSmith、业务状态和审计记录分开
 
 LangSmith 用于观察 LangGraph 的节点执行、模型调用、工具调用、延迟、Token、错误和评测结果；它不承担权威业务状态，也不应成为监管审计唯一存储。
 
@@ -506,7 +506,7 @@ LangSmith 用于观察 LangGraph 的节点执行、模型调用、工具调用�
 
 LangSmith 的 Trace 需要脱敏，避免将未授权的 Bloomberg / LSEG / MSCI 原文、客户信息、组合持仓和内部研究材料不加区分地发送到第三方 SaaS。应评估 LangSmith 部署形态、数据处理条款、区域、保留和删除策略；必要时使用 OpenTelemetry 将运行指标和 Trace 元数据汇入企业可控的观测平台。
 
-#### 6.4.8 推荐的端到端研究流程
+#### 4.7.8 推荐的端到端研究流程
 
 例如分析师要求“分析某公司最新财报，并判断是否改变当前投资 Thesis”：
 
@@ -521,7 +521,7 @@ LangSmith 的 Trace 需要脱敏，避免将未授权的 Bloomberg / LSEG / MSCI
 
 这条链路中，Claude / OpenAI 经 LiteLLM 提供可替换的模型推理；LangGraph 是机构自己运营的工作流；Snowflake 是金融事实和语义底座；LangSmith 是可替换的观测与评测工具。任何一个模型供应商升级、降级或退出，都不应该导致研究记忆、金融数据定义、授权逻辑和研究状态丢失。
 
-#### 6.4.9 分阶段落地顺序
+#### 4.7.9 分阶段落地顺序
 
 | 顺序 | 交付 | 不建议提前做的事 |
 | --- | --- | --- |
@@ -542,7 +542,7 @@ LangSmith 的 Trace 需要脱敏，避免将未授权的 Bloomberg / LSEG / MSCI
 
 共同原则：所有服务端模型调用经过企业运营的 LiteLLM Proxy；应用只使用内部模型别名，不直接连接供应商 API，不在浏览器、Skill、MCP 配置或 Agent Prompt 中保存供应商密钥。最强模型用于复杂研究、跨文档推理和关键论证；抽取、分类、格式转换等任务使用成本更低的模型。模型别名是企业内部服务合同，具体模型 ID、版本、区域、Fallback 和参数由平台配置控制。升级先跑金融任务评测，再灰度，最后全量。LiteLLM 解决模型接入、路由、预算和供应商抽象，不承担用户授权、金融数据 entitlement、Agent 生命周期、业务审批或监管审计的最终责任。
 
-#### 6.5.1 方案 A：Centralized AI Platform（集中式企业 AI 平台）
+#### 4.8.1 方案 A：Centralized AI Platform（集中式企业 AI 平台）
 
 适合大型银行、保险集团、资产管理集团，或希望统一建设企业 AI 基础设施的机构。平台团队统一运营模型网关、Agent Runtime、工具目录、策略服务、审计和数据访问入口；业务团队通过注册的 Agent、Skill 和 Workflow 使用平台能力。
 
@@ -550,7 +550,7 @@ LangSmith 的 Trace 需要脱敏，避免将未授权的 Bloomberg / LSEG / MSCI
 
 <figure><a href="diagrams/financial-ai-architecture-centralized.html"><img src="diagrams/financial-ai-architecture-centralized.svg" alt="集中式企业 AI 平台架构图" /></a><figcaption>图：集中式企业 AI 平台。点击打开可缩放的完整 HTML 架构图。</figcaption></figure>
 
-#### 6.5.2 方案 B：Federated Domain AI（联邦式领域 AI）
+#### 4.8.2 方案 B：Federated Domain AI（联邦式领域 AI）
 
 适合已经有成熟投研、组合管理、风险、财富管理、合规等领域技术团队的金融集团。中央平台提供统一 Control Plane、模型网关、身份和数据契约；各领域运行自己的 Agent Runtime、工作流、Skill、领域工具和评测集。
 
@@ -558,7 +558,7 @@ LangSmith 的 Trace 需要脱敏，避免将未授权的 Bloomberg / LSEG / MSCI
 
 <figure><a href="diagrams/financial-ai-architecture-federated.html"><img src="diagrams/financial-ai-architecture-federated.svg" alt="联邦式领域 AI 架构图" /></a><figcaption>图：联邦式领域 AI。点击打开可缩放的完整 HTML 架构图。</figcaption></figure>
 
-#### 6.5.3 方案 C：Research Intelligence Fabric（研究智能能力网络）
+#### 4.8.3 方案 C：Research Intelligence Fabric（研究智能能力网络）
 
 适合把研究能力作为长期机构资产，而不只是一个 Agent 平台的金融机构。它将模型和 Agent 视为可替换的计算层，把差异化沉淀在金融数据产品、实体与指标语义、Point-in-Time、Research Memory、Claim & Evidence、确定性计算和业务反馈中。Workbench、Insight Hub、Portfolio、Risk 等应用通过同一组领域能力组合服务。
 
@@ -566,7 +566,7 @@ LangSmith 的 Trace 需要脱敏，避免将未授权的 Bloomberg / LSEG / MSCI
 
 <figure><a href="diagrams/financial-ai-architecture-fabric.html"><img src="diagrams/financial-ai-architecture-fabric.svg" alt="Research Intelligence Fabric 架构图" /></a><figcaption>图：Research Intelligence Fabric。点击打开可缩放的完整 HTML 架构图。</figcaption></figure>
 
-#### 6.5.4 选择与演进
+#### 4.8.4 选择与演进
 
 | 维度 | 集中式平台 | 联邦式领域 AI | Research Intelligence Fabric |
 | --- | --- | --- | --- |
@@ -585,7 +585,7 @@ Control Plane 不是管理后台，也不是 LiteLLM、LangSmith 或 MCP Registr
 
 <figure><a href="diagrams/financial-ai-control-plane.html"><img src="diagrams/financial-ai-control-plane.svg" alt="金融企业 AI Control Plane 架构图" /></a><figcaption>图：Control Plane 管理策略，Data Plane 逐跳执行策略。</figcaption></figure>
 
-#### 6.6.1 核心组件
+#### 4.9.1 核心组件
 
 | 组件 | 管理职责 |
 | --- | --- |
@@ -601,7 +601,7 @@ Control Plane 不是管理后台，也不是 LiteLLM、LangSmith 或 MCP Registr
 
 建议采用独立管理 API 和策略服务；注册信息可先由 PostgreSQL 保存，策略以 Git 管理，经 CI 校验后发布。策略引擎可评估 OPA 或 Cedar；金融业务 entitlement 由机构自己的授权服务提供权威数据。
 
-#### 6.6.2 PDP / PEP：逐跳执行授权
+#### 4.9.2 PDP / PEP：逐跳执行授权
 
 统一授权上下文至少包括 Subject（已认证用户或服务身份、组织、Desk、角色）、Resource（Agent、Tool、MCP、Semantic View、Portfolio、Issuer、Document）、Action（read、search、calculate、export、write、approve）、Purpose（投研、组合监控、客户服务、风险审查等）、Data Entitlements（供应商许可、订阅范围、地域、再分发和派生内容限制）、Context（As-of 时间、信息隔离墙、风险级别、任务 ID）和 Decision（Allow、Deny、Mask、Filter、Require Approval，带 Policy ID / Version、理由码和有效期）。
 
@@ -609,7 +609,7 @@ Control Plane 不是管理后台，也不是 LiteLLM、LangSmith 或 MCP Registr
 
 授权必须在每一个边界重新执行，而不是只在登录时执行一次。用户可以访问某个研究 Agent，不代表该 Agent 自动有权读取所有组合；Agent 可以查询某个 Semantic View，也不代表可以导出供应商原始数据或用于对外报告。
 
-#### 6.6.3 LiteLLM 在 Control Plane 中的位置
+#### 4.9.3 LiteLLM 在 Control Plane 中的位置
 
 LiteLLM 是 Model Gateway 的实现选项，不是完整 Control Plane。内部模型别名可包括：
 
@@ -625,7 +625,7 @@ LiteLLM 是 Model Gateway 的实现选项，不是完整 Control Plane。内部�
 
 LiteLLM 的 Virtual Keys / Teams、预算、速率限制、Router、Fallback 和日志能力可作为实现基础；用户身份、业务用途、数据 entitlement、Information Barrier、审批、模型风险等级和最终审计由外围 Control Plane 决定。密钥保存在 Vault / AWS Secrets Manager 等秘密管理服务，按供应商和环境隔离，定期轮换；上游密钥不得返回客户端。
 
-#### 6.6.4 Agent、Skill、MCP 和 Tool 的注册与发布
+#### 4.9.4 Agent、Skill、MCP 和 Tool 的注册与发布
 
 每个可运行能力都应有机器可读的注册描述：唯一 ID、业务 Owner、技术 Owner、用途、风险等级、输入输出 Schema、所需权限、允许调用的模型别名、允许使用的数据产品、工具清单、网络出口范围、运行环境、版本、评测结果、审批人、发布日期和退役时间。
 
@@ -633,7 +633,7 @@ LiteLLM 的 Virtual Keys / Teams、预算、速率限制、Router、Fallback 和
 
 高风险 Tool（组合写入、客户沟通、研究发布、交易指令、账户或权限变更）需要独立风险分类、审批和幂等执行。审批通过后，业务动作仍由权威领域 API 执行，Agent 不持有生产数据库写权限。
 
-#### 6.6.5 Control Plane 与 Data Plane 边界
+#### 4.9.5 Control Plane 与 Data Plane 边界
 
 | Control Plane：管理和决策 | Data Plane：实际执行 |
 | --- | --- |
@@ -651,19 +651,19 @@ LiteLLM 的 Virtual Keys / Teams、预算、速率限制、Router、Fallback 和
 
 Snowflake Semantic Views 是重要的执行层能力，但不是企业完整的金融本体、主数据管理系统，也不是所有业务授权规则的唯一载体。建议采用 **Enterprise Semantic Contract + Snowflake Semantic Views**：企业维护跨仓库的实体、指标、期间和授权定义；Snowflake Semantic Views 将其中适合分析查询的部分映射为 Snowflake 内可执行的逻辑模型。
 
-#### 6.7.1 先定义金融语义，再写 Semantic View
+#### 4.10.1 先定义金融语义，再写 Semantic View
 
 每个 Metric 至少需要业务名称、定义、公式、事实粒度、聚合方式、币种、单位、期间类型、会计口径、来源优先级、适用资产类别、时间有效性、允许维度、空值规则、重述处理和 Owner。
 
 Revenue 不能只是 SUM(revenue)。需要明确这是季度值还是 YTD、财年还是自然年、Reported 还是 Restated、GAAP 还是 Adjusted、报告币种还是标准化币种、合并口径是否一致、是否允许跨分部相加。Metric Contract 应由领域数据 Owner 与 Finance / Research SME 共同负责；Semantic View 是该契约的部署产物，而不是唯一的定义源。
 
-#### 6.7.2 按业务问题拆分，避免 Mega View
+#### 4.10.2 按业务问题拆分，避免 Mega View
 
 建议从以下领域开始：SV_COMPANY_FUNDAMENTALS（收入、利润、现金流、负债、资本回报、财务期间和披露版本）；SV_MARKET_DATA（价格、收益率、成交量、FX、交易日历、估值时点和价格类型）；SV_ESTIMATES（分析师预测、共识、预测机构、发布日期、修订时间和有效期间）；SV_OWNERSHIP（机构持仓、所有权比例、披露时点和供应商口径）；SV_PORTFOLIO_EXPOSURE（组合、持仓、风险因子、基准、估值时点和组合授权）；SV_RISK_ANALYTICS（VaR、Stress、流动性、集中度、模型版本和计算日期）；SV_RESEARCH_CONTEXT（Coverage、Thesis、Catalyst、Forecast、历史观点和研究状态）。
 
 不要把财务事实、市场行情、预测、组合持仓和研究观点塞进一个巨大 Semantic View。领域拆分有助于控制 Join 范围、Metric 粒度、授权范围和版本变更影响。
 
-#### 6.7.3 金融语义最容易出错的地方
+#### 4.10.3 金融语义最容易出错的地方
 
 1. **Grain / Join Cardinality：** 明确每张逻辑表的粒度。事实表之间不要直接多对多 Join；需要桥接表、有效关系和明确聚合路径。测试重复计数、Fan-out 和指标膨胀。
 2. **时间语义：** 同时保留 Period Start / End、Published At、Observed At、Effective Time、Revision Time 和 As-of Time。历史研究必须能查询当时可见的数据，不能使用今天的最新修订值。
@@ -676,7 +676,7 @@ Revenue 不能只是 SUM(revenue)。需要明确这是季度值还是 YTD、财�
 9. **指标聚合：** 比率不能简单对明细行求和或平均；应根据分子、分母和目标粒度重新计算。
 10. **供应商差异：** Bloomberg、LSEG、MSCI 对同一指标的定义、覆盖范围、更新时间和许可可能不同。保留 Provider Metric 与 Canonical Metric 的映射和冲突，不要静默覆盖。
 
-#### 6.7.4 Owner's Rights 与数据授权：最容易留下的安全缺口
+#### 4.10.4 Owner's Rights 与数据授权：最容易留下的安全缺口
 
 Snowflake Semantic View 使用 Owner's Rights 语义：对 Semantic View 拥有 SELECT 权限的角色可以查询该对象，而不必单独拥有底层表的 SELECT 权限。底层表上的 Row Access Policy 和 Masking Policy 可以向 Semantic View 查询传播，但必须在真实角色和真实查询路径上验证。**不能把“没有底层表权限”误认为“无法通过 Semantic View 读取数据”。**
 
@@ -684,13 +684,13 @@ Snowflake Semantic View 使用 Owner's Rights 语义：对 Semantic View 拥有 
 
 用户身份和数据 entitlement 必须传到查询服务，防止 Agent 通过共享高权限服务账号扩大数据范围。分开管理 Semantic View 的 OWNERSHIP、SELECT、REFERENCES、MONITOR 权限；生产 Runtime 不应拥有修改 Semantic View 定义的权限。Cortex Analyst / Search 等服务也要逐一核查执行身份、对象权限、Owner's Rights、日志和数据保留行为，不能把不同 Snowflake 产品的授权模式混为一谈。
 
-#### 6.7.5 Verified Queries、评测和 CI/CD
+#### 4.10.5 Verified Queries、评测和 CI/CD
 
 每个领域维护 Gold Questions、预期 SQL / 结果和业务解释，覆盖常见问题、边界期间、复杂 Join、空值、币种、重述、权限差异和历史 As-of 查询。发布流水线至少包括：静态检查（对象引用、定义和描述）；SQL 验证（语法、Join、聚合和结果）；语义回归（生成 SQL、结果正确性和解释一致性）；安全回归（不同角色、Desk、Portfolio 和许可的行列可见范围）；兼容性检查（字段、指标、关系、权限变化对下游影响）；发布控制（Dev → Test → Prod，记录 Commit、DDL 版本、发布人、评测结果和回滚版本）。
 
 Verified Queries 能提高相似问题的 SQL 生成质量，但不能替代好的数据模型、准确描述和金融领域验证。先把 Grain、Metric、Relationship 和权限建正确，再用 Gold Queries 优化覆盖率和准确率。
 
-#### 6.7.6 不要把 Snowflake 语义对象变成平台锁定点
+#### 4.10.6 不要把 Snowflake 语义对象变成平台锁定点
 
 企业应把 Metric Contract、Entity Contract、时间定义、数据产品接口和授权语义保存在仓库无关的目录或 Git 中。Snowflake Semantic View、dbt Model、内部 SQL API 或其他分析引擎只是这些契约的执行映射。Agent 不应直接读取 Semantic View YAML 并把内部结构当作永久 API；应通过 Financial Data API / Semantic Query Service 请求稳定的业务查询合同。
 
@@ -923,14 +923,14 @@ Order Proposal 的意义是把研究意图转成交易员可以核对的结构�
 
 
 
-## 8. Legacy 现代化：不等核心系统迁完才开始建设
+## 8. Legacy 现代化：在旧系统旁建设新分析平面
 
 ![Legacy 数据现代化路径](/diagrams/financial-research-legacy-modernization.svg)
 
 *交互查看：[Legacy 数据现代化图](/diagrams/financial-research-legacy-modernization.html)。*
 
 
-本章讨论数据与技术债的现代化路径；整个平台的产品交付节奏见第 10 章。两条路线并行推进，不要求旧系统先完成替换。
+本章讨论数据与技术债的现代化路径；整个平台的产品交付节奏见第 9 章。两条路线并行推进，不要求旧系统先完成替换。
 
 金融机构不可能先把所有老系统、供应商数据和 on-prem 数据库清理干净，再开始建设 AI 平台。大型银行、资管和券商的核心数据库往往运行了十几年甚至几十年，依赖 Oracle、SQL Server、DB2、Sybase、Teradata、Hadoop、内部 PostgreSQL、文件服务器、SFTP、厂商专有接口和大量无人敢动的 ETL。供应商数据还带有独立的许可、用户 entitlement、地域和再分发约束。把“先完成企业数据现代化”作为 AI 项目的前置条件，实际效果通常是让 AI 项目等上数年。
 
@@ -1158,7 +1158,7 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 4. **Iceberg Everywhere：** 为了开放格式而把所有数据都放进 Iceberg，却没有明确 Catalog、Compaction、Snapshot Expiration、权限和跨云成本责任。Iceberg 应用于确有跨引擎、开放格式或存储控制需求的数据域，不是强制标准。
 5. **AI Direct-to-Legacy：** 让 Agent 直接连 Oracle、DB2、生产 PostgreSQL 或供应商数据库做任意 SQL / RAG。它会绕过数据许可、源端负载控制、业务语义和审计边界，也会把旧系统的复杂性直接暴露给模型。
 
-**最终建议：** 不要等 Legacy Debt 消失才开始 AI Native。先在旧系统外建立一个受治理、可追溯、可复用的新分析平面；通过 CDC、API、批量和供应商授权接口逐步接入；用 Snowflake 承担主要分析和语义消费，用 PostgreSQL 管理平台状态与研究应用数据，用 Iceberg 和对象存储解决开放历史数据与跨引擎互操作。每一个新数据域都必须从第一天带有 Owner、许可、时间语义、血缘、质量和机器可读的 Data Contract。这样可以让新平台先创造研究价值，同时逐年减少旧平台的依赖，而不必先承担一次高风险、全企业范围的核心系统替换。
+实施时不需要先清完 Legacy Debt。旧系统继续作为权威记录，新平台先通过 CDC、API、批量交换和供应商授权接口接入一个研究域。Snowflake 负责主要分析与语义消费，PostgreSQL 保存平台和研究应用状态，Iceberg 与对象存储承载开放历史数据。新接入的数据域从一开始就要有 Owner、许可、时间语义、血缘、质量规则和机器可读 Data Contract。业务场景逐步切换后，再退役已经没有消费者的旧 ETL、数据集市和报表。
 
 
 
@@ -1245,19 +1245,19 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 
 ## 11. 架构决策与目标状态
 
-**不要建设一个通用 Bloomberg 替代品。** 市场数据覆盖、新闻分发、标准化指标和专业内容是长期积累的产品能力，自建平台更应该利用已有供应商，把差异化放在机构自己的研究上下文和业务流程。
+**市场数据与专业内容继续采购。** Bloomberg 等供应商长期积累的行情覆盖、新闻、标准化指标和研究内容，不适合由单家机构从头复制。平台应把供应商数据与内部研究、组合和风险上下文结合起来。
 
-**不要把金融 Skill 当作平台本身。** Skill 是模型可执行的任务说明和工作规范。业务语义、数据许可、访问控制、权威状态和审计不能只靠一组 Markdown 文件。
+**Skill 负责任务说明，不负责权威控制。** 指标定义、数据许可、访问控制、业务状态和审计由内部服务维护，不能只写在 Markdown 指令里。
 
-**不要将 LLM 作为权威财务计算器。** 金融计算需要输入、公式、期间和单位的确定性校验。模型负责选取和解释计算过程，不负责凭自然语言生成权威数字。
+**金融计算由确定性服务执行。** 输入、公式、期间、单位和舍入规则需要可测试、可回放；LLM 可以选择计算工具并解释结果，不能自行生成权威数值。
 
-**不要把 RAG 等同于正确。** 检索到相关段落只是开始；还要验证是否来自正确期间和版本、是否能支持完整主张、是否存在反面证据，以及结构化数值是否与来源一致。
+**检索结果不等于证据成立。** 每个重要主张都要核对来源、期间和版本，检查证据是否足够、是否存在反证，并与结构化数值交叉验证。
 
-**不要在第一阶段引入大量多 Agent。** 应先用单一或少数模型调用、确定性工作流和独立校验建立基线。多 Agent 只有在对照评测证明质量增益大于错误传播、运行成本和维护复杂度时才值得引入。
+**Agent 数量由评测结果决定。** 先用少量模型调用、确定性工作流和独立校验建立基线。只有当对照实验显示多 Agent 的质量增益超过错误传播、运行成本和维护负担时，再增加角色和协作步骤。
 
-**不要将 Trace 视为审计系统。** 可观测平台适合开发、调试和质量评估；业务责任、版本化记录和审计事件必须由机构自己确定权威存储和保留规则。
+**Trace 与审计记录分开管理。** LangSmith 等工具用于调试、观测和评测；业务责任、版本化输入输出、权限决定和审批事件应进入机构控制的权威记录。
 
-**不要用“人类在环”作为抽象口号。** 每个复核节点要定义触发条件、审批角色、允许修改范围、拒绝后的状态、恢复方式和最终责任人。否则审批按钮并不能提供有效控制。
+**人工复核必须有明确规则。** 每个审批点都要定义触发条件、审批角色、可修改范围、拒绝后的状态、恢复方式和责任人。只有按钮而没有状态和责任约定，不构成有效控制。
 
 ### 11.1 目标状态
 
