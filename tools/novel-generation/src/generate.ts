@@ -199,7 +199,7 @@ interface LocalArtifactRef {
 }
 
 /** Build the same pointer shape used by @saga/agent-contracts AgentArtifactRef. */
-async function collectArtifactRefs(callDir: string): Promise<LocalArtifactRef[]> {
+export async function collectAgentCallArtifacts(callDir: string): Promise<LocalArtifactRef[]> {
   const refs: LocalArtifactRef[] = [];
   const runFile = resolve(callDir, "run.json");
   const visit = async (directory: string): Promise<void> => {
@@ -210,7 +210,7 @@ async function collectArtifactRefs(callDir: string): Promise<LocalArtifactRef[]>
         await visit(file);
         continue;
       }
-      if (!entry.isFile() || file === runFile) continue;
+      if (!entry.isFile() || file === runFile || entry.name.endsWith('.tmp')) continue;
       const [bytes, info] = await Promise.all([readFile(file), stat(file)]);
       const id = relative(callDir, file).split(sep).join("/");
       const lower = file.toLowerCase();
@@ -262,7 +262,7 @@ export async function runAgentText(
   await atomicText(resolve(callDir, "prompt.txt"), prompt);
   await atomicText(resolve(callDir, "system-prompt.txt"), TEXT_ONLY_SYSTEM_PROMPT);
   await atomicText(resolve(callDir, "model-trace.json"), JSON.stringify({ requestedModel: model ?? null, resolvedModel: resolved.model, modelSource: resolved.source, attempts: [] }, null, 2) + "\n");
-  record.artifactRefs = await collectArtifactRefs(callDir);
+  record.artifactRefs = await collectAgentCallArtifacts(callDir);
   await atomicJson(resolve(callDir, "run.json"), record);
 
   const persistTrace = async (status: "running" | "completed" | "failed", error?: string, result?: string) => {
@@ -428,7 +428,7 @@ export async function recoverInterruptedAgentCalls(): Promise<number> {
           if ((attemptError as NodeJS.ErrnoException).code !== "ENOENT") console.error("[agent-trace] 无法恢复尝试记录 " + attemptPath + ": " + String(attemptError));
         }
       }
-      const artifactRefs = await collectArtifactRefs(dir);
+      const artifactRefs = await collectAgentCallArtifacts(dir);
       await atomicJson(resolve(dir, "run.json"), { ...raw, status: "interrupted", updatedAt: at, error, artifactRefs });
       recovered += 1;
     } catch (error) {
