@@ -299,9 +299,9 @@ Insight 还要记录后续处理：谁查看了、是否确认、是否形成研
 
 ## 4. 目标架构：数据、研究计算与 Agent 如何协作
 
-![金融研究平台参考架构](/diagrams/financial-research-platform-architecture.svg)
+![Research Intelligence Fabric 架构图](diagrams/financial-ai-architecture-fabric.svg)
 
-*交互查看：[金融研究平台架构图](/diagrams/financial-research-platform-architecture.html)。*
+*交互查看：[Research Intelligence Fabric 架构图](diagrams/financial-ai-architecture-fabric.html)。*
 
 
 ### 4.1 数据与内容接入
@@ -741,9 +741,7 @@ DataHub 的公开工程文档展示了将 Snowflake、dbt、Airflow、BI 等源�
 
 需要的不是一张只有 Table → Table 的血缘图，而是一张可跨技术栈查询的 **Enterprise Data Dependency Graph**。图谱把技术资产、业务语义和消费对象连接起来，回答“这项数据从哪里来、经过什么处理、由谁调度、被哪些报表和 Agent 使用、改动后影响谁”。
 
-![金融数据依赖图](/diagrams/financial-data-dependency-graph.svg)
 
-*交互查看：[金融数据依赖图](/diagrams/financial-data-dependency-graph.html)。*
 
 #### 4.12.1 节点模型
 
@@ -1179,9 +1177,7 @@ Order Proposal 的意义是把研究意图转成交易员可以核对的结构�
 
 ## 8. Legacy 现代化：在旧系统旁建设新分析平面
 
-![Legacy 数据现代化路径](/diagrams/financial-research-legacy-modernization.svg)
 
-*交互查看：[Legacy 数据现代化图](/diagrams/financial-research-legacy-modernization.html)。*
 
 
 本章讨论数据与技术债的现代化路径；整个平台的产品交付节奏见第 9 章。两条路线并行推进，不要求旧系统先完成替换。
