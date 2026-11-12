@@ -341,6 +341,67 @@ Memory Core 先只需要五类能力：
 
 可以把它暴露为 TypeScript SDK、HTTP API 和 MCP Server。Pi 与 Copilot SDK 直接使用 TypeScript Client；DeepAgents 可以使用 Python Client 或 MCP。对外协议应当保持简单，不要让每个 Runtime 都了解 SQLite 表结构或 Dream Worker 的内部实现。
 
+第一版可以先放在一个仓库、一个进程中，按职责划分目录，不必一开始就拆成独立服务：
+
+```text
+memory/
+  contracts/          # Event、Candidate、Record、Scope、SourceRef
+  core/               # append、recall、forget、candidate lifecycle
+  store-sqlite/       # SQLite + FTS5 repository
+  retrieval/          # keyword / semantic / temporal ranking
+  dream-worker/       # extract、validate、consolidate、replay
+  adapters/
+    copilot-sdk/      # Session Hooks + streaming events
+    pi/               # Extension lifecycle
+    deepagents/       # Python / HTTP / MCP bridge
+  eval/               # gold tasks、replay reports、regression tests
+```
+
+Runtime Adapter 应只依赖稳定的 Contract，不应直接访问数据库表。核心事件契约可以保持很小：
+
+```typescript
+type RuntimeKind = "copilot-sdk" | "deepagents" | "pi";
+
+interface MemoryEvent {
+  id: string;                 // source event id，作为幂等键
+  runtime: RuntimeKind;
+  sessionId: string;
+  scope: {
+    userId: string;
+    projectId?: string;
+    agentId?: string;
+  };
+  type: "user_message" | "assistant_message" | "tool_result" | "correction";
+  occurredAt: string;
+  source: {
+    ref: string;              // transcript / tool event locator
+    trust: "user" | "tool" | "assistant" | "external";
+  };
+  payload: unknown;
+}
+
+interface MemoryService {
+  appendEvent(event: MemoryEvent): Promise<void>;
+  prepareContext(input: {
+    scope: MemoryEvent["scope"];
+    query: string;
+    tokenBudget: number;
+  }): Promise<{ text: string; recordIds: string[] }>;
+  enqueueConsolidation(input: {
+    scope: MemoryEvent["scope"];
+    throughEventId?: string;
+  }): Promise<{ jobId: string }>;
+  forget(input: {
+    scope: MemoryEvent["scope"];
+    recordIds: string[];
+  }): Promise<{ accepted: boolean }>;
+}
+```
+
+`appendEvent` 必须按来源事件 ID 幂等；`prepareContext` 必须从可信身份推导 Scope，并返回实际注入的 Record ID，便于之后判断一条记忆是否真的被使用；`enqueueConsolidation` 只创建后台任务，不让 Runtime 等待整理完成。`forget` 的执行结果还需要确认主记录和所有派生索引已同步清理，不能只返回“已收到请求”。
+
+语言边界也要提前决定。Copilot SDK 和 Pi 都可以直接用 TypeScript Adapter；DeepAgents 是 Python Runtime。如果 Memory Core 先用 TypeScript 实现，DeepAgents 应通过 HTTP 或 MCP 调用契约，而不是复制一份 Python 数据模型后直接读写 SQLite 表。只有当团队决定以 Postgres 作为共享存储，并且愿意承担跨语言 schema migration 的责任时，才考虑让不同语言的 Repository 直接操作同一套表结构。
+
 ### 4.2 数据模型：保留来源、时间和作用范围
 
 记忆系统至少需要区分 Event、Candidate 和 Memory Record 三种对象。
@@ -434,6 +495,8 @@ Replay 不应该只是测试检索接口是否返回了结果。对一组真实�
 
 **Provenance 必须参与可信度判断。** 用户直接表达、Agent 已验证的工具结果、外部网页和模型推测不能同等对待。来自不可信文档或外部页面的指令，应作为数据处理，不能因为被提炼进记忆就升级为系统指令。
 
+捕获前还应做 Secret Redaction。OpenClaw 的 Dreaming 文档明确说明，Session Transcript 在进入其整理语料前不会自动做 Secret Masking；不能把“有记忆准入策略”误认为“凭据已经脱敏”。在自己的实现中，应在事件落盘或至少在送入提取模型前扫描 API Key、Token、私钥、Cookie 和连接串，并把原始敏感值留在受控的业务日志系统中，而不是复制进长期 Memory。
+
 **忘记需要定义真实删除语义。** 对过时内容，可以 Retire 或 Supersede；对用户明确要求删除的个人数据，则需要从主记录、向量索引、图索引、缓存和派生 Wiki 中同步删除，并按照 Transcript 保留策略处理来源记录。仅仅从 MEMORY.md 中删掉一行，而底层 SQLite、向量库和图数据库仍能搜到，不算完成删除。
 
 **记忆故障不应阻止 Agent 工作。** 检索超时、Worker 崩溃或索引损坏时，Agent 应能够继续使用当前 Session 和正常工具完成任务；后台任务通过 Outbox、幂等事件 ID 和重试处理恢复。对于检索失败，要能区分“没有记忆”和“记忆服务不可用”，不能让两者表现为同一个空结果。
@@ -447,6 +510,8 @@ Replay 不应该只是测试检索接口是否返回了结果。对一组真实�
 先在 Pi 上运行 `pi-hermes-memory`，观察自动学习、纠错、Session 搜索和 Project Scope 的实际效果。再独立运行 `pi-sleep-agent`，重点评估它的 T0/T1/T2、夜间整理和 Replay。两个扩展先分别试验，不要同时写入同一个目录。
 
 试点期间定义一小组固定任务：用户偏好跨 Session 复用、项目命令复用、一次错误修复被再次使用、旧配置变更后不再推荐旧命令、用户要求忘记某条个人信息。先验证正确性和隔离，再测量 Token 和 LLM 成本。
+
+验收应使用可重复的任务集，而不是凭几次演示判断效果。至少检查：同一来源事件重复投递不会生成重复记忆；两个 User 或两个 Project 之间没有任何 Scope 泄漏；旧事实被 Supersede 后不再作为当前状态返回；删除后主记录、检索索引和派生页面均不可再召回；记忆注入确实降低了重复纠正或改善任务结果。建议将“跨 Scope 泄漏为零”和“删除后不可召回”设为硬性门槛，Recall Quality 与 Token 成本则在有基线后再优化。
 
 ### Phase 2：提取共享的 Memory Contract
 
