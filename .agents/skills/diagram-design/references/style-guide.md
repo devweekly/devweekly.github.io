@@ -2,7 +2,7 @@
 
 **The single source of truth for colors, typography, and tokens.** Every diagram draws from this — not from hex values inlined in other reference files. If you want to change the visual skin of Diagram Design, change this file.
 
-Default skin is **Soft Dependency Canvas**, adapted to the Builder Weekly website. It is a complete visual language, not just a palette: cool warm ivory canvas, white raised surfaces, graphite connectors, soft neutral lane structure, pill-shaped category chips, and restrained low-opacity shadows. Shared primitives and templates carry this treatment across architecture, dependency, process, swimlane, sequence, state, data-model, chart, and other diagram types; each type keeps its own layout grammar.
+Default skin is **Soft Dependency Canvas**, adapted to the Builder Weekly website. It is a complete visual language, not just a palette: warm ivory canvas, near-white raised surfaces, near-black connectors, soft neutral lane structure, pill-shaped category chips, and restrained low-opacity shadows. Shared primitives and templates carry this treatment across architecture, dependency, process, swimlane, sequence, state, data-model, chart, and other diagram types; each type keeps its own layout grammar.
 
 To generate your own from a website URL, see [`onboarding.md`](onboarding.md).
 
@@ -35,16 +35,16 @@ Every token is referred to by **semantic role**, not by its hex value. Type refe
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `surface` | `#FFFFFF` | `#343B50` | Raised node/card faces |
-| `surface-hover` | `#FAFBFE` | `#3B4359` | Hover or selected surface |
-| `shadow` | `rgba(50,57,77,0.10)` | `rgba(0,0,0,0.24)` | One soft, short shadow under raised blocks |
+| `surface` | `#FFFEFA` | `#343B50` | Raised node/card faces |
+| `surface-hover` | `#F6F0E6` | `#3B4359` | Hover or selected surface |
+| `shadow` | `rgba(34,28,23,0.10)` | `rgba(0,0,0,0.24)` | One soft, short shadow under raised blocks |
 | `tag-blue` | `#DCE5F4` | `#3D4B65` | Category chip background |
 | `tag-green` | `#D8EEE8` | `#31564F` | Category chip background |
 | `tag-amber` | `#F5E7D4` | `#5A4938` | Category chip background |
 | `tag-rose` | `#F0DDEB` | `#5A4054` | Category chip background |
 | `tag-yellow` | `#F4EFC9` | `#5B5534` | Category chip background |
 
-The source reference's five anchor colors remain visible in the system: `#DDE3F0` informs the canvas family, `#9299AA` the quiet structural family, `#C3BCC3` separators, `#221C17` graphite ink, and `#B08158` the warm focal accent. Some text roles are deliberately darker than the source swatches to satisfy contrast: `#9299AA` is not body text, and `#B08158` is not used for small text on a pale background.
+The site-derived colors are used for the canvas, text, links, and focal accent. Secondary surfaces, borders, and category chips are muted warm-neutral choices added for diagram legibility; they are not represented as existing website CSS tokens.
 
 **Geometry and depth contract:** primary nodes/cards use 10–12px corner radii, compact blocks 6–8px, and category chips use a full pill radius. Raised surfaces are white (light skin) with a 1px quiet border and one subtle shadow (0 2px 8px at the `shadow` token); avoid stacked shadows, glow, gradients, and heavy outlines. Lane/container surfaces use `paper-2` with no card-like shadow. Use these treatments where the visual type has node/card surfaces; do not turn chart marks, axes, text-only labels, or every SVG primitive into cards.
 
@@ -68,7 +68,7 @@ Every token must clear the threshold for each role it plays, against the backgro
 
 ### Inversion rule (light → dark)
 
-Any `rgba(34,28,23, X)` in light becomes a light-ink equivalent in dark, preserving the same opacity. The warm accent shifts brighter in dark mode; surface shadows remain black and restrained.
+Any `rgba(34,28,23, X)` in light becomes a light-ink equivalent in dark, preserving the same opacity. The accent shifts brighter in dark mode; surface shadows remain black and restrained.
 
 ### Series palette (multi-series chart types only)
 
