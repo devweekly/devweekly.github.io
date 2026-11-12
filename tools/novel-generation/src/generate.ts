@@ -1,9 +1,10 @@
 // 唯一调用 @tencent-ai/agent-sdk 的模块：query() 封装 + runAgentText（模型链解析、超时、
 // 中断重试与心跳都收在这里）。其他模块一律经 runAgentText 取模型文本，避免各处自建调用策略。
 import { query } from "@tencent-ai/agent-sdk";
-import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { appendFile, mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
+import { dirname, relative, resolve, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 import { buildQueryOptions, resolveAgentModel, TEXT_ONLY_SYSTEM_PROMPT, isManagedSession } from "./agent-runtime.js";
 import { thinkingOption, type TaskProfile } from "./task-profiles.js";
 import { GENERATION_DEFAULT_TIMEOUT_MS, HEARTBEAT_AFTER_MS, HEARTBEAT_INTERVAL_MS } from "./constants.js";
@@ -187,6 +188,50 @@ async function atomicJson(path: string, value: unknown): Promise<void> {
   await atomicText(path, JSON.stringify(value, null, 2) + "\n");
 }
 
+interface LocalArtifactRef {
+  id: string;
+  uri: string;
+  mediaType: string;
+  sha256: string;
+  sizeBytes: number;
+  createdAt: string;
+  payloadComplete: boolean;
+}
+
+/** Build the same pointer shape used by @saga/agent-contracts AgentArtifactRef. */
+async function collectArtifactRefs(callDir: string): Promise<LocalArtifactRef[]> {
+  const refs: LocalArtifactRef[] = [];
+  const runFile = resolve(callDir, "run.json");
+  const visit = async (directory: string): Promise<void> => {
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      const file = resolve(directory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(file);
+        continue;
+      }
+      if (!entry.isFile() || file === runFile) continue;
+      const [bytes, info] = await Promise.all([readFile(file), stat(file)]);
+      const id = relative(callDir, file).split(sep).join("/");
+      const lower = file.toLowerCase();
+      const mediaType = lower.endsWith(".json") ? "application/json"
+        : lower.endsWith(".jsonl") ? "application/x-ndjson"
+        : "text/plain";
+      refs.push({
+        id,
+        uri: pathToFileURL(file).href,
+        mediaType,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        sizeBytes: bytes.byteLength,
+        createdAt: info.mtime.toISOString(),
+        payloadComplete: !id.endsWith("partial-response.txt")
+      });
+    }
+  };
+  await visit(callDir);
+  return refs.sort((a, b) => a.id.localeCompare(b.id));
+}
+
 /**
  * Every SDK model call gets a durable local trace, regardless of which feature
  * invoked it. Feature-specific stage artifacts remain useful, but are not a
@@ -205,7 +250,7 @@ export async function runAgentText(
   const failures: string[] = [];
   const caller = new Error("Agent call origin").stack?.split("\n").slice(2, 9) ?? [];
   const record: Record<string, unknown> = {
-    schemaVersion: 1, callId, status: "running", startedAt, updatedAt: startedAt,
+    schemaVersion: 1, callId, status: "running", startedAt, updatedAt: startedAt, artifactRefs: [],
     requestedModel: model ?? null, resolvedModel: resolved.model, modelSource: resolved.source,
     modelAttempts: attempts, timeoutMs, allowFallback,
     taskProfile: profile ?? null, context: trace?.context ?? null, caller, cwd: process.cwd(), pid: process.pid,
@@ -216,19 +261,28 @@ export async function runAgentText(
   await mkdir(callDir, { recursive: true });
   await atomicText(resolve(callDir, "prompt.txt"), prompt);
   await atomicText(resolve(callDir, "system-prompt.txt"), TEXT_ONLY_SYSTEM_PROMPT);
-  await atomicJson(resolve(callDir, "run.json"), record);
   await atomicText(resolve(callDir, "model-trace.json"), JSON.stringify({ requestedModel: model ?? null, resolvedModel: resolved.model, modelSource: resolved.source, attempts: [] }, null, 2) + "\n");
+  record.artifactRefs = await collectArtifactRefs(callDir);
+  await atomicJson(resolve(callDir, "run.json"), record);
 
   const persistTrace = async (status: "running" | "completed" | "failed", error?: string, result?: string) => {
     const updatedAt = new Date().toISOString();
-    const completed = { ...record, status, updatedAt, ...(error ? { error } : {}), ...(result !== undefined ? { responseChars: result.length } : {}) };
-    await atomicJson(resolve(callDir, "run.json"), completed);
+    if (result !== undefined) await atomicText(resolve(callDir, "response.txt"), result);
+    if (error) await atomicText(resolve(callDir, "failure.txt"), error);
     await atomicJson(resolve(callDir, "model-trace.json"), {
       requestedModel: model ?? null, resolvedModel: resolved.model, modelSource: resolved.source,
       timeoutMs, allowFallback, taskProfile: profile ?? null, attempts: trace?.attempts ?? attemptRecords
     });
-    if (result !== undefined) await atomicText(resolve(callDir, "response.txt"), result);
-    if (error) await atomicText(resolve(callDir, "failure.txt"), error);
+    const completed = {
+      ...record,
+      status,
+      updatedAt,
+      artifactRefs: await collectArtifactRefs(callDir),
+      ...(error ? { error } : {}),
+      ...(result !== undefined ? { responseChars: result.length } : {})
+    };
+    Object.assign(record, completed);
+    await atomicJson(resolve(callDir, "run.json"), completed);
   };
   const attemptRecords: AgentTextTrace["attempts"] = trace?.attempts ?? [];
   let attemptIndex = 0;
@@ -363,7 +417,6 @@ export async function recoverInterruptedAgentCalls(): Promise<number> {
       }
       const at = new Date().toISOString();
       const error = "进程在模型调用完成前退出；已在下次启动时标记为 interrupted。";
-      await atomicJson(resolve(dir, "run.json"), { ...raw, status: "interrupted", updatedAt: at, error });
       await atomicText(resolve(dir, "failure.txt"), error);
       const attemptEntries = await readdir(dir, { withFileTypes: true });
       for (const attemptEntry of attemptEntries.filter(item => item.isDirectory() && /^attempt-\d+$/.test(item.name))) {
@@ -375,6 +428,8 @@ export async function recoverInterruptedAgentCalls(): Promise<number> {
           if ((attemptError as NodeJS.ErrnoException).code !== "ENOENT") console.error("[agent-trace] 无法恢复尝试记录 " + attemptPath + ": " + String(attemptError));
         }
       }
+      const artifactRefs = await collectArtifactRefs(dir);
+      await atomicJson(resolve(dir, "run.json"), { ...raw, status: "interrupted", updatedAt: at, error, artifactRefs });
       recovered += 1;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
