@@ -55,7 +55,7 @@ Anthropic 的公开仓库 [anthropics/financial-services](https://github.com/ant
 它与 [anthropics/financial-services](https://github.com/anthropics/financial-services) 应并列理解：后者更偏金融服务通用岗位和专业分析插件；前者更聚焦财富顾问的客户与组合服务流程。两者都能缩短工作流原型开发时间，但都没有替代机构自己的身份授权、数据许可、业务语义、研究记忆、控制执行和监管责任。
 
 
-### 1.1.2 Claude Personal Finance：值得借鉴的是“账户聚合 + 连续追问 + 可调整视图”，不是个人理财建议
+### 1.1.2 Claude Personal Finance：账户聚合与连续追问的产品参考
 
 Anthropic 于 2026 年 11 月 5 日发布 [Introducing Personal Finance in Claude](https://claude.com/resources/articles/introducing-personal-finance-in-claude)。它面向个人用户，但产品设计中有几项对机构 Research / Portfolio 平台很有价值。需要注意：这项功能处于美国市场 Beta，官方帮助文档说明目前不适用于 Claude Team / Enterprise；它不是现成的企业团队解决方案，也不应直接将个人账户连接模式搬进机构环境。
 
@@ -346,7 +346,7 @@ Workbench 和 Insight Hub 共享底层能力，但面向的工作方式不同。
 
 应用需要与现有研究管理、Portfolio Management、OMS / EMS、RMS、Allocation、Custodian、CRM、文档管理、邮件、数据仓库和办公工具集成。交易相关集成默认只读；Order Proposal 通过人工交接进入 OMS / EMS，由授权交易员在原系统内核对和执行。其他权威业务系统的写回也必须通过受控 API 和业务工作流执行，保留原始输入、审批、幂等键和执行回执。研究平台可以提供建议和草稿，但不能因为某个 Agent 生成了一个动作，就认为权威系统应接受它。
 
-### 4.7 参考落地架构：Snowflake + LiteLLM + LangGraph + LangSmith
+### 4.7 参考部署：Snowflake + LiteLLM + LangGraph + LangSmith
 
 如果机构已经把 Bloomberg、LSEG、MSCI 等外部金融数据以及内部持仓、风险和研究数据集中在 Snowflake，建议采用 **Snowflake-centric Data Plane + 自建 Agent Plane + 独立 AI Control Plane**。模型侧以 Claude 或 OpenAI 当前最强、且经过机构评测与合同批准的模型为主，通过 LiteLLM Proxy 统一路由和治理；不把模型厂商的 Agent 产品当作企业运行时。Agent 的执行、状态、工具调用和审批由机构自己的服务负责。
 
@@ -528,7 +528,7 @@ LangSmith 的 Trace 需要脱敏，避免将未授权的 Bloomberg / LSEG / MSCI
 
 
 
-### 4.8 面向 Claude / OpenAI 最强模型的三种企业架构
+### 4.8 面向 Claude / OpenAI 的三种企业架构
 
 当机构把 Claude 或 OpenAI 的高端模型作为主要推理引擎，架构重点不是“怎样部署一个 Agent”，而是怎样在模型持续升级、供应商可能切换、金融业务不断扩展的情况下保持企业控制权。三种方案共享相同安全底线，区别在于组织边界、领域自治和长期资产沉淀方式。
 
@@ -571,7 +571,7 @@ LangSmith 的 Trace 需要脱敏，避免将未授权的 Bloomberg / LSEG / MSCI
 不必一次性三选一。建议先以集中式平台建立 LiteLLM、身份、Policy、Tool Gateway、审计和 Agent Runtime；领域成熟后演进为联邦执行；实体、指标、研究记忆、证据和计算服务成熟后形成 Fabric。最终可以是“联邦式执行 + 集中式控制 + Fabric 式领域资产”。
 
 
-### 4.9 Control Plane：企业应该自己建设什么
+### 4.9 Control Plane：机构需要掌握的控制点
 
 Control Plane 不是管理后台，也不是 LiteLLM、LangSmith 或 MCP Registry 中任意一个产品。它是企业对 AI 能力进行注册、授权、发布、运行约束、监控、撤销和追责的权威控制面。Control Plane 管理规则和期望状态；Data Plane 在每次请求、工具调用、查询和业务写入时执行规则。
 
@@ -639,7 +639,7 @@ LiteLLM 的 Virtual Keys / Teams、预算、速率限制、Router、Fallback 和
 两者通过版本化 API、策略包、注册清单和事件 Schema 交互。Control Plane 不应成为所有推理请求的同步中心：策略判定可在区域内 PDP 执行，注册配置可分发到 Runtime；紧急撤销通过短 TTL 缓存、版本失效和 Kill Switch 传播。无法取得必要策略状态的高风险操作必须 Fail Closed。
 
 
-### 4.10 Snowflake Semantic Views：不要把 Semantic Layer 当作 SQL 生成配置
+### 4.10 Snowflake Semantic Views 与仓库无关的业务语义
 
 Snowflake Semantic Views 是重要的执行层能力，但不是企业完整的金融本体、主数据管理系统，也不是所有业务授权规则的唯一载体。建议采用 **Enterprise Semantic Contract + Snowflake Semantic Views**：企业维护跨仓库的实体、指标、期间和授权定义；Snowflake Semantic Views 将其中适合分析查询的部分映射为 Snowflake 内可执行的逻辑模型。
 
@@ -690,7 +690,7 @@ Verified Queries 能提高相似问题的 SQL 生成质量，但不能替代好�
 
 
 
-### 4.11 不要先建一个多 Agent 大系统
+### 4.11 Agent 数量服从任务复杂度
 
 研究任务经常被设计成 Researcher、Analyst、Risk Agent、Reviewer、Writer 等多个 Agent 相互对话。角色划分容易理解，但多 Agent 不一定能提高结果质量；如果各 Agent 共享同一批错误证据，或在串行过滤中提前丢掉关键材料，增加角色只会放大错误传播、延迟和成本。
 
@@ -924,7 +924,7 @@ Order Proposal 的意义是把研究意图转成交易员可以核对的结构�
 
 这是一条“先建立新的价值路径，再逐步降低旧系统依赖”的路线。旧系统可以继续处理交易、账务、主数据和运营；新平台负责跨系统分析、研究、AI 检索、历史回放和洞察交付。两者通过受控数据接口、CDC、批量交换和数据产品契约连接，而不是让 Agent 直接连接生产数据库。
 
-### 9.1 先改变现代化目标：不是迁移数据库，而是建立新的分析能力
+### 9.1 现代化目标：建立新的分析平面
 
 建议将目标拆成三条并行、但有明确边界的工作流：
 
@@ -957,7 +957,7 @@ Deloitte 关于金融机构旧平台现代化的研究强调：新云平台建�
 
 Snowflake 官方文档说明 Iceberg 数据和元数据存放在云对象存储中，Catalog 可以由 Snowflake 管理，也可以使用外部 Catalog；外部 Catalog 的生命周期、保留策略和文件管理责任不会自动转移给 Snowflake。跨云、跨区域访问还可能产生数据传输费用；外部 Catalog 与 Snowflake-managed Iceberg 在治理、复制、克隆、恢复等平台能力上也存在差异。因此，先确定 Catalog、存储区域和写入责任，再选择 Iceberg 部署模式。参见 [Snowflake Apache Iceberg Tables](https://docs.snowflake.com/en/user-guide/tables-iceberg) 和 [Catalog-linked Databases](https://docs.snowflake.com/en/user-guide/tables-iceberg-catalog-linked-database)。Apache Iceberg 的快照、Schema Evolution 和 Time Travel 能支持可复现分析，但必须正确管理快照保留和表维护。参见 [Apache Iceberg Documentation](https://iceberg.apache.org/docs/latest/)。
 
-### 9.3 不要让每一种源都走同一种接入方式
+### 9.3 按数据源特征选择接入方式
 
 接入模式应由源系统能力、数据许可、时效要求、源端负载和网络条件决定。CDC 不是所有问题的答案，虚拟化也不能替代数据产品建设。
 
@@ -974,7 +974,7 @@ Snowflake 官方文档说明 Iceberg 数据和元数据存放在云对象存储�
 
 对于高风险核心数据库，优先评估厂商支持的日志复制、只读副本或专门 CDC 网关；不要未经审批就在生产主库上部署 Agent 自己写的轮询脚本。若只能批量抽取，则把时效性写进 Data Contract，例如 T+1、每小时、15 分钟或事件级，并明确数据延迟对用例是否可接受。
 
-### 9.4 Vendor Data 不只是“接进来”：许可、Entitlement 和 AI 使用权要先于技术管道
+### 9.4 Vendor Data：许可与 AI 使用范围
 
 金融机构的数据供应商通常有多层使用约束：采购主体、Named User、部门、终端、地域、用途、内部展示、衍生数据、模型训练、模型推理、缓存、导出和再分发可能分别受限。技术上能复制一份数据，不代表法律和合同上允许把它复制到对象存储、Iceberg、向量库或模型上下文。
 
@@ -991,7 +991,7 @@ Snowflake 官方文档说明 Iceberg 数据和元数据存放在云对象存储�
 
 优先采用供应商提供的受控数据共享方式或已授权 API。只有许可明确允许时，才将数据复制到企业对象存储或 Snowflake。对于只能在 Vendor 环境中查询的数据，可考虑受控联邦查询或在供应商环境内执行计算，再把允许的结果返回企业平台；但必须明确查询可用性、性能、成本和可复现性限制。
 
-### 9.5 先做 Source Inventory 和 Dependency Graph，不要一上来全量迁移
+### 9.5 Source Inventory 与 Dependency Graph
 
 第一步不是写迁移脚本，而是用 4–6 周建立可执行的现状清单。不要只统计数据库数量和 TB，要识别哪些资产真正支撑研究、投资、风险和监管报告。
 
@@ -1009,7 +1009,7 @@ Snowflake 官方文档说明 Iceberg 数据和元数据存放在云对象存储�
 
 **把依赖关系做成 Graph。** 例如 Oracle table → Informatica mapping → Snowflake staging → Power BI report → Portfolio Manager。这样才能判断某个旧表退役会影响哪些报告、研究 Agent、组合决策和监管产物。AI 可以帮助解释 SQL、存储过程、字段含义和血缘，但自动推断的业务规则必须标记置信度并由 Owner 确认，不能直接当作正式定义。
 
-### 9.6 采用“业务用例驱动 + 数据域分波次”，而不是按数据库逐台搬迁
+### 9.6 按业务用例和数据域分批推进
 
 第一批不要选最容易迁移、却没有业务价值的表。应选择一个端到端研究场景，覆盖多种数据源和治理问题，但控制范围。例如：
 
@@ -1026,7 +1026,7 @@ Snowflake 官方文档说明 Iceberg 数据和元数据存放在云对象存储�
 
 这不是要做伪精确的财务公式，而是迫使团队同时考虑价值、复用、数据成熟度、源端风险和许可难度。对高价值但暂时无法复制的数据，先用受控 API 或联邦访问建立可用性；对低价值、高维护成本且无下游依赖的数据，优先归档或退役。
 
-### 9.7 建立可复用的 Migration Factory：每个数据域都走同一套工程流水线
+### 9.7 Migration Factory：标准化迁移工程
 
 不要为每个源数据库重新发明一套脚本。平台团队应提供可复用的 Connector / Ingestion Template、Data Contract、数据质量测试、血缘、部署和运行监控模板。每个数据域只需要补充源端映射和领域规则。
 
@@ -1045,7 +1045,7 @@ Snowflake 官方文档说明 Iceberg 数据和元数据存放在云对象存储�
 
 所有转换逻辑应版本化（例如 dbt / SQL / Python + Git + CI/CD），环境分为 Dev / Test / Prod；部署使用 Infrastructure as Code。AI 可以辅助 SQL / ETL 代码理解和转换，但必须通过目标引擎真实执行、自动测试和业务对账。Security Benefit 的公开案例显示，团队先花近两个月梳理旧 CDP 字段使用和端到端依赖，再用两周重建一个流程；关键不是 AI 自动转换代码，而是先把依赖、逻辑和验收标准透明化，并建立可重复的转换模式。该案例还强调 lineage、文档、RBAC 和动态脱敏。参见 [Security Benefit: 4× Faster Legacy Migration](https://coalesce.io/customer-stories/security-benefit-achieves-4x-faster-legacy-migration/)。
 
-### 9.8 双跑、对账和逐步切换：金融数据现代化不能只看 Record Count
+### 9.8 双跑、对账与受控切换
 
 在金融领域，数据迁移正确性不仅是“行数相同”。不同平台可能存在时区、精度、NULL、舍入、币种、Corporate Action 调整、业务日期、迟到数据、撤销记录和历史修订差异。必须建立业务级 reconciliation，而不是只做技术级复制检查。
 
@@ -1066,7 +1066,7 @@ DBS 的混合平台迁移案例提供了一个有参考价值的实践：在保�
 
 LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段迁移，并自动核对元数据和数据；公开材料报告迁移 50+ TB、约 60% 自动化和约 300 万欧元成本节省。它同样是供应商发布的单一案例，适合参考迁移工厂与自动对账思路，不宜把结果视为普遍基准。参见 [LTM financial services re-platforming case](https://www.ltm.com/insights/case-studies/re-platforming-program-cost-reduction-for-a-european-financial-services-group)。
 
-### 9.9 AI-Native 要从第一天进入数据平台设计，而不是等数据迁完再加 RAG
+### 9.9 从数据契约开始支持 AI 消费
 
 新平台的每一个数据产品都应同时具备机器和人能理解的上下文。否则，Snowflake 中只是多了几百张表，Agent 仍然不知道字段含义、数据时间、许可和计算方法。
 
@@ -1094,7 +1094,7 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 
 这意味着 Agent 不应该直接对几十万张源表做 Text-to-SQL。它应先从 Catalog / Data Product Registry 发现已批准的数据产品，再通过 Semantic Query / Domain API 获取数据，最后将每个 Claim 绑定到来源、时间、计算和权限证据。对没有业务定义的数据，Agent 可以提出候选映射，但要标记 Unverified，不能把推断出来的字段含义直接当作权威口径。
 
-### 9.10 在 On-prem、Cloud 和 Vendor 之间建立安全的混合边界
+### 9.10 On-prem、Cloud 与 Vendor 的混合边界
 
 金融机构不应把“云优先”误解成“所有数据都必须离开数据中心”。建议按数据分类和业务目的建立部署策略：
 
@@ -1105,7 +1105,7 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 - **生产系统保护：** 通过只读副本、CDC 网关、限速、查询白名单、连接池和网络隔离保护 OLTP；禁止 Agent 直接连接生产数据库。
 - **身份与凭证：** 采用短期凭证、服务身份、Secrets Vault、KMS 和可撤销授权；凭证不进入 Prompt、Notebook、日志或 Agent 容器环境。
 
-### 9.11 12 个月可执行路线图：先交付一个研究域，再扩展数据域
+### 9.11 Legacy 现代化的 12 个月路线图
 
 不要以“完成全企业数据迁移”作为 AI 平台上线门槛。建议用一个投资研究场景做贯穿式试点，再按数据域复制方法。
 
@@ -1120,7 +1120,7 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 
 每个阶段必须同时交付业务价值和平台能力，避免做成只有数据工程团队在使用的“新数据仓库项目”。建议一个试点团队包括业务 Product Owner、Data Owner、Data Engineer、Platform Engineer、Security / Compliance、Research Analyst 和 AI Engineer。平台团队提供模板、策略和公共组件；领域团队负责业务定义、质量规则和数据产品运营。
 
-### 9.12 衡量进展：不要只报告迁移 TB 和表数量
+### 9.12 现代化进展指标
 
 建议用以下指标判断现代化是否真正加速 AI 研究：
 
@@ -1136,7 +1136,7 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 - **AI Research Productivity：** 研究准备时间、证据核对时间、研究覆盖面和重复劳动变化；
 - **Cost-to-Serve：** 每个数据产品、研究工作流和 Agent Run 的计算、存储、供应商和运营成本。
 
-### 9.13 应避免的五种“现代化陷阱”
+### 9.13 五种常见的现代化误区
 
 1. **Big Bang Migration：** 把全量数据库迁移作为 AI 上线前提，导致业务价值长期无法交付。
 2. **Copy Everything to Snowflake：** 把 Snowflake 当作新的企业垃圾场，复制重复表和无人使用的历史数据，增加成本和治理负担。
@@ -1161,13 +1161,13 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 | 3：Insight Hub（6–9 个月） | 把研究变化推送给相关角色 | Watchlist / Portfolio 关联；事件识别；重要性和 Thesis Delta；Insight 对象；责任人、状态、反馈和审计 | 告警误报率、漏报率和优先级获得业务认可；每条重要 Insight 有证据和处理路径；角色隔离有效 |
 | 4：跨业务扩展（9–18 个月） | 扩展资产类别、团队和端到端工作流 | 信用、私募、财富或投行工作流；组合风险分析；自动生成机构模板材料；更多数据源和领域 Agent；受控业务系统写回 | 每个新增场景重新完成风险分类、许可核验和评测；关键动作经领域授权和审批；运行成本和服务质量满足业务要求 |
 
-### 10.1 首个试点应该选什么
+### 10.1 选择首个研究场景
 
 对于资产管理或研究机构，建议从一个固定覆盖范围内的上市公司财报分析与 Thesis 更新开始。这个流程高频、材料有较明确的来源、结构化财务数据和文本披露同时存在，也能看到研究结论是否随时间变化。它适合检验文件解析、检索、指标口径、来源定位、历史假设和分析师复核的完整链路。
 
 建议先选 1–2 个行业、30–100 家发行人作为受控范围。数字是试点规划的建议起点，不代表行业标准或成熟度要求；应依据团队覆盖情况和数据授权调整。先让分析师使用研究助手，结果只用于内部研究，不自动向客户发布、不直接进入交易执行，也不承担信用审批等高影响决策。若机构主要业务是商业银行、财富或保险，则应把试点换成该机构中同等高频、可验证、责任边界明确的研究场景。
 
-### 10.2 每个阶段应该怎样衡量
+### 10.2 阶段验收与指标
 
 不要用 Prompt 数、Token 数或 Agent 数量衡量产品价值。平台的指标应同时覆盖正确性、研究效率、用户行为、业务影响和运营成本。
 
@@ -1187,13 +1187,13 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 
 ## 11. 评测：用真实研究任务验证整个平台
 
-### 11.1 不要只比较模型排行榜
+### 11.1 评测完整任务链路
 
 [AgenticFinBench](https://arxiv.org/abs/2611.04813) 是 2026 年 11 月发布的金融 Agent 预印本，覆盖 230 个真实请求任务、8 个类别、两种语言和四个复杂度等级，并比较 18 种模型与 Agent Harness 配置。论文报告，仅评估任务完成度而不审计事实，可能高估系统表现；在其测试中，Harness 对证据落地差异的影响高于模型差异（28.6% 对 8.8%），而复杂任务的质量分也低于直接检索任务。
 
 这项结果并不意味着 Harness 在所有情况下都比模型重要，任务集合也不是生产流量的随机样本。它支持一个更实用的评估原则：应比较完整的模型、Prompt、工具、检索、状态管理和验证组合，而不应只比较 Claude 与 GPT 的单次问答。
 
-### 11.2 企业自己的金融评测集应覆盖这些任务
+### 11.2 金融研究评测集
 
 | 任务族 | 代表性问题 | 必须验证的内容 |
 | --- | --- | --- |
@@ -1208,7 +1208,7 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 | 研究报告验证 | 一份投研备忘录中哪些陈述缺证、冲突或被反驳？ | Claim 级和 Memo 级质量、错误严重度 |
 | Point-in-Time 回放 | 在历史日期当时可获得哪些资料？ | 来源时间、数据版本、模型预训练记忆污染风险 |
 
-### 11.3 模型选型需要按任务建立 Pareto Frontier
+### 11.3 按任务选择模型
 
 同一个模型未必在表格理解、长文综合、精确引用、复杂数值任务和成本方面都占优。建议对 Claude、OpenAI 及候选模型使用相同的题目、相同的证据包、相同的工具和相同的输出契约，分别测量：
 
