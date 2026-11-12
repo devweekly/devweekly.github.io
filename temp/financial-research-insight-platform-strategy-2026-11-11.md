@@ -1,6 +1,6 @@
-# 金融研究与 Insight 平台：金融机构应该自建什么，应该采购什么？
+# 金融研究平台怎么建：业务边界、数据架构与 AI 工作流
 
-**文档类型：** 行业产品分析与平台建设白皮书  
+**文档类型：** 金融技术架构分析  
 **研究基准日：** 2026-11-11  
 **适用对象：** 银行、资产管理公司、券商、财富管理机构、保险资管及其他需要开展金融研究、投资分析和风险洞察的机构  
 **主要视角：** 以机构内部 Research Workbench 与 Insight 产品为目标，兼顾投研、组合管理、风险和企业战略研究  
@@ -10,30 +10,20 @@
 
 ## 核心判断
 
-Claude 和 OpenAI 都已经跨过了“通用大模型加一个金融 Prompt”的阶段。Anthropic 发布了面向金融服务的工作流模板、金融数据连接器和 Managed Agent 运行方式；OpenAI 在 2026 年 9 月推出 ChatGPT for Financial Services，将内置金融数据、GPT-6 Astra、金融分析和 Office 模板放进同一产品。与此同时，Bloomberg、FactSet、AlphaSense、S&P Global 等专业厂商也在将数据、分析与 AI 工作流结合。
+金融机构不必等核心系统完成现代化，才开始建设 AI 研究平台。更可行的做法是在现有系统外围建立一套受治理的 Research Plane：旧系统继续负责权威业务记录和交易处理，新平台通过授权接口、CDC、批量交换和数据产品接入所需信息，先服务新的研究与分析场景。
 
-因此，一家金融机构今天从零建设平台，不能把“财报摘要、公司问答、估值模型初稿、同行比较、研究报告生成”当成自己的长期竞争壁垒。这些能力正在成为模型厂商和金融数据供应商的标准产品。
+模型厂商和金融数据供应商正在把财报摘要、公司问答、估值初稿、同行比较和研究报告生成做成标准能力。机构不应把这些通用功能当作长期壁垒。值得自己掌握的是研究记忆、业务语义、Point-in-Time 数据、数据许可、主张级证据、可复现计算，以及研究结论与组合、风险和业务结果之间的关系。
 
-真正值得机构长期持有的，是自己的研究记忆、分析方法、业务语义、投资假设、组合上下文、客户与风险约束、历史判断及其结果，以及能够在任意时点复现的证据和计算链。平台的产出也不应只是一次性的问答，而应是持续更新、经过验证、能关联业务影响并进入工作流程的 Insight。
+产品入口分为两类：Research Workbench 支持分析师主动研究；Insight Hub 持续发现变化并把待处理事项交给合适的团队。两者共用数据、计算、授权和证据服务。
 
-建议把产品定位成一个机构级 Research Intelligence Platform，面向用户提供两个入口：供分析师主动探索的 Research Workbench，以及面向投资经理、风险人员和管理层持续推送的 Insight Hub。两者共享同一套可信数据、研究记忆、授权、计算、证据和治理底座。
+建设边界可以概括为：
 
-### 先区分：哪些应该复用，哪些必须自己建设
+| 复用或采购 | 机构自己掌握 |
+| --- | --- |
+| Frontier LLM、金融数据、文档解析、搜索、Agent 编排框架、身份与密钥基础设施 | 研究记忆、实体与指标语义、数据许可执行、金融计算规则、证据链、工作流责任和业务反馈 |
+| Snowflake、PostgreSQL、Iceberg 等成熟数据组件 | 各组件的职责边界、数据契约、跨引擎语义和迁移策略 |
 
-| 能力领域 | 可直接采用的产品 / Building Block | 金融机构必须掌握的 Differentiator | 建设策略 |
-| --- | --- | --- | --- |
-| 基础模型与推理 | Claude、OpenAI；通过 LiteLLM 做模型别名、路由、Fallback、预算和供应商切换 | 机构任务上的模型选择策略、数据处理边界、模型变更回归集、风险分级 | 不训练通用基础模型；保留模型可替换性，把预算投入任务评测和路由策略 |
-| 金融工作流模板 | Anthropic Financial Services / Financial Advisors Skills、OpenAI 金融工作环境、LangGraph 工作流 | 本机构的研究方法、审批规则、投资授权、岗位职责、例外处理和工作流状态 | 复用模板与 Skill 作为起点；业务规则、权限检查和关键状态迁入受控服务 |
-| 金融数据与研究内容 | Bloomberg、LSEG、MSCI、FactSet、S&P、Morningstar、PitchBook、Daloopa、AlphaSense 等 | 数据许可与用途约束、跨供应商实体映射、历史版本、Point-in-Time、来源优先级 | 采购专业数据，不复制供应商内容产品；自建统一数据契约、Entitlement 和时间语义 |
-| 企业数据平台与语义 | Snowflake、Semantic Views、Catalog、dbt、SQL / Python 计算服务 | 企业 Metric / Entity / Period Contract、指标口径、关系基数、计算规则和跨仓库语义 | 复用 Snowflake 执行与治理能力；业务语义定义放在仓库无关的 Git / Registry |
-| Agent Runtime 与工具接入 | LangGraph、MCP、Skills、容器化 Runtime、现有 SaaS Connector | Capability Registry、工具信任分级、工具权限、版本审批、网络出口、运行隔离 | 采用成熟运行时和协议；自建注册、策略执行、发布治理，不自研 Agent 框架 |
-| 身份、授权与合规控制 | 企业 IdP、IAM、KMS、DLP、SIEM、工作流审批产品 | 用户 / 账户 / 组合 / 客户 / 数据许可的组合授权；Purpose Limitation；PDP / PEP；可证明的控制执行 | 集成企业安全产品；自建金融业务授权决策与执行适配层，不能让 Prompt 或 Skill 充当安全边界 |
-| 研究记忆与知识资产 | 搜索引擎、向量数据库、图数据库、文档管理和数据目录 | Thesis Ledger、研究观点、假设变化、反证、研究结果、责任人和历史回放 | 这是核心 Differentiator，应由机构拥有数据模型、生命周期和反馈闭环 |
-| 证据、计算与验证 | LangSmith 等 Trace / Evaluation、文档解析、OCR、SQL / Python | Claim-to-Evidence、计算可复现、Point-in-Time 回放、冲突处理、审计证据链 | 复用可观测和计算组件；建立机构级验证契约、黄金测试集与审计记录 |
-| Insight 分发与业务闭环 | CRM、Portfolio / Risk 系统、通知平台、BI 产品 | 结合持仓、客户关系、风险预算、研究 Thesis 的重要性排序；确认、处置与结果反馈 | 不重复造 CRM / OMS / 风险系统；自建洞察编排、业务影响关联和闭环状态 |
-| Trade Lifecycle 协同 | OMS / EMS、RMS、Broker、Custodian、Clearing、TCA | 只读交易上下文、交易前分析、非执行性 Order Proposal、执行可视化、对账和交易后复盘 | 不自建 OMS / EMS，不让 Agent 下单；自建 Order Proposal、交易事件关联、只读权限边界和研究反馈闭环 |
-
-这里的分界不是“买还是自建”的二选一。原则是：**采购通用能力，复用成熟 Building Block；自己拥有金融业务语义、授权规则、研究记忆、证据链和业务结果闭环。** 这些资产决定平台是否真正理解本机构，而不是仅仅把 Claude 或 GPT 接到企业数据上。
+先选一个业务责任明确、数据可获得、结果可验证的研究场景，把数据接入、研究计算、证据、人工复核和结果反馈跑通，再按数据域扩展。本文后续章节按这个建设顺序展开。
 
 
 ## 1. 市场已经走到哪里
@@ -108,7 +98,7 @@ OpenAI 于 2026 年 9 月 10 日发布 [ChatGPT for Financial Services](https://
 
 这些是各厂商公开材料所描述的能力，不是独立生产成熟度评估。产品页面能证明厂商公开支持某种能力，但不能单独证明不同机构部署后的准确率、可用性、总拥有成本或规模化效果。实际选型仍需要拿机构自己的任务、合同、数据和用户进行验证。
 
-### 1.4 市场能力的分界线
+### 1.4 对自建平台的影响
 
 现在可以把市场分成三层：
 
@@ -118,106 +108,11 @@ OpenAI 于 2026 年 9 月 10 日发布 [ChatGPT for Financial Services](https://
 
 前两层的供应商能力越来越强，第三层仍然需要金融机构自己定义。自建平台不需要取代每家供应商，而应把它们变成可替换的数据与模型能力，并在机构独有的上下文之上形成更完整的产品。
 
-## 2. 自建平台的差异化应该是什么
-
-### 2.1 保存机构自己的研究记忆，而不只是文档
-
-内部研究库不能只是一个允许向量检索的 PDF 仓库。对机构而言，更有价值的是把研究材料转化为持续维护的研究对象：分析师对某家公司或发行人的观点、历史假设、关键驱动因素、估值方法、风险项、催化剂、观察指标、同业选择理由、管理层承诺、历史预测和后续实际结果。
-
-例如，分析师在一次财报后更新了收入增长、毛利率和资本支出假设。系统应知道这不是一篇新文件而已，而是原有投资 Thesis 的一次变化：哪些假设发生变化，哪些原判断被支持或推翻，哪些模型输入需要更新，哪些投资组合受到影响，哪些后续事件值得观察。下一次财报发布时，系统要从之前的判断继续，而不是把所有材料重新总结一遍。
-
-这需要一套可版本化的 Research Memory / Thesis Ledger。它可以从最小的关系模型开始，逐渐扩展为实体关系图；不应一开始就为了“Graph”而建设一个庞大的知识图谱项目。重点是让研究事实、分析师观点、待验证假设和未来可能性在数据层面有明确区别，并且能够追踪其创建人、来源、有效时间和变更历史。
 
 
-### 2.7 从个人助手升级为团队平台：组织上下文、协作状态和责任边界必须成为一等对象
+## 2. 产品形态：Research Workbench 与 Insight Hub
 
-面向团队的平台不能简单理解为“给每个员工开一个 Agent 账号，再把聊天记录共享”。个人助手优化的是单人的上下文和效率；团队平台还必须解决共同工作对象、数据可见范围、观点归属、职责分离、审批、交接和集体记忆。团队层和个人层应并存，但不能混为一套权限或记忆。
-
-**1. 建立清晰的组织与业务上下文模型。** 至少需要区分 Legal Entity、Business Unit、Desk / Team、Role、User、Portfolio / Account、Client、Strategy、Research Coverage 和 Project。用户属于多个团队、临时项目或覆盖组并不罕见，授权不能只依赖单一部门字段。每次 Agent Run 都要绑定发起人、代表的业务身份、工作团队、任务目的、目标组合或客户、数据用途和适用的信息隔离规则。
-
-**2. 个人工作区、团队工作区和机构正式记录分层。**
-- 个人层：个人偏好、草稿、私有笔记、临时分析和个人 Dashboard。默认不自动变成团队正式观点。
-- 团队层：共享 Watchlist、研究计划、团队指标视图、协作任务、已批准的研究观点、会议结论和交接事项。需要明确 Owner、可见范围、状态和版本。
-- 机构层：正式研究发布、投资授权、政策、风险限额、审批决定、交易记录和监管留存。由权威业务系统或受控 Registry 管理，不能以聊天记录作为唯一事实来源。
-
-**3. 将研究观点做成有归属的协作对象。** 同一发行人可能存在多个分析师观点，甚至同一团队内部也有分歧。系统不应把它们压成一个“团队共识”。Thesis / Claim 至少要有作者、责任分析师、团队、状态（Draft / Under Review / Approved / Superseded / Rejected）、适用组合或策略、证据、有效时间、版本、反对意见和批准记录。团队汇总可以展示共识、分歧和未解决问题，但必须保留观点来源，不能让 LLM 自行裁决谁代表团队。
-
-**4. 权限要按对象、动作和数据用途组合计算。** RBAC 适合表达岗位角色，ABAC / ReBAC 适合表达团队关系、覆盖范围、组合授权、客户关系、项目成员和信息隔离。一个用户可以读某个组合，却未必能看到其客户身份；可以读研究资料，却没有权利导出供应商内容；可以生成订单建议，却没有交易权限。授权要在 Retrieval / Tool Gateway / Domain API 执行，并在输出和分发时重新检查，不能只在登录时做一次检查。
-
-**5. 支持职责分离，而不是只设置一个“Approve”按钮。** 研究作者、研究复核人、组合经理、交易员、合规人员、风险人员和系统管理员的权限应有明确差异。高风险流程要支持 Maker-Checker、双人复核、阈值审批、紧急暂停和职责冲突检查。发起任务的 Agent 不能替代审批人；同一个人是否可同时发起和批准，应由机构政策决定并由服务端执行。
-
-**6. 让团队记忆可维护、可纠错、可追溯。** 团队共享记忆不是把所有聊天历史放进向量库。应该把研究结论、投资假设、风险判断、已知限制、决策记录、例外处理和后续结果结构化保存，并记录来源、作者、状态、有效期和访问范围。个人聊天可作为待提炼的候选来源，但必须经过作者确认或团队工作流批准后，才进入团队正式记忆。过期观点应被标记为 Superseded，而不是静默覆盖。
-
-**7. 把协作与交接设计进任务状态。** Agent 长任务可能跨越多个班次、人员和团队。任务需要有 Owner、Assignee、Watcher、Due Date、SLA、阻塞原因、下一步、交接摘要和恢复点。人员离职、休假、团队调整或项目结束时，任务和正式记录要能转交；个人会话不能成为唯一的业务连续性载体。
-
-**8. 团队 Dashboard 与个人 Dashboard 分开治理。** 个人可以调整布局和筛选；团队标准视图应有发布者、版本、指标定义、访问策略和变更记录。允许个人自定义呈现，不意味着允许改变正式指标的定义。团队层应支持按 Desk / Portfolio / Strategy / Region 汇总，同时遵循数据许可和信息隔离。
-
-**9. 设计协作事件，而不只是聊天共享。** 重要事件应成为可订阅的业务事件：Thesis Changed、Evidence Refuted、Portfolio Exposure Breach、Research Review Requested、Order Proposal Ready、Trade Reconciliation Exception。事件需要去重、分派、升级、关闭和反馈；通知不是工作流本身，必须关联权威对象和处理状态。
-
-**10. 防止跨团队上下文污染。** 子 Agent、共享缓存、向量索引、摘要、模型上下文和生成文件都可能造成信息泄漏。每个数据对象应携带 security labels / entitlement context；跨团队任务要重新做授权判断；共享摘要必须检查来源数据的最高敏感级别和可分发范围。Agent 不能因为“已经读过”某份材料，就把内容复制到另一个团队的回答中。
-
-建议平台至少提供以下团队级能力：Team / Desk Workspace、Shared Research Objects、Team Memory Registry、Role & Entitlement Service、Review / Approval Inbox、Task Handoff、Event & Notification Service、Team Dashboard Registry。个人偏好和团队正式规则应分开存储；团队正式记忆、研究状态和审批记录应进入机构控制的持久化存储。
-
-
-### 2.2 建立时间点正确的金融事实
-
-金融分析的一个根本问题是：在某个决策时点，研究人员究竟能知道什么？
-
-一份年报可能在财务年度结束后数月才披露；后来发布的重述、补充文件、公司更名、行业分类变更或证券代码调整，都可能改变当前数据视图。回测或历史研究若直接读取今天的最新数据，就可能把未来信息带回过去。模型的预训练知识也可能泄漏已经发生的历史结果。
-
-平台需要同时管理来源时间和业务时间，包括：
-
-| 时间和版本字段 | 代表什么 | 为什么重要 |
-| --- | --- | --- |
-| Published / Released At | 来源公开或正式发布的时间 | 确定该信息何时能够被市场和分析师获得 |
-| Observed / Ingested At | 平台实际接收到该数据的时间 | 判断系统当时是否已经拥有这条信息 |
-| Effective / Valid Time | 数据在业务上生效的时间区间 | 处理评级、实体关系、指标定义或政策的历史变化 |
-| Version / Supersedes | 原始文件或数据记录的版本及其替代关系 | 保留更正、重述和历史复盘能力 |
-| As-of Time | 本次研究允许使用的信息截止时间 | 阻止模型、检索和计算读取未来数据 |
-
-“最新值”与“在 2025 年 3 月 31 日当时可见的值”必须是两种不同查询。不能仅靠在 Prompt 中写“不要使用未来信息”来保证 Point-in-Time Correctness。数据服务和检索层应真正按时间过滤，测试集也应冻结当时可见的来源版本。
-
-2026 年的 [Investor's Last Exam 预印本](https://arxiv.org/abs/2610.38342) 将这一问题放进了专业股票研究评测：其基准使用了 343 万份文档版本，并将任务评分关联到来源、计算和假设。论文报告，整体研究能力得分较高的系统，在 Forecast & Model 子项仍存在明显差距。这提醒我们，能够总结已经发生的事情，与在当时信息约束下形成可靠预测，是不同的能力。
-
-### 2.3 把金融语义和计算放在平台，而不是交给模型临场猜测
-
-平台需要建立自己的 Issuer / Legal Entity / Security / Instrument / Fund / Portfolio / Benchmark / Industry / Event 等实体关联，并维护证券标识、发行主体、上市地、币种、财务年度、报告期间、资产类别和同业集合。
-
-金融指标也需要统一口径。Revenue、ARR、Net Interest Margin、Net Debt、Adjusted EBITDA、Free Cash Flow 等指标不应只有一个字符串名称。它们应绑定公式或定义、来源、币种、报告期间、GAAP / Non-GAAP 基础、合并范围、调整项、可比性状态及更新时间。不同供应商提供的同名指标不一定具有相同定义；即使同一公司也可能在不同报告中更改呈现方式。
-
-LLM 适合帮助解释定义、发现潜在口径冲突和提出需要核查的项目，不应成为财务数字的权威计算器。比率、DCF、WACC、现金流折现、债务桥、收益率、FX 换算和组合敞口，应由确定性的 SQL / Python / 领域计算服务执行。模型可以选择分析方法、解释计算结果、提出情景，但必须使用经过验证的输入和公式版本。
-
-这也意味着语义层不应与某个数据仓库绑定。可以在 Snowflake、PostgreSQL、数据目录或应用领域服务中实现不同部分，但对上层提供稳定的 Metric / Entity / Period 查询合同。仓库可以更换，业务语义不能跟着消失。
-
-### 2.4 研究证据需要达到“主张级”，而不是“文档级”
-
-一个报告末尾有十条参考链接，不代表其每个重要结论都有支持。一个数字出现在正确的文件中，也不代表其报告期间、币种、单位和计算口径正确。金融研究系统需要把输出拆成可以复核的 Claim，并将每条重要 Claim 绑定到实际证据和计算过程。
-
-例如：
-
-- 原始事实：某季度收入为某金额，来源是哪个版本的 10-Q、哪张表、哪一行。
-- 标准化事实：系统将原始披露映射到哪个标准指标，使用什么币种和合并口径。
-- 派生计算：同比增长率由哪两个值计算，使用哪个公式和舍入规则。
-- 分析判断：收入增长放缓是否挑战原投资 Thesis，依赖哪些经营假设。
-- 预测或建议：未来收入区间及其情景、概率、风险和假设是什么。
-
-这些状态不能混成一个“AI 结论”。至少应支持 Verified、Partially Verified、Unverified、Conflicted、Not Applicable 等验证状态；对于缺少证据的结论，系统应允许明确返回“无法核实”，而不是强行补齐。
-
-2026 年 11 月 3 日发布的 [LLM-Generated Investment Research Memos Need Validation 预印本](https://arxiv.org/abs/2611.04375) 给出了值得重视的实验结果：研究者生成 1,440 份投研备忘录，拆出 77,272 条金融陈述，并对照官方披露进行验证。各 Agent 的单条陈述被直接反驳比例约为 1.17%–1.77%，但约 36.94%–41.11% 的整份备忘录至少含有一条被反驳的陈述。错误类型包括时间、单位、上下文和概念。作者还强调，缺少证据和被证据直接反驳是不同状态。
-
-这项研究是预印本，实验的公司、期间、Agent 和来源范围有限，不能直接代表所有机构的生产错误率。但其方法论很有参考价值：评估一份研究交付物时，不能只看平均 Claim Accuracy，还要看整份报告中是否至少存在一条关键错误、错误严重程度和人工复核成本。
-
-### 2.5 让 Insight 连接到业务上下文和结果
-
-同一个行业事件，对不同业务团队的意义可能完全不同。某公司公布资本开支上升，对股票研究人员可能意味着增长机会或 FCF 压力；对信用分析人员可能意味着杠杆和偿债能力变化；对组合经理则需要结合持仓规模、风险预算和投资 Thesis 判断优先级。
-
-平台必须知道用户能看到哪些组合、账户、客户和研究内容，以及每项信息可以用于什么用途。Insight 的排序也应基于重要性，而不是简单按发布时间、热度或相似度排序。一个小的业务变化，如果挑战了核心投资假设，可能比市场上当天讨论很多的新闻更重要。
-
-Insight 还要记录后续处理：谁查看了、是否确认、是否形成研究更新、是否触发风险审查、是否被忽略、后续实际结果如何。这样机构才会积累自己的反馈闭环，而不是只积累更多 AI 生成文本。
-
-## 3. 产品形态：Research Workbench 与 Insight Hub
-
-### 3.1 Research Workbench：研究人员主动探索和形成结论
+### 2.1 Research Workbench：研究人员主动探索和形成结论
 
 Research Workbench 是研究人员的主工作台，适合支持公司、行业、宏观、信用、私募市场和组合研究。它应围绕研究对象和问题组织上下文，而不是把每次对话当作孤立会话。
 
@@ -227,7 +122,7 @@ Research Workbench 是研究人员的主工作台，适合支持公司、行业�
 
 Workbench 的主要输出是研究笔记、财报更新、行业比较、情景分析、估值模型输入和投资委员会材料草稿。文档生成应继承机构模板和规范，但不应以“自动生成 Word/PPT”作为平台唯一的完成标志。
 
-### 3.2 Insight Hub：把重要变化送到应该处理的人面前
+### 2.2 Insight Hub：把重要变化送到应该处理的人面前
 
 Insight Hub 面向组合经理、风险团队、研究主管、客户团队和管理层。用户不应每天重新问“今天有什么新闻”，而应看到与自己负责的组合、行业、发行人、风险约束和研究判断相关的变化。
 
@@ -276,7 +171,7 @@ Insight Hub 面向组合经理、风险团队、研究主管、客户团队和�
 
 Insight Hub 的差异化最终体现在三件事上：能够持续追踪重要变化；能够解释变化与机构自身研究和敞口的关系；能够推动合适的人在合适的工作流程中完成复核和后续处理。
 
-### 3.3 不同金融机构应选择不同的首批产品场景
+### 2.3 不同金融机构应选择不同的首批产品场景
 
 | 机构类型 | 优先研究对象 | 高价值 Insight | 建议的第一批场景 |
 | --- | --- | --- | --- |
@@ -288,7 +183,118 @@ Insight Hub 的差异化最终体现在三件事上：能够持续追踪重要�
 
 同一套平台底座可以复用，但首个产品不能试图覆盖所有业务线。不同机构的核心数据、决策责任、许可范围和风险等级差异很大。应先选择一个高频、可验证、业务责任清楚的研究工作流，再扩展到更多资产类别和产品线。
 
-## 4. 参考架构：把可信研究能力做成机构资产
+
+
+## 3. 机构需要长期积累哪些研究能力
+
+### 3.1 保存研究判断及其变化
+
+内部研究库不能只是一个允许向量检索的 PDF 仓库。对机构而言，更有价值的是把研究材料转化为持续维护的研究对象：分析师对某家公司或发行人的观点、历史假设、关键驱动因素、估值方法、风险项、催化剂、观察指标、同业选择理由、管理层承诺、历史预测和后续实际结果。
+
+例如，分析师在一次财报后更新了收入增长、毛利率和资本支出假设。系统应知道这不是一篇新文件而已，而是原有投资 Thesis 的一次变化：哪些假设发生变化，哪些原判断被支持或推翻，哪些模型输入需要更新，哪些投资组合受到影响，哪些后续事件值得观察。下一次财报发布时，系统要从之前的判断继续，而不是把所有材料重新总结一遍。
+
+这需要一套可版本化的 Research Memory / Thesis Ledger。它可以从最小的关系模型开始，逐渐扩展为实体关系图；不应一开始就为了“Graph”而建设一个庞大的知识图谱项目。重点是让研究事实、分析师观点、待验证假设和未来可能性在数据层面有明确区别，并且能够追踪其创建人、来源、有效时间和变更历史。
+
+
+
+### 3.2 建立可回放的 Point-in-Time 金融事实
+
+金融分析的一个根本问题是：在某个决策时点，研究人员究竟能知道什么？
+
+一份年报可能在财务年度结束后数月才披露；后来发布的重述、补充文件、公司更名、行业分类变更或证券代码调整，都可能改变当前数据视图。回测或历史研究若直接读取今天的最新数据，就可能把未来信息带回过去。模型的预训练知识也可能泄漏已经发生的历史结果。
+
+平台需要同时管理来源时间和业务时间，包括：
+
+| 时间和版本字段 | 代表什么 | 为什么重要 |
+| --- | --- | --- |
+| Published / Released At | 来源公开或正式发布的时间 | 确定该信息何时能够被市场和分析师获得 |
+| Observed / Ingested At | 平台实际接收到该数据的时间 | 判断系统当时是否已经拥有这条信息 |
+| Effective / Valid Time | 数据在业务上生效的时间区间 | 处理评级、实体关系、指标定义或政策的历史变化 |
+| Version / Supersedes | 原始文件或数据记录的版本及其替代关系 | 保留更正、重述和历史复盘能力 |
+| As-of Time | 本次研究允许使用的信息截止时间 | 阻止模型、检索和计算读取未来数据 |
+
+“最新值”与“在 2025 年 3 月 31 日当时可见的值”必须是两种不同查询。不能仅靠在 Prompt 中写“不要使用未来信息”来保证 Point-in-Time Correctness。数据服务和检索层应真正按时间过滤，测试集也应冻结当时可见的来源版本。
+
+2026 年的 [Investor's Last Exam 预印本](https://arxiv.org/abs/2610.38342) 将这一问题放进了专业股票研究评测：其基准使用了 343 万份文档版本，并将任务评分关联到来源、计算和假设。论文报告，整体研究能力得分较高的系统，在 Forecast & Model 子项仍存在明显差距。这提醒我们，能够总结已经发生的事情，与在当时信息约束下形成可靠预测，是不同的能力。
+
+
+### 3.3 金融语义和计算由平台负责
+
+平台需要建立自己的 Issuer / Legal Entity / Security / Instrument / Fund / Portfolio / Benchmark / Industry / Event 等实体关联，并维护证券标识、发行主体、上市地、币种、财务年度、报告期间、资产类别和同业集合。
+
+金融指标也需要统一口径。Revenue、ARR、Net Interest Margin、Net Debt、Adjusted EBITDA、Free Cash Flow 等指标不应只有一个字符串名称。它们应绑定公式或定义、来源、币种、报告期间、GAAP / Non-GAAP 基础、合并范围、调整项、可比性状态及更新时间。不同供应商提供的同名指标不一定具有相同定义；即使同一公司也可能在不同报告中更改呈现方式。
+
+LLM 适合帮助解释定义、发现潜在口径冲突和提出需要核查的项目，不应成为财务数字的权威计算器。比率、DCF、WACC、现金流折现、债务桥、收益率、FX 换算和组合敞口，应由确定性的 SQL / Python / 领域计算服务执行。模型可以选择分析方法、解释计算结果、提出情景，但必须使用经过验证的输入和公式版本。
+
+这也意味着语义层不应与某个数据仓库绑定。可以在 Snowflake、PostgreSQL、数据目录或应用领域服务中实现不同部分，但对上层提供稳定的 Metric / Entity / Period 查询合同。仓库可以更换，业务语义不能跟着消失。
+
+
+### 3.4 证据定位到具体主张
+
+一个报告末尾有十条参考链接，不代表其每个重要结论都有支持。一个数字出现在正确的文件中，也不代表其报告期间、币种、单位和计算口径正确。金融研究系统需要把输出拆成可以复核的 Claim，并将每条重要 Claim 绑定到实际证据和计算过程。
+
+例如：
+
+- 原始事实：某季度收入为某金额，来源是哪个版本的 10-Q、哪张表、哪一行。
+- 标准化事实：系统将原始披露映射到哪个标准指标，使用什么币种和合并口径。
+- 派生计算：同比增长率由哪两个值计算，使用哪个公式和舍入规则。
+- 分析判断：收入增长放缓是否挑战原投资 Thesis，依赖哪些经营假设。
+- 预测或建议：未来收入区间及其情景、概率、风险和假设是什么。
+
+这些状态不能混成一个“AI 结论”。至少应支持 Verified、Partially Verified、Unverified、Conflicted、Not Applicable 等验证状态；对于缺少证据的结论，系统应允许明确返回“无法核实”，而不是强行补齐。
+
+2026 年 11 月 3 日发布的 [LLM-Generated Investment Research Memos Need Validation 预印本](https://arxiv.org/abs/2611.04375) 给出了值得重视的实验结果：研究者生成 1,440 份投研备忘录，拆出 77,272 条金融陈述，并对照官方披露进行验证。各 Agent 的单条陈述被直接反驳比例约为 1.17%–1.77%，但约 36.94%–41.11% 的整份备忘录至少含有一条被反驳的陈述。错误类型包括时间、单位、上下文和概念。作者还强调，缺少证据和被证据直接反驳是不同状态。
+
+这项研究是预印本，实验的公司、期间、Agent 和来源范围有限，不能直接代表所有机构的生产错误率。但其方法论很有参考价值：评估一份研究交付物时，不能只看平均 Claim Accuracy，还要看整份报告中是否至少存在一条关键错误、错误严重程度和人工复核成本。
+
+
+### 3.5 把 Insight 放回业务上下文
+
+同一个行业事件，对不同业务团队的意义可能完全不同。某公司公布资本开支上升，对股票研究人员可能意味着增长机会或 FCF 压力；对信用分析人员可能意味着杠杆和偿债能力变化；对组合经理则需要结合持仓规模、风险预算和投资 Thesis 判断优先级。
+
+平台必须知道用户能看到哪些组合、账户、客户和研究内容，以及每项信息可以用于什么用途。Insight 的排序也应基于重要性，而不是简单按发布时间、热度或相似度排序。一个小的业务变化，如果挑战了核心投资假设，可能比市场上当天讨论很多的新闻更重要。
+
+Insight 还要记录后续处理：谁查看了、是否确认、是否形成研究更新、是否触发风险审查、是否被忽略、后续实际结果如何。这样机构才会积累自己的反馈闭环，而不是只积累更多 AI 生成文本。
+
+
+### 3.6 团队上下文、协作状态和责任边界
+
+面向团队的平台不能简单理解为“给每个员工开一个 Agent 账号，再把聊天记录共享”。个人助手优化的是单人的上下文和效率；团队平台还必须解决共同工作对象、数据可见范围、观点归属、职责分离、审批、交接和集体记忆。团队层和个人层应并存，但不能混为一套权限或记忆。
+
+**1. 建立清晰的组织与业务上下文模型。** 至少需要区分 Legal Entity、Business Unit、Desk / Team、Role、User、Portfolio / Account、Client、Strategy、Research Coverage 和 Project。用户属于多个团队、临时项目或覆盖组并不罕见，授权不能只依赖单一部门字段。每次 Agent Run 都要绑定发起人、代表的业务身份、工作团队、任务目的、目标组合或客户、数据用途和适用的信息隔离规则。
+
+**2. 个人工作区、团队工作区和机构正式记录分层。**
+- 个人层：个人偏好、草稿、私有笔记、临时分析和个人 Dashboard。默认不自动变成团队正式观点。
+- 团队层：共享 Watchlist、研究计划、团队指标视图、协作任务、已批准的研究观点、会议结论和交接事项。需要明确 Owner、可见范围、状态和版本。
+- 机构层：正式研究发布、投资授权、政策、风险限额、审批决定、交易记录和监管留存。由权威业务系统或受控 Registry 管理，不能以聊天记录作为唯一事实来源。
+
+**3. 将研究观点做成有归属的协作对象。** 同一发行人可能存在多个分析师观点，甚至同一团队内部也有分歧。系统不应把它们压成一个“团队共识”。Thesis / Claim 至少要有作者、责任分析师、团队、状态（Draft / Under Review / Approved / Superseded / Rejected）、适用组合或策略、证据、有效时间、版本、反对意见和批准记录。团队汇总可以展示共识、分歧和未解决问题，但必须保留观点来源，不能让 LLM 自行裁决谁代表团队。
+
+**4. 权限要按对象、动作和数据用途组合计算。** RBAC 适合表达岗位角色，ABAC / ReBAC 适合表达团队关系、覆盖范围、组合授权、客户关系、项目成员和信息隔离。一个用户可以读某个组合，却未必能看到其客户身份；可以读研究资料，却没有权利导出供应商内容；可以生成订单建议，却没有交易权限。授权要在 Retrieval / Tool Gateway / Domain API 执行，并在输出和分发时重新检查，不能只在登录时做一次检查。
+
+**5. 支持职责分离，而不是只设置一个“Approve”按钮。** 研究作者、研究复核人、组合经理、交易员、合规人员、风险人员和系统管理员的权限应有明确差异。高风险流程要支持 Maker-Checker、双人复核、阈值审批、紧急暂停和职责冲突检查。发起任务的 Agent 不能替代审批人；同一个人是否可同时发起和批准，应由机构政策决定并由服务端执行。
+
+**6. 让团队记忆可维护、可纠错、可追溯。** 团队共享记忆不是把所有聊天历史放进向量库。应该把研究结论、投资假设、风险判断、已知限制、决策记录、例外处理和后续结果结构化保存，并记录来源、作者、状态、有效期和访问范围。个人聊天可作为待提炼的候选来源，但必须经过作者确认或团队工作流批准后，才进入团队正式记忆。过期观点应被标记为 Superseded，而不是静默覆盖。
+
+**7. 把协作与交接设计进任务状态。** Agent 长任务可能跨越多个班次、人员和团队。任务需要有 Owner、Assignee、Watcher、Due Date、SLA、阻塞原因、下一步、交接摘要和恢复点。人员离职、休假、团队调整或项目结束时，任务和正式记录要能转交；个人会话不能成为唯一的业务连续性载体。
+
+**8. 团队 Dashboard 与个人 Dashboard 分开治理。** 个人可以调整布局和筛选；团队标准视图应有发布者、版本、指标定义、访问策略和变更记录。允许个人自定义呈现，不意味着允许改变正式指标的定义。团队层应支持按 Desk / Portfolio / Strategy / Region 汇总，同时遵循数据许可和信息隔离。
+
+**9. 设计协作事件，而不只是聊天共享。** 重要事件应成为可订阅的业务事件：Thesis Changed、Evidence Refuted、Portfolio Exposure Breach、Research Review Requested、Order Proposal Ready、Trade Reconciliation Exception。事件需要去重、分派、升级、关闭和反馈；通知不是工作流本身，必须关联权威对象和处理状态。
+
+**10. 防止跨团队上下文污染。** 子 Agent、共享缓存、向量索引、摘要、模型上下文和生成文件都可能造成信息泄漏。每个数据对象应携带 security labels / entitlement context；跨团队任务要重新做授权判断；共享摘要必须检查来源数据的最高敏感级别和可分发范围。Agent 不能因为“已经读过”某份材料，就把内容复制到另一个团队的回答中。
+
+建议平台至少提供以下团队级能力：Team / Desk Workspace、Shared Research Objects、Team Memory Registry、Role & Entitlement Service、Review / Approval Inbox、Task Handoff、Event & Notification Service、Team Dashboard Registry。个人偏好和团队正式规则应分开存储；团队正式记忆、研究状态和审批记录应进入机构控制的持久化存储。
+
+
+
+
+## 4. 目标架构：数据、研究计算与 Agent 如何协作
+
+![金融研究平台参考架构](/diagrams/financial-research-platform-architecture.svg)
+
+*交互查看：[金融研究平台架构图](/diagrams/financial-research-platform-architecture.html)。*
+
 
 ### 4.1 数据与内容接入
 
@@ -340,63 +346,7 @@ Workbench 和 Insight Hub 共享底层能力，但面向的工作方式不同。
 
 应用需要与现有研究管理、Portfolio Management、OMS / EMS、RMS、Allocation、Custodian、CRM、文档管理、邮件、数据仓库和办公工具集成。交易相关集成默认只读；Order Proposal 通过人工交接进入 OMS / EMS，由授权交易员在原系统内核对和执行。其他权威业务系统的写回也必须通过受控 API 和业务工作流执行，保留原始输入、审批、幂等键和执行回执。研究平台可以提供建议和草稿，但不能因为某个 Agent 生成了一个动作，就认为权威系统应接受它。
 
-## 5. 什么应该自建，什么应该采购
-
-### 5.1 自建的核心资产
-
-| 能力 | 建议 | 原因 |
-| --- | --- | --- |
-| 内部研究记忆、Thesis Ledger、观点和假设历史 | 自建 | 这是机构知识和投资过程的独特积累，不应只存在于某家模型供应商的会话里。 |
-| 实体主数据、金融指标语义和业务术语 | 自建或统一治理 | 必须符合机构自己的资产、组合、指标和报告口径，并能跨数据仓库和模型使用。 |
-| Point-in-Time Evidence Store 和 Claim Ledger | 自建 | 需要保存历史可见性、来源版本、证据位置、计算链及研究输出版本。 |
-| 数据授权、Entitlement、Information Barrier 和 Policy | 自建为权威边界 | 这些决定谁可以看到什么、数据能用于什么，以及结果能否被分发或执行，不能依赖 Prompt 或模型自觉遵守。 |
-| 金融计算、估值方法和业务分析函数 | 自建 / 受控领域库 | 关键财务计算必须可重复、可测试、可回放。可复用成熟数值库，不必自己实现底层数学。 |
-| Insight 生成规则、重要性排序和研究反馈闭环 | 自建 | 价值来自机构的组合上下文、风险偏好、研究假设和后续结果。 |
-| 企业评测集、模型路由与发布门禁 | 自建治理 | 要按真实业务问题验证模型、检索和工作流，而不是只看厂商通用 Benchmark。 |
-| 关键业务状态和审计记录 | 自建权威记录 | 研究审批、发布、客户沟通和业务动作需要机构自身能控制的留痕与回放。 |
-
-### 5.2 应该采购或直接采用的能力
-
-| 能力 | 建议采用的来源 | 自建边界 |
-| --- | --- | --- |
-| Frontier LLM | Claude、OpenAI，必要时其他合规供应商 | 维护统一模型接口、路由、评测、降级和合同约束，不训练一个通用大模型来重复供应商工作。 |
-| 金融市场与专业内容 | Bloomberg、FactSet、S&P、LSEG、Morningstar、PitchBook、Daloopa、AlphaSense 等现有许可 | 做好数据目录、Entitlement、语义映射和按需调用；不复制无权存储或再分发的内容。 |
-| 通用文档解析、搜索和存储 | 成熟 OCR / 文档解析、全文检索、向量数据库、关系数据库和对象存储 | 为金融表格、复杂披露和证据定位补充领域适配及评测。 |
-| Agent 工作流框架 | LangGraph，自行部署和运营 | 不采用 Bedrock AgentCore 或其他供应商 Agent Runtime；工作流定义、业务状态、权限与审批契约由机构掌握。 |
-| Trace 与评测平台 | LangSmith、OpenTelemetry 生态及企业监控工具 | 观测工具可以被替换；合规要求的权威记录和关键事件副本不能只存在第三方 SaaS。 |
-| Office 与产出物生成 | Claude / ChatGPT Office 能力、机构模板和办公套件 API | 机构模板、发布权限、数据范围和最终文件的责任归属由内部治理。 |
-| 身份与密钥管理 | 企业 IAM、Secrets Manager、KMS 等 | 身份、角色、工作负载和数据访问的权威判断由企业控制。 |
-
-一个重要边界是：供应商提供金融数据并不代表平台获得了无限使用权。检索、索引、Embedding、缓存、摘要、派生数据、模型上下文、导出和分发，可能属于不同授权范围。接入评估必须把这些权利逐项问清楚。
-
-## 6. Claude、OpenAI 和 LangChain 应该怎样分工
-
-### 6.1 Claude：快速获得专业工作流和分析师体验
-
-Claude 的金融插件适合用于验证业务流程、提升个人效率，以及把成熟的研究模板快速带入团队。可以先挑选 Earnings Reviewer、Market Researcher、Model Builder 或 Valuation Reviewer 等与业务匹配的模板，再替换为机构自己的数据连接器、模型方法和报告模板。
-
-如果机构希望将任务嵌入内部系统，需要区分 Cowork / Claude Code 插件与 API / Managed Agent 方式的运行边界。桌面插件适合与分析师现有 Excel、PowerPoint 等工作方式协同；服务端长任务、批量流程和统一运营则需要经过正式的 Agent Runtime、权限和审计设计。两种方式不是同一个部署形态。
-
-建议把 Claude 用作模型能力和研究工作流的一种实现，不要让 Claude Skill 文件变成平台的唯一业务定义。Skill 可以携带任务说明、步骤和输出标准，但金融指标口径、数据许可、工作流状态、权限策略和审计事件必须由内部服务定义。
-
-### 6.2 OpenAI：利用现成金融产品，也保留 API 嵌入路径
-
-ChatGPT for Financial Services 可以作为研究团队的现成工作环境进行评估，尤其适合需要快速获得金融数据、引用、分析和 Office 文档产出能力的团队。它的设计合作伙伴包括 Morgan Stanley 和 Evercore，说明产品从投行和股票研究工作流切入；OpenAI 也明确表示后续会继续扩展其他金融服务类别。
-
-对平台团队而言，OpenAI API 更适合将模型推理、工具调用和结构化结果嵌入机构自己的 Workbench 或 Insight Hub。此时仍要通过内部服务提供授权后的上下文和工具，避免用户绕开企业数据边界直接查询不该访问的内容。
-
-ChatGPT Financial Services 内建数据的索引和托管安排，可能与企业已有供应商合同、地区要求、许可限制和内部保留制度产生不同影响。采购前应确认具体数据源、用户 entitlement 识别方式、内容使用权、数据所在位置、日志保留、信息隔离、删除和退出机制。不能仅凭“Enterprise”或“金融服务”产品名称推断所有机构控制要求都已满足。
-
-### 6.3 LangChain / LangGraph：用于自有工作流运行时，而不是金融数据产品
-
-[LangGraph](https://docs.langchain.com/oss/python/langgraph/overview) 是用于构建长时间、有状态 Agent 工作流的低层运行时，提供图状态、持久化、流式执行和 Human-in-the-loop 能力。其 [Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts) 可以暂停执行、持久化状态，等待人工输入后再继续运行。LangChain 官方将 LangGraph 定位为 Agent 编排运行时，将 [LangSmith](https://docs.langchain.com/langsmith/observability) 定位为跨框架的 Trace、评测、Prompt 和部署平台。
-
-适合使用 LangGraph 的情况是：机构需要拥有工作流代码和状态控制，希望在一个流程中组合确定性计算、企业内部工具、Claude / OpenAI 模型、人工审批和异常恢复，并且有团队愿意承担运行时的维护、升级和故障处理。
-
-不应把 LangGraph 当作金融领域语义、数据授权或合规状态系统，也不应因为使用了 LangSmith 就认为拥有完整的监管审计记录。生产平台需要把关键流程事件、输入输出、数据版本、模型版本、工具结果、权限判定和审批动作写入机构控制的权威存储。LangSmith 可以用作可观测和评测工具，但必须明确其数据处理合同、部署方式和日志保留边界。
-
-
-### 6.4 参考落地架构：Snowflake + LiteLLM + LangGraph + LangSmith
+### 4.7 参考落地架构：Snowflake + LiteLLM + LangGraph + LangSmith
 
 如果机构已经把 Bloomberg、LSEG、MSCI 等外部金融数据以及内部持仓、风险和研究数据集中在 Snowflake，建议采用 **Snowflake-centric Data Plane + 自建 Agent Plane + 独立 AI Control Plane**。模型侧以 Claude 或 OpenAI 当前最强、且经过机构评测与合同批准的模型为主，通过 LiteLLM Proxy 统一路由和治理；不把模型厂商的 Agent 产品当作企业运行时。Agent 的执行、状态、工具调用和审批由机构自己的服务负责。
 
@@ -577,7 +527,8 @@ LangSmith 的 Trace 需要脱敏，避免将未授权的 Bloomberg / LSEG / MSCI
 **推荐首个技术切片：** 选一个行业、一个研究团队和一组授权发行人，使用 Snowflake 中已有的 Bloomberg / LSEG / MSCI 数据及内部研究材料；先交付“财报分析 → 证据核验 → Thesis Delta 草稿 → 分析师批准”的完整闭环。该切片能够同时验证数据口径、PIT、权限、模型质量、工作流恢复和 LangSmith 观测，比先搭一个通用聊天机器人更能暴露真实架构问题。
 
 
-### 6.5 面向 Claude / OpenAI 最强模型的三种企业架构
+
+### 4.8 面向 Claude / OpenAI 最强模型的三种企业架构
 
 当机构把 Claude 或 OpenAI 的高端模型作为主要推理引擎，架构重点不是“怎样部署一个 Agent”，而是怎样在模型持续升级、供应商可能切换、金融业务不断扩展的情况下保持企业控制权。三种方案共享相同安全底线，区别在于组织边界、领域自治和长期资产沉淀方式。
 
@@ -619,7 +570,8 @@ LangSmith 的 Trace 需要脱敏，避免将未授权的 Bloomberg / LSEG / MSCI
 
 不必一次性三选一。建议先以集中式平台建立 LiteLLM、身份、Policy、Tool Gateway、审计和 Agent Runtime；领域成熟后演进为联邦执行；实体、指标、研究记忆、证据和计算服务成熟后形成 Fabric。最终可以是“联邦式执行 + 集中式控制 + Fabric 式领域资产”。
 
-### 6.6 Control Plane：企业应该自己建设什么
+
+### 4.9 Control Plane：企业应该自己建设什么
 
 Control Plane 不是管理后台，也不是 LiteLLM、LangSmith 或 MCP Registry 中任意一个产品。它是企业对 AI 能力进行注册、授权、发布、运行约束、监控、撤销和追责的权威控制面。Control Plane 管理规则和期望状态；Data Plane 在每次请求、工具调用、查询和业务写入时执行规则。
 
@@ -686,7 +638,8 @@ LiteLLM 的 Virtual Keys / Teams、预算、速率限制、Router、Fallback 和
 
 两者通过版本化 API、策略包、注册清单和事件 Schema 交互。Control Plane 不应成为所有推理请求的同步中心：策略判定可在区域内 PDP 执行，注册配置可分发到 Runtime；紧急撤销通过短 TTL 缓存、版本失效和 Kill Switch 传播。无法取得必要策略状态的高风险操作必须 Fail Closed。
 
-### 6.7 Snowflake Semantic Views：不要把 Semantic Layer 当作 SQL 生成配置
+
+### 4.10 Snowflake Semantic Views：不要把 Semantic Layer 当作 SQL 生成配置
 
 Snowflake Semantic Views 是重要的执行层能力，但不是企业完整的金融本体、主数据管理系统，也不是所有业务授权规则的唯一载体。建议采用 **Enterprise Semantic Contract + Snowflake Semantic Views**：企业维护跨仓库的实体、指标、期间和授权定义；Snowflake Semantic Views 将其中适合分析查询的部分映射为 Snowflake 内可执行的逻辑模型。
 
@@ -736,7 +689,8 @@ Verified Queries 能提高相似问题的 SQL 生成质量，但不能替代好�
 **官方文档：** [Semantic Views Overview](https://docs.snowflake.com/en/user-guide/views-semantic/overview)、[Modeling Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices-modeling)、[Developing and Deploying Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices-dev)、[Access Control Privileges](https://docs.snowflake.com/en/user-guide/security-access-control-privileges)。
 
 
-### 6.8 不要先建一个多 Agent 大系统
+
+### 4.11 不要先建一个多 Agent 大系统
 
 研究任务经常被设计成 Researcher、Analyst、Risk Agent、Reviewer、Writer 等多个 Agent 相互对话。角色划分容易理解，但多 Agent 不一定能提高结果质量；如果各 Agent 共享同一批错误证据，或在串行过滤中提前丢掉关键材料，增加角色只会放大错误传播、延迟和成本。
 
@@ -744,7 +698,71 @@ Verified Queries 能提高相似问题的 SQL 生成质量，但不能替代好�
 
 建议先实现可观察的状态图和明确的节点合同。遇到确实需要不同知识或独立观点的任务，再增加专项 Agent，并用相同数据、同一评测集和相同预算进行消融比较。
 
-## 7. 安全、治理与监管边界
+
+
+## 5. Build vs Buy：哪些能力应该由机构掌握
+
+### 5.1 自建的核心资产
+
+| 能力 | 建议 | 原因 |
+| --- | --- | --- |
+| 内部研究记忆、Thesis Ledger、观点和假设历史 | 自建 | 这是机构知识和投资过程的独特积累，不应只存在于某家模型供应商的会话里。 |
+| 实体主数据、金融指标语义和业务术语 | 自建或统一治理 | 必须符合机构自己的资产、组合、指标和报告口径，并能跨数据仓库和模型使用。 |
+| Point-in-Time Evidence Store 和 Claim Ledger | 自建 | 需要保存历史可见性、来源版本、证据位置、计算链及研究输出版本。 |
+| 数据授权、Entitlement、Information Barrier 和 Policy | 自建为权威边界 | 这些决定谁可以看到什么、数据能用于什么，以及结果能否被分发或执行，不能依赖 Prompt 或模型自觉遵守。 |
+| 金融计算、估值方法和业务分析函数 | 自建 / 受控领域库 | 关键财务计算必须可重复、可测试、可回放。可复用成熟数值库，不必自己实现底层数学。 |
+| Insight 生成规则、重要性排序和研究反馈闭环 | 自建 | 价值来自机构的组合上下文、风险偏好、研究假设和后续结果。 |
+| 企业评测集、模型路由与发布门禁 | 自建治理 | 要按真实业务问题验证模型、检索和工作流，而不是只看厂商通用 Benchmark。 |
+| 关键业务状态和审计记录 | 自建权威记录 | 研究审批、发布、客户沟通和业务动作需要机构自身能控制的留痕与回放。 |
+
+### 5.2 应该采购或直接采用的能力
+
+| 能力 | 建议采用的来源 | 自建边界 |
+| --- | --- | --- |
+| Frontier LLM | Claude、OpenAI，必要时其他合规供应商 | 维护统一模型接口、路由、评测、降级和合同约束，不训练一个通用大模型来重复供应商工作。 |
+| 金融市场与专业内容 | Bloomberg、FactSet、S&P、LSEG、Morningstar、PitchBook、Daloopa、AlphaSense 等现有许可 | 做好数据目录、Entitlement、语义映射和按需调用；不复制无权存储或再分发的内容。 |
+| 通用文档解析、搜索和存储 | 成熟 OCR / 文档解析、全文检索、向量数据库、关系数据库和对象存储 | 为金融表格、复杂披露和证据定位补充领域适配及评测。 |
+| Agent 工作流框架 | LangGraph，自行部署和运营 | 不采用 Bedrock AgentCore 或其他供应商 Agent Runtime；工作流定义、业务状态、权限与审批契约由机构掌握。 |
+| Trace 与评测平台 | LangSmith、OpenTelemetry 生态及企业监控工具 | 观测工具可以被替换；合规要求的权威记录和关键事件副本不能只存在第三方 SaaS。 |
+| Office 与产出物生成 | Claude / ChatGPT Office 能力、机构模板和办公套件 API | 机构模板、发布权限、数据范围和最终文件的责任归属由内部治理。 |
+| 身份与密钥管理 | 企业 IAM、Secrets Manager、KMS 等 | 身份、角色、工作负载和数据访问的权威判断由企业控制。 |
+
+一个重要边界是：供应商提供金融数据并不代表平台获得了无限使用权。检索、索引、Embedding、缓存、摘要、派生数据、模型上下文、导出和分发，可能属于不同授权范围。接入评估必须把这些权利逐项问清楚。
+
+
+
+## 6. 模型与 Agent Runtime：复用供应商能力，保留运行时控制
+
+### 6.1 Claude：复用专业工作流模板
+
+Claude 的金融插件适合用于验证业务流程、提升个人效率，以及把成熟的研究模板快速带入团队。可以先挑选 Earnings Reviewer、Market Researcher、Model Builder 或 Valuation Reviewer 等与业务匹配的模板，再替换为机构自己的数据连接器、模型方法和报告模板。
+
+如果机构希望将任务嵌入内部系统，需要区分 Cowork / Claude Code 插件与 API / Managed Agent 方式的运行边界。桌面插件适合与分析师现有 Excel、PowerPoint 等工作方式协同；服务端长任务、批量流程和统一运营则需要经过正式的 Agent Runtime、权限和审计设计。两种方式不是同一个部署形态。
+
+建议把 Claude 用作模型能力和研究工作流的一种实现，不要让 Claude Skill 文件变成平台的唯一业务定义。Skill 可以携带任务说明、步骤和输出标准，但金融指标口径、数据许可、工作流状态、权限策略和审计事件必须由内部服务定义。
+
+
+### 6.2 OpenAI：现成金融产品与 API 嵌入
+
+ChatGPT for Financial Services 可以作为研究团队的现成工作环境进行评估，尤其适合需要快速获得金融数据、引用、分析和 Office 文档产出能力的团队。它的设计合作伙伴包括 Morgan Stanley 和 Evercore，说明产品从投行和股票研究工作流切入；OpenAI 也明确表示后续会继续扩展其他金融服务类别。
+
+对平台团队而言，OpenAI API 更适合将模型推理、工具调用和结构化结果嵌入机构自己的 Workbench 或 Insight Hub。此时仍要通过内部服务提供授权后的上下文和工具，避免用户绕开企业数据边界直接查询不该访问的内容。
+
+ChatGPT Financial Services 内建数据的索引和托管安排，可能与企业已有供应商合同、地区要求、许可限制和内部保留制度产生不同影响。采购前应确认具体数据源、用户 entitlement 识别方式、内容使用权、数据所在位置、日志保留、信息隔离、删除和退出机制。不能仅凭“Enterprise”或“金融服务”产品名称推断所有机构控制要求都已满足。
+
+
+### 6.3 LangGraph：自有工作流运行时
+
+[LangGraph](https://docs.langchain.com/oss/python/langgraph/overview) 是用于构建长时间、有状态 Agent 工作流的低层运行时，提供图状态、持久化、流式执行和 Human-in-the-loop 能力。其 [Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts) 可以暂停执行、持久化状态，等待人工输入后再继续运行。LangChain 官方将 LangGraph 定位为 Agent 编排运行时，将 [LangSmith](https://docs.langchain.com/langsmith/observability) 定位为跨框架的 Trace、评测、Prompt 和部署平台。
+
+适合使用 LangGraph 的情况是：机构需要拥有工作流代码和状态控制，希望在一个流程中组合确定性计算、企业内部工具、Claude / OpenAI 模型、人工审批和异常恢复，并且有团队愿意承担运行时的维护、升级和故障处理。
+
+不应把 LangGraph 当作金融领域语义、数据授权或合规状态系统，也不应因为使用了 LangSmith 就认为拥有完整的监管审计记录。生产平台需要把关键流程事件、输入输出、数据版本、模型版本、工具结果、权限判定和审批动作写入机构控制的权威存储。LangSmith 可以用作可观测和评测工具，但必须明确其数据处理合同、部署方式和日志保留边界。
+
+
+
+
+## 7. 安全、数据许可与监管控制
 
 ### 7.1 先判断业务用途，再决定控制强度
 
@@ -775,7 +793,9 @@ Verified Queries 能提高相似问题的 SQL 生成质量，但不能替代好�
 平台可以自动发现事件、准备材料、生成研究草稿和提出工作建议。是否允许直接发布客户研究、发送投资建议、执行组合交易、调整信用额度或完成审批，应由具体业务规则、授权、独立验证和人工决策共同决定。模型输出不能作为权限依据，模型的“自信”也不能替代风险审批。
 
 
-## 8. Trade Lifecycle：覆盖完整交易生命周期，但 Agent 不进入真实交易执行通道
+
+
+## 8. Trade Lifecycle：研究平台与交易执行系统的边界
 
 交易生命周期是 Research Intelligence Platform 向 Portfolio / Investment Operations 延伸时最重要、也最容易越界的领域。平台可以在交易前后提供大量智能支持，但必须明确：**Agent 不拥有交易权限，不直接向 Broker、Exchange、ATS、OMS 或 EMS 提交、修改、撤销订单，也不持有可用于交易的凭证。** Agent 的交付物是分析、建议、校验结果和待人工处理的 Order Proposal；交易员或其他经授权人员必须在既有 OMS / EMS 中核对并亲自执行。即使未来接入订单 API，也只能由独立、受控的业务系统在其自身授权和审批流程下执行，不能把 Agent Tool 设计成下单工具。
 
@@ -887,7 +907,16 @@ Order Proposal 的意义是把研究意图转成交易员可以核对的结构�
 
 
 
-## 9. Legacy 与技术债并存时，如何加速建设 AI-Native Research Platform
+
+
+## 9. Legacy 现代化：不等核心系统迁完才开始建设
+
+![Legacy 数据现代化路径](/diagrams/financial-research-legacy-modernization.svg)
+
+*交互查看：[Legacy 数据现代化图](/diagrams/financial-research-legacy-modernization.html)。*
+
+
+本章讨论数据与技术债的现代化路径；整个平台的产品交付节奏见第 10 章。两条路线并行推进，不要求旧系统先完成替换。
 
 金融机构不可能先把所有老系统、供应商数据和 on-prem 数据库清理干净，再开始建设 AI 平台。大型银行、资管和券商的核心数据库往往运行了十几年甚至几十年，依赖 Oracle、SQL Server、DB2、Sybase、Teradata、Hadoop、内部 PostgreSQL、文件服务器、SFTP、厂商专有接口和大量无人敢动的 ETL。供应商数据还带有独立的许可、用户 entitlement、地域和再分发约束。把“先完成企业数据现代化”作为 AI 项目的前置条件，实际效果通常是让 AI 项目等上数年。
 
@@ -1118,7 +1147,9 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 **最终建议：** 不要等 Legacy Debt 消失才开始 AI Native。先在旧系统外建立一个受治理、可追溯、可复用的新分析平面；通过 CDC、API、批量和供应商授权接口逐步接入；用 Snowflake 承担主要分析和语义消费，用 PostgreSQL 管理平台状态与研究应用数据，用 Iceberg 和对象存储解决开放历史数据与跨引擎互操作。每一个新数据域都必须从第一天带有 Owner、许可、时间语义、血缘、质量和机器可读的 Data Contract。这样可以让新平台先创造研究价值，同时逐年减少旧平台的依赖，而不必先承担一次高风险、全企业范围的核心系统替换。
 
 
-## 10. 建设路线图：先形成一个可用的研究闭环，再扩展平台
+
+
+## 10. 实施路线图：从一个研究闭环开始
 
 建议按 12–18 个月分阶段推进。时间是规划窗口，不是供应商交付承诺；实际周期取决于数据许可、内部研究数据质量、遗留系统接口和业务团队投入。
 
@@ -1130,13 +1161,13 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 | 3：Insight Hub（6–9 个月） | 把研究变化推送给相关角色 | Watchlist / Portfolio 关联；事件识别；重要性和 Thesis Delta；Insight 对象；责任人、状态、反馈和审计 | 告警误报率、漏报率和优先级获得业务认可；每条重要 Insight 有证据和处理路径；角色隔离有效 |
 | 4：跨业务扩展（9–18 个月） | 扩展资产类别、团队和端到端工作流 | 信用、私募、财富或投行工作流；组合风险分析；自动生成机构模板材料；更多数据源和领域 Agent；受控业务系统写回 | 每个新增场景重新完成风险分类、许可核验和评测；关键动作经领域授权和审批；运行成本和服务质量满足业务要求 |
 
-### 8.1 首个试点应该选什么
+### 10.1 首个试点应该选什么
 
 对于资产管理或研究机构，建议从一个固定覆盖范围内的上市公司财报分析与 Thesis 更新开始。这个流程高频、材料有较明确的来源、结构化财务数据和文本披露同时存在，也能看到研究结论是否随时间变化。它适合检验文件解析、检索、指标口径、来源定位、历史假设和分析师复核的完整链路。
 
 建议先选 1–2 个行业、30–100 家发行人作为受控范围。数字是试点规划的建议起点，不代表行业标准或成熟度要求；应依据团队覆盖情况和数据授权调整。先让分析师使用研究助手，结果只用于内部研究，不自动向客户发布、不直接进入交易执行，也不承担信用审批等高影响决策。若机构主要业务是商业银行、财富或保险，则应把试点换成该机构中同等高频、可验证、责任边界明确的研究场景。
 
-### 8.2 每个阶段应该怎样衡量
+### 10.2 每个阶段应该怎样衡量
 
 不要用 Prompt 数、Token 数或 Agent 数量衡量产品价值。平台的指标应同时覆盖正确性、研究效率、用户行为、业务影响和运营成本。
 
@@ -1152,15 +1183,17 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 
 所有业务目标应在试点开始时依据当前基线和风险偏好设定。对于高影响研究材料，关键事实有明确来源并可复核应作为设计门槛；但不应在没有基线、没有标注数据的情况下，随意承诺一个看似精确的准确率或节省时间比例。
 
-## 11. 评测体系：模型、检索和工作流必须一起评估
 
-### 9.1 不要只比较模型排行榜
+
+## 11. 评测：用真实研究任务验证整个平台
+
+### 11.1 不要只比较模型排行榜
 
 [AgenticFinBench](https://arxiv.org/abs/2611.04813) 是 2026 年 11 月发布的金融 Agent 预印本，覆盖 230 个真实请求任务、8 个类别、两种语言和四个复杂度等级，并比较 18 种模型与 Agent Harness 配置。论文报告，仅评估任务完成度而不审计事实，可能高估系统表现；在其测试中，Harness 对证据落地差异的影响高于模型差异（28.6% 对 8.8%），而复杂任务的质量分也低于直接检索任务。
 
 这项结果并不意味着 Harness 在所有情况下都比模型重要，任务集合也不是生产流量的随机样本。它支持一个更实用的评估原则：应比较完整的模型、Prompt、工具、检索、状态管理和验证组合，而不应只比较 Claude 与 GPT 的单次问答。
 
-### 9.2 企业自己的金融评测集应覆盖这些任务
+### 11.2 企业自己的金融评测集应覆盖这些任务
 
 | 任务族 | 代表性问题 | 必须验证的内容 |
 | --- | --- | --- |
@@ -1175,7 +1208,7 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 | 研究报告验证 | 一份投研备忘录中哪些陈述缺证、冲突或被反驳？ | Claim 级和 Memo 级质量、错误严重度 |
 | Point-in-Time 回放 | 在历史日期当时可获得哪些资料？ | 来源时间、数据版本、模型预训练记忆污染风险 |
 
-### 9.3 模型选型需要按任务建立 Pareto Frontier
+### 11.3 模型选型需要按任务建立 Pareto Frontier
 
 同一个模型未必在表格理解、长文综合、精确引用、复杂数值任务和成本方面都占优。建议对 Claude、OpenAI 及候选模型使用相同的题目、相同的证据包、相同的工具和相同的输出契约，分别测量：
 
@@ -1188,7 +1221,9 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 
 每个模型都要有实际任务分布下的能力配置，而不是一个笼统的“最强模型”标签。模型版本升级时，应运行企业基准集回归测试；当某家供应商的质量或成本不再满足要求时，应能调整路由而不重写业务逻辑。
 
-## 12. 主要架构决策和不建议做的事
+
+
+## 12. 架构决策清单
 
 **不要建设一个通用 Bloomberg 替代品。** 市场数据覆盖、新闻分发、标准化指标和专业内容是长期积累的产品能力，自建平台更应该利用已有供应商，把差异化放在机构自己的研究上下文和业务流程。
 
@@ -1204,7 +1239,9 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 
 **不要用“人类在环”作为抽象口号。** 每个复核节点要定义触发条件、审批角色、允许修改范围、拒绝后的状态、恢复方式和最终责任人。否则审批按钮并不能提供有效控制。
 
-## 13. 推荐的目标状态
+
+
+## 13. 目标状态
 
 目标产品不是让分析师把所有问题都交给某一个模型，而是让机构拥有一个统一、可信、可替换的金融研究能力层。
 
@@ -1216,7 +1253,49 @@ Claude 和 OpenAI 提供模型能力、部分金融工作流、数据连接和�
 
 ---
 
+
+
 ## 参考资料
+
+### 官方产品与工程文档
+
+1. Anthropic, [Claude for Financial Services](https://www.anthropic.com/news/claude-for-financial-services)。
+2. Anthropic, [Agents for Financial Services](https://www.anthropic.com/news/finance-agents)。
+3. Anthropic, [Financial Services Plugins and Skills](https://github.com/anthropics/financial-services)。
+4. OpenAI, [Introducing ChatGPT for Financial Services](https://openai.com/index/introducing-chatgpt-financial-services/), 2026-09-10。
+5. Bloomberg, [Bloomberg AI](https://professional.bloomberg.com/products/bloomberg-terminal/ai/)。
+6. FactSet, [FactSet Intelligence / AI Solutions](https://www.factset.com/ai)。
+7. AlphaSense, [Generative AI for Industry and Company Research](https://www.alpha-sense.com/solutions/generative-ai-industry-company-research/)。
+8. S&P Global, [Capital IQ Pro](https://www.spglobal.com/market-intelligence/en/solutions/products/sp-capital-iq-pro)。
+9. Snowflake, [Semantic Views Overview](https://docs.snowflake.com/en/user-guide/views-semantic/overview)。
+10. Snowflake, [Semantic Views YAML Specification](https://docs.snowflake.com/en/user-guide/views-semantic/semantic-view-yaml-spec)。
+11. Snowflake, [Semantic Views Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices)。
+12. Snowflake, [Cortex Search Query Access Control](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/query-cortex-search-service)。
+13. Snowflake, [Row Access Policies](https://docs.snowflake.com/en/user-guide/security-row-intro)。
+16. LangChain, [LangGraph Overview](https://docs.langchain.com/oss/python/langgraph/overview)。
+17. LangChain, [LangGraph Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts)。
+18. LangChain, [LangSmith Observability](https://docs.langchain.com/langsmith/observability)。
+
+
+### 监管与指导材料
+
+19. FINRA, [2026 Annual Regulatory Oversight Report: GenAI](https://www.finra.org/rules-guidance/guidance/reports/2026-finra-annual-regulatory-oversight-report/gen-ai)。
+20. Federal Reserve, [SR 26-2: Revised Guidance on Model Risk Management](https://www.federalreserve.gov/supervisionreg/srletters/SR2602.htm), 2026-04-17。
+21. OCC, [Bulletin 2026-13: Model Risk Management—Revised Guidance](https://www.occ.gov/news-issuances/bulletins/2026/bulletin-2026-13.html), 2026-04-17。
+22. MAS, [Guidelines on Artificial Intelligence Risk Management for Financial Institutions](https://www.mas.gov.sg/regulation/guidelines/guidelines-on-artificial-intelligence-risk-management-for-financial-institutions), 2026-10-07。
+23. FCA, [AI in financial services: good practice and areas for improvement](https://www.fca.org.uk/publications/good-poor-practice/ai-financial-services)。
+
+
+### 最新研究（预印本，研究结论应结合论文范围解读）
+
+24. [AgenticFinBench: Benchmarking Financial Agents on Diverse Tasks from Real-World Requests](https://arxiv.org/abs/2611.04813), 2026-11。
+25. [LLM-Generated Investment Research Memos Need Validation](https://arxiv.org/abs/2611.04375), 2026-11-03。
+26. [Investor's Last Exam: Can AI Agents Do Equity Investment Without Seeing the Future?](https://arxiv.org/abs/2610.38342), 2026-10。
+27. [Enhancing Financial Question Answering: A Novel Benchmark Dataset of Banks' Financial Statements](https://arxiv.org/abs/2609.03654), 2026-09。
+28. [PRISM: Prompt-Refined In-Context System Modelling for Financial Retrieval](https://arxiv.org/abs/2511.14130)。
+29. [FinReflectKG / MultiHop: Financial QA Benchmark for Reasoning with Knowledge Graph Evidence](https://arxiv.org/abs/2510.02906)。
+
+**研究限制：** 厂商网页主要用于确认公开产品能力和供应商自述，不用于证明跨机构的实际效果；厂商发布的 Benchmark 使用不同任务集和评分方法，不能直接横向排名。以上 2026 年最新学术资料多数为预印本，样本范围、评测者、数据来源和实验模型均有限，适合作为架构设计和企业评测集的参考，不应直接作为生产性能承诺。
 
 ### 本次架构增强补充的工程文档
 
@@ -1242,41 +1321,3 @@ Claude 和 OpenAI 提供模型能力、部分金融工作流、数据连接和�
 49. TCS, [An Approach to Implementing Data Mesh in Financial Services](https://www.tcs.com/what-we-do/industries/banking/white-paper/data-mesh-implementation-bfsi)。
 50. Google Cloud / DBS case material, [How DBS Bank is Scaling a Hybrid Data Platform for Growth and Regulatory Compliance](https://www.wisdominterface.com/wp-content/uploads/2026/03/accelerating_enterprise_data_migration.pdf)（二手案例材料，含并行迁移和 Iceberg 经验）。
 51. LTM, [Re-Platforming Program Cost Reduction for a European Financial Services Group](https://www.ltm.com/insights/case-studies/re-platforming-program-cost-reduction-for-a-european-financial-services-group), 2024-06-03（供应商发布的客户案例）。
-
-### 官方产品与工程文档
-
-1. Anthropic, [Claude for Financial Services](https://www.anthropic.com/news/claude-for-financial-services)。
-2. Anthropic, [Agents for Financial Services](https://www.anthropic.com/news/finance-agents)。
-3. Anthropic, [Financial Services Plugins and Skills](https://github.com/anthropics/financial-services)。
-4. OpenAI, [Introducing ChatGPT for Financial Services](https://openai.com/index/introducing-chatgpt-financial-services/), 2026-09-10。
-5. Bloomberg, [Bloomberg AI](https://professional.bloomberg.com/products/bloomberg-terminal/ai/)。
-6. FactSet, [FactSet Intelligence / AI Solutions](https://www.factset.com/ai)。
-7. AlphaSense, [Generative AI for Industry and Company Research](https://www.alpha-sense.com/solutions/generative-ai-industry-company-research/)。
-8. S&P Global, [Capital IQ Pro](https://www.spglobal.com/market-intelligence/en/solutions/products/sp-capital-iq-pro)。
-9. Snowflake, [Semantic Views Overview](https://docs.snowflake.com/en/user-guide/views-semantic/overview)。
-10. Snowflake, [Semantic Views YAML Specification](https://docs.snowflake.com/en/user-guide/views-semantic/semantic-view-yaml-spec)。
-11. Snowflake, [Semantic Views Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices)。
-12. Snowflake, [Cortex Search Query Access Control](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/query-cortex-search-service)。
-13. Snowflake, [Row Access Policies](https://docs.snowflake.com/en/user-guide/security-row-intro)。
-16. LangChain, [LangGraph Overview](https://docs.langchain.com/oss/python/langgraph/overview)。
-17. LangChain, [LangGraph Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts)。
-18. LangChain, [LangSmith Observability](https://docs.langchain.com/langsmith/observability)。
-
-### 监管与指导材料
-
-19. FINRA, [2026 Annual Regulatory Oversight Report: GenAI](https://www.finra.org/rules-guidance/guidance/reports/2026-finra-annual-regulatory-oversight-report/gen-ai)。
-20. Federal Reserve, [SR 26-2: Revised Guidance on Model Risk Management](https://www.federalreserve.gov/supervisionreg/srletters/SR2602.htm), 2026-04-17。
-21. OCC, [Bulletin 2026-13: Model Risk Management—Revised Guidance](https://www.occ.gov/news-issuances/bulletins/2026/bulletin-2026-13.html), 2026-04-17。
-22. MAS, [Guidelines on Artificial Intelligence Risk Management for Financial Institutions](https://www.mas.gov.sg/regulation/guidelines/guidelines-on-artificial-intelligence-risk-management-for-financial-institutions), 2026-10-07。
-23. FCA, [AI in financial services: good practice and areas for improvement](https://www.fca.org.uk/publications/good-poor-practice/ai-financial-services)。
-
-### 最新研究（预印本，研究结论应结合论文范围解读）
-
-24. [AgenticFinBench: Benchmarking Financial Agents on Diverse Tasks from Real-World Requests](https://arxiv.org/abs/2611.04813), 2026-11。
-25. [LLM-Generated Investment Research Memos Need Validation](https://arxiv.org/abs/2611.04375), 2026-11-03。
-26. [Investor's Last Exam: Can AI Agents Do Equity Investment Without Seeing the Future?](https://arxiv.org/abs/2610.38342), 2026-10。
-27. [Enhancing Financial Question Answering: A Novel Benchmark Dataset of Banks' Financial Statements](https://arxiv.org/abs/2609.03654), 2026-09。
-28. [PRISM: Prompt-Refined In-Context System Modelling for Financial Retrieval](https://arxiv.org/abs/2511.14130)。
-29. [FinReflectKG / MultiHop: Financial QA Benchmark for Reasoning with Knowledge Graph Evidence](https://arxiv.org/abs/2510.02906)。
-
-**研究限制：** 厂商网页主要用于确认公开产品能力和供应商自述，不用于证明跨机构的实际效果；厂商发布的 Benchmark 使用不同任务集和评分方法，不能直接横向排名。以上 2026 年最新学术资料多数为预印本，样本范围、评测者、数据来源和实验模型均有限，适合作为架构设计和企业评测集的参考，不应直接作为生产性能承诺。
