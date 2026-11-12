@@ -277,7 +277,7 @@ export async function runAgentText(
       ...record,
       status,
       updatedAt,
-      artifactRefs: await collectArtifactRefs(callDir),
+      artifactRefs: await collectAgentCallArtifacts(callDir),
       ...(error ? { error } : {}),
       ...(result !== undefined ? { responseChars: result.length } : {})
     };
