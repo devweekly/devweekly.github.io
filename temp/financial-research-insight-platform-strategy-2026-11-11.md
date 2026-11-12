@@ -698,7 +698,261 @@ Verified Queries 能提高相似问题的 SQL 生成质量，但不能替代好�
 
 
 
-### 4.11 Agent 数量服从任务复杂度
+### 4.11 自动发现：从现有系统反向构建元数据与血缘
+
+数据目录不应依赖项目团队手工填写 Excel。金融机构通常已经有大量可供发现的技术证据：数据库 Catalog、DDL、View 定义、SQL / ETL 仓库、dbt Manifest、调度 DAG、运行日志、BI 报表模型、查询历史和数据质量测试结果。建议采用 **Pull-based Discovery + Runtime Events + Owner Confirmation** 三条路径并行，先自动收集，再由 Owner 认领和补充业务语义。
+
+#### 4.11.1 扫描对象与采集方法
+
+| 来源 | 自动采集内容 | 推荐方式 | 能发现什么 / 主要限制 |
+| --- | --- | --- | --- |
+| 数据库与仓库 | Database / Schema / Table / View / Column、类型、注释、主外键、权限、更新时间、行数统计 | Catalog / Information Schema / 系统视图 Connector；定时增量扫描 | 发现物理资产和结构变化；业务含义、隐式 Join 和跨系统依赖未必能仅靠 Catalog 得到 |
+| SQL、存储过程与 ETL 代码 | SQL 文件、DDL、CTAS、INSERT…SELECT、View、Stored Procedure、dbt Model、宏与参数 | Git 仓库扫描；解析原始 SQL 与编译后 SQL；SQL AST Parser（例如 SQLGlot） | 提取表级、字段级读写关系和转换表达式；动态 SQL、宏展开、运行时拼接、UDF 和非 SQL 逻辑需要额外证据 |
+| dbt / 转换框架 | Source、Model、Seed、Snapshot、依赖、测试、文档、编译 SQL、运行结果 | 导入 `manifest.json`、`catalog.json`、`run_results.json`，并与仓库实际对象匹配 | 静态依赖、字段定义、测试和运行状态；必须同时采集 dbt 与目标仓库，才能把逻辑节点连接到真实物理对象 |
+| 调度与工作流 | DAG、Task、Schedule、上游触发、传参、重试、运行实例、输入输出 | Airflow / Control-M / Autosys / Dagster 等 Connector；调度 API 和运行事件 | 识别“谁触发谁、何时运行、任务依赖谁”；调度先后关系不等于数据读写血缘 |
+| ETL / ELT 运行平台 | Job、Mapping、Source / Target、Transformation、运行批次、失败与重跑 | Informatica、DataStage、SSIS、Matillion、Glue、Spark 等原生元数据接口；必要时采集执行计划 | 补充 SQL Parser 看不到的可视化映射、非 SQL 转换和运行时参数 |
+| BI 与报表 | Workspace、Dataset / Semantic Model、Dashboard、Report、Chart、字段引用、刷新计划、用户访问 | Power BI、Tableau、Looker、Sigma 等 API / Metadata Connector | 发现报表到数据集、数据集到表 / 字段的消费关系；导出文件、Excel 本地公式和邮件附件仍可能形成盲区 |
+| 查询历史与使用行为 | Query、访问对象、字段引用、调用人 / Role、频率、时间、扫描量、失败情况 | Snowflake Query History / Access History 等审计与系统视图；按许可和保留要求采集 | 发现真实运行中使用的表、字段和查询依赖，识别孤儿表、热门资产和未登记消费者；查询日志不能单独解释业务意图 |
+| 运行时 Lineage Events | Job Run、输入 Dataset、输出 Dataset、版本、运行时间、状态 | OpenLineage 等标准事件；由作业在执行时发出 | 补足静态扫描无法确定的真实运行输入输出和版本；需要作业或集成主动发事件 |
+
+DataHub 的公开工程文档展示了将 Snowflake、dbt、Airflow、BI 等源通过定时 Pull Connector 接入目录，并结合 SQL Parser、查询历史和运行时事件生成表级及字段级血缘的实践；OpenLineage 则用 Job、Run、Dataset 和 Facet 表达作业执行及输入输出。OpenMetadata 也提供数据库元数据、SQL / dbt / Pipeline / Dashboard Lineage 等采集路径。这些是可参考的实现方式，不代表每个连接器对所有产品版本和复杂 SQL 都有完整覆盖。参见 [DataHub Metadata Ingestion](https://docs.datahub.com/docs/ui-ingestion)、[DataHub SQL Parsing](https://github.com/datahub-project/datahub/blob/master/docs/lineage/sql_parsing.md)、[DataHub dbt Integration](https://docs.datahub.com/docs/generated/ingestion/sources/dbt)、[OpenLineage Job Facets](https://openlineage.io/docs/spec/facets/job-facets/) 和 [OpenMetadata Lineage Ingestion](https://docs.open-metadata.org/v1.12.x/connectors/ingestion/lineage)。
+
+#### 4.11.2 建议的自动发现流水线
+
+1. **Inventory Scan：** 连接 Snowflake、关系数据库、对象存储、Git、ETL、Scheduler 和 BI，先收集系统、Schema、对象、代码仓库、任务和报表清单。
+2. **Parse & Extract：** 对 DDL、View、SQL、dbt Artifact、ETL Mapping、DAG 和 BI Model 进行解析；能识别字段级表达式时保留表达式，不能识别时退化为表级关系，不伪造精度。
+3. **Runtime Enrichment：** 关联查询历史、作业运行、访问记录和 OpenLineage 事件，补充实际运行路径、参数、版本、执行时间和使用频率。
+4. **Identity Resolution：** 将不同系统里的同一对象映射到 Canonical Asset ID。匹配依据包括系统实例、Database / Schema / Object、物理路径、代码仓库和部署环境；不能只凭同名表合并。
+5. **Reconciliation：** 对比代码声明、数据库实际对象、运行时记录和报表引用。将“代码中定义但未部署”“已部署但代码中找不到”“运行日志发现但未登记”等情况列为差异，而不是自动覆盖。
+6. **Owner Enrichment：** 根据 Git CODEOWNERS、数据库 Role、调度维护团队、报表 Workspace 和服务目录推断候选 Owner，再由责任团队确认。推断 Owner 必须标记为候选，不应直接变成正式责任归属。
+7. **Publish & Change Detection：** 将发现结果发布到目录与图谱；每次扫描生成 Snapshot / Version，识别新增、删除、Schema Drift、SQL 变化、下游影响和长期未使用资产。
+
+推荐采用“定时全量基线 + 高频增量扫描 + 部署时事件推送”。代码 Merge / Deploy、dbt Run、ETL Run 和 BI Model Publish 时主动推送版本及运行信息；每日或每周扫描数据库和报表元数据用于校准；查询历史按可用保留窗口持续回补。对于金融数据，采集权限、查询文本、客户 / 持仓字段和供应商内容时必须做数据最小化，并遵循日志访问控制、脱敏和保留期限。
+
+#### 4.11.3 字段级血缘的现实边界
+
+字段级 Lineage 很有价值，但不应把自动解析结果包装成绝对事实。简单 SELECT、Alias、Join、CTAS 和常见 dbt 模型通常较容易解析；动态 SQL、Stored Procedure、Python DataFrame、Spark、UDF、宏、临时表、运行时变量、文件交换和外部 API 需要更多静态或运行时证据。
+
+每条边应记录 `discovery_method`（Catalog / SQL Parse / dbt Manifest / Runtime Event / Manual）、`confidence`、`evidence_ref`、`observed_at`、`valid_from`、`valid_to`、`environment` 和 `parser_version`。例如，SQL Parser 识别到 `A.REVENUE -> B.REVENUE_USD`，可以记录表达式 `A.REVENUE * FX.RATE`；如果只是从 Dashboard 查询日志看到报表访问了某张表，则只能建立消费关系，不能推断字段的业务转换规则。
+
+自动发现应以“证据充分的边”为目标，而不是追求图上每条线都连起来。对冲突、低置信度和未解析依赖显示待确认状态，并保留原始证据。对下游影响分析，优先展示已验证的直接依赖，再逐层展开推断依赖。
+
+### 4.12 依赖关系建成 Graph：节点、边与平台选择
+
+需要的不是一张只有 Table → Table 的血缘图，而是一张可跨技术栈查询的 **Enterprise Data Dependency Graph**。图谱把技术资产、业务语义和消费对象连接起来，回答“这项数据从哪里来、经过什么处理、由谁调度、被哪些报表和 Agent 使用、改动后影响谁”。
+
+![金融数据依赖图](/diagrams/financial-data-dependency-graph.svg)
+
+*交互查看：[金融数据依赖图](/diagrams/financial-data-dependency-graph.html)。*
+
+#### 4.12.1 节点模型
+
+建议先定义有限且稳定的 Node Type，不要将每个 SQL 语句、每次查询或每个文件都建成长期业务节点。
+
+| 节点类型 | 示例 | 关键属性 |
+| --- | --- | --- |
+| System / Data Source | Snowflake、Bloomberg、LSEG、Oracle、S3 | System ID、环境、Owner、技术类型、区域、许可 |
+| Dataset / Table / View | `CURATED_FINANCIAL.FUNDAMENTALS` | Asset ID、Schema、Grain、Schema Version、分类、存储位置 |
+| Column / Metric | `REVENUE`、Revenue Growth | Data Type、Definition、Unit、Currency、Period、Metric Owner |
+| Code / Transformation | dbt Model、SQL View、ETL Mapping、Stored Procedure | Git Repo、Commit、版本、SQL Hash、Transformation Logic |
+| Job / Task / Run | Airflow DAG、Control-M Job、dbt Run | Schedule、Run ID、状态、输入输出、执行时间 |
+| Data Product | Issuer Fundamentals、Portfolio Exposure | Product ID、Owner、Contract Version、SLO、状态 |
+| Semantic Object | Semantic View、Metric、Dimension、Filter | 业务定义、关系、表达式、发布版本 |
+| Consumer | Power BI Report、Tableau Dashboard、Agent Tool、API、Excel Feed | Consumer Owner、用途、刷新频率、访问范围 |
+| Business Capability / Process | Equity Research、Portfolio Monitoring、Risk Review | Business Owner、关键性、关联应用和流程 |
+
+业务实体（Issuer、Security、Portfolio、Fund、Client）也可以作为领域知识图谱中的节点，但应与“数据资产依赖图”区分命名空间和关系类型。比如 `Portfolio` 作为业务实体，与 `PORTFOLIO_HOLDINGS` 作为数据集不是同一个节点；两者通过 `REPRESENTS` / `DESCRIBES` 等语义关系连接。
+
+#### 4.12.2 边模型
+
+每条边必须有类型、方向和证据，不要把所有关系都简化成 `DEPENDS_ON`。
+
+| Edge Type | 方向示例 | 含义 |
+| --- | --- | --- |
+| `READS_FROM` | Job → Dataset | 作业读取数据集 |
+| `WRITES_TO` | Job → Dataset | 作业生成或更新数据集 |
+| `DERIVES_FROM` | Column / Dataset → Column / Dataset | 字段或数据集由上游转换得到 |
+| `SCHEDULED_BY` | Job → Scheduler | 作业由哪个调度系统管理 |
+| `TRIGGERS` | Task → Task | 任务触发或依赖另一个任务 |
+| `EXPOSES` | Data Product → API / Semantic Object | 产品通过接口或语义对象提供能力 |
+| `CONSUMES` | Report / Agent → Data Product | 下游消费者使用产品 |
+| `IMPLEMENTS` | Semantic Metric → Canonical Metric | 技术语义对象实现企业指标定义 |
+| `SUPPORTS` | Data Product → Business Capability | 数据产品支持哪项业务能力 |
+| `OWNED_BY` | Asset → Team / Role | 责任归属 |
+| `GOVERNED_BY` | Asset / Product → Policy / Contract | 受哪项规则、许可或契约约束 |
+
+同一对节点可能存在多种边：一个 Job 可以读取 A、写入 B、由 Scheduler 调度；一个报表可以消费 Semantic View，也可能直接访问底层表。图谱必须保留关系类型，不能因可视化简化而丢失这些区别。
+
+#### 4.12.3 图谱的存储与查询
+
+建议采用 **Catalog / Metadata Store 为权威目录，Graph Projection 为关系查询视图**，不要一开始就把所有元数据、业务定义和运行历史全部迁入 Neo4j。
+
+- **第一阶段：** 使用 DataHub 或 OpenMetadata 作为元数据与血缘目录。它们已经提供 Connector、资产实体、Owner、Tag、SQL / dbt / Scheduler / BI Lineage 和图形浏览能力，减少自建采集器与 UI 的工作量。
+- **第二阶段：** 将关键节点与边投影到图查询服务，针对多跳影响分析、跨域关系、循环依赖、路径查询和复杂业务关系评估 Neo4j / Amazon Neptune 等图数据库。图数据库保存的是可重建的投影，不是唯一的元数据真相源。
+- **第三阶段：** 将 Data Product Contract、业务指标、Policy、Entitlement 和研究消费关系接入同一关系模型；支持“修改某字段会影响哪些模型、Semantic View、报表、Agent Tool、业务流程和团队”的端到端分析。
+
+如果 DataHub / OpenMetadata 已经能满足血缘浏览、搜索、Owner 和影响分析，不必再引入独立图数据库。只有当查询确实需要复杂多跳遍历、路径评分、跨业务实体关系推理或图算法，且目录内置图能力成为性能或表达瓶颈时，才引入图数据库。Neo4j 不是数据治理平台的替代品，图数据库也不会自动帮你发现 SQL 或 ETL 依赖。
+
+#### 4.12.4 LeanIX 能不能承担这件事？
+
+LeanIX 有价值，但它主要解决 Enterprise Architecture / Application Portfolio Management 问题。它的核心模型围绕 Application、IT Component、Interface、Data Object、Business Capability、Organization 等 Fact Sheet，适合展示应用之间的接口、数据对象流向、技术组件依赖、业务能力映射和应用现代化影响。SAP 官方资料也提供 Data Object Modeling Guidelines，用于通过 Application 与 Interface 表达应用间的数据流。参见 [SAP LeanIX Data Object Modeling Guidelines](https://help.sap.com/docs/leanix/ea/data-object-modeling-guidelines) 和 [Application Portfolio Management](https://www.leanix.net/zh/products/application-portfolio-management)。
+
+它不应被期待自动解析大量 SQL、ETL Mapping、dbt 模型、字段表达式、调度运行和 BI Dashboard 的细粒度依赖。你感受到的“能力偏弱”，很可能是把 EA 资产管理工具用于数据工程血缘场景后的边界错配，不只是配置或建模方法的问题。
+
+建议保留 LeanIX 负责上层 EA 视图：业务能力 → 应用 → IT Component / Interface → Data Object / Data Product（业务级）；DataHub / OpenMetadata 负责底层技术目录：Database → Table → Column → SQL / Job → Dashboard / API（技术级）。两者通过稳定的 System ID、Application ID、Data Product ID 和 Interface ID 做双向链接。不要在 LeanIX 中复制每个字段、SQL 节点和 Job Run，否则维护成本会迅速上升，EA 模型也会变成低质量的数据目录。
+
+### 4.13 Data Product Contract：元数据、业务语义与可执行规则
+
+Data Product 的契约不应只有名称、Owner、Schema 和刷新频率。对于金融机构，消费者还需要知道数据代表什么、粒度是什么、何时有效、如何使用、哪些质量条件必须满足，以及不满足时如何处理。
+
+但这不意味着所有业务逻辑都应写进 Semantic View。建议把契约分成三层：**Product Metadata & Interface Contract、Business Semantic Contract、Executable Quality / Operational Rules**。三层可以由一个版本化 Data Product Contract 文档统一描述，再分别映射到目录、数据测试、仓库约束、Semantic View 和运行监控。
+
+#### 4.13.1 最低契约：元数据只是起点
+
+| 契约部分 | 最低内容 | 例子 |
+| --- | --- | --- |
+| Identity & Ownership | Product ID、名称、业务域、Owner、Steward、技术支持团队、生命周期状态 | `issuer-fundamentals-v1`，Owner = Equity Research Data |
+| Purpose & Consumer | 解决什么业务问题、允许的消费者、使用目的、关键下游应用 | Equity Research、Portfolio Analytics |
+| Interface & Schema | 数据对象、字段、类型、主键、粒度、兼容性和版本策略 | 每行 = Issuer × Fiscal Period × Metric × Provider |
+| Time Semantics | As-of、Published At、Effective Time、Period Start / End、时区和延迟说明 | 供应商披露时间与接收时间分开 |
+| Business Semantics | 字段定义、单位、币种、期间、枚举、计算口径、实体含义和可比性限制 | Revenue 是报告币种下的季度合并收入，不等于 TTM Revenue |
+| Quality Rules | 完整性、唯一性、范围、跨字段关系、参照完整性、异常变化和容忍度 | `gross_margin = gross_profit / revenue`；Revenue 非负（明确例外）；关键字段不可空 |
+| Operational SLO | Freshness、Availability、Completeness、Latency、恢复时间、支持窗口 | 每个工作日 07:00 ET 前完成；迟到触发告警 |
+| Security & License | 分类级别、用户 entitlement、用途、缓存 / 派生 / Embedding / 导出许可、保留规则 | Bloomberg 数据仅向已订阅用户展示，不允许任意导出 |
+| Change & Deprecation | Contract Version、变更级别、兼容期、通知对象、迁移与退役日期 | Breaking Change 提前通知消费者并提供并行版本 |
+| Evidence & Operations | 数据源、血缘、测试结果、运行状态、质量事件、已知限制和 Runbook | 每次发布关联代码 Commit、Test Run 和数据快照 |
+
+因此，**最低可用契约 = 元数据 + Schema / Grain + 时间语义 + 关键业务定义 + 少量高价值质量规则 + Owner / SLA / Security**。不是只登记几个描述字段，也不要求第一天就把所有业务规则穷尽。
+
+#### 4.13.2 规则应该放在哪里？
+
+先区分规则的目的，再选择执行位置。以“字段不能超过 100”“A 字段和 B 字段必须满足某种关系”为例：
+
+| 规则类型 | 例子 | 首选执行位置 | Semantic View 是否合适 |
+| --- | --- | --- | --- |
+| 结构与完整性约束 | Primary Key 唯一、NOT NULL、合法数据类型 | 数据库约束、摄取 Schema 校验、dbt / Data Quality Test | 通常不合适；View 不负责阻止坏数据进入底层表 |
+| 单字段有效范围 | `position_weight` 在 0–1；`rating_score` 在定义范围 | dbt Test、Great Expectations / Soda、约束可表达时在数据库层执行 | 可将有效状态暴露为维度或过滤条件，但不应把它当作质量测试 |
+| 跨字段关系 | `gross_profit <= revenue`；`end_date >= start_date`；`market_value = quantity × price`（考虑容差） | 数据质量测试 / 业务规则服务；必要时由确定性计算服务复算 | 若它是查询时的派生指标或可复用过滤逻辑，可以映射；不能替代写入时校验 |
+| 业务定义与计算口径 | Revenue Growth、Net Debt、ROIC、Portfolio Exposure | 企业 Metric Contract + 确定性计算 / Semantic Layer | **适合**：定义可复用 Metric、Dimension、Relationship、Filter 和表达式 |
+| 查询口径 / 适用范围 | Active Portfolio、Reported Revenue、当前有效 Issuer | Semantic View Filter、受控查询 API、Policy Service | **部分适合**：语义过滤可帮助查询；访问控制仍应由授权层执行 |
+| 数据许可与访问控制 | 用户能否看到某 Desk 的持仓、是否可导出供应商数据 | Policy / Entitlement Service + Snowflake Row / Masking Policy + PEP | **不能只放在 View**：语义过滤不是授权决策，也不能替代底层安全策略 |
+| 业务流程约束 | 只有审批通过的估值才能进入正式报告 | Workflow / Domain Service / Approval Policy | 不适合 |
+| 异常与统计质量 | 收入环比变化超过 80%、持仓数量突变、历史分布漂移 | Quality Monitor、异常检测、人工调查流程 | 可以暴露异常标记或过滤器，但监测和告警在质量平台执行 |
+
+例如，“字段不能超过 100”必须先明确它是硬约束还是业务异常：若 `ownership_pct` 的定义就是百分比且不能超过 100%，可以在摄取校验和数据测试中作为 Error；如果某个供应商的估值倍数通常小于 100，但极端情况下可能超过 100，则应作为 Warning / Anomaly，而不是拒绝数据。若规则有合法例外，契约必须写明例外条件和适用范围。
+
+同理，`gross_profit <= revenue` 只有在字段口径、符号约定、分部范围和会计定义一致时才成立。金融数据经常存在负收入、特殊行业、重分类、币种转换和供应商调整，规则不能只因为“看起来合理”就全局强制。
+
+#### 4.13.3 规则的表达、执行与反馈
+
+每条规则应是可版本化对象，至少包含：
+
+- `rule_id`、名称、业务解释、Owner、适用 Data Product / 字段 / Grain；
+- 表达式或测试实现、输入字段、容差、适用期间和例外条件；
+- 严重级别（Error / Warning / Info）、阈值和评估频率；
+- 执行位置、失败动作（Reject / Quarantine / Publish with Warning / Alert）；
+- 规则版本、生效时间、测试结果、豁免审批、到期日和变更记录。
+
+推荐的运行模式是：Ingestion 时执行 Schema / 基础约束；Transformation 时执行 dbt / SQL 规则和跨字段测试；Data Product 发布前执行契约测试；运行中执行 Freshness、Volume、Distribution 和异常监控；消费者查询时由 Semantic View 提供统一业务定义和适用过滤；Policy Service 独立执行用户和许可授权。质量测试失败不应由 LLM 自行决定是否忽略，必须按规则严重级别和授权的豁免流程处理。
+
+dbt 的 Data Tests、Great Expectations / Soda 一类质量框架可作为规则执行载体；测试定义应随模型代码进入 Git，并在 CI / 作业运行时执行。参见 [dbt Data Tests](https://docs.getdbt.com/docs/build/data-tests)。Snowflake Semantic Views 可以定义 Metrics、Relationships、Dimensions 和可查询的 Boolean Filters，适合承载业务查询语义；官方文档也将 Filter 描述为可用于查询条件的语义表达，而不是数据写入约束或质量门禁。参见 [Snowflake Semantic View Filters](https://docs.snowflake.com/en/user-guide/views-semantic/filters) 和 [Modeling Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices-modeling)。
+
+#### 4.13.4 一个金融 Data Product 的契约示例
+
+以 `issuer-fundamentals` 为例：
+
+```yaml
+apiVersion: data.saga/v1
+kind: DataProduct
+metadata:
+  id: issuer-fundamentals
+  version: 1.0.0
+  domain: equity-research
+  owner: equity-research-data
+  steward: fundamentals-steward
+  classification: licensed-financial-data
+  status: published
+
+interface:
+  dataset: CURATED_FINANCIAL.FUNDAMENTALS
+  grain:
+    - issuer_id
+    - fiscal_period_id
+    - metric_id
+    - provider_id
+  primaryKey:
+    - issuer_id
+    - fiscal_period_id
+    - metric_id
+    - provider_id
+  compatibility: additive-only
+
+time:
+  fields:
+    - published_at
+    - received_at
+    - effective_at
+    - period_start
+    - period_end
+  supportsPointInTime: true
+
+semantics:
+  metrics:
+    - name: revenue
+      definition: Reported consolidated revenue for the stated fiscal period
+      unit: provider-reported
+      currency: reported_currency
+      aggregation: not_additive_across_periods
+    - name: gross_margin
+      definition: gross_profit / revenue
+      unit: percent
+      nullWhen:
+        - revenue_is_zero
+        - required_inputs_missing
+
+quality:
+  - id: fundamentals.pk_unique
+    type: uniqueness
+    columns: [issuer_id, fiscal_period_id, metric_id, provider_id]
+    severity: error
+    action: quarantine
+  - id: fundamentals.period_valid
+    type: expression
+    expression: period_end >= period_start
+    severity: error
+    action: reject
+  - id: fundamentals.margin_reconciliation
+    type: expression
+    expression: abs(gross_margin - gross_profit / nullif(revenue, 0)) <= 0.0001
+    severity: warning
+    action: publish_with_warning
+
+serviceLevel:
+  freshness: "published by 07:00 America/New_York on business days"
+  availability: "99.5% monthly target"
+
+security:
+  entitlementPolicy: provider-and-desk-entitlement
+  allowModelContext: "only for entitled users and approved use cases"
+  allowExport: false
+
+lineage:
+  required: true
+  minimumGranularity: column
+```
+
+这是用于表达契约分层的示意 YAML，不是某个厂商可直接部署的标准 Schema。实际实施时应为 Contract 建立 JSON Schema / OpenAPI 或内部规范，验证字段、版本和表达式，并将规则编译或映射到 dbt、质量测试、数据库约束、Semantic View 和 Policy Service。
+
+#### 4.13.5 发布门禁与变更影响
+
+Data Product 的发布不应只检查 Schema 是否存在。建议执行：Contract Schema Validation → SQL / Model Tests → Quality Tests → Lineage Completeness → Semantic Regression → Entitlement Negative Tests → Consumer Compatibility → Owner Approval。发布结果关联 Git Commit、Contract Version、数据快照、测试报告和运行 ID。
+
+字段删除、粒度变化、币种 / 期间语义改变、指标公式变化、许可范围变化和质量阈值收紧都应视为需要评估的契约变更。通过 Graph 找出所有下游 Data Product、Semantic View、报表、Agent Tool 和业务流程；通知 Owner，必要时发布并行版本并保留迁移窗口。对只增加可选字段的兼容变更，可以采用较轻门禁。
+
+Data Product Contract 是生产者与消费者之间的可验证约定，不是把所有业务逻辑写在一份 YAML 里。企业 Metric Contract 定义“这个指标是什么意思”；质量规则定义“数据是否满足可接受条件”；Semantic View 定义“用户如何一致地查询”；Policy 定义“谁能在什么用途下访问”；Workflow 定义“业务动作如何审批”。这几类规则相互关联，但必须保留各自的责任边界。
+
+
+### 4.14 Agent 数量服从任务复杂度
 
 研究任务经常被设计成 Researcher、Analyst、Risk Agent、Reviewer、Writer 等多个 Agent 相互对话。角色划分容易理解，但多 Agent 不一定能提高结果质量；如果各 Agent 共享同一批错误证据，或在串行过滤中提前丢掉关键材料，增加角色只会放大错误传播、延迟和成本。
 
@@ -1337,3 +1591,12 @@ Claude 和 OpenAI 提供模型能力、部分金融工作流、数据连接和�
 47. TCS, [An Approach to Implementing Data Mesh in Financial Services](https://www.tcs.com/what-we-do/industries/banking/white-paper/data-mesh-implementation-bfsi)。
 48. Google Cloud / DBS case material, [How DBS Bank is Scaling a Hybrid Data Platform for Growth and Regulatory Compliance](https://www.wisdominterface.com/wp-content/uploads/2026/03/accelerating_enterprise_data_migration.pdf)（二手案例材料，含并行迁移和 Iceberg 经验）。
 49. LTM, [Re-Platforming Program Cost Reduction for a European Financial Services Group](https://www.ltm.com/insights/case-studies/re-platforming-program-cost-reduction-for-a-european-financial-services-group), 2024-06-03（供应商发布的客户案例）。
+50. DataHub, [Metadata Ingestion](https://docs.datahub.com/docs/ui-ingestion)（数据库、dbt、BI、使用统计与血缘的自动采集）。
+51. DataHub, [SQL Parsing](https://github.com/datahub-project/datahub/blob/master/docs/lineage/sql_parsing.md)（SQL AST 解析与字段级血缘）。
+52. DataHub, [dbt Integration](https://docs.datahub.com/docs/generated/ingestion/sources/dbt)（Manifest、Catalog、Run Results 与 dbt / 仓库对象关联）。
+53. OpenLineage, [Job Facets](https://openlineage.io/docs/spec/facets/job-facets/)（Job、Run、Dataset 和运行时 Lineage 事件）。
+54. OpenMetadata, [Lineage Ingestion](https://docs.open-metadata.org/v1.12.x/connectors/ingestion/lineage)（SQL、dbt、Pipeline 与 Dashboard 血缘采集）。
+55. SAP LeanIX, [Data Object Modeling Guidelines](https://help.sap.com/docs/leanix/ea/data-object-modeling-guidelines)（通过应用、接口和 Data Object 表达应用间数据流）。
+56. dbt Labs, [Data Tests](https://docs.getdbt.com/docs/build/data-tests)（数据质量规则和模型测试）。
+57. Snowflake, [Defining Filters for Logical Tables in Semantic Views](https://docs.snowflake.com/en/user-guide/views-semantic/filters)（查询时可复用的语义过滤表达式）。
+
