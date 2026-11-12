@@ -15,11 +15,11 @@
 <text x="48" y="600" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="10" fill="#75695F">RANK 3 · SEMANTICS &amp; CONSUMERS</text>
 <g fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#financial-data-dependency-graph-arrow)">
 <path d="M290 190 V292 H365 V320"/><path d="M290 190 V250 H760 V320"/>
-<path d="M610 190 V320 H470"/><path d="M610 190 V250 H760 V320"/>
+<path d="M610 227 V320 H470"/><path d="M610 190 V250 H760 V320"/>
 <path d="M485 390 V455 H490 V480"/><path d="M880 390 V455 H490 V480"/>
 <path d="M620 530 V615 H370 V635"/><path d="M620 530 V635 H780"/>
 <path d="M620 530 V590 H1080 V635"/>
-<path d="M930 390 V455 H1080 V480"/>
+
 </g>
 <g filter="url(#financial-data-dependency-graph-shadow)">
 <rect x="150" y="145" width="280" height="82" rx="10" fill="#FFFEFA" stroke="#CFC5B8"/>
