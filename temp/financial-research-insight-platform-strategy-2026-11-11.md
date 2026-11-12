@@ -26,6 +26,8 @@
 先选一个业务责任明确、数据可获得、结果可验证的研究场景，把数据接入、研究计算、证据、人工复核和结果反馈跑通，再按数据域扩展。本文后续章节按这个建设顺序展开。
 
 
+
+
 ## 1. 市场已经走到哪里
 
 ### 1.1 Claude：从金融 Skill 扩展到金融工作流产品
@@ -110,6 +112,8 @@ OpenAI 于 2026 年 9 月 10 日发布 [ChatGPT for Financial Services](https://
 
 
 
+
+
 ## 2. 产品形态：Research Workbench 与 Insight Hub
 
 ### 2.1 Research Workbench：研究人员主动探索和形成结论
@@ -182,6 +186,8 @@ Insight Hub 的差异化最终体现在三件事上：能够持续追踪重要�
 | 保险资管 | 发行人、债券、久期、负债匹配、偿付能力与风险限额 | 信用事件、利率和利差变化、资产负债匹配偏差 | 固收发行人监控与组合风险说明 |
 
 同一套平台底座可以复用，但首个产品不能试图覆盖所有业务线。不同机构的核心数据、决策责任、许可范围和风险等级差异很大。应先选择一个高频、可验证、业务责任清楚的研究工作流，再扩展到更多资产类别和产品线。
+
+
 
 
 
@@ -285,6 +291,8 @@ Insight 还要记录后续处理：谁查看了、是否确认、是否形成研
 **10. 防止跨团队上下文污染。** 子 Agent、共享缓存、向量索引、摘要、模型上下文和生成文件都可能造成信息泄漏。每个数据对象应携带 security labels / entitlement context；跨团队任务要重新做授权判断；共享摘要必须检查来源数据的最高敏感级别和可分发范围。Agent 不能因为“已经读过”某份材料，就把内容复制到另一个团队的回答中。
 
 建议平台至少提供以下团队级能力：Team / Desk Workspace、Shared Research Objects、Team Memory Registry、Role & Entitlement Service、Review / Approval Inbox、Task Handoff、Event & Notification Service、Team Dashboard Registry。个人偏好和团队正式规则应分开存储；团队正式记忆、研究状态和审批记录应进入机构控制的持久化存储。
+
+
 
 
 
@@ -700,7 +708,9 @@ Verified Queries 能提高相似问题的 SQL 生成质量，但不能替代好�
 
 
 
-## 5. Build vs Buy：哪些能力应该由机构掌握
+
+
+## 5. 技术选型：Build vs Buy、模型与 Agent Runtime
 
 ### 5.1 自建的核心资产
 
@@ -729,11 +739,7 @@ Verified Queries 能提高相似问题的 SQL 生成质量，但不能替代好�
 
 一个重要边界是：供应商提供金融数据并不代表平台获得了无限使用权。检索、索引、Embedding、缓存、摘要、派生数据、模型上下文、导出和分发，可能属于不同授权范围。接入评估必须把这些权利逐项问清楚。
 
-
-
-## 6. 模型与 Agent Runtime：复用供应商能力，保留运行时控制
-
-### 6.1 Claude：复用专业工作流模板
+### 5.3 Claude：复用专业工作流模板
 
 Claude 的金融插件适合用于验证业务流程、提升个人效率，以及把成熟的研究模板快速带入团队。可以先挑选 Earnings Reviewer、Market Researcher、Model Builder 或 Valuation Reviewer 等与业务匹配的模板，再替换为机构自己的数据连接器、模型方法和报告模板。
 
@@ -742,7 +748,8 @@ Claude 的金融插件适合用于验证业务流程、提升个人效率，以�
 建议把 Claude 用作模型能力和研究工作流的一种实现，不要让 Claude Skill 文件变成平台的唯一业务定义。Skill 可以携带任务说明、步骤和输出标准，但金融指标口径、数据许可、工作流状态、权限策略和审计事件必须由内部服务定义。
 
 
-### 6.2 OpenAI：现成金融产品与 API 嵌入
+
+### 5.4 OpenAI：现成金融产品与 API 嵌入
 
 ChatGPT for Financial Services 可以作为研究团队的现成工作环境进行评估，尤其适合需要快速获得金融数据、引用、分析和 Office 文档产出能力的团队。它的设计合作伙伴包括 Morgan Stanley 和 Evercore，说明产品从投行和股票研究工作流切入；OpenAI 也明确表示后续会继续扩展其他金融服务类别。
 
@@ -751,7 +758,8 @@ ChatGPT for Financial Services 可以作为研究团队的现成工作环境进�
 ChatGPT Financial Services 内建数据的索引和托管安排，可能与企业已有供应商合同、地区要求、许可限制和内部保留制度产生不同影响。采购前应确认具体数据源、用户 entitlement 识别方式、内容使用权、数据所在位置、日志保留、信息隔离、删除和退出机制。不能仅凭“Enterprise”或“金融服务”产品名称推断所有机构控制要求都已满足。
 
 
-### 6.3 LangGraph：自有工作流运行时
+
+### 5.5 LangGraph：自有工作流运行时
 
 [LangGraph](https://docs.langchain.com/oss/python/langgraph/overview) 是用于构建长时间、有状态 Agent 工作流的低层运行时，提供图状态、持久化、流式执行和 Human-in-the-loop 能力。其 [Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts) 可以暂停执行、持久化状态，等待人工输入后再继续运行。LangChain 官方将 LangGraph 定位为 Agent 编排运行时，将 [LangSmith](https://docs.langchain.com/langsmith/observability) 定位为跨框架的 Trace、评测、Prompt 和部署平台。
 
@@ -762,9 +770,11 @@ ChatGPT Financial Services 内建数据的索引和托管安排，可能与企�
 
 
 
-## 7. 安全、数据许可与监管控制
 
-### 7.1 先判断业务用途，再决定控制强度
+
+## 6. 安全、数据许可与监管控制
+
+### 6.1 先判断业务用途，再决定控制强度
 
 金融研究平台可能只做内部资料搜索，也可能进一步生成投资建议、信用意见、客户材料或交易指令。不同用途的影响和风险并不相同。将 AI 用于内部信息检索，不意味着后续将输出转给客户、用于投资决策或自动执行时仍然属于同一风险等级。
 
@@ -774,7 +784,7 @@ ChatGPT Financial Services 内建数据的索引和托管安排，可能与企�
 
 新加坡 MAS 在 2026 年 10 月 7 日发布 [金融机构 AI 风险管理指引](https://www.mas.gov.sg/regulation/guidelines/guidelines-on-artificial-intelligence-risk-management-for-financial-institutions)，适用于金融机构使用的各种 AI 技术，并允许机构根据风险规模和业务复杂度配置治理方式。英国 FCA 也发布了 [AI in financial services: good practice and areas for improvement](https://www.fca.org.uk/publications/good-poor-practice/ai-financial-services)，强调既有监管规则仍适用于机构使用 AI 的活动。以上文件在司法辖区、法律性质和适用对象上不同，跨国机构不能用一套通用“AI 合规检查表”替代本地法律和监管分析。
 
-### 7.2 权限边界不能只靠 Prompt、Skill 或 MCP
+### 6.2 权限边界不能只靠 Prompt、Skill 或 MCP
 
 检索和工具访问前必须执行真实的用户身份、业务角色、数据来源许可和信息隔离检查。RAG 不能把用户没有权利访问的文件带进模型上下文；Agent 不能通过换一种工具、调用另一个 MCP 或让子 Agent 查询而绕开权限。
 
@@ -782,26 +792,28 @@ ChatGPT Financial Services 内建数据的索引和托管安排，可能与企�
 
 对投行、研究、资产管理、财富和客户团队，应按业务需要设计 Information Barrier。材料从内部检索进入模型上下文后，生成结果的可见范围和可分发范围仍需受控，不能因为模型已经看过材料，就将其视为可以对所有员工或客户开放。
 
-### 7.3 记录一次研究运行所需的证据
+### 6.3 记录一次研究运行所需的证据
 
 一份可审计的研究结果，应能够还原本次任务的用户身份与角色、任务目的、As-of 时间、检索数据版本、数据授权判定、原文证据位置、结构化查询和计算输入输出、Prompt 与模型版本、工具调用、生成结果、人工修改、审核人、审批决定和后续分发范围。
 
 普通 Trace 是排障和质量分析的起点，不等于完整审计证据。日志可能缺字段、被采样、过期或允许修改；如果需要把某些事件作为业务记录，应将其写入机构管理的持久化、访问受控、具备保留与防篡改策略的存储。平台应明确哪些属于观测数据，哪些属于法定或内部正式记录。
 
-### 7.4 高风险动作必须脱离 LLM 自主控制
+### 6.4 高风险动作必须脱离 LLM 自主控制
 
 平台可以自动发现事件、准备材料、生成研究草稿和提出工作建议。是否允许直接发布客户研究、发送投资建议、执行组合交易、调整信用额度或完成审批，应由具体业务规则、授权、独立验证和人工决策共同决定。模型输出不能作为权限依据，模型的“自信”也不能替代风险审批。
 
 
 
 
-## 8. Trade Lifecycle：研究平台与交易执行系统的边界
+
+
+## 7. Trade Lifecycle：研究平台与交易执行系统的边界
 
 交易生命周期是 Research Intelligence Platform 向 Portfolio / Investment Operations 延伸时最重要、也最容易越界的领域。平台可以在交易前后提供大量智能支持，但必须明确：**Agent 不拥有交易权限，不直接向 Broker、Exchange、ATS、OMS 或 EMS 提交、修改、撤销订单，也不持有可用于交易的凭证。** Agent 的交付物是分析、建议、校验结果和待人工处理的 Order Proposal；交易员或其他经授权人员必须在既有 OMS / EMS 中核对并亲自执行。即使未来接入订单 API，也只能由独立、受控的业务系统在其自身授权和审批流程下执行，不能把 Agent Tool 设计成下单工具。
 
 这里需要区分机构类型：资产管理公司的投资经理 / 交易员、券商的客户订单处理人员、财富管理顾问和自营交易 Desk，职责与监管要求并不相同。以下以买方资产管理机构为主线，券商和财富业务应按自身牌照、客户关系、交易场所和适用法规调整。SEC Rule 15c3-5 直接适用于具有证券市场接入的相关 Broker-Dealer，并要求市场接入控制覆盖预设信用 / 资本阈值、错误订单、受限证券、授权访问和交易后报告；它不是所有资产管理公司一概适用的通用规则，但它清楚说明了为什么市场接入和订单控制必须由承担相应义务的受监管实体掌握，而不能交给一个通用 Agent。参见 [SEC Rule 15c3-5](https://www.sec.gov/rules-regulations/2011/06/risk-management-controls-brokers-or-dealers-market-access) 及 [SEC FAQ](https://www.sec.gov/rules-regulations/staff-guidance/trading-markets-frequently-asked-questions/divisionsmarketregfaq-0)。
 
-### 8.1 生命周期总览与系统责任
+### 7.1 生命周期总览与系统责任
 
 | 阶段 | 业务活动 | Agent 可以做什么 | 权威系统 / 责任人 | Agent 禁止边界 |
 | --- | --- | --- | --- | --- |
@@ -818,7 +830,7 @@ ChatGPT Financial Services 内建数据的索引和托管安排，可能与企�
 | 10. Post-trade Review | TCA、滑点、市场冲击、执行质量、组合变化 | 计算与解释交易成本、归因、异常和偏差 | TCA / PMS / Risk / Research | 不自行确认会计或正式绩效口径 |
 | 11. Research Feedback & Audit | Thesis 结果、决策复盘、监管与审计证据 | 将执行结果反馈到研究记忆，形成复盘草稿 | Research Memory / Compliance / Records | 不覆盖原始订单、审批、成交或正式账簿记录 |
 
-### 8.2 交易前：从投资 Thesis 到可审阅的 Order Proposal
+### 7.2 交易前：从投资 Thesis 到可审阅的 Order Proposal
 
 交易前不应由 Agent 直接从一句自然语言跳到订单。应先形成可追溯的投资意图，并将研究、组合、风险和交易约束连接起来。
 
@@ -831,7 +843,7 @@ ChatGPT Financial Services 内建数据的索引和托管安排，可能与企�
 
 Order Proposal 的意义是把研究意图转成交易员可以核对的结构化交接，而不是把订单输入界面自动化。交易员应在 OMS / EMS 中重新确认账户、证券、方向、数量、价格、订单类型、有效期和路由等字段，并由 OMS / EMS 再次执行权威的预交易检查。
 
-### 8.3 订单执行：明确的 Agent 禁区
+### 7.3 订单执行：明确的 Agent 禁区
 
 订单执行是本平台与 OMS / EMS 的硬边界。Agent 可以读取订单状态和成交回报，但不能操作交易生命周期中的写动作。
 
@@ -846,7 +858,7 @@ Order Proposal 的意义是把研究意图转成交易员可以核对的结构�
 
 **人类执行仍然不是无控制的手工操作。** Trader 在 OMS / EMS 内操作时，系统仍需执行身份认证、交易权限、账户授权、预交易限额、价格和数量合理性、Restricted List、重复订单检测、市场状态检查及审计记录。Agent 的预检只是辅助，不能替代 OMS / EMS 的实时权威控制。对于适用 Rule 15c3-5 的 Broker-Dealer，相关市场接入控制应由承担法定义务的 Broker-Dealer 直接控制，并持续验证其有效性。
 
-### 8.4 执行中与执行后：只读跟踪、异常分流和正式账务分离
+### 7.4 执行中与执行后：只读跟踪、异常分流和正式账务分离
 
 订单进入 OMS / EMS 后，平台可通过只读事件订阅接收 New / Accepted / Rejected / Partially Filled / Filled / Cancelled / Expired 等状态，以及 Execution Report、成交数量、均价、时间戳、费用和场所信息。Agent 可解释未成交原因、部分成交影响、市场变化和与原始 Thesis 的偏离，并向交易员发出待处理事项。但它不能自动改价、追单、撤单、重发或改变执行算法。
 
@@ -860,7 +872,7 @@ Order Proposal 的意义是把研究意图转成交易员可以核对的结构�
 
 交易生命周期的每个状态都应以 OMS / EMS、Broker、Custodian、Clearing 或正式账簿的回执为准。Agent 生成的“已提交”“已成交”“已结算”文字不能改变系统状态。事件丢失、重复、乱序或延迟时，平台要按交易 ID / Order ID / Execution ID 幂等处理，并通过权威系统定期对账恢复状态。
 
-### 8.5 必须补齐的交易领域数据模型
+### 7.5 必须补齐的交易领域数据模型
 
 平台至少需要能够关联以下对象，但不应取代 OMS / EMS 的订单主数据：
 
@@ -880,7 +892,7 @@ Order Proposal 的意义是把研究意图转成交易员可以核对的结构�
 
 建议 Research Platform 只保存 Order Proposal 及权威交易系统对象的引用、只读快照和事件索引。正式 Order、Execution、Allocation、Settlement 和 Ledger 的权威记录留在原系统，避免形成第二套 OMS。
 
-### 8.6 交易场景的治理、审计和故障设计
+### 7.6 交易场景的治理、审计和故障设计
 
 每次交易相关 Agent Run 应保存发起用户、代表的 Desk / Portfolio、任务目的、授权上下文、数据 As-of、Mandate 版本、Research Thesis 版本、市场数据来源、计算输入输出、预检结果、Order Proposal 版本、人工交接人、OMS / EMS 引用 ID、执行状态事件、后续复核和异常处置。需要将研究建议与正式订单、成交和账务记录分开保存，并保留两者之间的可追踪关联。
 
@@ -893,7 +905,7 @@ Order Proposal 的意义是把研究意图转成交易员可以核对的结构�
 - **Reconciliation：** 定期将 Order Proposal、OMS 订单、Execution、Allocation、Custodian 和 Ledger 事件对齐；不一致进入人工异常队列。
 - **Model / Prompt Change Control：** 对涉及数量、风险解释、限制识别和交易建议的变更运行回归测试；不能因模型升级自动扩大交易权限。
 
-### 8.7 分阶段建设建议
+### 7.7 分阶段建设建议
 
 | 阶段 | 建设内容 | 明确不做 |
 | --- | --- | --- |
@@ -909,7 +921,9 @@ Order Proposal 的意义是把研究意图转成交易员可以核对的结构�
 
 
 
-## 9. Legacy 现代化：不等核心系统迁完才开始建设
+
+
+## 8. Legacy 现代化：不等核心系统迁完才开始建设
 
 ![Legacy 数据现代化路径](/diagrams/financial-research-legacy-modernization.svg)
 
@@ -924,7 +938,7 @@ Order Proposal 的意义是把研究意图转成交易员可以核对的结构�
 
 这是一条“先建立新的价值路径，再逐步降低旧系统依赖”的路线。旧系统可以继续处理交易、账务、主数据和运营；新平台负责跨系统分析、研究、AI 检索、历史回放和洞察交付。两者通过受控数据接口、CDC、批量交换和数据产品契约连接，而不是让 Agent 直接连接生产数据库。
 
-### 9.1 现代化目标：建立新的分析平面
+### 8.1 现代化目标：建立新的分析平面
 
 建议将目标拆成三条并行、但有明确边界的工作流：
 
@@ -934,7 +948,7 @@ Order Proposal 的意义是把研究意图转成交易员可以核对的结构�
 
 Deloitte 关于金融机构旧平台现代化的研究强调：新云平台建设应与现有 Run-the-Bank 活动并行，旧系统要被隔离和保护，通过混合云数据接入与 API 逐步支持新流程；不能把所有现代化都压在一次性核心替换上。参见 [Tackling Data Challenges for Modernizing Legacy Technology Platforms](https://www2.deloitte.com/content/dam/Deloitte/us/Documents/process-and-operations/us-tackling-data-challenges-for-modernizing-legacy-technology-platforms.pdf) 和 [Modernizing Legacy Systems in Banking](https://www.deloitte.com/us/en/Industries/financial-services/articles/modernizing-legacy-systems-in-banking.html)。
 
-### 9.2 目标架构：Legacy 保持权威，新平台建立统一分析平面
+### 8.2 目标架构：Legacy 保持权威，新平台建立统一分析平面
 
 推荐采用“源系统 + Integration Plane + Open Data Plane + Governed Analytics Plane + AI Consumption Plane”的分层结构。它不是要求每家机构同时部署所有产品，而是明确各组件的职责，避免 Snowflake、PostgreSQL、Iceberg 变成三个互相竞争的数据库。
 
@@ -957,7 +971,7 @@ Deloitte 关于金融机构旧平台现代化的研究强调：新云平台建�
 
 Snowflake 官方文档说明 Iceberg 数据和元数据存放在云对象存储中，Catalog 可以由 Snowflake 管理，也可以使用外部 Catalog；外部 Catalog 的生命周期、保留策略和文件管理责任不会自动转移给 Snowflake。跨云、跨区域访问还可能产生数据传输费用；外部 Catalog 与 Snowflake-managed Iceberg 在治理、复制、克隆、恢复等平台能力上也存在差异。因此，先确定 Catalog、存储区域和写入责任，再选择 Iceberg 部署模式。参见 [Snowflake Apache Iceberg Tables](https://docs.snowflake.com/en/user-guide/tables-iceberg) 和 [Catalog-linked Databases](https://docs.snowflake.com/en/user-guide/tables-iceberg-catalog-linked-database)。Apache Iceberg 的快照、Schema Evolution 和 Time Travel 能支持可复现分析，但必须正确管理快照保留和表维护。参见 [Apache Iceberg Documentation](https://iceberg.apache.org/docs/latest/)。
 
-### 9.3 按数据源特征选择接入方式
+### 8.3 按数据源特征选择接入方式
 
 接入模式应由源系统能力、数据许可、时效要求、源端负载和网络条件决定。CDC 不是所有问题的答案，虚拟化也不能替代数据产品建设。
 
@@ -974,7 +988,7 @@ Snowflake 官方文档说明 Iceberg 数据和元数据存放在云对象存储�
 
 对于高风险核心数据库，优先评估厂商支持的日志复制、只读副本或专门 CDC 网关；不要未经审批就在生产主库上部署 Agent 自己写的轮询脚本。若只能批量抽取，则把时效性写进 Data Contract，例如 T+1、每小时、15 分钟或事件级，并明确数据延迟对用例是否可接受。
 
-### 9.4 Vendor Data：许可与 AI 使用范围
+### 8.4 Vendor Data：许可与 AI 使用范围
 
 金融机构的数据供应商通常有多层使用约束：采购主体、Named User、部门、终端、地域、用途、内部展示、衍生数据、模型训练、模型推理、缓存、导出和再分发可能分别受限。技术上能复制一份数据，不代表法律和合同上允许把它复制到对象存储、Iceberg、向量库或模型上下文。
 
@@ -991,7 +1005,7 @@ Snowflake 官方文档说明 Iceberg 数据和元数据存放在云对象存储�
 
 优先采用供应商提供的受控数据共享方式或已授权 API。只有许可明确允许时，才将数据复制到企业对象存储或 Snowflake。对于只能在 Vendor 环境中查询的数据，可考虑受控联邦查询或在供应商环境内执行计算，再把允许的结果返回企业平台；但必须明确查询可用性、性能、成本和可复现性限制。
 
-### 9.5 Source Inventory 与 Dependency Graph
+### 8.5 Source Inventory 与 Dependency Graph
 
 第一步不是写迁移脚本，而是用 4–6 周建立可执行的现状清单。不要只统计数据库数量和 TB，要识别哪些资产真正支撑研究、投资、风险和监管报告。
 
@@ -1009,7 +1023,7 @@ Snowflake 官方文档说明 Iceberg 数据和元数据存放在云对象存储�
 
 **把依赖关系做成 Graph。** 例如 Oracle table → Informatica mapping → Snowflake staging → Power BI report → Portfolio Manager。这样才能判断某个旧表退役会影响哪些报告、研究 Agent、组合决策和监管产物。AI 可以帮助解释 SQL、存储过程、字段含义和血缘，但自动推断的业务规则必须标记置信度并由 Owner 确认，不能直接当作正式定义。
 
-### 9.6 按业务用例和数据域分批推进
+### 8.6 按业务用例和数据域分批推进
 
 第一批不要选最容易迁移、却没有业务价值的表。应选择一个端到端研究场景，覆盖多种数据源和治理问题，但控制范围。例如：
 
@@ -1026,7 +1040,7 @@ Snowflake 官方文档说明 Iceberg 数据和元数据存放在云对象存储�
 
 这不是要做伪精确的财务公式，而是迫使团队同时考虑价值、复用、数据成熟度、源端风险和许可难度。对高价值但暂时无法复制的数据，先用受控 API 或联邦访问建立可用性；对低价值、高维护成本且无下游依赖的数据，优先归档或退役。
 
-### 9.7 Migration Factory：标准化迁移工程
+### 8.7 Migration Factory：标准化迁移工程
 
 不要为每个源数据库重新发明一套脚本。平台团队应提供可复用的 Connector / Ingestion Template、Data Contract、数据质量测试、血缘、部署和运行监控模板。每个数据域只需要补充源端映射和领域规则。
 
@@ -1045,7 +1059,7 @@ Snowflake 官方文档说明 Iceberg 数据和元数据存放在云对象存储�
 
 所有转换逻辑应版本化（例如 dbt / SQL / Python + Git + CI/CD），环境分为 Dev / Test / Prod；部署使用 Infrastructure as Code。AI 可以辅助 SQL / ETL 代码理解和转换，但必须通过目标引擎真实执行、自动测试和业务对账。Security Benefit 的公开案例显示，团队先花近两个月梳理旧 CDP 字段使用和端到端依赖，再用两周重建一个流程；关键不是 AI 自动转换代码，而是先把依赖、逻辑和验收标准透明化，并建立可重复的转换模式。该案例还强调 lineage、文档、RBAC 和动态脱敏。参见 [Security Benefit: 4× Faster Legacy Migration](https://coalesce.io/customer-stories/security-benefit-achieves-4x-faster-legacy-migration/)。
 
-### 9.8 双跑、对账与受控切换
+### 8.8 双跑、对账与受控切换
 
 在金融领域，数据迁移正确性不仅是“行数相同”。不同平台可能存在时区、精度、NULL、舍入、币种、Corporate Action 调整、业务日期、迟到数据、撤销记录和历史修订差异。必须建立业务级 reconciliation，而不是只做技术级复制检查。
 
@@ -1066,7 +1080,7 @@ DBS 的混合平台迁移案例提供了一个有参考价值的实践：在保�
 
 LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段迁移，并自动核对元数据和数据；公开材料报告迁移 50+ TB、约 60% 自动化和约 300 万欧元成本节省。它同样是供应商发布的单一案例，适合参考迁移工厂与自动对账思路，不宜把结果视为普遍基准。参见 [LTM financial services re-platforming case](https://www.ltm.com/insights/case-studies/re-platforming-program-cost-reduction-for-a-european-financial-services-group)。
 
-### 9.9 从数据契约开始支持 AI 消费
+### 8.9 从数据契约开始支持 AI 消费
 
 新平台的每一个数据产品都应同时具备机器和人能理解的上下文。否则，Snowflake 中只是多了几百张表，Agent 仍然不知道字段含义、数据时间、许可和计算方法。
 
@@ -1094,7 +1108,7 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 
 这意味着 Agent 不应该直接对几十万张源表做 Text-to-SQL。它应先从 Catalog / Data Product Registry 发现已批准的数据产品，再通过 Semantic Query / Domain API 获取数据，最后将每个 Claim 绑定到来源、时间、计算和权限证据。对没有业务定义的数据，Agent 可以提出候选映射，但要标记 Unverified，不能把推断出来的字段含义直接当作权威口径。
 
-### 9.10 On-prem、Cloud 与 Vendor 的混合边界
+### 8.10 On-prem、Cloud 与 Vendor 的混合边界
 
 金融机构不应把“云优先”误解成“所有数据都必须离开数据中心”。建议按数据分类和业务目的建立部署策略：
 
@@ -1105,7 +1119,7 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 - **生产系统保护：** 通过只读副本、CDC 网关、限速、查询白名单、连接池和网络隔离保护 OLTP；禁止 Agent 直接连接生产数据库。
 - **身份与凭证：** 采用短期凭证、服务身份、Secrets Vault、KMS 和可撤销授权；凭证不进入 Prompt、Notebook、日志或 Agent 容器环境。
 
-### 9.11 Legacy 现代化的 12 个月路线图
+### 8.11 Legacy 现代化的 12 个月路线图
 
 不要以“完成全企业数据迁移”作为 AI 平台上线门槛。建议用一个投资研究场景做贯穿式试点，再按数据域复制方法。
 
@@ -1120,7 +1134,7 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 
 每个阶段必须同时交付业务价值和平台能力，避免做成只有数据工程团队在使用的“新数据仓库项目”。建议一个试点团队包括业务 Product Owner、Data Owner、Data Engineer、Platform Engineer、Security / Compliance、Research Analyst 和 AI Engineer。平台团队提供模板、策略和公共组件；领域团队负责业务定义、质量规则和数据产品运营。
 
-### 9.12 现代化进展指标
+### 8.12 现代化进展指标
 
 建议用以下指标判断现代化是否真正加速 AI 研究：
 
@@ -1136,7 +1150,7 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 - **AI Research Productivity：** 研究准备时间、证据核对时间、研究覆盖面和重复劳动变化；
 - **Cost-to-Serve：** 每个数据产品、研究工作流和 Agent Run 的计算、存储、供应商和运营成本。
 
-### 9.13 五种常见的现代化误区
+### 8.13 五种常见的现代化误区
 
 1. **Big Bang Migration：** 把全量数据库迁移作为 AI 上线前提，导致业务价值长期无法交付。
 2. **Copy Everything to Snowflake：** 把 Snowflake 当作新的企业垃圾场，复制重复表和无人使用的历史数据，增加成本和治理负担。
@@ -1149,7 +1163,9 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 
 
 
-## 10. 实施路线图：从一个研究闭环开始
+
+
+## 9. 实施路线图：从一个研究闭环开始
 
 建议按 12–18 个月分阶段推进。时间是规划窗口，不是供应商交付承诺；实际周期取决于数据许可、内部研究数据质量、遗留系统接口和业务团队投入。
 
@@ -1161,13 +1177,13 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 | 3：Insight Hub（6–9 个月） | 把研究变化推送给相关角色 | Watchlist / Portfolio 关联；事件识别；重要性和 Thesis Delta；Insight 对象；责任人、状态、反馈和审计 | 告警误报率、漏报率和优先级获得业务认可；每条重要 Insight 有证据和处理路径；角色隔离有效 |
 | 4：跨业务扩展（9–18 个月） | 扩展资产类别、团队和端到端工作流 | 信用、私募、财富或投行工作流；组合风险分析；自动生成机构模板材料；更多数据源和领域 Agent；受控业务系统写回 | 每个新增场景重新完成风险分类、许可核验和评测；关键动作经领域授权和审批；运行成本和服务质量满足业务要求 |
 
-### 10.1 选择首个研究场景
+### 9.1 选择首个研究场景
 
 对于资产管理或研究机构，建议从一个固定覆盖范围内的上市公司财报分析与 Thesis 更新开始。这个流程高频、材料有较明确的来源、结构化财务数据和文本披露同时存在，也能看到研究结论是否随时间变化。它适合检验文件解析、检索、指标口径、来源定位、历史假设和分析师复核的完整链路。
 
 建议先选 1–2 个行业、30–100 家发行人作为受控范围。数字是试点规划的建议起点，不代表行业标准或成熟度要求；应依据团队覆盖情况和数据授权调整。先让分析师使用研究助手，结果只用于内部研究，不自动向客户发布、不直接进入交易执行，也不承担信用审批等高影响决策。若机构主要业务是商业银行、财富或保险，则应把试点换成该机构中同等高频、可验证、责任边界明确的研究场景。
 
-### 10.2 阶段验收与指标
+### 9.2 阶段验收与指标
 
 不要用 Prompt 数、Token 数或 Agent 数量衡量产品价值。平台的指标应同时覆盖正确性、研究效率、用户行为、业务影响和运营成本。
 
@@ -1185,15 +1201,17 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 
 
 
-## 11. 评测：用真实研究任务验证整个平台
 
-### 11.1 评测完整任务链路
+
+## 10. 评测：用真实研究任务验证整个平台
+
+### 10.1 评测完整任务链路
 
 [AgenticFinBench](https://arxiv.org/abs/2611.04813) 是 2026 年 11 月发布的金融 Agent 预印本，覆盖 230 个真实请求任务、8 个类别、两种语言和四个复杂度等级，并比较 18 种模型与 Agent Harness 配置。论文报告，仅评估任务完成度而不审计事实，可能高估系统表现；在其测试中，Harness 对证据落地差异的影响高于模型差异（28.6% 对 8.8%），而复杂任务的质量分也低于直接检索任务。
 
 这项结果并不意味着 Harness 在所有情况下都比模型重要，任务集合也不是生产流量的随机样本。它支持一个更实用的评估原则：应比较完整的模型、Prompt、工具、检索、状态管理和验证组合，而不应只比较 Claude 与 GPT 的单次问答。
 
-### 11.2 金融研究评测集
+### 10.2 金融研究评测集
 
 | 任务族 | 代表性问题 | 必须验证的内容 |
 | --- | --- | --- |
@@ -1208,7 +1226,7 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 | 研究报告验证 | 一份投研备忘录中哪些陈述缺证、冲突或被反驳？ | Claim 级和 Memo 级质量、错误严重度 |
 | Point-in-Time 回放 | 在历史日期当时可获得哪些资料？ | 来源时间、数据版本、模型预训练记忆污染风险 |
 
-### 11.3 按任务选择模型
+### 10.3 按任务选择模型
 
 同一个模型未必在表格理解、长文综合、精确引用、复杂数值任务和成本方面都占优。建议对 Claude、OpenAI 及候选模型使用相同的题目、相同的证据包、相同的工具和相同的输出契约，分别测量：
 
@@ -1223,7 +1241,9 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 
 
 
-## 12. 架构决策清单
+
+
+## 11. 架构决策与目标状态架构决策清单
 
 **不要建设一个通用 Bloomberg 替代品。** 市场数据覆盖、新闻分发、标准化指标和专业内容是长期积累的产品能力，自建平台更应该利用已有供应商，把差异化放在机构自己的研究上下文和业务流程。
 
@@ -1239,9 +1259,7 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 
 **不要用“人类在环”作为抽象口号。** 每个复核节点要定义触发条件、审批角色、允许修改范围、拒绝后的状态、恢复方式和最终责任人。否则审批按钮并不能提供有效控制。
 
-
-
-## 13. 目标状态
+### 11.1 目标状态
 
 目标产品不是让分析师把所有问题都交给某一个模型，而是让机构拥有一个统一、可信、可替换的金融研究能力层。
 
@@ -1252,8 +1270,6 @@ Claude 和 OpenAI 提供模型能力、部分金融工作流、数据连接和�
 如果这些内部资产没有形成，平台只是把供应商的聊天能力包一层 UI；如果这些资产建立起来，模型供应商可以持续替换，研究流程也不会随某一家模型的升级、降价或产品改版而失去连续性。
 
 ---
-
-
 
 ## 参考资料
 
@@ -1272,52 +1288,52 @@ Claude 和 OpenAI 提供模型能力、部分金融工作流、数据连接和�
 11. Snowflake, [Semantic Views Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices)。
 12. Snowflake, [Cortex Search Query Access Control](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/query-cortex-search-service)。
 13. Snowflake, [Row Access Policies](https://docs.snowflake.com/en/user-guide/security-row-intro)。
-16. LangChain, [LangGraph Overview](https://docs.langchain.com/oss/python/langgraph/overview)。
-17. LangChain, [LangGraph Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts)。
-18. LangChain, [LangSmith Observability](https://docs.langchain.com/langsmith/observability)。
+14. LangChain, [LangGraph Overview](https://docs.langchain.com/oss/python/langgraph/overview)。
+15. LangChain, [LangGraph Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts)。
+16. LangChain, [LangSmith Observability](https://docs.langchain.com/langsmith/observability)。
 
 
 ### 监管与指导材料
 
-19. FINRA, [2026 Annual Regulatory Oversight Report: GenAI](https://www.finra.org/rules-guidance/guidance/reports/2026-finra-annual-regulatory-oversight-report/gen-ai)。
-20. Federal Reserve, [SR 26-2: Revised Guidance on Model Risk Management](https://www.federalreserve.gov/supervisionreg/srletters/SR2602.htm), 2026-04-17。
-21. OCC, [Bulletin 2026-13: Model Risk Management—Revised Guidance](https://www.occ.gov/news-issuances/bulletins/2026/bulletin-2026-13.html), 2026-04-17。
-22. MAS, [Guidelines on Artificial Intelligence Risk Management for Financial Institutions](https://www.mas.gov.sg/regulation/guidelines/guidelines-on-artificial-intelligence-risk-management-for-financial-institutions), 2026-10-07。
-23. FCA, [AI in financial services: good practice and areas for improvement](https://www.fca.org.uk/publications/good-poor-practice/ai-financial-services)。
+17. FINRA, [2026 Annual Regulatory Oversight Report: GenAI](https://www.finra.org/rules-guidance/guidance/reports/2026-finra-annual-regulatory-oversight-report/gen-ai)。
+18. Federal Reserve, [SR 26-2: Revised Guidance on Model Risk Management](https://www.federalreserve.gov/supervisionreg/srletters/SR2602.htm), 2026-04-17。
+19. OCC, [Bulletin 2026-13: Model Risk Management—Revised Guidance](https://www.occ.gov/news-issuances/bulletins/2026/bulletin-2026-13.html), 2026-04-17。
+20. MAS, [Guidelines on Artificial Intelligence Risk Management for Financial Institutions](https://www.mas.gov.sg/regulation/guidelines/guidelines-on-artificial-intelligence-risk-management-for-financial-institutions), 2026-10-07。
+21. FCA, [AI in financial services: good practice and areas for improvement](https://www.fca.org.uk/publications/good-poor-practice/ai-financial-services)。
 
 
 ### 最新研究（预印本，研究结论应结合论文范围解读）
 
-24. [AgenticFinBench: Benchmarking Financial Agents on Diverse Tasks from Real-World Requests](https://arxiv.org/abs/2611.04813), 2026-11。
-25. [LLM-Generated Investment Research Memos Need Validation](https://arxiv.org/abs/2611.04375), 2026-11-03。
-26. [Investor's Last Exam: Can AI Agents Do Equity Investment Without Seeing the Future?](https://arxiv.org/abs/2610.38342), 2026-10。
-27. [Enhancing Financial Question Answering: A Novel Benchmark Dataset of Banks' Financial Statements](https://arxiv.org/abs/2609.03654), 2026-09。
-28. [PRISM: Prompt-Refined In-Context System Modelling for Financial Retrieval](https://arxiv.org/abs/2511.14130)。
-29. [FinReflectKG / MultiHop: Financial QA Benchmark for Reasoning with Knowledge Graph Evidence](https://arxiv.org/abs/2510.02906)。
+22. [AgenticFinBench: Benchmarking Financial Agents on Diverse Tasks from Real-World Requests](https://arxiv.org/abs/2611.04813), 2026-11。
+23. [LLM-Generated Investment Research Memos Need Validation](https://arxiv.org/abs/2611.04375), 2026-11-03。
+24. [Investor's Last Exam: Can AI Agents Do Equity Investment Without Seeing the Future?](https://arxiv.org/abs/2610.38342), 2026-10。
+25. [Enhancing Financial Question Answering: A Novel Benchmark Dataset of Banks' Financial Statements](https://arxiv.org/abs/2609.03654), 2026-09。
+26. [PRISM: Prompt-Refined In-Context System Modelling for Financial Retrieval](https://arxiv.org/abs/2511.14130)。
+27. [FinReflectKG / MultiHop: Financial QA Benchmark for Reasoning with Knowledge Graph Evidence](https://arxiv.org/abs/2510.02906)。
 
 **研究限制：** 厂商网页主要用于确认公开产品能力和供应商自述，不用于证明跨机构的实际效果；厂商发布的 Benchmark 使用不同任务集和评分方法，不能直接横向排名。以上 2026 年最新学术资料多数为预印本，样本范围、评测者、数据来源和实验模型均有限，适合作为架构设计和企业评测集的参考，不应直接作为生产性能承诺。
 
 ### 本次架构增强补充的工程文档
 
-30. LiteLLM, [Router / Load Balancing](https://docs.litellm.ai/docs/routing)。
-31. LiteLLM, [Router Settings for Keys and Teams](https://docs.litellm.ai/docs/proxy/keys_teams_router_settings)。
-32. Snowflake, [Semantic Views Modeling Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices-modeling)。
-33. Snowflake, [Semantic Views Developing and Deploying Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices-dev)。
-34. Snowflake, [Access Control Privileges](https://docs.snowflake.com/en/user-guide/security-access-control-privileges)。
-35. Anthropic, [API and Data Retention](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention)。
-36. Anthropic, [Claude for Financial Advisors](https://github.com/anthropics/claude-for-financial-advisors)（Cowork Skills、第三方 Connectors、顾问审批与安全边界；仓库标注为非主动维护的参考实现）。
-37. Anthropic, [Introducing Personal Finance in Claude](https://claude.com/resources/articles/introducing-personal-finance-in-claude), 2026-11-05。
-38. Anthropic Help Center, [Use Personal Finance in Claude](https://support.claude.com/en/articles/18185620-use-personal-finance-in-claude)（账户数据范围、只读限制、Team / Enterprise 可用性及产品限制）。
-39. SEC, [Rule 15c3-5: Risk Management Controls for Brokers or Dealers With Market Access](https://www.sec.gov/rules-regulations/2011/06/risk-management-controls-brokers-or-dealers-market-access)。
-40. SEC, [Responses to FAQs Concerning Risk Management Controls for Brokers or Dealers With Market Access](https://www.sec.gov/rules-regulations/staff-guidance/trading-markets-frequently-asked-questions/divisionsmarketregfaq-0)。
-41. Deloitte, [Tackling Data Challenges for Modernizing Legacy Technology Platforms](https://www2.deloitte.com/content/dam/Deloitte/us/Documents/process-and-operations/us-tackling-data-challenges-for-modernizing-legacy-technology-platforms.pdf)。
-42. Deloitte, [Modernizing Legacy Systems in Banking](https://www.deloitte.com/us/en/Industries/financial-services/articles/modernizing-legacy-systems-in-banking.html)。
-43. Snowflake, [Apache Iceberg Tables](https://docs.snowflake.com/en/user-guide/tables-iceberg)。
-44. Snowflake, [Catalog-linked Databases for Apache Iceberg](https://docs.snowflake.com/en/user-guide/tables-iceberg-catalog-linked-database)。
-45. Apache Iceberg, [Documentation](https://iceberg.apache.org/docs/latest/)。
-46. Debezium, [PostgreSQL Connector Documentation](https://debezium.io/documentation/reference/stable/connectors/postgresql.html)。
-47. PostgreSQL, [Logical Replication](https://www.postgresql.org/docs/current/logical-replication.html)。
-48. Coalesce, [Security Benefit Achieves 4× Faster Legacy Migration](https://coalesce.io/customer-stories/security-benefit-achieves-4x-faster-legacy-migration/), 2026-02-27（供应商发布的客户案例）。
-49. TCS, [An Approach to Implementing Data Mesh in Financial Services](https://www.tcs.com/what-we-do/industries/banking/white-paper/data-mesh-implementation-bfsi)。
-50. Google Cloud / DBS case material, [How DBS Bank is Scaling a Hybrid Data Platform for Growth and Regulatory Compliance](https://www.wisdominterface.com/wp-content/uploads/2026/03/accelerating_enterprise_data_migration.pdf)（二手案例材料，含并行迁移和 Iceberg 经验）。
-51. LTM, [Re-Platforming Program Cost Reduction for a European Financial Services Group](https://www.ltm.com/insights/case-studies/re-platforming-program-cost-reduction-for-a-european-financial-services-group), 2024-06-03（供应商发布的客户案例）。
+28. LiteLLM, [Router / Load Balancing](https://docs.litellm.ai/docs/routing)。
+29. LiteLLM, [Router Settings for Keys and Teams](https://docs.litellm.ai/docs/proxy/keys_teams_router_settings)。
+30. Snowflake, [Semantic Views Modeling Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices-modeling)。
+31. Snowflake, [Semantic Views Developing and Deploying Best Practices](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices-dev)。
+32. Snowflake, [Access Control Privileges](https://docs.snowflake.com/en/user-guide/security-access-control-privileges)。
+33. Anthropic, [API and Data Retention](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention)。
+34. Anthropic, [Claude for Financial Advisors](https://github.com/anthropics/claude-for-financial-advisors)（Cowork Skills、第三方 Connectors、顾问审批与安全边界；仓库标注为非主动维护的参考实现）。
+35. Anthropic, [Introducing Personal Finance in Claude](https://claude.com/resources/articles/introducing-personal-finance-in-claude), 2026-11-05。
+36. Anthropic Help Center, [Use Personal Finance in Claude](https://support.claude.com/en/articles/18185620-use-personal-finance-in-claude)（账户数据范围、只读限制、Team / Enterprise 可用性及产品限制）。
+37. SEC, [Rule 15c3-5: Risk Management Controls for Brokers or Dealers With Market Access](https://www.sec.gov/rules-regulations/2011/06/risk-management-controls-brokers-or-dealers-market-access)。
+38. SEC, [Responses to FAQs Concerning Risk Management Controls for Brokers or Dealers With Market Access](https://www.sec.gov/rules-regulations/staff-guidance/trading-markets-frequently-asked-questions/divisionsmarketregfaq-0)。
+39. Deloitte, [Tackling Data Challenges for Modernizing Legacy Technology Platforms](https://www2.deloitte.com/content/dam/Deloitte/us/Documents/process-and-operations/us-tackling-data-challenges-for-modernizing-legacy-technology-platforms.pdf)。
+40. Deloitte, [Modernizing Legacy Systems in Banking](https://www.deloitte.com/us/en/Industries/financial-services/articles/modernizing-legacy-systems-in-banking.html)。
+41. Snowflake, [Apache Iceberg Tables](https://docs.snowflake.com/en/user-guide/tables-iceberg)。
+42. Snowflake, [Catalog-linked Databases for Apache Iceberg](https://docs.snowflake.com/en/user-guide/tables-iceberg-catalog-linked-database)。
+43. Apache Iceberg, [Documentation](https://iceberg.apache.org/docs/latest/)。
+44. Debezium, [PostgreSQL Connector Documentation](https://debezium.io/documentation/reference/stable/connectors/postgresql.html)。
+45. PostgreSQL, [Logical Replication](https://www.postgresql.org/docs/current/logical-replication.html)。
+46. Coalesce, [Security Benefit Achieves 4× Faster Legacy Migration](https://coalesce.io/customer-stories/security-benefit-achieves-4x-faster-legacy-migration/), 2026-02-27（供应商发布的客户案例）。
+47. TCS, [An Approach to Implementing Data Mesh in Financial Services](https://www.tcs.com/what-we-do/industries/banking/white-paper/data-mesh-implementation-bfsi)。
+48. Google Cloud / DBS case material, [How DBS Bank is Scaling a Hybrid Data Platform for Growth and Regulatory Compliance](https://www.wisdominterface.com/wp-content/uploads/2026/03/accelerating_enterprise_data_migration.pdf)（二手案例材料，含并行迁移和 Iceberg 经验）。
+49. LTM, [Re-Platforming Program Cost Reduction for a European Financial Services Group](https://www.ltm.com/insights/case-studies/re-platforming-program-cost-reduction-for-a-european-financial-services-group), 2024-06-03（供应商发布的客户案例）。
