@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+<title id="title">Legacy 数据现代化路径</title><desc id="desc">从旧系统资产盘点、数据契约和授权、按源类型接入、开放存储、治理数据产品到研究应用逐步推进。旧系统在切换前保持权威，通过双跑、对账和 Canary 完成切换。</desc>
+<defs><filter id="shadow" x="-12%" y="-12%" width="124%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#221C17" flood-opacity=".10"/></filter><marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6Z" fill="#65584D"/></marker><marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6Z" fill="#8B5A2B"/></marker></defs>
+<rect width="1280" height="720" fill="#F9F6EF"/>
+<text x="40" y="42" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="22" font-weight="600" fill="#221C17">Legacy 数据现代化路径</text>
+<text x="40" y="66" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">Build the new research plane around the systems of record</text>
+<rect x="40" y="94" width="1200" height="62" rx="8" fill="#F1EDE4" stroke="#CFC5B8"/>
+<text x="60" y="118" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="11" font-weight="600" fill="#8B5A2B">BOUNDARY</text>
+<text x="60" y="140" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="13" fill="#221C17">Legacy remains the system of record until reconciliation and business sign-off authorize a controlled cutover.</text>
+<!-- flow connectors -->
+<path d="M220 340 H250" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M425 340 H455" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M630 340 H660" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M835 340 H865" fill="none" stroke="#8B5A2B" stroke-width="1.8" marker-end="url(#arrow-accent)"/>
+<path d="M1040 340 H1070" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#arrow)"/>
+<!-- stage cards -->
+<g filter="url(#shadow)"><rect x="45" y="250" width="175" height="180" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
+<rect x="61" y="266" width="76" height="18" rx="9" fill="#F0DDEB"/><text x="99" y="279" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#221C17">DISCOVER</text>
+<text x="61" y="315" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="14" font-weight="600" fill="#221C17">旧系统资产</text>
+<text x="61" y="339" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">Oracle / DB2</text>
+<text x="61" y="359" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">On-prem DB</text>
+<text x="61" y="379" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">Vendor feed</text>
+<text x="61" y="405" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="10" fill="#75695F">保留权威写入</text>
+<g filter="url(#shadow)"><rect x="250" y="250" width="175" height="180" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
+<rect x="266" y="266" width="78" height="18" rx="9" fill="#DCE5F4"/><text x="305" y="279" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#221C17">CONTRACT</text>
+<text x="266" y="315" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="14" font-weight="600" fill="#221C17">盘点与授权</text>
+<text x="266" y="345" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">Owner / lineage</text>
+<text x="266" y="365" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">Purpose / license</text>
+<text x="266" y="385" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">PIT / quality / SLA</text>
+<g filter="url(#shadow)"><rect x="455" y="250" width="175" height="180" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
+<rect x="471" y="266" width="70" height="18" rx="9" fill="#D8EEE8"/><text x="506" y="279" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#221C17">INGEST</text>
+<text x="471" y="315" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="14" font-weight="600" fill="#221C17">按源接入</text>
+<text x="471" y="345" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">CDC / WAL</text>
+<text x="471" y="365" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">API / Outbox</text>
+<text x="471" y="385" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">Batch / SFTP</text>
+<g filter="url(#shadow)"><rect x="660" y="250" width="175" height="180" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
+<rect x="676" y="266" width="88" height="18" rx="9" fill="#DCE5F4"/><text x="720" y="279" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#221C17">OPEN FORMAT</text>
+<text x="676" y="315" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="14" font-weight="600" fill="#221C17">开放数据层</text>
+<text x="676" y="345" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">Object Storage</text>
+<text x="676" y="365" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">Parquet / Iceberg</text>
+<text x="676" y="395" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="10" fill="#75695F">跨引擎可读</text>
+<g filter="url(#shadow)"><rect x="865" y="250" width="175" height="180" rx="10" fill="#FFFEFA" stroke="#8B5A2B" stroke-width="1.5"/></g>
+<rect x="881" y="266" width="82" height="18" rx="9" fill="#F5E7D4"/><text x="922" y="279" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#221C17">GOVERN</text>
+<text x="881" y="315" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="14" font-weight="600" fill="#221C17">Snowflake</text>
+<text x="881" y="345" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">标准化 Data Product</text>
+<text x="881" y="365" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">Semantic / Access</text>
+<text x="881" y="395" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="10" fill="#75695F">质量与血缘可查</text>
+<g filter="url(#shadow)"><rect x="1070" y="250" width="175" height="180" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
+<rect x="1086" y="266" width="82" height="18" rx="9" fill="#D8EEE8"/><text x="1127" y="279" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#221C17">CONSUME</text>
+<text x="1086" y="315" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="14" font-weight="600" fill="#221C17">研究应用</text>
+<text x="1086" y="345" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">Workbench</text>
+<text x="1086" y="365" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" fill="#65584D">Insight Hub</text>
+<text x="1086" y="395" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="10" fill="#75695F">只读起步，逐步替代</text>
+<text x="45" y="485" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="12" font-weight="600" fill="#221C17">切换控制</text>
+<rect x="45" y="505" width="1200" height="92" rx="8" fill="#F1EDE4" stroke="#CFC5B8"/>
+<text x="68" y="538" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="13" font-weight="600" fill="#8B5A2B">Shadow Read</text>
+<text x="270" y="538" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="13" font-weight="600" fill="#221C17">Reconcile</text>
+<text x="480" y="538" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="13" font-weight="600" fill="#221C17">Canary</text>
+<text x="670" y="538" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="13" font-weight="600" fill="#221C17">Business Sign-off</text>
+<text x="910" y="538" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="13" font-weight="600" fill="#221C17">Controlled Cutover</text>
+<text x="68" y="570" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="11" fill="#65584D">双读比对</text>
+<text x="270" y="570" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="11" fill="#65584D">数据与业务对账</text>
+<text x="480" y="570" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="11" fill="#65584D">小流量验证</text>
+<text x="670" y="570" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="11" fill="#65584D">责任人批准</text>
+<text x="910" y="570" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="11" fill="#65584D">旧依赖择机退役</text>
+<text x="45" y="642" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="11" fill="#65584D">PostgreSQL 保存研究任务、审批与应用状态；不承担企业历史分析仓库职责。</text>
+<text x="45" y="663" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="11" fill="#65584D">供应商数据进入缓存、索引、Embedding 或模型上下文前，先确认许可和用途范围。</text>
+</svg>
