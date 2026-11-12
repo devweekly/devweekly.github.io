@@ -63,6 +63,28 @@ Anthropic 的公开仓库 [anthropics/financial-services](https://github.com/ant
 
 它与 [anthropics/financial-services](https://github.com/anthropics/financial-services) 应并列理解：后者更偏金融服务通用岗位和专业分析插件；前者更聚焦财富顾问的客户与组合服务流程。两者都能缩短工作流原型开发时间，但都没有替代机构自己的身份授权、数据许可、业务语义、研究记忆、控制执行和监管责任。
 
+
+### 1.1.2 Claude Personal Finance：值得借鉴的是“账户聚合 + 连续追问 + 可调整视图”，不是个人理财建议
+
+Anthropic 于 2026 年 11 月 5 日发布 [Introducing Personal Finance in Claude](https://claude.com/resources/articles/introducing-personal-finance-in-claude)。它面向个人用户，但产品设计中有几项对机构 Research / Portfolio 平台很有价值。需要注意：这项功能处于美国市场 Beta，官方帮助文档说明目前不适用于 Claude Team / Enterprise；它不是现成的企业团队解决方案，也不应直接将个人账户连接模式搬进机构环境。
+
+它的核心体验是：用户主动选择并连接银行账户，Claude 通过 Plaid 只读获取被授权的数据，再以自然语言回答问题。用户可以跨账户查看余额、支出、现金流、订阅和待付账单；从“这个月钱花到哪里了”继续追问“比上个月多吗”“发薪日前还有哪些付款”“有什么异常”。系统可以发现重复扣款、异常费用和持续上升的账单，并把数字组织成可编辑的 Dashboard、图表或日历。用户可以随时解除连接。官方明确声明它不能转移、管理或投资用户资金，也不以提供投资建议为目标。
+
+**对机构平台值得借鉴的设计：**
+
+- **从账户和业务对象出发，而不是从聊天窗口出发。** 用户首先看到一个持续存在的 Finance Hub，再围绕账户、现金流、组合或目标提问。机构产品也应有 Portfolio / Issuer / Desk / Strategy 等工作对象主页，聊天是操作这些对象的入口，不是唯一入口。
+- **跨来源聚合后再解释。** 价值不只是连接多个系统，而是将它们的数据统一成可理解的余额、敞口、现金流、费用、持仓和事件视图。机构侧要进一步处理实体映射、币种、估值时点、重复记录、来源优先级和数据新鲜度。
+- **支持连续追问和异常发现。** 从一个汇总数字继续钻取到构成项、历史比较、异常原因和下一步观察项。每个汇总值都应能展开到原始交易、持仓记录、市场数据或计算输入，不能只展示模型解释。
+- **让用户配置长期视图。** 可调整的 Widget / Dashboard 比一次性生成的答案更适合持续工作。机构可以保存团队批准的 Portfolio Monitor、Research Watchlist、Liquidity Calendar、Risk Dashboard，并区分个人布局和团队标准视图。
+- **把只读权限做成产品能力。** 账户由用户通过第三方授权流程连接，平台不收集银行密码；访问范围限定为用户明确选择的数据，且可以撤销。机构应采用企业 IdP、供应商 entitlement、数据用途许可和最小权限，而不是让 Agent 持有用户凭证或通用数据库账号。
+- **数字必须可核对，数据状态必须透明。** Anthropic 明确提醒余额可能有延迟、重复连接可能重复计数，重要数字应回到银行核实。机构平台应为每个指标显示 as-of 时间、来源、刷新状态、口径、计算路径和质量标记；无法确认的数据要显示为缺失或待核验，而不是由模型补齐。
+- **金融教育与决策建议要分开。** 解释 APR 等概念与建议用户买卖证券不是同一种风险。机构平台也要区分事实解释、研究分析、投资建议、交易意图和受监管业务决定，并根据业务角色与司法辖区配置审批及披露要求。
+
+**不要照搬的部分：** 个人账户连接是单用户授权模型；Team / Enterprise 不可用这一点本身就说明它不能解决团队共享数据、组织权限、职责分离和监管记录问题。个人用户可以自行配置 Dashboard，但机构需要由数据 Owner、业务 Owner 和控制职能共同定义正式指标和标准视图。个人 Finance 的账户与交易数据范围也有限：帮助中心说明，投资账户目前只读取余额和信用额度，不读取持仓、交易、利率或条款。因此不能把它描述为完整的投资组合分析或交易生命周期能力。
+
+**落到本平台的产品形态：** 借鉴其 Hub-first、账户聚合、自然语言连续追问、异常解释、可调整 Dashboard 和只读连接模式；把底层升级为机构级 Portfolio / Account / Position / CashFlow / Transaction / Event 数据产品，并将每个展示数字关联到来源、as-of、计算和权限上下文。个人用户体验可以作为入口参考，真正的差异化是团队共享的可信投资视图和持续研究记忆。
+
+
 ### 1.2 OpenAI：金融服务已经成为独立产品形态
 
 OpenAI 于 2026 年 9 月 10 日发布 [ChatGPT for Financial Services](https://openai.com/index/introducing-chatgpt-financial-services/)。它不是单纯把通用 ChatGPT 加上金融系统提示词，而是一个面向金融机构的 ChatGPT Work 体验，整合金融数据、GPT-6 Astra 推理、金融研究、财务模型和机构定制材料。
@@ -104,6 +126,37 @@ OpenAI 于 2026 年 9 月 10 日发布 [ChatGPT for Financial Services](https://
 例如，分析师在一次财报后更新了收入增长、毛利率和资本支出假设。系统应知道这不是一篇新文件而已，而是原有投资 Thesis 的一次变化：哪些假设发生变化，哪些原判断被支持或推翻，哪些模型输入需要更新，哪些投资组合受到影响，哪些后续事件值得观察。下一次财报发布时，系统要从之前的判断继续，而不是把所有材料重新总结一遍。
 
 这需要一套可版本化的 Research Memory / Thesis Ledger。它可以从最小的关系模型开始，逐渐扩展为实体关系图；不应一开始就为了“Graph”而建设一个庞大的知识图谱项目。重点是让研究事实、分析师观点、待验证假设和未来可能性在数据层面有明确区别，并且能够追踪其创建人、来源、有效时间和变更历史。
+
+
+### 2.7 从个人助手升级为团队平台：组织上下文、协作状态和责任边界必须成为一等对象
+
+面向团队的平台不能简单理解为“给每个员工开一个 Agent 账号，再把聊天记录共享”。个人助手优化的是单人的上下文和效率；团队平台还必须解决共同工作对象、数据可见范围、观点归属、职责分离、审批、交接和集体记忆。团队层和个人层应并存，但不能混为一套权限或记忆。
+
+**1. 建立清晰的组织与业务上下文模型。** 至少需要区分 Legal Entity、Business Unit、Desk / Team、Role、User、Portfolio / Account、Client、Strategy、Research Coverage 和 Project。用户属于多个团队、临时项目或覆盖组并不罕见，授权不能只依赖单一部门字段。每次 Agent Run 都要绑定发起人、代表的业务身份、工作团队、任务目的、目标组合或客户、数据用途和适用的信息隔离规则。
+
+**2. 个人工作区、团队工作区和机构正式记录分层。**
+- 个人层：个人偏好、草稿、私有笔记、临时分析和个人 Dashboard。默认不自动变成团队正式观点。
+- 团队层：共享 Watchlist、研究计划、团队指标视图、协作任务、已批准的研究观点、会议结论和交接事项。需要明确 Owner、可见范围、状态和版本。
+- 机构层：正式研究发布、投资授权、政策、风险限额、审批决定、交易记录和监管留存。由权威业务系统或受控 Registry 管理，不能以聊天记录作为唯一事实来源。
+
+**3. 将研究观点做成有归属的协作对象。** 同一发行人可能存在多个分析师观点，甚至同一团队内部也有分歧。系统不应把它们压成一个“团队共识”。Thesis / Claim 至少要有作者、责任分析师、团队、状态（Draft / Under Review / Approved / Superseded / Rejected）、适用组合或策略、证据、有效时间、版本、反对意见和批准记录。团队汇总可以展示共识、分歧和未解决问题，但必须保留观点来源，不能让 LLM 自行裁决谁代表团队。
+
+**4. 权限要按对象、动作和数据用途组合计算。** RBAC 适合表达岗位角色，ABAC / ReBAC 适合表达团队关系、覆盖范围、组合授权、客户关系、项目成员和信息隔离。一个用户可以读某个组合，却未必能看到其客户身份；可以读研究资料，却没有权利导出供应商内容；可以生成订单建议，却没有交易权限。授权要在 Retrieval / Tool Gateway / Domain API 执行，并在输出和分发时重新检查，不能只在登录时做一次检查。
+
+**5. 支持职责分离，而不是只设置一个“Approve”按钮。** 研究作者、研究复核人、组合经理、交易员、合规人员、风险人员和系统管理员的权限应有明确差异。高风险流程要支持 Maker-Checker、双人复核、阈值审批、紧急暂停和职责冲突检查。发起任务的 Agent 不能替代审批人；同一个人是否可同时发起和批准，应由机构政策决定并由服务端执行。
+
+**6. 让团队记忆可维护、可纠错、可追溯。** 团队共享记忆不是把所有聊天历史放进向量库。应该把研究结论、投资假设、风险判断、已知限制、决策记录、例外处理和后续结果结构化保存，并记录来源、作者、状态、有效期和访问范围。个人聊天可作为待提炼的候选来源，但必须经过作者确认或团队工作流批准后，才进入团队正式记忆。过期观点应被标记为 Superseded，而不是静默覆盖。
+
+**7. 把协作与交接设计进任务状态。** Agent 长任务可能跨越多个班次、人员和团队。任务需要有 Owner、Assignee、Watcher、Due Date、SLA、阻塞原因、下一步、交接摘要和恢复点。人员离职、休假、团队调整或项目结束时，任务和正式记录要能转交；个人会话不能成为唯一的业务连续性载体。
+
+**8. 团队 Dashboard 与个人 Dashboard 分开治理。** 个人可以调整布局和筛选；团队标准视图应有发布者、版本、指标定义、访问策略和变更记录。允许个人自定义呈现，不意味着允许改变正式指标的定义。团队层应支持按 Desk / Portfolio / Strategy / Region 汇总，同时遵循数据许可和信息隔离。
+
+**9. 设计协作事件，而不只是聊天共享。** 重要事件应成为可订阅的业务事件：Thesis Changed、Evidence Refuted、Portfolio Exposure Breach、Research Review Requested、Order Proposal Ready、Trade Reconciliation Exception。事件需要去重、分派、升级、关闭和反馈；通知不是工作流本身，必须关联权威对象和处理状态。
+
+**10. 防止跨团队上下文污染。** 子 Agent、共享缓存、向量索引、摘要、模型上下文和生成文件都可能造成信息泄漏。每个数据对象应携带 security labels / entitlement context；跨团队任务要重新做授权判断；共享摘要必须检查来源数据的最高敏感级别和可分发范围。Agent 不能因为“已经读过”某份材料，就把内容复制到另一个团队的回答中。
+
+建议平台至少提供以下团队级能力：Team / Desk Workspace、Shared Research Objects、Team Memory Registry、Role & Entitlement Service、Review / Approval Inbox、Task Handoff、Event & Notification Service、Team Dashboard Registry。个人偏好和团队正式规则应分开存储；团队正式记忆、研究状态和审批记录应进入机构控制的持久化存储。
+
 
 ### 2.2 建立时间点正确的金融事实
 
@@ -719,7 +772,119 @@ Verified Queries 能提高相似问题的 SQL 生成质量，但不能替代好�
 
 平台可以自动发现事件、准备材料、生成研究草稿和提出工作建议。是否允许直接发布客户研究、发送投资建议、执行组合交易、调整信用额度或完成审批，应由具体业务规则、授权、独立验证和人工决策共同决定。模型输出不能作为权限依据，模型的“自信”也不能替代风险审批。
 
-## 8. 建设路线图：先形成一个可用的研究闭环，再扩展平台
+
+## 8. Trade Lifecycle：覆盖完整交易生命周期，但 Agent 不进入真实交易执行通道
+
+交易生命周期是 Research Intelligence Platform 向 Portfolio / Investment Operations 延伸时最重要、也最容易越界的领域。平台可以在交易前后提供大量智能支持，但必须明确：**Agent 不拥有交易权限，不直接向 Broker、Exchange、ATS、OMS 或 EMS 提交、修改、撤销订单，也不持有可用于交易的凭证。** Agent 的交付物是分析、建议、校验结果和待人工处理的 Order Proposal；交易员或其他经授权人员必须在既有 OMS / EMS 中核对并亲自执行。即使未来接入订单 API，也只能由独立、受控的业务系统在其自身授权和审批流程下执行，不能把 Agent Tool 设计成下单工具。
+
+这里需要区分机构类型：资产管理公司的投资经理 / 交易员、券商的客户订单处理人员、财富管理顾问和自营交易 Desk，职责与监管要求并不相同。以下以买方资产管理机构为主线，券商和财富业务应按自身牌照、客户关系、交易场所和适用法规调整。SEC Rule 15c3-5 直接适用于具有证券市场接入的相关 Broker-Dealer，并要求市场接入控制覆盖预设信用 / 资本阈值、错误订单、受限证券、授权访问和交易后报告；它不是所有资产管理公司一概适用的通用规则，但它清楚说明了为什么市场接入和订单控制必须由承担相应义务的受监管实体掌握，而不能交给一个通用 Agent。参见 [SEC Rule 15c3-5](https://www.sec.gov/rules-regulations/2011/06/risk-management-controls-brokers-or-dealers-market-access) 及 [SEC FAQ](https://www.sec.gov/rules-regulations/staff-guidance/trading-markets-frequently-asked-questions/divisionsmarketregfaq-0)。
+
+### 8.1 生命周期总览与系统责任
+
+| 阶段 | 业务活动 | Agent 可以做什么 | 权威系统 / 责任人 | Agent 禁止边界 |
+| --- | --- | --- | --- | --- |
+| 0. Mandate & Constraints | 投资授权、策略、基准、风险预算、限制条件 | 解释授权、整理限制、提示冲突和到期规则 | Investment Policy / PMS / Compliance；投资负责人 | 不得创建或变更投资授权、风险限额 |
+| 1. Idea Generation | 研究发现、事件监控、投资 Thesis | 发现机会、整理证据、比较观点、生成候选 Idea | Research Platform / Research Owner | 不得将 Idea 自动变成可执行订单 |
+| 2. Pre-trade Analysis | 价格、流动性、估值、市场冲击、组合影响 | 只读分析、情景计算、流动性和风险提示 | Market Data / Risk / Portfolio Analytics | 不得把估算值当作实时可成交报价 |
+| 3. Portfolio Construction | 仓位规模、资金来源、组合权重、对冲 | 生成目标权重和建议数量，展示约束与敏感性 | PMS / Portfolio Manager | 不得修改权威持仓或自动决定仓位 |
+| 4. Compliance & Risk Checks | Restricted List、制裁、集中度、适当性、限额、预交易检查 | 预检、解释命中项、整理例外申请材料 | Compliance / OMS / RMS / Rule Engine | LLM 结果不能作为正式 Clearance；不得绕过拒绝 |
+| 5. Order Proposal & Handoff | 将投资意图整理为订单草稿 | 生成非执行性的 Order Proposal / Ticket Draft，标注来源和假设 | OMS / EMS；Portfolio Manager / Trader | 不提供 Submit / Replace / Cancel 工具；不持有交易凭证 |
+| 6. Human Execution | 交易员核对、选择场所、执行策略、正式下单 | 可在旁路只读展示研究依据和风险信息 | 经授权 Trader；OMS / EMS / Broker | 不代替交易员点击确认，不调用交易 API |
+| 7. Execution Monitoring | 订单状态、部分成交、剩余数量、市场变化 | 只读订阅 OMS / EMS 回报，解释异常、提示人工关注 | OMS / EMS / Market Surveillance | 不得自动追价、改价、撤单或重发 |
+| 8. Allocation & Confirmation | 成交分配、平均价格、佣金、交易确认 | 比较执行回报与订单意图，发现分配差异 | OMS / Allocation / Broker / Middle Office | 不得自行分配账户或更改成交记录 |
+| 9. Clearing & Settlement | 清算、交收、现金和证券头寸变化 | 跟踪状态、识别失败和资金 / 证券差异 | Custodian / Clearing / Settlement System | 不移动资金或证券，不修改结算指令 |
+| 10. Post-trade Review | TCA、滑点、市场冲击、执行质量、组合变化 | 计算与解释交易成本、归因、异常和偏差 | TCA / PMS / Risk / Research | 不自行确认会计或正式绩效口径 |
+| 11. Research Feedback & Audit | Thesis 结果、决策复盘、监管与审计证据 | 将执行结果反馈到研究记忆，形成复盘草稿 | Research Memory / Compliance / Records | 不覆盖原始订单、审批、成交或正式账簿记录 |
+
+### 8.2 交易前：从投资 Thesis 到可审阅的 Order Proposal
+
+交易前不应由 Agent 直接从一句自然语言跳到订单。应先形成可追溯的投资意图，并将研究、组合、风险和交易约束连接起来。
+
+- **Mandate / Investment Policy：** 读取投资目标、允许资产、基准、投资期限、流动性要求、风险预算、客户限制、税务或 ESG 约束及其生效版本。平台只能解释和校验，不能自行修改 Mandate。
+- **Idea / Thesis：** 将研究观点关联到发行人、证券、策略、观察指标、催化剂、反面证据和失效条件。明确区分“研究观点成立”“组合应该持有”和“现在应该交易”三个判断。
+- **Pre-trade Analytics：** 通过确定性服务计算当前持仓、目标权重、组合集中度、行业 / 因子敞口、现金、流动性、历史波动、预期交易成本、市场冲击和情景敏感性。数据必须标记市场时点、价格类型、延迟状态和来源。
+- **Portfolio Construction：** Agent 可以给出建议目标权重、建议数量或区间，并解释其对风险预算、现金、跟踪误差、集中度和流动性的影响。数量计算必须来自受控计算服务；LLM 不能凭自然语言心算并直接输出权威数量。
+- **Pre-trade Compliance：** 对 Restricted / Watch List、制裁名单、内部黑名单、客户限制、集中度、发行人和行业限额、适当性、市场接入权限等进行机器规则检查。LLM 可以解释命中原因，但 Clearance 必须由正式规则服务和授权人员产生。
+- **Order Proposal：** 形成不可直接执行的草稿对象，建议包含：Portfolio / Account、Security Identifier、Side、目标数量或金额、Order Type 建议、Limit Price / Price Guardrail、Time-in-Force 建议、执行窗口、策略理由、研究 Thesis ID、市场数据 As-of、计算版本、合规预检结果、未解决问题、生成 Agent Run ID 和责任人。草稿要有显著的 DRAFT — NOT AN ORDER 状态，并设置有效期；市场价格、现金、持仓或限制发生变化时自动失效并要求重新检查。
+
+Order Proposal 的意义是把研究意图转成交易员可以核对的结构化交接，而不是把订单输入界面自动化。交易员应在 OMS / EMS 中重新确认账户、证券、方向、数量、价格、订单类型、有效期和路由等字段，并由 OMS / EMS 再次执行权威的预交易检查。
+
+### 8.3 订单执行：明确的 Agent 禁区
+
+订单执行是本平台与 OMS / EMS 的硬边界。Agent 可以读取订单状态和成交回报，但不能操作交易生命周期中的写动作。
+
+**禁止 Agent 暴露的工具：**
+- Submit Order、Place Order、New Order；
+- Replace Order、Modify Order、Cancel Order；
+- Route Order、Select Venue、Change Algo；
+- 任何可通过间接调用触发上述行为的通用 HTTP、浏览器自动化、MCP 或脚本执行能力；
+- 任何可读取、签发或复用交易凭证、交易会话 Token、FIX Session 凭证的能力。
+
+不能只在 Skill 或 System Prompt 里写“不要下单”。应在 Capability Registry 和 Tool Gateway 中根本不注册交易写工具；网络出口策略阻止 Agent Runtime 访问 OMS / EMS 写接口、Broker API、交易场所和 FIX Gateway；交易凭证不得注入 Agent 环境；即使某个通用连接器同时具有读写能力，也必须在服务端拆分成只读接口。工具权限应按工作负载和任务最小化，而不是只按用户角色控制。
+
+**人类执行仍然不是无控制的手工操作。** Trader 在 OMS / EMS 内操作时，系统仍需执行身份认证、交易权限、账户授权、预交易限额、价格和数量合理性、Restricted List、重复订单检测、市场状态检查及审计记录。Agent 的预检只是辅助，不能替代 OMS / EMS 的实时权威控制。对于适用 Rule 15c3-5 的 Broker-Dealer，相关市场接入控制应由承担法定义务的 Broker-Dealer 直接控制，并持续验证其有效性。
+
+### 8.4 执行中与执行后：只读跟踪、异常分流和正式账务分离
+
+订单进入 OMS / EMS 后，平台可通过只读事件订阅接收 New / Accepted / Rejected / Partially Filled / Filled / Cancelled / Expired 等状态，以及 Execution Report、成交数量、均价、时间戳、费用和场所信息。Agent 可解释未成交原因、部分成交影响、市场变化和与原始 Thesis 的偏离，并向交易员发出待处理事项。但它不能自动改价、追单、撤单、重发或改变执行算法。
+
+成交后还要区分几个经常被混为一谈的环节：
+
+- **Allocation：** 将成交分配到具体账户或组合。分配规则、合规约束和最终结果由 OMS / Allocation System 负责；Agent 只能做差异检查和说明。
+- **Confirmation / Affirmation：** 将交易双方的成交条款进行匹配确认。Agent 可以对比内部执行回报、Broker Confirmation 和第三方记录，生成 break 列表，但不能确认或修改正式记录。
+- **Clearing & Settlement：** 清算、交收、现金和证券移动由 Broker、Clearing、Custodian 和 Settlement 系统处理。Agent 可以跟踪状态、预测可能失败的项目、识别 SSI / 账户 / 数量差异，并创建运营团队的异常工单；不能发出资金或证券转移指令。
+- **Position / Cash Reconciliation：** 将 OMS 成交、Custodian 持仓、现金账和总账进行核对。Agent 可以分类差异、定位来源和建议调查步骤；权威余额和账务调整仍由相应系统与人员确认。
+- **Post-trade Analytics：** 通过确定性 TCA / Portfolio Analytics 服务计算 Implementation Shortfall、Arrival Price、VWAP、Spread、Market Impact、Opportunity Cost、佣金和执行偏差。Agent 负责解释结果、比较交易策略和形成复盘，不负责创造正式绩效数字。
+
+交易生命周期的每个状态都应以 OMS / EMS、Broker、Custodian、Clearing 或正式账簿的回执为准。Agent 生成的“已提交”“已成交”“已结算”文字不能改变系统状态。事件丢失、重复、乱序或延迟时，平台要按交易 ID / Order ID / Execution ID 幂等处理，并通过权威系统定期对账恢复状态。
+
+### 8.5 必须补齐的交易领域数据模型
+
+平台至少需要能够关联以下对象，但不应取代 OMS / EMS 的订单主数据：
+
+| 对象 | 关键内容 | 权威来源 |
+| --- | --- | --- |
+| Investment Mandate | 投资目标、基准、资产范围、限制、授权版本 | IPS / Mandate Registry |
+| Portfolio / Account | 组合、账户、策略、法律实体、托管关系 | PMS / Custodian / Account Master |
+| Security / Instrument | 标识符、资产类别、交易场所、币种、公司行动关系 | Security Master / Market Data |
+| Position / Cash | 持仓、可用现金、待交收、冻结数量、估值时间 | PMS / Custodian / Accounting |
+| Risk & Compliance Constraint | 限额、受限证券、集中度、客户和策略限制 | RMS / Compliance / Policy Service |
+| Investment Thesis / Idea | 研究观点、目标价、催化剂、失效条件、证据 | Research Memory |
+| Order Proposal | 非执行性交易建议、计算依据、有效期、状态和责任人 | Research Platform（仅草稿） |
+| Order / Execution | 正式订单、路由、成交、撤改单历史 | OMS / EMS / Broker |
+| Allocation / Confirmation | 成交分配、匹配状态、差异 | Allocation / Confirmation System |
+| Settlement / Ledger | 交收状态、现金证券账、会计记录 | Custodian / Clearing / Accounting |
+| TCA / Post-trade Review | 执行成本、偏差、市场冲击和复盘 | TCA / PMS / Analytics |
+
+建议 Research Platform 只保存 Order Proposal 及权威交易系统对象的引用、只读快照和事件索引。正式 Order、Execution、Allocation、Settlement 和 Ledger 的权威记录留在原系统，避免形成第二套 OMS。
+
+### 8.6 交易场景的治理、审计和故障设计
+
+每次交易相关 Agent Run 应保存发起用户、代表的 Desk / Portfolio、任务目的、授权上下文、数据 As-of、Mandate 版本、Research Thesis 版本、市场数据来源、计算输入输出、预检结果、Order Proposal 版本、人工交接人、OMS / EMS 引用 ID、执行状态事件、后续复核和异常处置。需要将研究建议与正式订单、成交和账务记录分开保存，并保留两者之间的可追踪关联。
+
+关键控制至少包括：
+- **Stale Data Guard：** 价格、持仓、现金、限制和授权超出有效时间时，Order Proposal 自动过期。
+- **Pre-trade Recheck：** 交易员在 OMS / EMS 内提交前重新执行权威检查；研究平台的旧检查结果不能被当作通行证。
+- **Segregation of Duties：** Idea Owner、Portfolio Manager、Trader、Compliance 和 Operations 的权限及审批关系清晰，避免 Agent 代替任何角色。
+- **No-write Network Boundary：** Agent 运行环境没有通往交易写接口的网络路径和凭证；只读行情与订单状态接口单独部署。
+- **Kill Switch & Incident Handling：** 一旦发现异常数据、越权调用或错误建议，能够停止 Agent 任务、禁用相关能力、保全证据并通知业务 Owner；这不是交易系统的全局 Kill Switch，后者由交易系统和风险控制团队管理。
+- **Reconciliation：** 定期将 Order Proposal、OMS 订单、Execution、Allocation、Custodian 和 Ledger 事件对齐；不一致进入人工异常队列。
+- **Model / Prompt Change Control：** 对涉及数量、风险解释、限制识别和交易建议的变更运行回归测试；不能因模型升级自动扩大交易权限。
+
+### 8.7 分阶段建设建议
+
+| 阶段 | 建设内容 | 明确不做 |
+| --- | --- | --- |
+| 1. Read-only Trade Intelligence | 只读读取 Mandate、持仓、现金、风险、市场数据和历史成交；提供组合影响与交易前分析 | 不生成可导入订单的文件，不接 OMS 写接口 |
+| 2. Order Proposal | 生成带来源、计算、有效期和责任人的非执行性草稿；提供人工交接 | 不提供下单、改单、撤单工具；OMS 内由人重新核对录入 |
+| 3. Execution Visibility | 只读订阅订单状态、成交回报、拒单和部分成交；提供异常提醒 | 不自动追价、路由、改价、撤单或重发 |
+| 4. Post-trade & Reconciliation | TCA、Allocation / Confirmation / Settlement 状态跟踪、差异分析和复盘 | 不确认成交、不移动资金证券、不改账 |
+| 5. Research Feedback Loop | 将执行结果和后续表现反馈到 Thesis Ledger，改进研究与组合判断 | 不自动调整投资授权、持仓或交易指令 |
+
+**最终边界：** 让 Agent 理解交易上下文、准备更好的决策材料、发现风险和解释结果；让 OMS / EMS、RMS、Compliance、Broker、Custodian 和有权人员继续承担订单、风险、执行、清算和账务的权威职责。平台覆盖完整 Trade Lifecycle，不等于 Agent 执行完整 Trade Lifecycle。
+
+
+## 9. 建设路线图：先形成一个可用的研究闭环，再扩展平台
 
 建议按 12–18 个月分阶段推进。时间是规划窗口，不是供应商交付承诺；实际周期取决于数据许可、内部研究数据质量、遗留系统接口和业务团队投入。
 
@@ -753,7 +918,7 @@ Verified Queries 能提高相似问题的 SQL 生成质量，但不能替代好�
 
 所有业务目标应在试点开始时依据当前基线和风险偏好设定。对于高影响研究材料，关键事实有明确来源并可复核应作为设计门槛；但不应在没有基线、没有标注数据的情况下，随意承诺一个看似精确的准确率或节省时间比例。
 
-## 9. 评测体系：模型、检索和工作流必须一起评估
+## 10. 评测体系：模型、检索和工作流必须一起评估
 
 ### 9.1 不要只比较模型排行榜
 
@@ -789,7 +954,7 @@ Verified Queries 能提高相似问题的 SQL 生成质量，但不能替代好�
 
 每个模型都要有实际任务分布下的能力配置，而不是一个笼统的“最强模型”标签。模型版本升级时，应运行企业基准集回归测试；当某家供应商的质量或成本不再满足要求时，应能调整路由而不重写业务逻辑。
 
-## 10. 主要架构决策和不建议做的事
+## 11. 主要架构决策和不建议做的事
 
 **不要建设一个通用 Bloomberg 替代品。** 市场数据覆盖、新闻分发、标准化指标和专业内容是长期积累的产品能力，自建平台更应该利用已有供应商，把差异化放在机构自己的研究上下文和业务流程。
 
@@ -805,7 +970,7 @@ Verified Queries 能提高相似问题的 SQL 生成质量，但不能替代好�
 
 **不要用“人类在环”作为抽象口号。** 每个复核节点要定义触发条件、审批角色、允许修改范围、拒绝后的状态、恢复方式和最终责任人。否则审批按钮并不能提供有效控制。
 
-## 11. 推荐的目标状态
+## 12. 推荐的目标状态
 
 目标产品不是让分析师把所有问题都交给某一个模型，而是让机构拥有一个统一、可信、可替换的金融研究能力层。
 
@@ -828,6 +993,10 @@ Claude 和 OpenAI 提供模型能力、部分金融工作流、数据连接和�
 34. Snowflake, [Access Control Privileges](https://docs.snowflake.com/en/user-guide/security-access-control-privileges)。
 35. Anthropic, [API and Data Retention](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention)。
 36. Anthropic, [Claude for Financial Advisors](https://github.com/anthropics/claude-for-financial-advisors)（Cowork Skills、第三方 Connectors、顾问审批与安全边界；仓库标注为非主动维护的参考实现）。
+37. Anthropic, [Introducing Personal Finance in Claude](https://claude.com/resources/articles/introducing-personal-finance-in-claude), 2026-11-05。
+38. Anthropic Help Center, [Use Personal Finance in Claude](https://support.claude.com/en/articles/18185620-use-personal-finance-in-claude)（账户数据范围、只读限制、Team / Enterprise 可用性及产品限制）。
+39. SEC, [Rule 15c3-5: Risk Management Controls for Brokers or Dealers With Market Access](https://www.sec.gov/rules-regulations/2011/06/risk-management-controls-brokers-or-dealers-market-access)。
+40. SEC, [Responses to FAQs Concerning Risk Management Controls for Brokers or Dealers With Market Access](https://www.sec.gov/rules-regulations/staff-guidance/trading-markets-frequently-asked-questions/divisionsmarketregfaq-0)。
 
 ### 官方产品与工程文档
 
