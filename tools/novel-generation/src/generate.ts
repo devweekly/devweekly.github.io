@@ -217,6 +217,15 @@ export async function collectAgentCallArtifacts(callDir: string): Promise<LocalA
       const mediaType = lower.endsWith(".json") ? "application/json"
         : lower.endsWith(".jsonl") ? "application/x-ndjson"
         : "text/plain";
+      let payloadComplete = true;
+      if (entry.name === "partial-response.txt") {
+        try {
+          const attempt = JSON.parse(await readFile(resolve(directory, "attempt.json"), "utf8")) as { status?: string };
+          payloadComplete = attempt.status === "succeeded";
+        } catch {
+          payloadComplete = false;
+        }
+      }
       refs.push({
         id,
         uri: pathToFileURL(file).href,
@@ -224,7 +233,7 @@ export async function collectAgentCallArtifacts(callDir: string): Promise<LocalA
         sha256: createHash("sha256").update(bytes).digest("hex"),
         sizeBytes: bytes.byteLength,
         createdAt: info.mtime.toISOString(),
-        payloadComplete: !id.endsWith("partial-response.txt")
+        payloadComplete
       });
     }
   };
