@@ -1,9 +1,10 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>金融研究平台参考架构</title><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet"><style>*{box-sizing:border-box}body{margin:0;background:#F9F6EF;color:#221C17;font-family:'IBM Plex Mono','Noto Sans SC',monospace}.frame{max-width:1320px;margin:0 auto;padding:32px 20px 24px}.eyebrow{font-size:11px;letter-spacing:.12em;color:#8B5A2B;text-transform:uppercase}h1{font-size:22px;font-weight:600;margin:10px 0 6px}p{font-size:13px;color:#65584D;margin:0 0 20px}.diagram-container{width:100%;overflow-x:auto;border:1px solid #D8CFC2;border-radius:10px;background:#F9F6EF}svg{display:block;width:100%;min-width:960px;height:auto}.foot{margin-top:14px;font-size:11px;color:#75695F}@media print{.diagram-container{overflow:visible}svg{min-width:0}} </style></head><body><main class="frame"><div class="eyebrow">Financial Research Architecture</div><h1>金融研究平台参考架构</h1><p>Snowflake 承担受治理的分析与语义消费；PostgreSQL 保存应用状态；Iceberg 提供开放表格式。</p><div class="diagram-container"><svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
-<title id="title">金融研究平台参考架构</title><desc id="desc">旧系统、供应商和文档通过接入网关进入 Snowflake 与 Iceberg 数据平面，LangGraph 运行研究工作流，PostgreSQL 保存应用状态，Workbench 与 Insight Hub 提供用户入口。身份、策略和审计横跨各层。</desc>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>金融研究平台参考架构</title><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet"><style>*{box-sizing:border-box}body{margin:0;background:#F9F6EF;color:#221C17;font-family:'IBM Plex Mono','Noto Sans SC',monospace}.frame{max-width:1320px;margin:0 auto;padding:32px 20px 24px}.eyebrow{font-size:11px;letter-spacing:.12em;color:#8B5A2B;text-transform:uppercase}h1{font-size:22px;font-weight:600;margin:10px 0 6px}p{font-size:13px;color:#65584D;margin:0 0 20px}.diagram-container{width:100%;overflow-x:auto;border:1px solid #D8CFC2;border-radius:10px;background:#F9F6EF}svg{display:block;width:100%;min-width:960px;height:auto}.foot{margin-top:14px;font-size:11px;color:#75695F}@media print{.diagram-container{overflow:visible}svg{min-width:0}} </style></head><body><main class="frame"><div class="eyebrow">Financial Research Architecture</div><h1>金融研究平台参考架构</h1><p>Snowflake 承担受治理的分析与语义消费；PostgreSQL 保存应用状态；Iceberg 提供开放表格式。</p><div class="diagram-container"><svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="financial-research-platform-architecture-title financial-research-platform-architecture-desc">
+<title id="financial-research-platform-architecture-title">金融研究平台参考架构</title><desc id="financial-research-platform-architecture-desc">旧系统、供应商和文档通过接入网关进入 Snowflake 与 Iceberg 数据平面，LangGraph 运行研究工作流，PostgreSQL 保存应用状态，Workbench 与 Insight Hub 提供用户入口。身份、策略和审计横跨各层。</desc>
 <defs>
-<filter id="shadow" x="-12%" y="-12%" width="124%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#221C17" flood-opacity=".10"/></filter>
-<marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6Z" fill="#65584D"/></marker>
-<marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6Z" fill="#8B5A2B"/></marker>
+<style>@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap');</style>
+<filter id="financial-research-platform-architecture-shadow" x="-12%" y="-12%" width="124%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#221C17" flood-opacity=".10"/></filter>
+<marker id="financial-research-platform-architecture-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6Z" fill="#65584D"/></marker>
+<marker id="financial-research-platform-architecture-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6Z" fill="#8B5A2B"/></marker>
 </defs>
 <rect width="1280" height="720" fill="#F9F6EF"/>
 <text x="40" y="42" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="28" font-weight="600" fill="#221C17">金融研究平台参考架构</text>
@@ -21,55 +22,55 @@
 <text x="350" y="194" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="11" font-weight="600" letter-spacing="1" fill="#75695F">DATA &amp; RESEARCH SERVICES</text>
 <text x="974" y="194" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="11" font-weight="600" letter-spacing="1" fill="#75695F">AI &amp; APPLICATIONS</text>
 <!-- connectors first -->
-<path d="M280 255 H320 Q328 255 328 263 V342 Q328 350 336 350 H380" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#arrow)"/>
-<path d="M280 385 H380" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#arrow)"/>
-<path d="M280 515 H320 Q328 515 328 507 V411 Q328 403 336 403 H380" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#arrow)"/>
-<path d="M560 350 H762 Q770 350 770 342 V316" fill="none" stroke="#8B5A2B" stroke-width="1.8" marker-end="url(#arrow-accent)"/>
-<path d="M560 373 H650" fill="none" stroke="#65584D" stroke-width="1.4" marker-end="url(#arrow)"/>
-<path d="M560 403 H620 Q628 403 628 411 V548 Q628 556 636 556 H650" fill="none" stroke="#65584D" stroke-width="1.4" marker-end="url(#arrow)"/>
-<path d="M890 268 H986" fill="none" stroke="#8B5A2B" stroke-width="1.8" marker-end="url(#arrow-accent)"/>
-<path d="M890 556 H930 Q938 556 938 548 V340 Q938 332 946 332 H986" fill="none" stroke="#65584D" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+<path d="M280 255 H320 Q328 255 328 263 V342 Q328 350 336 350 H380" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#financial-research-platform-architecture-arrow)"/>
+<path d="M280 385 H380" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#financial-research-platform-architecture-arrow)"/>
+<path d="M280 515 H320 Q328 515 328 507 V411 Q328 403 336 403 H380" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#financial-research-platform-architecture-arrow)"/>
+<path d="M560 350 H762 Q770 350 770 342 V316" fill="none" stroke="#8B5A2B" stroke-width="1.8" marker-end="url(#financial-research-platform-architecture-arrow-accent)"/>
+<path d="M560 373 H650" fill="none" stroke="#65584D" stroke-width="1.4" marker-end="url(#financial-research-platform-architecture-arrow)"/>
+<path d="M560 403 H620 Q628 403 628 411 V548 Q628 556 636 556 H650" fill="none" stroke="#65584D" stroke-width="1.4" marker-end="url(#financial-research-platform-architecture-arrow)"/>
+<path d="M890 268 H986" fill="none" stroke="#8B5A2B" stroke-width="1.8" marker-end="url(#financial-research-platform-architecture-arrow-accent)"/>
+<path d="M890 556 H930 Q938 556 938 548 V340 Q938 332 946 332 H986" fill="none" stroke="#65584D" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#financial-research-platform-architecture-arrow)"/>
 <path d="M470 142 V330" fill="none" stroke="#8B5A2B" stroke-width="1.1" stroke-dasharray="4 4"/>
 <path d="M1096 142 V220" fill="none" stroke="#8B5A2B" stroke-width="1.1" stroke-dasharray="4 4" opacity=".65"/>
-<path d="M1096 376 V460" fill="none" stroke="#65584D" stroke-width="1.5" marker-end="url(#arrow)"/>
+<path d="M1096 376 V460" fill="none" stroke="#65584D" stroke-width="1.5" marker-end="url(#financial-research-platform-architecture-arrow)"/>
 <!-- source cards -->
-<g filter="url(#shadow)"><rect x="60" y="220" width="220" height="70" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
+<g filter="url(#financial-research-platform-architecture-shadow)"><rect x="60" y="220" width="220" height="70" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
 <rect x="76" y="232" width="66" height="16" rx="8" fill="#F0DDEB"/><text x="109" y="244" text-anchor="middle" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="9" fill="#221C17">LEGACY</text>
 <text x="76" y="270" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="14" font-weight="600" fill="#221C17">核心业务数据库</text>
 <text x="76" y="283" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#75695F">Oracle · DB2 · SQL Server</text>
-<g filter="url(#shadow)"><rect x="60" y="350" width="220" height="70" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
+<g filter="url(#financial-research-platform-architecture-shadow)"><rect x="60" y="350" width="220" height="70" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
 <rect x="76" y="362" width="74" height="16" rx="8" fill="#DCE5F4"/><text x="113" y="374" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#221C17">VENDOR</text>
 <text x="76" y="400" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="14" font-weight="600" fill="#221C17">市场与专业数据</text>
 <text x="76" y="413" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#75695F">Bloomberg · LSEG · MSCI</text>
-<g filter="url(#shadow)"><rect x="60" y="480" width="220" height="70" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
+<g filter="url(#financial-research-platform-architecture-shadow)"><rect x="60" y="480" width="220" height="70" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
 <rect x="76" y="492" width="66" height="16" rx="8" fill="#D8EEE8"/><text x="109" y="504" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#221C17">CONTENT</text>
 <text x="76" y="530" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="14" font-weight="600" fill="#221C17">文档、研究与外部 API</text>
 <text x="76" y="543" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#75695F">PDF · Excel · SFTP · REST</text>
 <!-- data and research cards -->
-<g filter="url(#shadow)"><rect x="380" y="330" width="180" height="86" rx="10" fill="#FFFEFA" stroke="#8B5A2B" stroke-width="1.4"/></g>
+<g filter="url(#financial-research-platform-architecture-shadow)"><rect x="380" y="330" width="180" height="86" rx="10" fill="#FFFEFA" stroke="#8B5A2B" stroke-width="1.4"/></g>
 <rect x="396" y="342" width="94" height="16" rx="8" fill="#F5E7D4"/><text x="443" y="354" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#221C17">INGESTION</text>
 <text x="396" y="384" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="14" font-weight="600" fill="#221C17">接入与标准化</text>
 <text x="396" y="400" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#75695F">CDC · API · Batch</text>
-<g filter="url(#shadow)"><rect x="650" y="220" width="240" height="96" rx="10" fill="#FFFEFA" stroke="#8B5A2B" stroke-width="1.5"/></g>
+<g filter="url(#financial-research-platform-architecture-shadow)"><rect x="650" y="220" width="240" height="96" rx="10" fill="#FFFEFA" stroke="#8B5A2B" stroke-width="1.5"/></g>
 <rect x="666" y="232" width="94" height="16" rx="8" fill="#F5E7D4"/><text x="713" y="244" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#221C17">ANALYTICS</text>
 <text x="666" y="274" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="16" font-weight="600" fill="#221C17">Snowflake</text>
 <text x="666" y="294" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="11" fill="#65584D">Data Products · Semantic Views</text>
-<g filter="url(#shadow)"><rect x="650" y="340" width="240" height="72" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
+<g filter="url(#financial-research-platform-architecture-shadow)"><rect x="650" y="340" width="240" height="72" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
 <rect x="666" y="352" width="80" height="16" rx="8" fill="#DCE5F4"/><text x="706" y="364" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#221C17">OPEN DATA</text>
 <text x="666" y="390" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="14" font-weight="600" fill="#221C17">Object Storage + Iceberg</text>
 <text x="666" y="404" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#75695F">Parquet · snapshots · history</text>
-<g filter="url(#shadow)"><rect x="650" y="520" width="240" height="72" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
+<g filter="url(#financial-research-platform-architecture-shadow)"><rect x="650" y="520" width="240" height="72" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
 <rect x="666" y="532" width="92" height="16" rx="8" fill="#D8EEE8"/><text x="712" y="544" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#221C17">APP STATE</text>
 <text x="666" y="570" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="14" font-weight="600" fill="#221C17">PostgreSQL</text>
 <text x="666" y="584" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#75695F">jobs · approvals · research state</text>
 <!-- AI and application cards -->
-<g filter="url(#shadow)"><rect x="986" y="220" width="220" height="156" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
+<g filter="url(#financial-research-platform-architecture-shadow)"><rect x="986" y="220" width="220" height="156" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
 <rect x="1002" y="232" width="104" height="16" rx="8" fill="#DCE5F4"/><text x="1054" y="244" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#221C17">AGENT PLANE</text>
 <text x="1002" y="276" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="15" font-weight="600" fill="#221C17">LangGraph</text>
 <text x="1002" y="297" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="11" fill="#65584D">Workflow · state · HITL</text>
 <text x="1002" y="329" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="14" font-weight="600" fill="#221C17">LiteLLM Proxy</text>
 <text x="1002" y="349" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="11" fill="#65584D">Claude · OpenAI · fallback</text>
-<g filter="url(#shadow)"><rect x="986" y="460" width="220" height="100" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
+<g filter="url(#financial-research-platform-architecture-shadow)"><rect x="986" y="460" width="220" height="100" rx="10" fill="#FFFEFA" stroke="#D8CFC2"/></g>
 <rect x="1002" y="472" width="90" height="16" rx="8" fill="#D8EEE8"/><text x="1047" y="484" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#221C17">EXPERIENCE</text>
 <text x="1002" y="516" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="14" font-weight="600" fill="#221C17">Research Workbench</text>
 <text x="1002" y="538" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="14" font-weight="600" fill="#221C17">Insight Hub</text>
