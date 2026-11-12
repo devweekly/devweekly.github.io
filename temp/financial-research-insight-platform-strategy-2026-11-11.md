@@ -455,7 +455,7 @@ Financial Tool Gateway 只暴露有业务语义的工具，例如 `get_fundament
 
 参考 Snowflake [Semantic View Privileges](https://docs.snowflake.com/en/user-guide/security-access-control-privileges)、[Cortex Search Query Access Control](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/query-cortex-search-service) 和 [Row Access Policies](https://docs.snowflake.com/en/user-guide/security-row-intro)。
 
-#### 4.7.5 金融工具层：不要让 LLM 直接写任意 SQL
+#### 4.7.5 金融工具层：通过受控查询工具访问数据
 
 Financial Tool Gateway 是 Agent 与 Snowflake 之间唯一的业务访问入口。它可以内部使用参数化 SQL、Semantic Views、受控存储过程或 Snowflake SQL API，但对 Agent 暴露稳定的领域 API：
 
@@ -690,7 +690,7 @@ Snowflake Semantic View 使用 Owner's Rights 语义：对 Semantic View 拥有 
 
 Verified Queries 能提高相似问题的 SQL 生成质量，但不能替代好的数据模型、准确描述和金融领域验证。先把 Grain、Metric、Relationship 和权限建正确，再用 Gold Queries 优化覆盖率和准确率。
 
-#### 4.10.6 不要把 Snowflake 语义对象变成平台锁定点
+#### 4.10.6 保持语义契约独立于 Snowflake
 
 企业应把 Metric Contract、Entity Contract、时间定义、数据产品接口和授权语义保存在仓库无关的目录或 Git 中。Snowflake Semantic View、dbt Model、内部 SQL API 或其他分析引擎只是这些契约的执行映射。Agent 不应直接读取 Semantic View YAML 并把内部结构当作永久 API；应通过 Financial Data API / Semantic Query Service 请求稳定的业务查询合同。
 
@@ -784,7 +784,7 @@ ChatGPT Financial Services 内建数据的索引和托管安排，可能与企�
 
 新加坡 MAS 在 2026 年 10 月 7 日发布 [金融机构 AI 风险管理指引](https://www.mas.gov.sg/regulation/guidelines/guidelines-on-artificial-intelligence-risk-management-for-financial-institutions)，适用于金融机构使用的各种 AI 技术，并允许机构根据风险规模和业务复杂度配置治理方式。英国 FCA 也发布了 [AI in financial services: good practice and areas for improvement](https://www.fca.org.uk/publications/good-poor-practice/ai-financial-services)，强调既有监管规则仍适用于机构使用 AI 的活动。以上文件在司法辖区、法律性质和适用对象上不同，跨国机构不能用一套通用“AI 合规检查表”替代本地法律和监管分析。
 
-### 6.2 权限边界不能只靠 Prompt、Skill 或 MCP
+### 6.2 权限边界由服务端策略执行
 
 检索和工具访问前必须执行真实的用户身份、业务角色、数据来源许可和信息隔离检查。RAG 不能把用户没有权利访问的文件带进模型上下文；Agent 不能通过换一种工具、调用另一个 MCP 或让子 Agent 查询而绕开权限。
 
@@ -1261,13 +1261,13 @@ LTM 的欧洲金融服务集团案例采用 Teradata 到 Snowflake 的分阶段�
 
 ### 11.1 目标状态
 
-目标产品不是让分析师把所有问题都交给某一个模型，而是让机构拥有一个统一、可信、可替换的金融研究能力层。
+目标产品是一套统一、可信、可替换的金融研究能力层。
 
 分析师可以通过 Workbench 研究任何被授权的公司、行业或资产；系统能够组合公开披露、专业金融数据和内部研究记忆，明确区分事实、计算、判断和假设。研究结论可以更新到 Thesis Ledger，历史版本仍可回放。市场事件、公司披露和组合变化会触发 Insight Hub，按角色、敞口和研究重要性推送给需要处理的人。洞察在被确认、修改、拒绝或转入工作流后，留下可验证的过程和结果。
 
 Claude 和 OpenAI 提供模型能力、部分金融工作流、数据连接和办公产品；金融数据供应商提供专业内容和分析接口；LangGraph 等框架可以承担自有工作流运行时。企业持续掌握的则是实体与指标语义、内部研究记忆、时间点证据、计算规则、数据授权、研究与审批状态、洞察分发和反馈数据。
 
-如果这些内部资产没有形成，平台只是把供应商的聊天能力包一层 UI；如果这些资产建立起来，模型供应商可以持续替换，研究流程也不会随某一家模型的升级、降价或产品改版而失去连续性。
+平台的长期价值取决于机构是否拥有实体与指标语义、研究记忆、时间点证据、计算规则、数据授权和业务反馈。模型供应商可以更换，研究对象、证据链和工作流状态仍由机构掌握。
 
 ---
 
