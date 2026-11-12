@@ -8,7 +8,7 @@ All production novel-generation LLM text calls use `src/generate.ts` `runAgentTe
 
 `.output/agent-calls/<callId>/`
 
-- `run.json`: status, timestamps, requested/resolved model, fallback chain, timeout, task profile, effective thinking/effort, SDK tool/session policy, caller stack, process/runtime metadata and optional parent run context.
+- `run.json`: status, timestamps, requested/resolved model, fallback chain, timeout, task profile, effective thinking/effort, SDK tool/session policy, caller stack, process/runtime metadata, optional parent run context, and `artifactRefs` (stable ID, file URI, media type, SHA-256, byte length, created time and completeness).
 - `prompt.txt`: exact task prompt sent to the model.
 - `system-prompt.txt`: exact shared system prompt used by the text-only runtime.
 - `model-trace.json`: ordered model attempts, normal/thinking-disabled retry mode, effective task profile, fallback model, timing, status and error.
@@ -41,6 +41,17 @@ The ordinary and long-chapter pipelines already save stage outputs, retrieval co
 - `stage-events.jsonl`: cache hit/miss/corruption/validation result, stage start, completion and failure, with input/output hashes.
 
 Thus a cache hit is distinguishable from a new model call, and its exact input fingerprint remains available even when no new request is sent.
+
+## Artifact references and common-agent-lib boundary
+
+Each model-call `run.json` now includes `artifactRefs` for the files under that call directory, excluding `run.json` itself. References use the same field shape as `AgentArtifactRef` in `@saga/agent-contracts`: ID, file URI, media type, SHA-256, byte length, timestamp and completeness. Partial response files are marked incomplete. References are metadata only; the full prompt and response remain in the protected local artifact directory.
+
+The shared implementation has been contributed to [saga/common-agent-lib](https://github.com/saga/common-agent-lib):
+- `@saga/agent-stage-cache` extracts the generic fingerprint, integrity, validator, atomic-write and lock behavior.
+- `AgentArtifactRef` and `AgentEvent.artifactRefs` provide the provider-neutral pointer contract; `@saga/agent-tracing` persists the references separately from event payloads.
+
+The novel-generation local stage-cache adapter remains in place for now. The common package is a separate workspace package and has not yet been released to npm; adding it as an unresolved dependency would break reproducible installs. The intended migration boundary is narrow: replace only the generic stage cache implementation after package publication, while keeping `loadRunStoryState`, `prepareRunDirectory`, world identity checks and Story State snapshots in this application. Character, plot, style and literary workflow logic remain domain-owned.
+
 
 ## Other generation and analysis entry points
 
