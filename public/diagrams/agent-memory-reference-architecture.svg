@@ -87,7 +87,7 @@
   <path d="M835 506 H905" class="arrow"/>
   <path d="M1040 455 V382 Q1040 374 1032 374 H895 V274" class="arrow"/>
   <path d="M990 231 H1040" class="arrow"/>
-  <path d="M1122 274 V620 Q1122 628 1114 628 H175 Q167 628 167 620 V274" class="async-arrow"/>
+  <path d="M1205 231 H1232 Q1240 231 1240 239 V672 Q1240 680 1232 680 H48 Q40 680 40 672 V239 Q40 231 48 231 H70" class="async-arrow"/>
 
   <text x="60" y="687" class="tech">SQLite / FTS5 first · add vectors or graph only when measured retrieval needs justify them</text>
   <text x="1218" y="687" text-anchor="end" class="tech">DEVWEEKLY · 2026</text>
