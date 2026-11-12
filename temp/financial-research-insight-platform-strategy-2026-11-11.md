@@ -31,6 +31,7 @@ Claude 和 OpenAI 都已经跨过了“通用大模型加一个金融 Prompt”�
 | 研究记忆与知识资产 | 搜索引擎、向量数据库、图数据库、文档管理和数据目录 | Thesis Ledger、研究观点、假设变化、反证、研究结果、责任人和历史回放 | 这是核心 Differentiator，应由机构拥有数据模型、生命周期和反馈闭环 |
 | 证据、计算与验证 | LangSmith 等 Trace / Evaluation、文档解析、OCR、SQL / Python | Claim-to-Evidence、计算可复现、Point-in-Time 回放、冲突处理、审计证据链 | 复用可观测和计算组件；建立机构级验证契约、黄金测试集与审计记录 |
 | Insight 分发与业务闭环 | CRM、Portfolio / Risk 系统、通知平台、BI 产品 | 结合持仓、客户关系、风险预算、研究 Thesis 的重要性排序；确认、处置与结果反馈 | 不重复造 CRM / OMS / 风险系统；自建洞察编排、业务影响关联和闭环状态 |
+| Trade Lifecycle 协同 | OMS / EMS、RMS、Broker、Custodian、Clearing、TCA | 只读交易上下文、交易前分析、非执行性 Order Proposal、执行可视化、对账和交易后复盘 | 不自建 OMS / EMS，不让 Agent 下单；自建 Order Proposal、交易事件关联、只读权限边界和研究反馈闭环 |
 
 这里的分界不是“买还是自建”的二选一。原则是：**采购通用能力，复用成熟 Building Block；自己拥有金融业务语义、授权规则、研究记忆、证据链和业务结果闭环。** 这些资产决定平台是否真正理解本机构，而不是仅仅把 Claude 或 GPT 接到企业数据上。
 
@@ -337,7 +338,7 @@ Agent 运行层负责把检索、计算、分析和输出组织成可恢复的�
 
 Workbench 和 Insight Hub 共享底层能力，但面向的工作方式不同。Workbench 以主动查询、研究对象、分析过程和文档产出为中心；Insight Hub 以事件、优先级、责任人、状态和处理结果为中心。
 
-应用需要与现有研究管理、Portfolio Management、OMS、RMS、CRM、文档管理、邮件、数据仓库和办公工具集成。写回任何权威业务系统时，都应通过受控 API 和业务工作流执行，保留原始输入、审批、幂等键和执行回执。研究平台可以提供建议和草稿，但不能因为某个 Agent 生成了一个动作，就认为权威系统应接受它。
+应用需要与现有研究管理、Portfolio Management、OMS / EMS、RMS、Allocation、Custodian、CRM、文档管理、邮件、数据仓库和办公工具集成。交易相关集成默认只读；Order Proposal 通过人工交接进入 OMS / EMS，由授权交易员在原系统内核对和执行。其他权威业务系统的写回也必须通过受控 API 和业务工作流执行，保留原始输入、审批、幂等键和执行回执。研究平台可以提供建议和草稿，但不能因为某个 Agent 生成了一个动作，就认为权威系统应接受它。
 
 ## 5. 什么应该自建，什么应该采购
 
@@ -404,6 +405,7 @@ ChatGPT Financial Services 内建数据的索引和托管安排，可能与企�
 | 架构层 | 建议组件 | 主要职责 | 归属 |
 | --- | --- | --- | --- |
 | 用户体验 | Research Workbench、Insight Hub、Portfolio / Risk views | 研究问答、研究交付物、持续洞察、组合关联 | 机构自建 |
+| Trade Integration | OMS / EMS、RMS、Allocation、Custodian、TCA APIs / Events（只读） | Order Proposal 交接、订单与成交状态可视化、交易后分析；正式订单仍在 OMS / EMS | 机构自建只读适配与关联层；交易系统保持权威 |
 | 应用接入 | Web BFF、API Gateway、企业 SSO | 用户身份、会话、请求入口、速率限制 | 机构自建 / 企业标准服务 |
 | Policy & Entitlement | Identity Context、Policy Decision Service、Data Entitlement Service | 用户、Desk、Portfolio、客户、数据供应商许可、Information Barrier 判定 | 机构自建权威服务 |
 | Agent Orchestration | LangGraph | 研究任务状态图、节点编排、并行任务、重试、检查点、人工复核和恢复 | 机构自建并部署 |
