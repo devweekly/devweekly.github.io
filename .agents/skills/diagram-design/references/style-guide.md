@@ -2,7 +2,7 @@
 
 **The single source of truth for colors, typography, and tokens.** Every diagram draws from this — not from hex values inlined in other reference files. If you want to change the visual skin of Diagram Design, change this file.
 
-Default skin is **Soft Dependency Canvas**, inspired by the supplied dependency-diagram reference. It is a complete visual language, not just a palette: cool blue-grey canvas, white raised surfaces, graphite connectors, soft neutral lane structure, pill-shaped category chips, and restrained low-opacity shadows. Shared primitives and templates carry this treatment across architecture, dependency, process, swimlane, sequence, state, data-model, chart, and other diagram types; each type keeps its own layout grammar.
+Default skin is **Soft Dependency Canvas**, adapted to the Builder Weekly website. It is a complete visual language, not just a palette: cool warm ivory canvas, white raised surfaces, graphite connectors, soft neutral lane structure, pill-shaped category chips, and restrained low-opacity shadows. Shared primitives and templates carry this treatment across architecture, dependency, process, swimlane, sequence, state, data-model, chart, and other diagram types; each type keeps its own layout grammar.
 
 To generate your own from a website URL, see [`onboarding.md`](onboarding.md).
 
@@ -16,19 +16,19 @@ Every token is referred to by **semantic role**, not by its hex value. Type refe
 
 | Role | Purpose | Default (light) | Default (dark) |
 |---|---|---|---|
-| `paper` | Page background / canvas | `#EBEDF7` (cool blue-grey) | `#252A3A` |
-| `paper-2` | Lane / secondary surface | `#F1F3FA` | `#30364A` |
-| `ink` | Primary text, primary stroke | `#32394D` (graphite) | `#F1F3FA` |
-| `ink-strong` | High-contrast text on warm accent fills | `#32394D` | `#252A3A` |
-| `muted` | Secondary text, default arrow stroke | `#626B80` | `#B8BFCE` |
-| `soft` | Secondary metadata / quiet labels | `#747D91` | `#A5AEC0` |
-| `rule` | Hairline borders | `rgba(50,57,77,0.10)` | `rgba(241,243,250,0.12)` |
-| `rule-solid` | Stronger borders, baselines | `#C3BCC3` | `rgba(195,188,195,0.28)` |
-| `accent` | Focal text / strokes, 1–2 max | `#8B603F` (deep sand) | `#D2A77D` |
-| `accent-tint` | Warm sand surface tint | `rgba(176,129,88,0.16)` | `rgba(210,167,125,0.16)` |
-| `link` | HTTP/API calls, external arrows | `#52698E` | `#9EB6DF` |
+| `paper` | Page background / canvas | `#F9F6EF` (site paper) | `#252A3A` |
+| `paper-2` | Lane / secondary surface | `#F1EDE4` | `#30364A` |
+| `ink` | Primary text, primary stroke | `#221C17` | `#F1F3FA` |
+| `ink-strong` | High-contrast text on warm accent fills | `#221C17` | `#252A3A` |
+| `muted` | Secondary text, default arrow stroke | `#65584D` | `#B8BFCE` |
+| `soft` | Secondary metadata / quiet labels | `#75695F` | `#A5AEC0` |
+| `rule` | Hairline borders | `rgba(34,28,23,0.10)` | `rgba(241,243,250,0.12)` |
+| `rule-solid` | Stronger borders, baselines | `#CFC5B8` | `rgba(195,188,195,0.28)` |
+| `accent` | Focal text / strokes, 1–2 max | `#8B5A2B` (site brown) | `#D2A77D` |
+| `accent-tint` | Warm accent surface tint | `rgba(139,90,43,0.14)` | `rgba(210,167,125,0.16)` |
+| `link` | HTTP/API calls, external arrows | `#8B5A2B` | `#9EB6DF` |
 
-> **Reference source:** Soft Dependency Canvas takes its visual cues from the supplied dependency-diagram image and its documented palette: `#DDE3F0`, `#9299AA`, `#C3BCC3`, `#32394D`, and `#B08158`. The actual diagram canvas is a slightly lighter cool blue-grey (`#EBEDF7`) so white cards remain distinct. Text and fine strokes use darker derived values where necessary to satisfy contrast; the pale source swatches are reserved for quiet structure and pastel surfaces.
+> **Reference source:** Builder Weekly (`https://devweekly.github.io/`) was sampled on 2026-11-12. Firecrawl branding extraction reported a light scheme, `#F9F6EF` page background, `#221C17` primary text, `#8B5A2B` link/accent, and IBM Plex Mono as the site's font. The diagram uses these extracted values for the main roles; `paper-2`, borders, muted text, and tag fills are derived design choices rather than claimed site CSS tokens.
 
 
 ### Surface, elevation, and category tokens
@@ -44,7 +44,7 @@ Every token is referred to by **semantic role**, not by its hex value. Type refe
 | `tag-rose` | `#F0DDEB` | `#5A4054` | Category chip background |
 | `tag-yellow` | `#F4EFC9` | `#5B5534` | Category chip background |
 
-The source reference's five anchor colors remain visible in the system: `#DDE3F0` informs the canvas family, `#9299AA` the quiet structural family, `#C3BCC3` separators, `#32394D` graphite ink, and `#B08158` the warm focal accent. Some text roles are deliberately darker than the source swatches to satisfy contrast: `#9299AA` is not body text, and `#B08158` is not used for small text on a pale background.
+The source reference's five anchor colors remain visible in the system: `#DDE3F0` informs the canvas family, `#9299AA` the quiet structural family, `#C3BCC3` separators, `#221C17` graphite ink, and `#B08158` the warm focal accent. Some text roles are deliberately darker than the source swatches to satisfy contrast: `#9299AA` is not body text, and `#B08158` is not used for small text on a pale background.
 
 **Geometry and depth contract:** primary nodes/cards use 10–12px corner radii, compact blocks 6–8px, and category chips use a full pill radius. Raised surfaces are white (light skin) with a 1px quiet border and one subtle shadow (0 2px 8px at the `shadow` token); avoid stacked shadows, glow, gradients, and heavy outlines. Lane/container surfaces use `paper-2` with no card-like shadow. Use these treatments where the visual type has node/card surfaces; do not turn chart marks, axes, text-only labels, or every SVG primitive into cards.
 
@@ -68,7 +68,7 @@ Every token must clear the threshold for each role it plays, against the backgro
 
 ### Inversion rule (light → dark)
 
-Any `rgba(50,57,77, X)` in light becomes a light-ink equivalent in dark, preserving the same opacity. The warm accent shifts brighter in dark mode; surface shadows remain black and restrained.
+Any `rgba(34,28,23, X)` in light becomes a light-ink equivalent in dark, preserving the same opacity. The warm accent shifts brighter in dark mode; surface shadows remain black and restrained.
 
 ### Series palette (multi-series chart types only)
 
@@ -108,17 +108,17 @@ A self-contained palette for the terminal-window primitive (see [primitive-termi
 
 | Role | Family | Size | Weight | Usage |
 |---|---|---|---|---|
-| `title` | Instrument Serif | 1.75rem | 400 | Page H1 |
-| `node-name` | Geist (sans) | 12px | 600 | Human-readable labels |
-| `sublabel` | Geist Mono | 9px | 400 | Port, protocol, URL, field type |
-| `eyebrow` | Geist Mono | 7–8px | 500, tracked 0.18em, uppercase | Type tags, axis labels |
-| `arrow-label` | Geist Mono | 8px | 400, tracked 0.06em | Arrow annotations |
-| `callout` | Instrument Serif *italic* | 14px | 400 | Editorial asides only |
+| `title` | IBM Plex Mono, Noto Sans SC fallback | 1.75rem | 500 | Page H1 |
+| `node-name` | IBM Plex Mono, Noto Sans SC / system CJK fallback | 12px | 600 | Human-readable labels |
+| `sublabel` | IBM Plex Mono | 9px | 400 | Port, protocol, URL, field type |
+| `eyebrow` | IBM Plex Mono | 7–8px | 500, tracked 0.18em, uppercase | Type tags, axis labels |
+| `arrow-label` | IBM Plex Mono | 8px | 400, tracked 0.06em | Arrow annotations |
+| `callout` | IBM Plex Mono *italic* | 14px | 400 | Editorial asides only |
 
 ### Font stack
 
 ```html
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&family=Noto+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@400&family=Noto+Sans+TC:wght@400;500;600&family=Noto+Serif+TC:wght@400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
 ```
 
 ### Font source
@@ -129,7 +129,7 @@ Font source: `web`
 
 | Value | What ships | Network |
 |---|---|---|
-| `web` (default) | The Google Fonts `<link>` above; text renders in Instrument Serif, Geist, and Geist Mono | One stylesheet request to `fonts.googleapis.com`, plus the font files |
+| `web` (default) | The Google Fonts `<link>` above; text renders in IBM Plex Mono with Noto Sans SC for Chinese glyphs | One stylesheet request to `fonts.googleapis.com`, plus the font files |
 | `system` | No font `<link>`; every family stack falls through to the platform's own serif, sans, and monospace faces | None |
 
 Use `system` when the user asks for offline output, system fonts, or no Google Fonts, or when this line says `system`. In `system` mode:
