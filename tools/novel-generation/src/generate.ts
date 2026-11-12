@@ -281,8 +281,8 @@ export async function runAgentText(
       ...(error ? { error } : {}),
       ...(result !== undefined ? { responseChars: result.length } : {})
     };
-    Object.assign(record, completed);
     await atomicJson(resolve(callDir, "run.json"), completed);
+    Object.assign(record, completed);
   };
   const attemptRecords: AgentTextTrace["attempts"] = trace?.attempts ?? [];
   let attemptIndex = 0;
