@@ -289,12 +289,12 @@ Bridgewater 与 Turbopuffer 在 2026 年 10 月的联合演讲，比此前介绍
 
 | 主栈 | 不使用 Embedding 的检索方式 | 启用语义向量时 |
 |---|---|---|
-| Snowflake | 普通 SQL 与结构化过滤可以不生成向量；但当前 Cortex Search 的多索引定义要求至少一个 VECTOR INDEX，单索引模式也默认使用托管 Embedding 模型 | VECTOR INDEX 可以由 Snowflake 对文本生成托管向量，也可以使用用户提供的向量列；TEXT INDEX 本身是关键词检索 |
+| Snowflake | 可用 SEARCH 函数做 Token/短语匹配，并为列启用 FULL_TEXT Search Optimization；这条路径不生成向量 | Cortex Search 的单索引模式默认使用托管 Embedding；多索引模式虽然有独立 TEXT INDEX，但仍强制至少声明一个 VECTOR INDEX |
 | PostgreSQL | 原生 Full Text Search（tsvector / GIN）和 BM25 扩展都不需要 Dense Embedding | pgvector 或 VectorChord 的 Dense ANN 列需要预先生成向量，查询文本也要生成同空间 Query Vector |
 | OpenSearch | text 字段和 BM25 倒排索引不需要 Dense Embedding | k-NN / Neural Search 需要向量，可由 ingest pipeline 的模型生成，也可由外部 Worker 写入；Hybrid 同时执行 BM25 与向量分支 |
 | Turbopuffer | full_text_search、BM25 和属性过滤不需要向量 | Namespace 启用向量索引后需要向量属性；可用 Native Embeddings 或自行生成并写入 |
 
-Snowflake 这里有一个与另外两种主栈不同的限制。当前 [CREATE CORTEX SEARCH SERVICE](https://docs.snowflake.com/en/sql-reference/sql/create-cortex-search) 文档区分 TEXT INDEXES 和 VECTOR INDEXES：TEXT INDEX 字段是关键词检索；VECTOR INDEX 可以由 Snowflake 根据文本生成托管向量，也可以使用用户提供的向量列。文档明确要求多索引 Cortex Search Service 至少声明一个 VECTOR INDEX，因此不能把“只使用 Cortex Search 的文本索引、不做任何向量化”作为默认方案。若完全不希望 Embedding，需要另行设计 Snowflake SQL 检索路径，且不能假定它具备 Cortex Search 同样的检索接口与服务特性。
+Snowflake 的边界需要说得更准确：它确实有不依赖 Embedding 的纯文本路径，但这条路径不是 Cortex Search。SQL SEARCH 函数可以对 VARCHAR、VARIANT、OBJECT 和 ARRAY 中的文本做 Token 匹配，支持 OR、AND、PHRASE 和 EXACT 等模式；配合 Search Optimization Service 的 FULL_TEXT access path，可以加速符合条件的文本查询。它返回的是匹配判断，不提供 Cortex Search 那种托管检索服务和相关性排序，也不是 BM25。Cortex Search 的单索引 ON 模式使用托管向量 Embedding；多索引模式虽然允许 TEXT INDEX 做纯关键词查询，但创建服务仍要求至少一个 VECTOR INDEX。因此，Snowflake 的纯文本选择是 SQL SEARCH + FULL_TEXT Search Optimization，而不是只声明 TEXT INDEX 的 Cortex Search。
 
 PostgreSQL 和 OpenSearch 则可以很自然地先部署纯文本检索。PostgreSQL 原生全文检索建立 tsvector 和 GIN 索引；OpenSearch 默认使用 BM25 对关键词查询评分。OpenSearch 官方的 Neural Search 教程把文本 Embedding 放在语义检索链路中单独介绍，也提供普通 match 关键词查询作为另一条路径。[PostgreSQL Full Text Search](https://www.postgresql.org/docs/current/textsearch.html) [OpenSearch Neural Search](https://docs.opensearch.org/latest/tutorials/vector-search/neural-search-tutorial/)
 
@@ -316,7 +316,64 @@ PostgreSQL 和 OpenSearch 则可以很自然地先部署纯文本检索。Postgr
 
 对 Bridgewater 这类平台，我的建议不是把 Embedding 当成整个文档治理流水线的必经步骤，而是把它作为经过评测证明有价值的检索通道。BM25 和结构化过滤覆盖全库，Dense Vector 针对需要语义理解的文本单元扩展，权限与时间条件在两条检索路径中保持一致。若最终测试证明投资研究中的自然语言问题高度依赖语义召回，再把向量覆盖扩大到全部可检索 Chunk；在此之前，先做全量 Embedding 只会提前支付模型调用、向量存储和索引维护成本。
 
-## 9. 写入一致性比搜索 API 更需要设计
+
+### 四亿条向量用 OpenAI Embedding，成本取决于每条记录的 Token 数
+
+Bridgewater / Turbopuffer 联合演讲中的约四亿条向量记录，可以作为估算规模，但不能直接用“四亿”乘一个固定单价。OpenAI Embeddings 按输入 Token 计费，不按向量条数计费；一条向量通常对应一个文本输入单元，真正影响价格的是该单元在分块后有多少 Token。
+
+截至 2026 年 11 月，OpenAI 官方列出的文本 Embedding 模型价格为：text-embedding-3-small 每百万输入 Token 约 0.02 美元，text-embedding-3-large 每百万输入 Token 约 0.13 美元。Batch API 支持 /v1/embeddings，适合离线处理内容库；官方说明其价格比同步 API 低 50%，每个 Batch 通常在 24 小时内完成。[OpenAI Embeddings models](https://developers.openai.com/api/docs/models/text-embedding-3-small) [OpenAI Batch API](https://developers.openai.com/api/docs/guides/batch)
+
+对四亿条输入记录，成本可以按以下公式估算：
+
+每次完整向量化费用 = 400,000,000 × 平均每条输入 Token 数 ÷ 1,000,000 × 每百万 Token 价格。
+
+“正常金融和投研文档”没有一个可信的统一平均长度。研究报告经常包含长段落、表格和多个主题，因此应当按最终送入 Embedding 模型的 Chunk 长度测算，而不能用文件字节数或页数直接替代 Token。下表把 256、512 和 1,024 Token 作为三个容量情景；它们是工程假设，不是 Bridgewater 已公开的 Chunk 大小。
+
+| 每条向量输入平均 Token | 总输入 Token | 3-small 同步 | 3-small Batch | 3-large 同步 | 3-large Batch |
+|---:|---:|---:|---:|---:|---:|
+| 256 | 1,024 亿 | $2,048 | $1,024 | $13,312 | $6,656 |
+| 512 | 2,048 亿 | $4,096 | $2,048 | $26,624 | $13,312 |
+| 1,024 | 4,096 亿 | $8,192 | $4,096 | $53,248 | $26,624 |
+
+因此，以每条 512 Token 作为中间估算，四亿条 Chunk 全部跑一遍 OpenAI Embedding，使用 3-small 的 Batch 大约是 2,048 美元，3-large 的 Batch 大约是 13,312 美元。单看一次性 Token 费用，这并不是不可承受的企业级成本。真正需要考虑的是文档解析、音视频转录、重复内容、增量更新、重分块后的重算，以及向量存储和 ANN 索引的长期成本。若文档有大量扫描件，OCR 的费用可能独立于 Embedding；如果把会议录音送入检索库，ASR 也不是 Embedding 价格的一部分。
+
+模型维度会影响存储而非上述 Token 价格。OpenAI 当前默认输出维度为 3-small 的 1,536 维和 3-large 的 3,072 维，也允许使用 dimensions 参数缩短向量。若四亿条记录都以 float32 保存，原始向量数值约为 2.46 TB（3-small）或 4.92 TB（3-large），尚未包括 ANN 索引、元数据、正文、副本和缓存；采用 float16 或索引量化可以降低物理占用，但要用 Recall@K 验证精度变化。[OpenAI Embeddings guide](https://developers.openai.com/api/docs/guides/embeddings)
+
+还要把初次建库和线上查询分开预算。假设 Agent 全天候持续以 100 QPS 运行，平均每条查询 50 Token，按 30 天计算，每月 Query Embedding 约需 129.6 亿 Token；用 3-small 同步价格估算约 259 美元。若持续 1,000 QPS，则约为每月 1,296 亿 Token、约 2,592 美元。实际值应按真实查询 Token、每次 Agent 任务触发的向量查询次数和高峰持续时间计算；多路 Query Rewrite 会增加调用量，而只用 BM25 的查询不需要 Query Embedding。
+
+这些数字假设每条向量记录只对一个 Chunk 计算一次 Embedding，并且该 Chunk 平均长度就是表中假设。它们不包括重试、模型版本迁移、重复文档重新计算和查询向量。真正上线前，应先抽样解析一批有代表性的研究报告、财报、邮件和会议转录，统计 Token 数的 P50/P90/P99，再把实际 Chunk 分布代入公式。不要使用“每篇文档平均两千 Token”这样的文件级假设来替代真实分块统计。
+
+### Turbopuffer 如何承接非结构化数据：它是检索层，不是文档 ETL 平台
+
+Bridgewater 的 Vault 收集来自 135 个外部来源的资料，也包括内部研究、写作、报告和会议录音。公开演讲确认了文档经过组织、索引和权限处理，但没有披露完整的解析器、OCR、ASR、Chunker、Embedding 模型和每个来源的 ETL 实现。因此，下面是依据公开演讲与 Turbopuffer API 还原出的工程流程，不应误认为是 Bridgewater 的内部原样架构。
+
+Turbopuffer 接收的是带 ID 和属性字段的文档行。它的 API 能保存文本、元数据、权限字段和向量，建立 BM25、ANN 与过滤索引；Native Embeddings 可以在写入和查询时调用模型，把文本字段转换为向量。但它不是一个从外部网站、PDF、Word 和录音开始的通用内容理解平台。来源连接、授权核验、文件解析、OCR、ASR、规范化和 Chunk 切分仍应在上游的数据接入与处理系统完成。
+
+建议把链路拆成以下阶段：
+
+| 阶段 | 处理内容 | 应持久化的产物 |
+|---|---|---|
+| 1. Source Connectors | 对接数据供应商、内部知识库、邮件、文件库和会议系统；处理凭证、订阅、增量水位和许可范围 | source_id、原始 URI、来源版本、授权条款引用、同步水位 |
+| 2. 原始材料归档 | 文件或录音先进入 S3 等对象存储，保留原始版本和 checksum | 原件、对象版本、checksum、采集时间和来源记录 |
+| 3. 内容抽取 | PDF/HTML/Office 文档解析；必要时对扫描件 OCR；会议录音 ASR；提取表格、标题、作者和页码 | 规范化文本、表格文本、时间戳、解析版本和质量状态 |
+| 4. 清洗与实体治理 | 去重、语言检测、编码修复、来源质量标记；识别国家、市场、公司、资产、概念和讨论时期 | document metadata、实体关系、ontology 标签、ACL 关系 |
+| 5. Chunk 切分 | 按标题、章节、段落、表格和会议时间片切分；保留可追溯位置，避免跨主题拼接 | chunk_id、document_id、版本、页码/时间区间、正文 |
+| 6. 检索特征生成 | 全文索引对文本切词；需要语义检索的 Chunk 生成 Embedding；结构化过滤字段独立保留 | BM25 文本、向量、模型版本、维度、过滤属性 |
+| 7. Turbopuffer 写入 | 将每个 Chunk 作为带 ID 的 Row Upsert；启用 full_text_search、向量列和过滤属性索引 | 文档行、BM25 索引、ANN 索引和 Attribute Index |
+| 8. 查询与证据回传 | 服务端解析用户权限，构造 ACL/时间/来源/市场过滤；运行 BM25、ANN 或 Hybrid；合并候选并取回原文证据 | 命中 Chunk、分数、检索通道、原文引用和查询 Trace |
+| 9. 反馈与再摄取 | 研究员和 Agent 产生的新研究结论进入内容接入流程；修订原文或权限时按版本回放更新 | 新文档版本、增量事件、评测标签和审计记录 |
+
+这个过程里最容易低估的是元数据和权限的价值。投资研究的查询通常不仅问“这段文字讲了什么”，还要限制材料的来源、发布时间、研究所讨论的市场时期、国家、资产以及当前用户的访问范围。文档本身和 Chunk 都需要保留稳定身份；权限可以继承自文档，也可以在少数场景下细化到 Chunk。Search API 根据用户和组生成过滤表达式，Turbopuffer 执行过滤与检索。Bridgewater 演讲明确说明，他们把用户、组和文档权限映射成查询过滤条件；过滤不是由 Embedding 自动理解或替代的。
+
+Turbopuffer 自己负责的是数据持久化和检索索引。文本属性可以启用 BM25 full-text search；向量属性会进入其 ANN 索引；元数据属性使用 Attribute Index 支持过滤。官方文档描述其向量索引会自动构建，属性索引了解向量聚类结构，因此 Native Filtering 能先排除没有授权候选的簇，再在相关簇内查找近邻。它还管理对象存储、NVMe 和内存缓存。换句话说，复杂的向量索引和过滤执行在 Turbopuffer 内部，但把杂乱来源变成可检索的文档行，仍是客户的数据工程工作。[Turbopuffer FTS](https://turbopuffer.com/docs/fts) [Turbopuffer Vector Search](https://turbopuffer.com/docs/vector) [Turbopuffer Write API](https://turbopuffer.com/docs/write)
+
+Embedding 的具体位置可以有两种实现。使用 Native Embeddings 时，写入指定文本属性及模型，Turbopuffer 在写入和查询时生成向量；应用不必自行调用模型 API，但需要承担其模型费率、Token 速率限制和重摄取要求。外部生成则由 Worker 调用 OpenAI Embeddings 或企业自部署模型，保存模型与分块版本后把向量和文本一起写进 Turbopuffer。外部方式更容易结合 OpenAI Batch API 做大规模初始回填，也更容易控制重试、限速和多模型评测。Native Embeddings 当前不支持输入后由模型自行切成可变数量向量的 contextual chunking 模式，因此文档切分不能交给它自动完成。[Turbopuffer Native Embeddings](https://turbopuffer.com/docs/embedding)
+
+对于只想给一部分文档生成向量的场景，还有一个需要落实到数据布局的细节：Turbopuffer Namespace 可以没有向量索引；一旦 Namespace 有向量索引，写入的文档就必须包含对应的向量属性。可行做法是把全库文本和元数据放在一个 BM25 Namespace，把精选的语义 Chunk 放在另一个带向量索引的 Namespace。查询时全库 BM25 和向量子集 ANN 并行检索，再按稳定 chunk_id 去重并用 RRF 融合。文档更新和 ACL 撤权必须同步投影到两个 Namespace，避免权限只在其中一个索引生效。[Turbopuffer Write API](https://turbopuffer.com/docs/write)
+
+最后，不要把“四亿条向量”理解成 Turbopuffer 自动把一亿份原始 PDF 拆成四亿段并完成所有 Embedding。演讲只确认了文档数和向量记录规模；具体分块方式、哪些来源没有进入向量检索、如何处理表格与录音，公开信息不足。它能证明的是这套生产检索链路在大规模向量与复杂权限过滤下运行，而不是一个端到端无代码的文档理解流水线。
+
+## 10. 写入一致性比搜索 API 更需要设计
 
 这套系统没有一个跨 S3、PostgreSQL 和 OpenSearch 的分布式事务。不能假设三边写入会同时成功。应当使用可重放的事件驱动流程，把文档版本作为一致性主线。
 
@@ -331,7 +388,59 @@ PostgreSQL 和 OpenSearch 则可以很自然地先部署纯文本检索。Postgr
 
 这样做的代价是最终一致，而不是跨系统强一致。对于 Agent 即时写入后马上检索的场景，可以提供写入确认水位：只有索引确认达到对应版本，API 才向调用方报告该版本可检索。若调用方选择异步写入，就需要接受短暂的索引延迟。
 
-## 10. 过滤召回决定了检索质量上限
+
+## 11. 纯文本检索的真实差异：Snowflake SEARCH、PostgreSQL FTS 和 OpenSearch BM25
+
+“不用 Embedding”并不意味着三种平台提供相同的全文搜索能力。它们的索引结构、查询表达、相关性排序以及扩展方式差异很大。特别是 Snowflake Cortex Search 和 Snowflake SQL SEARCH 是两条不同的产品路径，不能把后者当成前者的 text-only 开关。
+
+### Snowflake：SQL SEARCH 可以纯文本检索，Cortex Search 则仍然要求向量索引
+
+Snowflake 有两个容易混淆的能力。
+
+SQL 层的 SEARCH 函数是纯文本路径。它接收 VARCHAR、VARIANT、OBJECT 和 ARRAY 等数据中的文本字段，先按 Analyzer 切分 Token，再根据 SEARCH_MODE 判断 OR、AND、PHRASE 或 EXACT 匹配。它返回是否匹配的布尔结果，不负责产生 BM25 相关性分数。为文本列启用 Search Optimization Service 的 FULL_TEXT access path 后，可以加速 SEARCH 谓词；配置时需要保证查询使用的 Analyzer 与索引定义一致。这个服务创建并维护用于跳过无关微分区的 search access path，后台维护需要额外存储和计算资源。[SEARCH function](https://docs.snowflake.com/en/sql-reference/functions/search) [FULL_TEXT search optimization](https://docs.snowflake.com/en/user-guide/search-optimization/text-queries)
+
+例如，投研库可以把标题、摘要和正文一起交给 SEARCH，指定 PHRASE 模式查找固定短语，也可以用 AND 要求多个关键词同时出现。对于证券代码、文件编号和来源 ID，仍应使用独立的结构化列与等值过滤。SEARCH 适合“哪些记录包含这些词”的检索任务；如果业务要按词频、稀有词权重和字段权重排序，它本身不提供 OpenSearch BM25 那样的相关性排序。最终可以按日期、来源等级或业务字段排序，也可以在 SQL 中自己构造权重，但那已经是应用定义的排名模型。
+
+Cortex Search 是另一层托管检索服务。旧的单索引语法通过 ON 指定搜索列，并使用托管 Embedding 模型；未指定模型时使用默认模型。较新的多索引语法允许把字段分别定义为 TEXT INDEXES（关键词）和 VECTOR INDEXES（语义），同一列也可以同时进入两种索引。但官方 SQL 规定，多索引服务至少需要一个 VECTOR INDEX；只声明 TEXT INDEXES 会创建失败。因此，Cortex Search 的 Text Index 可以用于纯关键词查询，却不等于整个 Service 可以在完全没有向量索引的条件下工作。[CREATE CORTEX SEARCH SERVICE](https://docs.snowflake.com/en/sql-reference/sql/create-cortex-search)
+
+在工程取舍上，Snowflake SEARCH + FULL_TEXT Search Optimization 更像数据仓库中的加速文本谓词，和 SQL 查询、过滤、Join 一起使用；Cortex Search 则是托管检索产品，提供独立服务端点、托管 Embedding 和向量/文本索引能力。前者可以无 Embedding，但没有开箱即用的 BM25 排名和相同的检索 API；后者更接近一个应用层 Search Service，但不能当成纯文本索引服务使用。
+
+### PostgreSQL：原生 FTS 是关系数据库内的倒排索引，但排序信号比较有限
+
+PostgreSQL 原生全文检索把文档转成 tsvector，把查询转成 tsquery。to_tsvector 根据文本搜索配置解析词语、去停用词并做词形归一化；GIN 索引保存词项到行的倒排关系；@@ 用于匹配。这样可以直接在 SQL 中把全文条件和 tenant、ACL、时间、来源等关系过滤 JOIN 到一起，整个查询仍在事务数据库内执行。
+
+原生排序由 ts_rank 和 ts_rank_cd 提供。它们可以使用命中词频、词项位置、字段权重和文档长度归一化，但 PostgreSQL 官方明确说明，这两个排序函数不使用整个语料库的全局信息。它们不等同于 BM25 的全局词项稀有度计算。对于投资研究文档，这意味着常见词和稀有概念词之间的权重区分可能不如成熟 BM25 检索引擎自然；如果候选命中很多，GIN 负责找候选，后续仍要对匹配行计算排名。[PostgreSQL Text Search Controls](https://www.postgresql.org/docs/current/textsearch-controls.html) [PostgreSQL Text Search Indexes](https://www.postgresql.org/docs/current/textsearch-indexes.html)
+
+PostgreSQL 的一个优势是你可以把标题、关键词、摘要和正文分别设置 A/B/C/D 权重，再拼接成一个 tsvector；事务、RLS、关系 JOIN 和 FTS 可以在同一数据库中执行。短板是原生 FTS 的排名模型和高级搜索分析能力不如专用搜索引擎。需要真正 BM25 时，可以引入 pg_textsearch 或 ParadeDB pg_search 这样的扩展；但这会把方案从“PostgreSQL 内置功能”变成“PostgreSQL + 特定扩展”，必须额外验证 PostgreSQL 版本兼容、索引维护、升级和分片支持。中文及多语言检索还要认真选择 parser 和 dictionary，不能假定英文 Snowball 配置可以正确处理中文公司名、政策术语和中日韩资料。
+
+### OpenSearch：默认就是分布式 BM25 全文搜索，不需要任何 Dense Vector
+
+OpenSearch 把全文检索作为基础能力。写入时，text 字段经 Analyzer 处理，产生 Token 和倒排索引；查询时，match 等 Full Text Query 使用相应 Analyzer 解析用户输入；默认 BM25 根据词频、逆文档频率和长度归一化计算相关性。这个过程不需要 Embedding 模型，也不需要在每份文档中保存 Dense Vector。
+
+它的映射模型会明确区分 text 与 keyword。正文、标题、摘要使用 text，ticker、CUSIP、ISIN、报告 ID、来源 ID 等精确标识使用 keyword；日期、市场、国家、安全域和 ACL principal 则使用 date、numeric 或 keyword 等适当类型做过滤。一个字段如果既需要精确过滤又需要全文搜索，通常会用 multi-fields 分别维护 text 与 keyword 表示。Analyzer 可以在索引期和查询期控制大小写、标点、停用词、stemming、同义词与语言处理。查询 DSL 还支持 phrase、fuzzy、multi_match、字段 Boost 和 Highlight。[OpenSearch Text field](https://docs.opensearch.org/latest/mappings/supported-field-types/text/) [OpenSearch Keyword Search](https://docs.opensearch.org/latest/search-plugins/keyword-search/) [OpenSearch Match Query](https://docs.opensearch.org/latest/query-dsl/full-text/match/)
+
+因此，纯文本 OpenSearch 与 PostgreSQL 原生 FTS 的差别不只是前者有 BM25。OpenSearch 的分布式倒排索引、相关性排序、Analyzer 和搜索 DSL 是其核心数据模型；PostgreSQL 的 tsvector/Gin 则把全文索引嵌入关系表和 SQL 执行器，事务和关系操作更自然，但排序与大规模搜索管理需要额外设计。对于投研内容，OpenSearch 更容易给标题、摘要、正文、来源和主题字段设定不同权重，并对精确证券代码与自然语言文本采用不同查询方式。
+
+### 用投研问题理解三条纯文本路径的差异
+
+假设研究员搜索“NVDA 2025 年资本开支指引”，这类问题带有公司代码、年份和具体财务术语。OpenSearch 可以把 NVDA 作为 keyword 精确匹配，把正文和标题交给 BM25 排序；PostgreSQL 可以将代码过滤与 tsvector 查询组合，但原生 ts_rank 不会自动给予全库稀有词同样的 IDF 权重；Snowflake SEARCH 可以用 AND 或 PHRASE 判断这些词是否共同出现，再通过 SQL 过滤年份和来源，但 SEARCH 自身不会产生 BM25 相关性分数。
+
+另一类问题是“哪些研究讨论了高利率环境下企业推迟长期资本投资”，而原始资料可能写成“higher-for-longer rates are delaying capex commitments”或“firms defer multi-year investment decisions”。纯文本索引只有在关键词重合、词形归一化、同义词扩展或查询改写能够覆盖时才会找到这些材料。OpenSearch 的同义词和 Query Rewrite 可以改善 lexical recall，PostgreSQL 也可以通过词典、同义词和业务扩展词表处理一部分差异；Snowflake SEARCH 可以做 Token/短语匹配，但没有自动语义理解。Dense Embedding 的价值恰恰在于处理这种表达不同但概念相近的情况。
+
+| 维度 | Snowflake SQL SEARCH | PostgreSQL 原生 FTS | OpenSearch BM25 |
+|---|---|---|---|
+| 核心索引 | FULL_TEXT Search Optimization access path | tsvector + GIN/GiST | Analyzer + distributed inverted index |
+| 查询语义 | Token、OR/AND、PHRASE、EXACT，返回匹配与否 | tsquery 匹配，返回 SQL 行 | match、phrase、multi_match、fuzzy 等全文查询 |
+| 默认相关性排名 | SEARCH 不提供 BM25 score | ts_rank / ts_rank_cd，无全局语料统计 | BM25，默认相关性排序 |
+| 语言处理 | Analyzer（DEFAULT / UNICODE / NO_OP） | 配置、Parser、Dictionary；可加语言扩展 | Analyzer、Tokenizer、Token Filter、Synonym |
+| 精确标识符 | 结构化列等值过滤或 NO_OP | 独立列等值匹配 | keyword 字段 |
+| 关系查询 | 与 Snowflake SQL、Join 和分析一起执行 | 与事务、JOIN、RLS 原生组合 | 由 Search API 和索引字段组织，跨业务关系通常回源 |
+| 运维代价 | 仓库查询 + Search Optimization 的维护成本 | 数据库索引和事务负载共同承担 | 专用搜索集群、Shard、Replica、Segment 与生命周期 |
+| Embedding | SEARCH 路径不需要；Cortex Search 需向量索引 | 原生 FTS 不需要 | BM25 不需要；只有 k-NN / Neural 路径需要 |
+
+对于 Vault 这样的亿级投研库，如果要求完全不用 Embedding，OpenSearch 是三者中最直接的全文检索主栈；PostgreSQL 适合全文只是关系数据库查询的一部分、规模和并发有明确边界的环境；Snowflake 则适合搜索与仓库分析紧密结合、SQL 过滤已能满足排名要求的环境。若需要 Snowflake 的托管检索接口和语义召回，应选择 Cortex Search，并接受其向量索引要求；若只是查找关键词，使用 SEARCH + FULL_TEXT Search Optimization 更准确。
+
+## 11. 过滤召回决定了检索质量上限
 
 Vault 案例中的时间、来源、资产和国家条件不是可有可无的附加参数。它们会直接改变向量搜索应该访问的候选空间。过滤条件选择性越高，普通 ANN 搜索越容易出现两个极端：先搜索后过滤可能只剩少量结果；先过滤再精确计算则可能需要扫描很大的候选集。
 
@@ -341,7 +450,7 @@ OpenSearch 的 efficient k-NN filtering 已经比简单 post-filter 更完整。
 
 因此，OpenSearch 方案必须用真实查询分布验证过滤性能。不能只测没有过滤条件的 ANN Recall@10。至少要按过滤选择性、租户规模、时间范围和 ACL 条件分别测量。
 
-## 11. 多租户和权限模型
+## 12. 多租户和权限模型
 
 建议先采用共享索引加 tenant_id、namespace_id、ACL 标签和 routing key 的模式，避免每个租户都创建独立索引导致分片数量膨胀。对于数据量特别大的租户、严格的资源隔离要求或独立生命周期要求，再使用专属索引或专属集群。
 
@@ -349,7 +458,7 @@ OpenSearch 的 efficient k-NN filtering 已经比简单 post-filter 更完整。
 
 Namespace 与 OpenSearch index 不应一一对应。Namespace 是逻辑隔离和生命周期概念；Index、Shard 和 Routing 是物理布局决策。两者解耦后，才能根据文档数量、查询负载和租户增长重新分配数据。
 
-## 12. 与 Turbopuffer 的架构差距
+## 13. 与 Turbopuffer 的架构差距
 
 | 能力 | 推荐组合 | Turbopuffer |
 |---|---|---|
@@ -368,11 +477,11 @@ OpenSearch Remote Store 是重要的演进方向。Remote-backed storage 可以�
 
 成本上也有类似的差距。OpenSearch 集群仍需要为分片、索引段、查询缓存、写入合并和副本保留计算与本地存储资源。S3 快照或 Remote Store 可以降低部分持久化成本，但不会自然带来 Turbopuffer 那种按热点数据缓存、冷数据远端读取的完整经济模型。
 
-## 13. 2026 年检索引擎的演进：磁盘向量、对象存储和列式执行
+## 14. 2026 年检索引擎的演进：磁盘向量、对象存储和列式执行
 
 最近一轮检索基础设施的变化，重点已经不只是 HNSW 参数或 Embedding 模型，而是如何减少向量索引对内存的依赖、如何在对象存储上直接搜索，以及如何让全文、向量和结构化查询共享更高效的执行路径。
 
-### 13.1 OpenSearch：JVector 把 DiskANN 带进搜索集群
+### 14.1 OpenSearch：JVector 把 DiskANN 带进搜索集群
 
 OpenSearch 3.5 引入 JVector 插件。它使用纯 Java 实现 DiskANN 风格的近似最近邻搜索，向量索引从磁盘读取量化表示，再通过重排改善召回。官方文档还描述了并发插入、增量合并和量化码本逐步优化等能力。[OpenSearch JVector plugin](https://docs.opensearch.org/latest/install-and-configure/additional-plugins/opensearch-jvector/)
 
@@ -380,13 +489,13 @@ OpenSearch 3.5 引入 JVector 插件。它使用纯 Java 实现 DiskANN 风格�
 
 不过 JVector 目前有重要的集成限制：它是单独安装的插件，不能与原有的 opensearch-knn 插件共存；当前官方限制还指出，Neural Search 插件不识别 JVector engine，因此无法直接使用上游 Neural Search 的 neural 和 hybrid 查询路径。需要 Hybrid Search 的团队应先验证实际版本、查询管道和排序融合方式，不能只根据 DiskANN 能力就决定替换现有引擎。
 
-### 13.2 OpenSearch Remote Store：远端持久化更完整，但还不是无状态搜索
+### 14.2 OpenSearch Remote Store：远端持久化更完整，但还不是无状态搜索
 
 Remote Store 让 translog、segment 和集群状态可以写入对象存储，Segment Replication 又让副本直接读取远端 segment。它改善了分片恢复和复制模型，也为降低本地副本存储开销创造条件。
 
 这是一条渐进式路线：先把索引段可靠地放到远端，再优化缓存和恢复路径。它适合已经采用 OpenSearch、希望降低本地持久化成本的企业，但不应被描述为完整的计算存储分离。查询节点仍然需要运行 OpenSearch 并管理分片。
 
-### 13.3 Lance 与 RemoteANN：对象存储原生向量检索开始有专门设计
+### 14.3 Lance 与 RemoteANN：对象存储原生向量检索开始有专门设计
 
 Lance 的开源存储格式支持本地文件和多种对象存储，并把向量搜索、全文检索和 SQL 分析放在同一份列式数据集上。[Lance](https://github.com/lance-format/lance)
 
@@ -396,25 +505,25 @@ Lance 的开源存储格式支持本地文件和多种对象存储，并把向�
 
 开源项目 Firn 则把 LanceDB 与 foyer 缓存结合，构建 RAM、NVMe 到 S3 的分层检索服务，提供多租户的向量、BM25 和 Hybrid Search。[Firn repository](https://github.com/gordonmurray/firnflow) 它是值得跟踪的 Turbopuffer 式开源实现，不过当前更适合作为 POC 和架构参考。上线前仍需要自行验证并发写入、删除语义、恢复、权限隔离、冷查询以及大规模数据下的缓存行为。
 
-### 13.4 Quickwit：对象存储上的全文搜索已经有成熟架构实践
+### 14.4 Quickwit：对象存储上的全文搜索已经有成熟架构实践
 
 Quickwit 采用 Rust 实现，支持把索引放在 S3、Azure Blob 和 GCS 等云对象存储上，并让 Indexer 与 Searcher 独立扩缩。它的核心适用场景是日志、追踪、审计记录和其他以追加写入、不可变数据为主的内容。[Quickwit architecture](https://quickwit.io/docs/overview/introduction)
 
 它证明了在对象存储上做低成本全文搜索并不一定要自己写完整搜索引擎。对于日志和审计检索，Quickwit 值得与 OpenSearch 比较；但它的主要定位仍是全文搜索和可观测性，不应直接当成带有同等向量过滤语义的 Turbopuffer 替代品。
 
-### 13.5 PostgreSQL 向量检索：pgvector 之外还有 VectorChord
+### 14.5 PostgreSQL 向量检索：pgvector 之外还有 VectorChord
 
 如果希望把关系数据和向量检索放在同一个 PostgreSQL 查询里，可以继续关注 VectorChord。它在 PostgreSQL 内提供 IVF、RaBitQ 量化、磁盘友好索引和重排等能力；VectorChord-BM25 则提供 PostgreSQL 原生 BM25 检索扩展。[VectorChord](https://github.com/tensorchord/VectorChord) [Hybrid Search documentation](https://docs.vectorchord.ai/vectorchord/use-case/hybrid-search.html)
 
 这比简单地在 PostgreSQL 中加一个 pgvector 列更进一步，也适合需要 SQL JOIN、关系过滤和语义检索组合的系统。它仍然属于 PostgreSQL 的数据和计算模型，没有解决对象存储上的无状态搜索问题。若 OpenSearch 已经是主要检索引擎，再把所有向量复制到 VectorChord 通常只会增加写入和一致性成本。
 
-### 13.6 Vespa：复杂过滤和排序值得单独评估
+### 14.6 Vespa：复杂过滤和排序值得单独评估
 
 Vespa 把全文检索、向量搜索、过滤表达式和自定义排序模型放在同一个查询与排序体系中。它的 HNSW 搜索支持过滤，并提供 ACORN 等优化方向，也支持多个向量字段和多向量文档。[Vespa approximate nearest-neighbor search](https://docs.vespa.ai/en/querying/approximate-nn-hnsw.html)
 
 如果检索质量高度依赖复杂过滤、多个排序特征和业务相关性模型，Vespa 值得与 OpenSearch 进行真实数据对比。它不是以对象存储为持久事实来源的 Turbopuffer 式架构，因此重点是检索质量与排序能力，而非存储成本模型。
 
-### 13.7 Turbopuffer v3：向量索引不再是存储主索引
+### 14.7 Turbopuffer v3：向量索引不再是存储主索引
 
 Turbopuffer 自己也在改变架构。2026 年 9 月公开的 v3 设计说明计划把文档和索引布局转向列式存储，并把 ANN 从主索引变为普通的二级索引；10 月的开发日志进一步描述了端到端向量化查询执行，让批处理成为算子之间的默认数据交换方式。[RIP, vector database](https://turbopuffer.com/blog/rip-vector-database) [The first search engine with fully vectorized query execution](https://turbopuffer.com/blog/fully-vectorized-search-engine)
 
@@ -422,7 +531,7 @@ Turbopuffer 自己也在改变架构。2026 年 9 月公开的 v3 设计说明�
 
 这些内容属于 Turbopuffer v3 的公开开发方向。其文章在 2026 年 10 月仍将正式投入生产描述为后续计划，不应当把开发日志中的设计目标当作当前所有生产环境已具备的能力。
 
-## 14. 实施顺序：先验证检索，再投资对象存储原生引擎
+## 15. 实施顺序：先验证检索，再投资对象存储原生引擎
 
 ### 第一阶段：建立检索质量基线
 
@@ -444,7 +553,7 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 
 如果仍无法达到目标成本，再用 LanceDB、Firn 或自建基于 Lance 的检索 POC 验证对象存储原生路线。此时应该用同样的评测集、文档版本和查询流量，与 OpenSearch 进行端到端比较，而不是只比较向量索引微基准。
 
-## 15. 评估矩阵与验收指标
+## 16. 评估矩阵与验收指标
 
 | 维度 | 必须验证的场景 | 指标 |
 |---|---|---|
@@ -458,7 +567,7 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 
 测试数据要保留真实的租户大小分布和元数据偏斜。例如，某些来源可能占多数文档，某些资产可能只对应少量记录；这些情况会影响过滤选择性和分片负载。评估时还应分别报告冷查询与热查询，避免平均值掩盖尾延迟。
 
-## 16. 最终建议
+## 17. 最终建议
 
 对于已经拥有 Snowflake、OpenSearch、PostgreSQL 和 S3 的企业，我仍建议以 OpenSearch 作为统一在线检索引擎，PostgreSQL 管控制面和事务，S3 保存原始数据与可恢复快照，Snowflake 建立治理和评测闭环。这个建议不是因为另外两种主栈不能实现，而是因为 Vault 公开的负载画像把高并发在线检索和高选择性过滤放在了首位：Snowflake 必须先解决 Cortex Search 默认 QPS 与行数配额，PostgreSQL 则需要承担更复杂的向量索引、读写隔离和横向分片工作。若实际业务的 Agent QPS 低得多、数据已集中在 Snowflake，或 SQL 关系事务远比检索吞吐重要，前两种方案都可能更合适。不要一开始就把 pgvector、VectorChord、OpenSearch 和 Cortex Search 全部作为并行检索引擎部署。
 
@@ -467,6 +576,28 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 2026 年的技术进展已经让这条路更容易探索：OpenSearch 有 JVector 和 Remote Store，PostgreSQL 有 VectorChord，Lance/Firn 在推进对象存储原生检索，Quickwit 已经证明云存储上的全文搜索可行，Turbopuffer v3 则进一步走向列式主存储和向量化查询。下一步应该用业务数据验证哪个瓶颈最贵，再决定是否需要自建更接近 Turbopuffer 的存储引擎。
 
 ## 参考资料
+
+- [OpenSearch Match Query](https://docs.opensearch.org/latest/query-dsl/full-text/match/)
+
+- [OpenSearch Keyword Search and BM25](https://docs.opensearch.org/latest/search-plugins/keyword-search/)
+
+- [OpenSearch Text field type](https://docs.opensearch.org/latest/mappings/supported-field-types/text/)
+
+- [Snowflake Search Optimization Service](https://docs.snowflake.com/en/user-guide/search-optimization-service)
+
+- [Snowflake FULL_TEXT search optimization](https://docs.snowflake.com/en/user-guide/search-optimization/text-queries)
+
+- [Snowflake SEARCH function](https://docs.snowflake.com/en/sql-reference/functions/search)
+
+- [OpenAI Batch API guide](https://developers.openai.com/api/docs/guides/batch)
+
+- [OpenAI Embeddings guide](https://developers.openai.com/api/docs/guides/embeddings)
+
+- [OpenAI text-embedding-3-large model](https://developers.openai.com/api/docs/models/text-embedding-3-large)
+
+- [OpenAI text-embedding-3-small model](https://developers.openai.com/api/docs/models/text-embedding-3-small)
+
+- [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing)
 
 - [OpenSearch Neural Search tutorial](https://docs.opensearch.org/latest/tutorials/vector-search/neural-search-tutorial/)
 - [PostgreSQL Full Text Search](https://www.postgresql.org/docs/current/textsearch.html)
