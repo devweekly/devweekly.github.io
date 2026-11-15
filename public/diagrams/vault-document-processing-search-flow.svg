@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1030" viewBox="0 0 1440 1030" role="img" aria-labelledby="title desc">
+<title id="title">结构化与非结构化资料：处理、索引和检索全流程</title><desc id="desc">Structured records and unstructured documents follow distinct ingestion paths, converge into a versioned catalog and search projections, then a query path applies authorization filters, retrieves lexical and optional vector candidates, fuses and reranks them, and fetches source evidence.</desc>
+<style>text{font-family:"IBM Plex Mono","Noto Sans SC",system-ui,sans-serif}.lane{fill:#F1EDE4;stroke:rgba(34,28,23,.13);stroke-width:1}</style>
+<defs>
+ <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#65584D"/></marker>
+ <marker id="arrAccent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#8B5A2B"/></marker>
+</defs>
+<rect width="1440" height="1030" fill="#F9F6EF"/>
+<text x="48" y="52" font-size="27" font-weight="500" fill="#221C17">结构化与非结构化资料：处理、索引和检索全流程</text>
+<text x="50" y="78" font-size="10.5" fill="#65584D">SEPARATE INGESTION PATHS · VERSIONED CATALOG · SEARCH PROJECTIONS · AUTHORIZED EVIDENCE</text>
+<rect class="lane" x="34" y="128" width="1372" height="205" rx="10"/><text x="52" y="154" font-size="9" letter-spacing="1.4" fill="#75695F">01 · STRUCTURED DATA</text>
+<rect class="lane" x="34" y="370" width="1372" height="205" rx="10"/><text x="52" y="396" font-size="9" letter-spacing="1.4" fill="#75695F">02 · UNSTRUCTURED CONTENT</text>
+<rect class="lane" x="34" y="610" width="1372" height="175" rx="10"/><text x="52" y="636" font-size="9" letter-spacing="1.4" fill="#75695F">03 · SEARCH PROJECTIONS</text>
+<rect class="lane" x="34" y="815" width="1372" height="175" rx="10"/><text x="52" y="841" font-size="9" letter-spacing="1.4" fill="#75695F">04 · QUERY AND EVIDENCE</text>
+<path d="M270 242 H311" stroke="#65584D" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+ <text x="294" y="230" font-size="8.5" text-anchor="middle" letter-spacing=".5" fill="#75695F">CDC / ingest</text><path d="M540 242 H581" stroke="#65584D" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+ <text x="564" y="230" font-size="8.5" text-anchor="middle" letter-spacing=".5" fill="#75695F">validate</text><path d="M810 242 H851" stroke="#65584D" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+ <text x="834" y="230" font-size="8.5" text-anchor="middle" letter-spacing=".5" fill="#75695F">persist</text><path d="M270 482 H311" stroke="#65584D" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+ <text x="294" y="470" font-size="8.5" text-anchor="middle" letter-spacing=".5" fill="#75695F">archive</text><path d="M540 482 H581" stroke="#65584D" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+ <text x="564" y="470" font-size="8.5" text-anchor="middle" letter-spacing=".5" fill="#75695F">extract</text><path d="M810 482 H851" stroke="#65584D" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+ <text x="834" y="470" font-size="8.5" text-anchor="middle" letter-spacing=".5" fill="#75695F">normalize</text><path d="M1080 242 H1105 Q1113 242 1113 250 V320 Q1113 328 1121 328 H1130" stroke="#65584D" stroke-width="1.4" fill="none" marker-end="url(#arr)"/><path d="M1080 482 H1105 Q1113 482 1113 474 V438 Q1113 430 1121 430 H1130" stroke="#65584D" stroke-width="1.4" fill="none" marker-end="url(#arr)"/><path d="M1240 443 V642" fill="none" stroke="#8B5A2B" stroke-width="1.8" marker-end="url(#arrAccent)"/>
+ <text x="1240" y="534.5" font-size="8.5" fill="#8B5A2B" text-anchor="middle">index projection</text><path d="M500 705 H588" stroke="#65584D" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+ <text x="547.5" y="693" font-size="8.5" text-anchor="middle" letter-spacing=".5" fill="#75695F">lexical</text><path d="M845 705 H933" stroke="#65584D" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+ <text x="892.5" y="693" font-size="8.5" text-anchor="middle" letter-spacing=".5" fill="#75695F">hybrid set</text><path d="M215 908 H226" stroke="#65584D" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+ <text x="224" y="896" font-size="8.5" text-anchor="middle" letter-spacing=".5" fill="#75695F">question</text><path d="M410 908 H421" stroke="#65584D" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+ <text x="419" y="896" font-size="8.5" text-anchor="middle" letter-spacing=".5" fill="#75695F">identity</text><path d="M605 908 H616" stroke="#65584D" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+ <text x="614" y="896" font-size="8.5" text-anchor="middle" letter-spacing=".5" fill="#75695F">scope</text><path d="M800 908 H811" stroke="#65584D" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+ <text x="809" y="896" font-size="8.5" text-anchor="middle" letter-spacing=".5" fill="#75695F">candidates</text><path d="M995 908 H1006" stroke="#65584D" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+ <text x="1004" y="896" font-size="8.5" text-anchor="middle" letter-spacing=".5" fill="#75695F">evidence</text><path d="M1190 908 H1201" stroke="#65584D" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+ <text x="1199" y="896" font-size="8.5" text-anchor="middle" letter-spacing=".5" fill="#75695F">feedback</text><path d="M720 760 V842" fill="none" stroke="#8B5A2B" stroke-width="1.8" marker-end="url(#arrAccent)"/>
+ <text x="720" y="793" font-size="8.5" fill="#8B5A2B" text-anchor="middle">query index</text>
+<g>
+ <rect x="50" y="182" width="220" height="124" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="50" y="180" width="220" height="124" rx="11" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.2"/>
+ <rect x="63" y="192" width="86" height="17" rx="8.5" fill="#DCE5F4"/>
+ <text x="106" y="204" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">STRUCTURED</text>
+ <text x="63" y="236" font-size="15" font-weight="600" fill="#221C17">结构化来源</text>
+ <text x="63" y="258" font-size="10.5" fill="#65584D">数据库 · 行情 · Vendor</text><text x="63" y="274" font-size="10.5" fill="#75695F">事件 · CSV · 数据表</text>
+ </g><g>
+ <rect x="320" y="182" width="220" height="124" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="320" y="180" width="220" height="124" rx="11" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.2"/>
+ <rect x="333" y="192" width="60.400000000000006" height="17" rx="8.5" fill="#DCE5F4"/>
+ <text x="363.2" y="204" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">INGEST</text>
+ <text x="333" y="236" font-size="15" font-weight="600" fill="#221C17">CDC / API / Batch</text>
+ <text x="333" y="258" font-size="10.5" fill="#65584D">增量水位 · 去重</text><text x="333" y="274" font-size="10.5" fill="#75695F">Schema Registry</text>
+ </g><g>
+ <rect x="590" y="182" width="220" height="124" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="590" y="180" width="220" height="124" rx="11" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.2"/>
+ <rect x="603" y="192" width="66.80000000000001" height="17" rx="8.5" fill="#D8EEE8"/>
+ <text x="636.4" y="204" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">QUALITY</text>
+ <text x="603" y="236" font-size="15" font-weight="600" fill="#221C17">Schema 与质量</text>
+ <text x="603" y="258" font-size="10.5" fill="#65584D">类型校验 · 单位归一</text><text x="603" y="274" font-size="10.5" fill="#75695F">实体映射 · 时效验证</text>
+ </g><g>
+ <rect x="860" y="182" width="220" height="124" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="860" y="180" width="220" height="124" rx="11" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.2"/>
+ <rect x="873" y="192" width="66.80000000000001" height="17" rx="8.5" fill="#D8EEE8"/>
+ <text x="906.4" y="204" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">CATALOG</text>
+ <text x="873" y="236" font-size="15" font-weight="600" fill="#221C17">结构化事实</text>
+ <text x="873" y="258" font-size="10.5" fill="#65584D">Parquet / Iceberg / SQL</text><text x="873" y="274" font-size="10.5" fill="#75695F">业务主键 · 时间维度</text>
+ </g>
+<g>
+ <rect x="50" y="422" width="220" height="124" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="50" y="420" width="220" height="124" rx="11" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.2"/>
+ <rect x="63" y="432" width="98.80000000000001" height="17" rx="8.5" fill="#DCE5F4"/>
+ <text x="112.4" y="444" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">UNSTRUCTURED</text>
+ <text x="63" y="476" font-size="15" font-weight="600" fill="#221C17">非结构化来源</text>
+ <text x="63" y="498" font-size="10.5" fill="#65584D">PDF · Office · Email · Web</text><text x="63" y="514" font-size="10.5" fill="#75695F">扫描件 · 音频 · 会议</text>
+ </g><g>
+ <rect x="320" y="422" width="220" height="124" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="320" y="420" width="220" height="124" rx="11" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.2"/>
+ <rect x="333" y="432" width="56" height="17" rx="8.5" fill="#F5E7D4"/>
+ <text x="361" y="444" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">RAW</text>
+ <text x="333" y="476" font-size="15" font-weight="600" fill="#221C17">S3 原始归档</text>
+ <text x="333" y="498" font-size="10.5" fill="#65584D">原件 · checksum · version</text><text x="333" y="514" font-size="10.5" fill="#75695F">来源许可 · 采集时间</text>
+ </g><g>
+ <rect x="590" y="422" width="220" height="124" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="590" y="420" width="220" height="124" rx="11" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.2"/>
+ <rect x="603" y="432" width="66.80000000000001" height="17" rx="8.5" fill="#D8EEE8"/>
+ <text x="636.4" y="444" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">EXTRACT</text>
+ <text x="603" y="476" font-size="15" font-weight="600" fill="#221C17">内容抽取</text>
+ <text x="603" y="498" font-size="10.5" fill="#65584D">Parser · OCR · ASR</text><text x="603" y="514" font-size="10.5" fill="#75695F">表格 · 标题 · 页码 · 时间戳</text>
+ </g><g>
+ <rect x="860" y="422" width="220" height="124" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="860" y="420" width="220" height="124" rx="11" fill="#F8F0E4" stroke="#8B5A2B" stroke-width="1.8"/>
+ <rect x="873" y="432" width="79.6" height="17" rx="8.5" fill="#D8EEE8"/>
+ <text x="912.8" y="444" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">NORMALIZE</text>
+ <text x="873" y="476" font-size="15" font-weight="600" fill="#221C17">规范化与 Chunk</text>
+ <text x="873" y="498" font-size="10.5" fill="#65584D">去重 · Entity · ACL</text><text x="873" y="514" font-size="10.5" fill="#75695F">段落 / 表格 / 时间片</text>
+ </g>
+<g>
+ <rect x="1130" y="302" width="220" height="142.6" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="1130" y="300" width="220" height="142.6" rx="11" fill="#F8F0E4" stroke="#8B5A2B" stroke-width="1.8"/>
+ <rect x="1143" y="312" width="124.4" height="17" rx="8.5" fill="#F5E7D4"/>
+ <text x="1205.2" y="324" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">DOCUMENT CATALOG</text>
+ <text x="1143" y="356" font-size="15" font-weight="600" fill="#221C17">统一目录与版本</text>
+ <text x="1143" y="378" font-size="10.5" fill="#65584D">Document / Version / Chunk</text><text x="1143" y="394" font-size="10.5" fill="#75695F">Source · Entity · ACL · Lineage</text>
+ </g>
+<g>
+ <rect x="250" y="652" width="250" height="110" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="250" y="650" width="250" height="110" rx="11" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.2"/>
+ <rect x="263" y="662" width="66.80000000000001" height="17" rx="8.5" fill="#DCE5F4"/>
+ <text x="296.4" y="674" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">LEXICAL</text>
+ <text x="263" y="706" font-size="15" font-weight="600" fill="#221C17">BM25 / Full-text</text>
+ <text x="263" y="728" font-size="10.5" fill="#65584D">所有合格文本</text><text x="263" y="744" font-size="10.5" fill="#75695F">倒排索引 · 字段权重</text>
+ </g><g>
+ <rect x="595" y="652" width="250" height="110" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="595" y="650" width="250" height="110" rx="11" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.2"/>
+ <rect x="608" y="662" width="60.400000000000006" height="17" rx="8.5" fill="#D8EEE8"/>
+ <text x="638.2" y="674" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">FILTER</text>
+ <text x="608" y="706" font-size="15" font-weight="600" fill="#221C17">Structured Filters</text>
+ <text x="608" y="728" font-size="10.5" fill="#65584D">时间 · Tenant · Source</text><text x="608" y="744" font-size="10.5" fill="#75695F">Country · Market · ACL</text>
+ </g><g>
+ <rect x="940" y="652" width="250" height="110" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="940" y="650" width="250" height="110" rx="11" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.2"/>
+ <rect x="953" y="662" width="56" height="17" rx="8.5" fill="#F0DDEB"/>
+ <text x="981" y="674" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">DENSE</text>
+ <text x="953" y="706" font-size="15" font-weight="600" fill="#221C17">Dense ANN（可选）</text>
+ <text x="953" y="728" font-size="10.5" fill="#65584D">按查询评测选择 Chunk</text><text x="953" y="744" font-size="10.5" fill="#75695F">Model / Dimension Version</text>
+ </g>
+<g>
+ <rect x="40" y="852" width="175" height="116" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="40" y="850" width="175" height="116" rx="11" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.2"/>
+ <rect x="53" y="862" width="66.80000000000001" height="17" rx="8.5" fill="#DCE5F4"/>
+ <text x="86.4" y="874" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">REQUEST</text>
+ <text x="53" y="906" font-size="15" font-weight="600" fill="#221C17">用户 / Agent</text>
+ <text x="53" y="928" font-size="10.5" fill="#65584D">自然语言问题</text><text x="53" y="944" font-size="10.5" fill="#75695F">结构化条件（可选）</text>
+ </g><g>
+ <rect x="235" y="852" width="175" height="116" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="235" y="850" width="175" height="116" rx="11" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.2"/>
+ <rect x="248" y="862" width="56" height="17" rx="8.5" fill="#F5E7D4"/>
+ <text x="276" y="874" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">API</text>
+ <text x="248" y="906" font-size="15" font-weight="600" fill="#221C17">Search API</text>
+ <text x="248" y="928" font-size="10.5" fill="#65584D">鉴权 · 频控 · Trace</text><text x="248" y="944" font-size="10.5" fill="#75695F">Query normalize</text>
+ </g><g>
+ <rect x="430" y="852" width="175" height="116" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="430" y="850" width="175" height="116" rx="11" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.2"/>
+ <rect x="443" y="862" width="60.400000000000006" height="17" rx="8.5" fill="#D8EEE8"/>
+ <text x="473.2" y="874" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">POLICY</text>
+ <text x="443" y="906" font-size="15" font-weight="600" fill="#221C17">权限与查询范围</text>
+ <text x="443" y="928" font-size="10.5" fill="#65584D">强制 ACL / Tenant</text><text x="443" y="944" font-size="10.5" fill="#75695F">时间 · 来源 · 市场</text>
+ </g><g>
+ <rect x="625" y="852" width="175" height="116" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="625" y="850" width="175" height="116" rx="11" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.2"/>
+ <rect x="638" y="862" width="73.2" height="17" rx="8.5" fill="#DCE5F4"/>
+ <text x="674.6" y="874" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">RETRIEVE</text>
+ <text x="638" y="906" font-size="15" font-weight="600" fill="#221C17">并行召回</text>
+ <text x="638" y="928" font-size="10.5" fill="#65584D">BM25 + Structured</text><text x="638" y="944" font-size="10.5" fill="#75695F">Dense ANN（如启用）</text>
+ </g><g>
+ <rect x="820" y="852" width="175" height="116" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="820" y="850" width="175" height="116" rx="11" fill="#F8F0E4" stroke="#8B5A2B" stroke-width="1.8"/>
+ <rect x="833" y="862" width="60.400000000000006" height="17" rx="8.5" fill="#F0DDEB"/>
+ <text x="863.2" y="874" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">FUSION</text>
+ <text x="833" y="906" font-size="15" font-weight="600" fill="#221C17">RRF / Rerank</text>
+ <text x="833" y="928" font-size="10.5" fill="#65584D">去重 · 融合 · 重排</text><text x="833" y="944" font-size="10.5" fill="#75695F">Top-K + provenance</text>
+ </g><g>
+ <rect x="1015" y="852" width="175" height="116" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="1015" y="850" width="175" height="116" rx="11" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.2"/>
+ <rect x="1028" y="862" width="73.2" height="17" rx="8.5" fill="#F4EFC9"/>
+ <text x="1064.6" y="874" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">EVIDENCE</text>
+ <text x="1028" y="906" font-size="15" font-weight="600" fill="#221C17">证据回取</text>
+ <text x="1028" y="928" font-size="10.5" fill="#65584D">Chunk / Page / Timestamp</text><text x="1028" y="944" font-size="10.5" fill="#75695F">Catalog + S3 original</text>
+ </g><g>
+ <rect x="1210" y="852" width="175" height="116" rx="11" fill="#221C17" opacity=".055"/>
+ <rect x="1210" y="850" width="175" height="116" rx="11" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.2"/>
+ <rect x="1223" y="862" width="73.2" height="17" rx="8.5" fill="#DCE5F4"/>
+ <text x="1259.6" y="874" font-size="8.5" font-weight="600" letter-spacing=".7" text-anchor="middle" fill="#221C17">FEEDBACK</text>
+ <text x="1223" y="906" font-size="15" font-weight="600" fill="#221C17">评测与反馈</text>
+ <text x="1223" y="928" font-size="10.5" fill="#65584D">点击 / 相关性标签</text><text x="1223" y="944" font-size="10.5" fill="#75695F">索引修订 · 回放</text>
+ </g>
+<line x1="50" y1="1005" x2="1390" y2="1005" stroke="#CFC5B8" stroke-width="1"/>
+<text x="50" y="1022" font-size="9.5" fill="#75695F">Embedding is an optional projection, not a prerequisite for document ingestion. Keep the original and provenance independently recoverable.</text>
+</svg>
