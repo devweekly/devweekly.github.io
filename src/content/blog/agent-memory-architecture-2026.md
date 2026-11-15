@@ -57,6 +57,29 @@ Compaction 解决的是当前上下文窗口接近上限时，如何压缩旧消
 
 两者会共享原始对话材料，但生命周期不同。Pi 官方文档也把 Compaction 和 Branch Summarization 作为会话上下文管理机制：它们会保存摘要和保留边界，但这不等于一套完整的跨 Session 知识维护系统。参见 [Pi Compaction Reference](https://pi.dev/docs/latest/compaction)。
 
+### 1.3 社区实际反馈：Dreaming 有收益，但自动记忆并不总是受欢迎
+
+Anthropic 的架构解释了为什么需要后台整理，但社区讨论提醒我们：**“能记住”不等于“应该记住”，“能整理”也不等于“整理后一定更好”。** 截至 2026-11-15，Hacker News 和 Reddit 上出现了几类一致的反馈。
+
+**Dreaming 可能改善跨 Session 的信息恢复，但目前还不能把单次社区测试当成通用结论。** 一位开发者使用 MeME eval 的 100 个 episodes、约 42K token 的 Session，对 Claude Auto-Memory、Hermes、OpenClaw 和无记忆基线做了比较。在其配置下，原始得分分别为 42.5%、51.0%、26.4% 和 19.6%；给 Claude Auto-Memory 增加重新读取原始 Transcript 的 Dreaming 后，得分升至 66.0%；OpenClaw 启用自己的 Dreaming 后从 26.4% 升至 54.2%。作者还报告了历史追踪、跨轮规则传播和精确回忆方面的提升。
+
+这组数据支持一个值得验证的判断：**重新读取原始经历，可能弥补增量写入和摘要压缩造成的信息损失。** 但它是个人进行的快速评估，模型、Prompt、数据集和配置都会影响结果，作者也明确表示没有逐项人工核验。因此它适合作为设计假设和复现实验的起点，不是产品排名，也不能证明 Dreaming 在所有任务上都有 23.5 个百分点的收益。尤其要注意配置公平性：OpenClaw 默认关闭 Dreaming，比较时是否启用整理流程会直接改变结论。
+
+**自动写入的噪声，可能比检索能力不足更早成为问题。** 在讨论 Anthropic《The Components of Agent Memory》的 Hacker News 线程中，有用户表示自己关闭了多个 Harness 的自动记忆功能，并删除 Claude Code 自动生成的大多数记忆，因为它们通常只对刚完成的单次任务有用，反而会污染后续上下文。另一位用户倾向于定期人工整理，并指出自动 Dreaming 也可能带来记忆膨胀和过时内容。这个反馈说明，Memory Formation 的首要问题不是“如何多保存”，而是“如何判断哪些内容值得跨 Session 保存”。
+
+**长期运行的主要故障集中在状态漂移，而不只是召回率。** Reddit 上关于长周期 Agent Memory 的讨论反复提到：旧决策仍被召回、不同 Session 的冲突事实同时出现、上下文被历史信息挤占，而召回更相关的文本并不一定改善任务结果。一个 Chat BI 实践者还提到，上游数据表或 ETL Schema 变化后，LLM 写入的自由文本记忆难以及时维护，Agent 继续生成针对旧 Schema 的 SQL，甚至要等客户发现错误才暴露问题。对企业 Agent 来说，这不是抽象的“记忆过期”，而是业务定义、数据结构和操作手册变化没有同步进入记忆生命周期。
+
+**社区也在提醒：记忆应被视为带来源的证据，而不是当前事实或指令。** 有开发者建议追加式保存工具事件、为提炼出的记忆保留来源指针、记录访问日志，并让旧记忆衰减或进入竞争；也有人强调，模型自己的陈述不能作为它自己的事实证明，候选记忆必须能追溯到真实工具结果或用户输入。另一个讨论提出，真正困难的是实体身份、事实之间的关系，以及新事实究竟替代旧事实还是与旧事实共同描述时间变化。这些问题无法单靠更好的 Embedding 或 Reranker 补回来。
+
+综合这些反馈，本文后续架构建议需要强调四点：
+
+1. **Admission 比 Storage 更重要。** 原始事件可以尽量完整保留，但长期记忆必须经过筛选；单次任务的临时状态、模型猜测和可随时从源系统重建的数据，不应默认晋升。
+2. **Memory 是有来源和有效期的证据，不是事实缓存。** 每条记忆需要区分记录时间、事实有效时间、最后验证时间、来源类型和 Scope；发生冲突时保留版本或 Supersedes 关系，不要简单按相似度或新旧覆盖。
+3. **Dreaming 必须可回滚、可比较、可拒绝。** 整理前后保留版本和变更集；没有足够证据时允许维持冲突或不做修改。自动化不意味着必须自动接受每一个整理结果。
+4. **评估任务收益和负面影响，而不是记忆数量。** 除了 Recall，还要测量错误记忆注入、过时事实命中、上下文 Token 开销、用户纠正次数，以及记忆对最终任务结果的 Helpful / Neutral / Harmful 影响。
+
+这也解释了为什么本文建议把 Transcript、Candidate、Memory Record 和 Injected Context 分开：它们不是为了增加流程，而是为了让系统可以拒绝错误知识、保留历史证据，并在实际效果变差时撤销一次整理。
+
 ## 2. 可以直接使用的开源实现
 
 目前没有一个开源项目能在所有 Runtime 上原样提供 Anthropic 的全部四层能力。更实际的做法是选用已有项目中成熟的部分，再补齐缺失的 Runtime Adapter 或后台 Worker。
@@ -449,10 +472,12 @@ Capture 只负责忠实地保留事件，不急于判断其长期价值。提取
 - `recorded_at`：系统什么时候发现或保存这条信息。
 - `valid_from / valid_to`：这条事实描述的状态在什么时候有效。
 - `last_confirmed_at`：最近一次得到验证的时间。
+- `source_event_id / source_type`：它来自用户明确表达、工具实际结果、外部资料，还是模型推断。
+- `supersedes / conflicts_with`：它替代了哪条旧事实，或与哪些事实仍存在冲突。
 
-例如，今天记录的一条历史信息可能描述的是两年前的架构状态。若只根据记录时间排序，Agent 就会把旧事实误认为当前事实。
+例如，今天记录的一条历史信息可能描述的是两年前的架构状态。若只根据记录时间排序，Agent 就会把旧事实误认为当前事实。对数据库 Schema、API、部署命令等会随代码或上游系统变化的内容，还应尽量保存可重新验证的源位置或版本，而不是只保留一段自然语言结论。
 
-对于冲突候选，优先生成 Supersedes 或时间版本关系，而不是直接覆写。找不到足够证据时，保留冲突状态或拒绝晋升。记忆越重要，来源和时间约束越不能省略。
+对于冲突候选，优先生成 Supersedes 或时间版本关系，而不是直接覆写。**相似度高不代表两条事实互相矛盾，时间较新也不代表新值已经验证。** 找不到足够证据时，保留冲突状态或拒绝晋升。记忆越重要，来源和时间约束越不能省略。
 
 ### 5.3 自动晋升，不要让人工审核成为默认阻塞点
 
@@ -468,6 +493,8 @@ Capture 只负责忠实地保留事件，不急于判断其长期价值。提取
 
 人工确认应该用于真正影响权限、风险或业务责任的事项，而不是用来弥补记忆系统无法处理不确定性的设计缺陷。需要审批的是操作授权，不是每一条知识记录。
 
+但“自动晋升”也不应成为默认目标。Hacker News 上有实际用户反馈，自动记忆经常把只对当前任务有用的细节带入后续 Session；另一些用户宁愿关闭自动记忆，或定期人工整理。更稳妥的默认值是：**自动捕获、自动形成候选、按证据和风险自动晋升一部分、对不确定或高影响内容保留候选状态。** 同时给用户提供查看、纠正、禁用某类记忆和撤销整理结果的能力。
+
 ### 5.4 记忆表示与检索索引分开维护
 
 Memory Notes 积累到一定规模后，可以按主题生成 Wiki 页面、实体关系和反向链接。它们是从来源记录生成的派生表示，必须能够重新构建。不要让 Wiki 成为唯一事实来源，否则一次生成错误就可能扩散到所有检索入口。
@@ -481,11 +508,15 @@ Replay 不应该只是测试检索接口是否返回了结果。对一组真实�
 建议至少测量四个指标：
 
 - **Recall Quality**：正确记忆是否被找回，错误记忆是否被注入。
-- **Freshness / Conflict**：陈旧事实和未处理冲突的比例。
-- **Utility**：记忆对任务是 Helpful、Neutral 还是 Harmful。
+- **Freshness / Conflict**：陈旧事实和未处理冲突的比例；被 Supersede 的旧值是否仍会命中。
+- **Admission Precision**：最终晋升的记忆中，有多少确实对未来任务有用；临时信息和模型臆测有多少被错误保存。
+- **Utility**：记忆对任务是 Helpful、Neutral 还是 Harmful，是否减少重复纠正并改善最终任务结果。
+- **Context Overhead**：每次 Session 实际注入多少 Token，其中多少内容最终没有被使用。
 - **Cost**：每一百轮交互的提取、Embedding、检索和 Dreaming 成本。
 
-可以把每次 Replay 的结果写入评估日志，用于调整候选晋升门槛和检索策略。不能只追求记忆召回率；一个总能召回但经常过时或越权的记忆系统，并不是更好的记忆系统。
+评估时至少做三组对照：无记忆、只有增量写入、增量写入加 Dreaming。保持 Answer Model、任务集和 Token Budget 一致，并按任务类别拆分结果；报告模型版本、Prompt、Memory 配置和数据集，避免把某个系统默认关闭的功能拿来做不公平比较。对重要任务还要做删除与冲突测试，检查旧事实是否真的不再被使用。
+
+可以把每次 Replay 的结果写入评估日志，用于调整候选晋升门槛和检索策略。不能只追求记忆召回率；一个总能召回但经常过时、污染上下文或让任务结果变差的记忆系统，并不是更好的记忆系统。
 
 ## 6. 安全、隔离与删除是 Memory Core 的一部分
 
@@ -558,7 +589,7 @@ Copilot Adapter 不应直接访问数据库表，而是通过 Memory SDK 调用�
 
 Anthropic 的文章给出了有价值的记忆组织思路，但它并没有要求开发者复制 Claude Code。当前已经有足够多的公开接口和开源实现，可以分别覆盖事件捕获、长期存储、知识组织、后台 Dreaming 和上下文注入。
 
-从工程上看，最重要的决策不是选哪一种向量库，而是明确谁负责记录原始经历、谁负责把候选知识变成长期记忆、谁能修改记忆、记忆如何回溯来源，以及错误记忆如何被纠正和删除。把这些边界定义清楚后，Copilot SDK、DeepAgents 和 Pi 就只是不同的 Runtime Adapter。
+从工程上看，最重要的决策不是选哪一种向量库，而是明确谁负责记录原始经历、谁负责筛选候选知识、谁能把候选变成长期记忆、谁能修改记忆、记忆如何回溯来源，以及错误记忆如何被纠正和删除。社区反馈尤其说明，长期记忆最大的风险不只是“忘记”，还包括记住了不该记住的内容、继续相信已经失效的事实，以及把旧信息带入当前任务。Dreaming 有潜力弥补增量写入的信息损失，但它必须接受版本控制、来源校验和任务级评估。把这些边界定义清楚后，Copilot SDK、DeepAgents 和 Pi 就只是不同的 Runtime Adapter。
 
 建议先以 Pi 作为验证环境，抽取一套 TypeScript Memory Contract，再把同一个 Core 接入 Copilot SDK；DeepAgents 通过 LangGraph Store 和 Consolidation Agent 接入。第一版只使用 SQLite / FTS5 和一个后台 LLM Worker，等 Replay 证明语义检索或知识图谱确实改善任务结果后，再增加相应组件。这样既能尽快得到可运行系统，也不会把某个 Agent Framework 的内部实现变成长期架构依赖。
 
@@ -591,6 +622,16 @@ Anthropic 的文章给出了有价值的记忆组织思路，但它并没有要�
 - [pi-sleep-agent](https://github.com/aydinnyunus/sleep)
 - [pi-memory](https://github.com/jayzeng/pi-memory)
 - [pi-cognee](https://github.com/kerryhatcher/pi-cognee)
+
+### 社区讨论与实践反馈
+- [Hacker News: The Components of Agent Memory — 关于自动记忆噪声、Dreaming 与手工整理的讨论](https://news.ycombinator.com/item?id=50402919)
+- [Hacker News: Agent memory needs its OpenTelemetry moment — 关于可观测性、标准化与记忆设计取舍的讨论](https://news.ycombinator.com/item?id=50411467)
+- [Hacker News: How do you manage your AI agents' context across clients and projects?](https://news.ycombinator.com/item?id=50403153)
+- [Reddit: I evaluated 3 agent-memory systems — then added a dreaming pass](https://www.reddit.com/r/BuildWithClaude/comments/1u63p67/i_evaluated_3_agentmemory_systems_claude/)
+- [Reddit: What Breaks in AI Agent Memory After Months in Production?](https://www.reddit.com/r/LangChain/comments/1w51pcx/what_breaks_in_ai_agent_memory_after_months_in/)
+- [Reddit: How are people preventing long-running agents from accumulating bad memory?](https://www.reddit.com/r/LLMDevs/comments/1w2h54v/how_are_people_preventing_longrunning_agents_from/)
+- [Reddit: RAG has not felt like enough for agent memory](https://www.reddit.com/r/LLMDevs/comments/1ubqyqk/rag_has_not_felt_like_enough_for_agent_memory_at/)
+- [Reddit: After a year building agent memory, save everything + RAG it is the wrong default](https://www.reddit.com/r/AI_Agents/comments/1uxwp0i/after_a_year_building_agent_memory_im_convinced/)
 
 ### Memory Engine 与知识图谱
 - [Mem0](https://github.com/mem0ai/mem0)
