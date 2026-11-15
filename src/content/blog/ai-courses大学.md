@@ -343,6 +343,31 @@ H --> I
 
 []()
 
+### Harvard University
+
+[CS2680: Modern AI Systems — Agents and System Optimizations](https://cs2680.seas.harvard.edu/)（Fall 2026，Juncheng Yang）
+
+这门课的特点是把 **Agent Engineering** 和 **AI Systems Engineering** 放在同一条技术链路上：从使用现成 Coding Agent 开始，逐步实现自己的 Agent，再深入模型推理服务和 GPU 系统优化。它不是一门训练模型或介绍机器学习算法的课程，而是研究如何构建可靠、低成本、低延迟的 Agent 系统，以及底层系统如何影响 Agent 的实际表现。
+
+课程分为两个部分：
+
+- **Part I — LLMs and Agents**：Claude Code 的工作机制、Agent Loop、Context Management、Tool Design、多 Agent 架构与协作、Memory、Reliability、Evaluation，以及成本和性能优化。
+- **Part II — Systems for LLMs and Agents**：LLM Serving、GPU 基础、Batching、Scheduling、Paging、Parallelism、KV Cache、Prefix Reuse、Model Routing、Load Balancing、Quantization 和 Speculative Decoding。
+
+课程最有价值的设计是五个作业并非互不相关的实验，而是围绕同一个 Agent 系统逐层深入：
+
+1. **Mads-Lens**：观察并记录 Claude Code 的运行过程，包括工具调用、子 Agent、失败恢复和成本。
+2. **Mads-Loop**：基于模型 API 自己实现 Agent Harness，处理 Tool Calling、Context Management、Retry、Termination 和异常情况。
+3. **Mads-Opt**：在模型 API 不变的前提下优化 Agent，减少 Token 和调用次数、选择合适的模型、并行执行工具并降低延迟与成本。
+4. **Mads-Serve**：不再依赖托管推理 API，自己部署模型和 Serving Engine，分析并优化推理服务。
+5. **Mads-Stack**：进一步联合优化 Agent、模型和 Serving Stack，以任务成功率和端到端执行时间衡量结果。
+
+课程没有期末考试，成绩主要来自五个作业、一个自主选题的 Final Project 和课堂参与。作业要求学生提交代码并进行测量，不只是完成一个能运行的 Demo。课程假设学生具备计算机系统基础，熟悉 Python 和 PyTorch；它不是面向零基础学习者的入门课。
+
+**为什么值得关注：** 许多 Agent 课程停留在 Prompt、Framework 和应用开发层面，而 CS2680 把 Agent Runtime、Evaluation、Inference Serving 和 GPU 优化连成一套完整的工程训练。尤其是从黑盒模型 API 逐步走到自建 Serving，再到全栈优化的安排，能帮助理解 Agent 的性能瓶颈究竟来自模型、Harness、上下文、工具调用，还是推理基础设施。对于正在建设企业 Agent 平台、Coding Agent 或自部署 LLM 服务的工程团队，这门课的作业结构也很适合作为内部实践课程的参考。
+
+课程网站公开了课程安排、阅读材料和作业说明；注册学生使用的模型 API、GPU 和计算资源由课程提供。课程允许在学校政策和容量许可下旁听，但旁听者不提供作业所需的计算资源。
+
 ### 复旦大学
 
 [人工智能的软件基础](https://github.com/aisoft-course/aisoft-course.github.io) 2026 年春季学期，从工程实践角度讲 AI 应用的软件基础。
