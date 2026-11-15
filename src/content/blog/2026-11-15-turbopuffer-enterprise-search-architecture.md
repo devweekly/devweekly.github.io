@@ -375,22 +375,6 @@ Turbopuffer 当前文档还列出 Native Embeddings 的组织级限速：新组�
 
 最后，不要把“四亿条向量”理解成 Turbopuffer 自动把一亿份原始 PDF 拆成四亿段并完成所有 Embedding。演讲只确认了文档数和向量记录规模；具体分块方式、哪些来源没有进入向量检索、如何处理表格与录音，公开信息不足。它能证明的是这套生产检索链路在大规模向量与复杂权限过滤下运行，而不是一个端到端无代码的文档理解流水线。
 
-## 10. 写入一致性比搜索 API 更需要设计
-
-这套系统没有一个跨 S3、PostgreSQL 和 OpenSearch 的分布式事务。不能假设三边写入会同时成功。应当使用可重放的事件驱动流程，把文档版本作为一致性主线。
-
-推荐采用以下规则：
-
-1. 每份文档有稳定 ID 和单调递增的 version。任何修改都产生新版本，不能只依赖更新时间判断先后。
-2. 原始对象先写入 S3，并记录对象版本、ETag 或 checksum。数据库事务再写文档状态和 Outbox 事件。
-3. Outbox Publisher 把事件发送到 Kafka、MSK 或其他持久消息系统。Worker 可以重复处理同一个事件，写入 OpenSearch 时必须幂等。
-4. OpenSearch 只接受不旧于当前版本的更新。删除通过 tombstone 或显式删除事件传播，不能把暂时未找到的文档理解为已删除。
-5. 索引完成后再推进 PostgreSQL 中的 indexed_version。读写路径可以据此判断是否达到 read-your-write 要求。
-6. 索引全量重建时创建新的索引 generation，验证数据和查询结果后再切换 alias。不要在生产索引上直接执行不可回滚的批量重建。
-
-这样做的代价是最终一致，而不是跨系统强一致。对于 Agent 即时写入后马上检索的场景，可以提供写入确认水位：只有索引确认达到对应版本，API 才向调用方报告该版本可检索。若调用方选择异步写入，就需要接受短暂的索引延迟。
-
-
 ## 9. 纯文本检索的真实差异：Snowflake SEARCH、PostgreSQL FTS 和 OpenSearch BM25
 
 “不用 Embedding”并不意味着三种平台提供相同的全文搜索能力。它们的索引结构、查询表达、相关性排序以及扩展方式差异很大。特别是 Snowflake Cortex Search 和 Snowflake SQL SEARCH 是两条不同的产品路径，不能把后者当成前者的 text-only 开关。
@@ -441,6 +425,22 @@ OpenSearch 把全文检索作为基础能力。写入时，text 字段经 Analyz
 | Embedding | SEARCH 路径不需要；Cortex Search 需向量索引 | 原生 FTS 不需要 | BM25 不需要；只有 k-NN / Neural 路径需要 |
 
 对于 Vault 这样的亿级投研库，如果要求完全不用 Embedding，OpenSearch 是三者中最直接的全文检索主栈；PostgreSQL 适合全文只是关系数据库查询的一部分、规模和并发有明确边界的环境；Snowflake 则适合搜索与仓库分析紧密结合、SQL 过滤已能满足排名要求的环境。若需要 Snowflake 的托管检索接口和语义召回，应选择 Cortex Search，并接受其向量索引要求；若只是查找关键词，使用 SEARCH + FULL_TEXT Search Optimization 更准确。
+
+## 10. 写入一致性比搜索 API 更需要设计
+
+这套系统没有一个跨 S3、PostgreSQL 和 OpenSearch 的分布式事务。不能假设三边写入会同时成功。应当使用可重放的事件驱动流程，把文档版本作为一致性主线。
+
+推荐采用以下规则：
+
+1. 每份文档有稳定 ID 和单调递增的 version。任何修改都产生新版本，不能只依赖更新时间判断先后。
+2. 原始对象先写入 S3，并记录对象版本、ETag 或 checksum。数据库事务再写文档状态和 Outbox 事件。
+3. Outbox Publisher 把事件发送到 Kafka、MSK 或其他持久消息系统。Worker 可以重复处理同一个事件，写入 OpenSearch 时必须幂等。
+4. OpenSearch 只接受不旧于当前版本的更新。删除通过 tombstone 或显式删除事件传播，不能把暂时未找到的文档理解为已删除。
+5. 索引完成后再推进 PostgreSQL 中的 indexed_version。读写路径可以据此判断是否达到 read-your-write 要求。
+6. 索引全量重建时创建新的索引 generation，验证数据和查询结果后再切换 alias。不要在生产索引上直接执行不可回滚的批量重建。
+
+这样做的代价是最终一致，而不是跨系统强一致。对于 Agent 即时写入后马上检索的场景，可以提供写入确认水位：只有索引确认达到对应版本，API 才向调用方报告该版本可检索。若调用方选择异步写入，就需要接受短暂的索引延迟。
+
 
 ## 11. 过滤召回决定了检索质量上限
 
