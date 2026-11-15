@@ -389,7 +389,7 @@ Embedding 的具体位置可以有两种实现。使用 Native Embeddings 时，
 这样做的代价是最终一致，而不是跨系统强一致。对于 Agent 即时写入后马上检索的场景，可以提供写入确认水位：只有索引确认达到对应版本，API 才向调用方报告该版本可检索。若调用方选择异步写入，就需要接受短暂的索引延迟。
 
 
-## 11. 纯文本检索的真实差异：Snowflake SEARCH、PostgreSQL FTS 和 OpenSearch BM25
+## 9. 纯文本检索的真实差异：Snowflake SEARCH、PostgreSQL FTS 和 OpenSearch BM25
 
 “不用 Embedding”并不意味着三种平台提供相同的全文搜索能力。它们的索引结构、查询表达、相关性排序以及扩展方式差异很大。特别是 Snowflake Cortex Search 和 Snowflake SQL SEARCH 是两条不同的产品路径，不能把后者当成前者的 text-only 开关。
 
