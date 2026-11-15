@@ -159,35 +159,14 @@ Catalog 保存权威 ACL，搜索索引只保存查询所需的权限投影。�
 
 文档上传先落对象存储，再登记 DocumentVersion、Asset 和待处理事件。Worker 通过幂等任务完成解析与派生工件写入，Catalog 记录 ProcessingRun 和 Manifest。索引 Worker 消费已发布的工件，分别写入全文、向量或分析后端。每个后端独立维护索引水位；全部或指定关键索引完成后，文档版本才达到相应的可检索状态。
 
-```mermaid
-flowchart TB
-    A["Sources: PDF / Office / Email / Web / DB"]
-    B["Ingestion API"]
-    C["Object Storage: immutable originals"]
-    D["Document Catalog: identity / version / ACL"]
-    E["Processing workers: parse / OCR / extract"]
-    F["Derived artifacts: text / tables / images / chunks"]
-    G["Embedding and enrichment"]
-    H["Search projections: BM25 / ANN / Hybrid"]
-    I["Analytics: Iceberg / Snowflake"]
-    J["Catalog API + Search API"]
-    K["Applications and Agents"]
-
-    A --> B
-    B --> C
-    B --> D
-    C --> E
-    E --> F
-    E --> D
-    F --> G
-    F --> H
-    G --> H
-    F --> I
-    D --> J
-    H --> J
-    I --> J
-    J --> K
-```
+| 步骤 | 输入与处理 | 输出和状态 |
+|---|---|---|
+| 1. Ingest | 来源连接器接收 PDF、Office、邮件、网页和结构化数据 | 原始对象写入 Object Storage；Catalog 登记 DocumentVersion |
+| 2. Process | Worker 执行解析、OCR、表格/图片提取、分类和实体抽取 | 规范文本、页面资产、表格和处理 Manifest |
+| 3. Derive | 按版本化策略切分 Chunk，并按需生成 Embedding | Chunk/Embedding 等派生工件写入对象存储 |
+| 4. Index | Search Adapter 将文本、向量、元数据和 ACL 投影到不同后端 | BM25、ANN、Hybrid 等索引水位分别更新 |
+| 5. Analyze | 将标准化数据和事件投影到 Iceberg 或 Snowflake | 治理、统计、历史分析和检索评测数据集 |
+| 6. Query | Catalog API 提供身份、版本和权限；Search API 路由检索 | 应用和 Agent 获得可追溯、经过授权的证据 |
 
 这里的关键不是必须采用某个消息队列，而是要有可重放的事件、幂等处理、版本化产物和可观测的索引水位。搜索后端发生故障时，可以从 Manifest 和工件重新构建；切换后端时，也不需要重新抓取原始来源。
 
@@ -227,7 +206,7 @@ Palantir 还公开了 Ontology 后端的架构演进：Object Storage v2 将原�
 
 ---
 
-## 7. Snowflake 主栈：治理和分析最统一，在线检索容量必须先验证
+## 6. Snowflake 主栈：治理和分析最统一，在线检索容量必须先验证
 
 Snowflake 可以作为 Vault 类平台的主栈。文档目录、Chunk、来源、实体、权限和版本都保存在 Snowflake 表中，Streams、Tasks、Dynamic Tables 或 Snowpipe 负责持续摄取与变换，Cortex Search 提供关键词、向量和混合检索。对于已经把研究数据和分析工作负载集中在 Snowflake 的机构，这种方式可以减少平台数量，让搜索与数据治理共享一套数据模型。
 
@@ -272,7 +251,7 @@ Cortex Search 的成本包括刷新源查询所使用的 Warehouse、文档变�
 
 Snowflake 主栈最适合数据本来就在 Snowflake、查询量中等、刷新延迟有余量、希望以托管方式获得 Hybrid Search 的组织。它的主要优点是数据治理、SQL 分析和检索服务统一，运维负担低；主要缺点是默认 QPS/行数限额、owner's rights 权限边界和持续 Serving Compute 成本。对 Vault 公布的高并发 Agent 负载，Snowflake 仍然可以进入候选，但应先完成限额协商、权限威胁建模和成本压测，不宜按默认配置直接承诺生产容量。
 
-## 7. PostgreSQL 主栈：事务和关系模型最完整，搜索规模化由团队自己负责
+## 6. PostgreSQL 主栈：事务和关系模型最完整，搜索规模化由团队自己负责
 
 PostgreSQL 主栈把文档目录、Chunk、权限关系、全文索引和向量索引尽量放在同一个数据库中。它的核心吸引力在于，文档版本、ACL 变更和索引任务状态可以在单一事务边界内维护；检索请求也可以在 SQL 中组合全文、向量和关系过滤。这种方案适合检索与复杂关系查询紧密耦合、数据库团队有能力承担分片和索引维护的组织。
 
@@ -320,7 +299,7 @@ PostgreSQL 主栈的优点是事务、关系 JOIN、数据约束和权限关系�
 
 **判断：PostgreSQL 可以实现完整的 Vault 类系统，也能够通过量化、分区和分片承载很大的向量数据集；但对高并发 Agent 检索，它不是默认的省事方案。它更适合关系事务驱动、过滤关系复杂、团队具备 PostgreSQL 扩展和分片运维经验的场景。**
 
-## 8. OpenSearch 主栈：在线检索能力最贴近 Vault，索引生命周期和集群运维是主要代价
+## 7. OpenSearch 主栈：在线检索能力最贴近 Vault，索引生命周期和集群运维是主要代价
 
 OpenSearch 把 BM25、向量 ANN、Hybrid Search、过滤、聚合和排序作为一等能力。对于查询主要围绕来源、时间、国家、市场、概念和用户权限展开的 Vault，OpenSearch 的数据模型与在线检索路径更直接，也更容易按搜索负载扩展节点和副本。
 
@@ -382,7 +361,7 @@ OpenSearch 的优势是检索能力集中、查询模型成熟，支持高并发
 | 适用条件 | 数据已在 Snowflake、检索 QPS 可协商满足 | 关系查询和事务是主导需求，团队擅长 PG 扩展 | 在线检索是核心，Agent QPS 和过滤召回优先 |
 
 
-## 9. Embedding 是可选检索通道，不是文档入库的前置条件
+## 8. Embedding 是可选检索通道，不是文档入库的前置条件
 
 前面三种主栈的设计都提到了 Embedding，但它并不等于“搜索索引”。传统全文检索会把文本切词并建立倒排索引，BM25 根据查询词、词频和文档长度计算相关性；元数据过滤则依靠结构化字段索引。两者都不需要把文本转换成向量。
 
@@ -502,7 +481,7 @@ Turbopuffer 当前文档还列出 Native Embeddings 的组织级限速：新组�
 
 最后，不要把“四亿条向量”理解成 Turbopuffer 自动把一亿份原始 PDF 拆成四亿段并完成所有 Embedding。演讲只确认了文档数和向量记录规模；具体分块方式、哪些来源没有进入向量检索、如何处理表格与录音，公开信息不足。它能证明的是这套生产检索链路在大规模向量与复杂权限过滤下运行，而不是一个端到端无代码的文档理解流水线。
 
-## 10. 纯文本检索的真实差异：Snowflake SEARCH、PostgreSQL FTS 和 OpenSearch BM25
+## 9. 纯文本检索的真实差异：Snowflake SEARCH、PostgreSQL FTS 和 OpenSearch BM25
 
 “不用 Embedding”并不意味着三种平台提供相同的全文搜索能力。它们的索引结构、查询表达、相关性排序以及扩展方式差异很大。特别是 Snowflake Cortex Search 和 Snowflake SQL SEARCH 是两条不同的产品路径，不能把后者当成前者的 text-only 开关。
 
@@ -553,7 +532,7 @@ OpenSearch 把全文检索作为基础能力。写入时，text 字段经 Analyz
 
 对于 Vault 这样的亿级投研库，如果要求完全不用 Embedding，OpenSearch 是三者中最直接的全文检索主栈；PostgreSQL 适合全文只是关系数据库查询的一部分、规模和并发有明确边界的环境；Snowflake 则适合搜索与仓库分析紧密结合、SQL 过滤已能满足排名要求的环境。若需要 Snowflake 的托管检索接口和语义召回，应选择 Cortex Search，并接受其向量索引要求；若只是查找关键词，使用 SEARCH + FULL_TEXT Search Optimization 更准确。
 
-## 11. 写入一致性比搜索 API 更需要设计
+## 10. 写入一致性比搜索 API 更需要设计
 
 这套系统没有一个跨 S3、PostgreSQL 和 OpenSearch 的分布式事务。不能假设三边写入会同时成功。应当使用可重放的事件驱动流程，把文档版本作为一致性主线。
 
@@ -569,7 +548,7 @@ OpenSearch 把全文检索作为基础能力。写入时，text 字段经 Analyz
 这样做的代价是最终一致，而不是跨系统强一致。对于 Agent 即时写入后马上检索的场景，可以提供写入确认水位：只有索引确认达到对应版本，API 才向调用方报告该版本可检索。若调用方选择异步写入，就需要接受短暂的索引延迟。
 
 
-## 12. 过滤召回决定了检索质量上限
+## 11. 过滤召回决定了检索质量上限
 
 Vault 案例中的时间、来源、资产和国家条件不是可有可无的附加参数。它们会直接改变向量搜索应该访问的候选空间。过滤条件选择性越高，普通 ANN 搜索越容易出现两个极端：先搜索后过滤可能只剩少量结果；先过滤再精确计算则可能需要扫描很大的候选集。
 
@@ -579,7 +558,7 @@ OpenSearch 的 efficient k-NN filtering 已经比简单 post-filter 更完整。
 
 因此，OpenSearch 方案必须用真实查询分布验证过滤性能。不能只测没有过滤条件的 ANN Recall@10。至少要按过滤选择性、租户规模、时间范围和 ACL 条件分别测量。
 
-## 13. 多租户和权限模型
+## 12. 多租户和权限模型
 
 建议先采用共享索引加 tenant_id、namespace_id、ACL 标签和 routing key 的模式，避免每个租户都创建独立索引导致分片数量膨胀。对于数据量特别大的租户、严格的资源隔离要求或独立生命周期要求，再使用专属索引或专属集群。
 
@@ -587,7 +566,7 @@ OpenSearch 的 efficient k-NN filtering 已经比简单 post-filter 更完整。
 
 Namespace 与 OpenSearch index 不应一一对应。Namespace 是逻辑隔离和生命周期概念；Index、Shard 和 Routing 是物理布局决策。两者解耦后，才能根据文档数量、查询负载和租户增长重新分配数据。
 
-## 14. 与 Turbopuffer 的架构差距
+## 13. 与 Turbopuffer 的架构差距
 
 | 能力 | 推荐组合 | Turbopuffer |
 |---|---|---|
@@ -606,7 +585,7 @@ OpenSearch Remote Store 是重要的演进方向。Remote-backed storage 可以�
 
 成本上也有类似的差距。OpenSearch 集群仍需要为分片、索引段、查询缓存、写入合并和副本保留计算与本地存储资源。S3 快照或 Remote Store 可以降低部分持久化成本，但不会自然带来 Turbopuffer 那种按热点数据缓存、冷数据远端读取的完整经济模型。
 
-## 15. 2026 年检索引擎的演进：磁盘向量、对象存储和列式执行
+## 14. 2026 年检索引擎的演进：磁盘向量、对象存储和列式执行
 
 最近一轮检索基础设施的变化，重点已经不只是 HNSW 参数或 Embedding 模型，而是如何减少向量索引对内存的依赖、如何在对象存储上直接搜索，以及如何让全文、向量和结构化查询共享更高效的执行路径。
 
@@ -660,7 +639,7 @@ Turbopuffer 自己也在改变架构。2026 年 9 月公开的 v3 设计说明�
 
 这些内容属于 Turbopuffer v3 的公开开发方向。其文章在 2026 年 10 月仍将正式投入生产描述为后续计划，不应当把开发日志中的设计目标当作当前所有生产环境已具备的能力。
 
-## 16. 实施顺序：先验证检索，再投资对象存储原生引擎
+## 15. 实施顺序：先验证检索，再投资对象存储原生引擎
 
 ### 第一阶段：建立检索质量基线
 
@@ -682,7 +661,7 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 
 如果仍无法达到目标成本，再用 LanceDB、Firn 或自建基于 Lance 的检索 POC 验证对象存储原生路线。此时应该用同样的评测集、文档版本和查询流量，与 OpenSearch 进行端到端比较，而不是只比较向量索引微基准。
 
-## 17. 评估矩阵与验收指标
+## 16. 评估矩阵与验收指标
 
 | 维度 | 必须验证的场景 | 指标 |
 |---|---|---|
@@ -696,7 +675,7 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 
 测试数据要保留真实的租户大小分布和元数据偏斜。例如，某些来源可能占多数文档，某些资产可能只对应少量记录；这些情况会影响过滤选择性和分片负载。评估时还应分别报告冷查询与热查询，避免平均值掩盖尾延迟。
 
-## 18. 最终建议
+## 17. 最终建议
 
 对于 Bridgewater Vault，我建议把 S3-compatible Object Storage + 独立 Document Catalog + 可重建的 Search/Analytics Projection 作为长期架构，而不是选择 Snowflake、PostgreSQL 或 OpenSearch 之一作为主栈。第一阶段可以用 S3 保存原件和派生工件、PostgreSQL 实现 Catalog、异步 Worker 处理文档、OpenSearch 提供在线检索；Snowflake 只在需要治理分析和评测闭环时接入。应用只依赖 Catalog API、Processing API 和 Search API，不直接依赖底层产品的数据模型。若后续改用 Cortex Search、Vespa、Quickwit、Lance/Firn 或其他检索后端，应该只替换查询投影和适配器，而不是迁移原始文档。开源项目可借鉴其局部能力，但现阶段没有证据表明其中某一个已经提供了可直接承接 Vault 亿级规模、复杂 ACL 和高并发 Agent 负载的完整方案。
 
