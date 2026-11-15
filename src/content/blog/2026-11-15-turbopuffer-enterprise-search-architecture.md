@@ -369,6 +369,8 @@ Turbopuffer 自己负责的是数据持久化和检索索引。文本属性可�
 
 Embedding 的具体位置可以有两种实现。使用 Native Embeddings 时，写入指定文本属性及模型，Turbopuffer 在写入和查询时生成向量；应用不必自行调用模型 API，但需要承担其模型费率、Token 速率限制和重摄取要求。外部生成则由 Worker 调用 OpenAI Embeddings 或企业自部署模型，保存模型与分块版本后把向量和文本一起写进 Turbopuffer。外部方式更容易结合 OpenAI Batch API 做大规模初始回填，也更容易控制重试、限速和多模型评测。Native Embeddings 当前不支持输入后由模型自行切成可变数量向量的 contextual chunking 模式，因此文档切分不能交给它自动完成。[Turbopuffer Native Embeddings](https://turbopuffer.com/docs/embedding)
 
+Turbopuffer 当前文档还列出 Native Embeddings 的组织级限速：新组织默认每分钟 1,024 个请求、每个模型 200 万 Token；厂商可以根据工作负载提高额度。按四亿条、每条 512 Token 计算，总量约 2,048 亿 Token；若完全按 200 万 Token/分钟处理，理论下限约 102,400 分钟，也就是 71 天。这个只是限速上限下的理想值，不包含解析、分批写入、重试、索引构建和其他客户流量。若要在较短窗口内回填大型历史语料，需要提前与 Turbopuffer 协商提升额度，或在外部 Worker 侧使用 OpenAI Batch API 等离线 Embedding 路径，再把向量批量写入。需要注意，OpenAI Batch API 的 50% 优惠适用于直接调用 OpenAI 的 Batch endpoint；不能假定 Turbopuffer Native Embeddings 会自动继承这项折扣。
+
 对于只想给一部分文档生成向量的场景，还有一个需要落实到数据布局的细节：Turbopuffer Namespace 可以没有向量索引；一旦 Namespace 有向量索引，写入的文档就必须包含对应的向量属性。可行做法是把全库文本和元数据放在一个 BM25 Namespace，把精选的语义 Chunk 放在另一个带向量索引的 Namespace。查询时全库 BM25 和向量子集 ANN 并行检索，再按稳定 chunk_id 去重并用 RRF 融合。文档更新和 ACL 撤权必须同步投影到两个 Namespace，避免权限只在其中一个索引生效。[Turbopuffer Write API](https://turbopuffer.com/docs/write)
 
 最后，不要把“四亿条向量”理解成 Turbopuffer 自动把一亿份原始 PDF 拆成四亿段并完成所有 Embedding。演讲只确认了文档数和向量记录规模；具体分块方式、哪些来源没有进入向量检索、如何处理表格与录音，公开信息不足。它能证明的是这套生产检索链路在大规模向量与复杂权限过滤下运行，而不是一个端到端无代码的文档理解流水线。
@@ -411,7 +413,7 @@ PostgreSQL 原生全文检索把文档转成 tsvector，把查询转成 tsquery�
 
 原生排序由 ts_rank 和 ts_rank_cd 提供。它们可以使用命中词频、词项位置、字段权重和文档长度归一化，但 PostgreSQL 官方明确说明，这两个排序函数不使用整个语料库的全局信息。它们不等同于 BM25 的全局词项稀有度计算。对于投资研究文档，这意味着常见词和稀有概念词之间的权重区分可能不如成熟 BM25 检索引擎自然；如果候选命中很多，GIN 负责找候选，后续仍要对匹配行计算排名。[PostgreSQL Text Search Controls](https://www.postgresql.org/docs/current/textsearch-controls.html) [PostgreSQL Text Search Indexes](https://www.postgresql.org/docs/current/textsearch-indexes.html)
 
-PostgreSQL 的一个优势是你可以把标题、关键词、摘要和正文分别设置 A/B/C/D 权重，再拼接成一个 tsvector；事务、RLS、关系 JOIN 和 FTS 可以在同一数据库中执行。短板是原生 FTS 的排名模型和高级搜索分析能力不如专用搜索引擎。需要真正 BM25 时，可以引入 pg_textsearch 或 ParadeDB pg_search 这样的扩展；但这会把方案从“PostgreSQL 内置功能”变成“PostgreSQL + 特定扩展”，必须额外验证 PostgreSQL 版本兼容、索引维护、升级和分片支持。中文及多语言检索还要认真选择 parser 和 dictionary，不能假定英文 Snowball 配置可以正确处理中文公司名、政策术语和中日韩资料。
+PostgreSQL 的一个优势是你可以把标题、关键词、摘要和正文分别设置 A/B/C/D 权重，再拼接成一个 tsvector；事务、RLS、关系 JOIN 和 FTS 可以在同一数据库中执行。短板是原生 FTS 的排名模型和高级搜索分析能力不如专用搜索引擎。需要真正 BM25 时，可以引入 Timescale 的 pg_textsearch 或 ParadeDB 的 pg_search 这样的扩展；前者提供 PostgreSQL 内的 BM25 排名索引，后者以 Tantivy/自定义索引把全文检索、BM25 和过滤能力放进 PostgreSQL。它们会把方案从“PostgreSQL 内置功能”变成“PostgreSQL + 特定扩展”，必须额外验证 PostgreSQL 版本兼容、索引维护、升级和分片支持。[pg_textsearch](https://github.com/timescale/pg_textsearch) [ParadeDB pg_search](https://github.com/paradedb/paradedb)中文及多语言检索还要认真选择 parser 和 dictionary，不能假定英文 Snowball 配置可以正确处理中文公司名、政策术语和中日韩资料。
 
 ### OpenSearch：默认就是分布式 BM25 全文搜索，不需要任何 Dense Vector
 
@@ -576,6 +578,10 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 2026 年的技术进展已经让这条路更容易探索：OpenSearch 有 JVector 和 Remote Store，PostgreSQL 有 VectorChord，Lance/Firn 在推进对象存储原生检索，Quickwit 已经证明云存储上的全文搜索可行，Turbopuffer v3 则进一步走向列式主存储和向量化查询。下一步应该用业务数据验证哪个瓶颈最贵，再决定是否需要自建更接近 Turbopuffer 的存储引擎。
 
 ## 参考资料
+
+- [ParadeDB pg_search](https://github.com/paradedb/paradedb)
+
+- [Timescale pg_textsearch](https://github.com/timescale/pg_textsearch)
 
 - [OpenSearch Match Query](https://docs.opensearch.org/latest/query-dsl/full-text/match/)
 
