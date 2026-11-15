@@ -268,19 +268,7 @@ Trino 本身也需要治理：独立的身份认证、Catalog 凭据、行列权
 
 ### 5.11 三种主栈的架构图与完整处理流程
 
-三种主栈并不是把同一张图换一个数据库名称。Snowflake 将目录、表变换和托管检索放在同一数据平台；PostgreSQL 把目录、权限、事务和检索组合进 SQL；OpenSearch 则把在线全文、向量和过滤查询作为核心，原始文档和业务目录仍由外部系统负责。下面三张图分别标出数据处理、索引构建、查询授权和证据回取的责任边界。
-
-![Snowflake 主栈架构](/diagrams/vault-snowflake-primary-stack.svg)
-
-[Snowflake 主栈交互查看](/diagrams/vault-snowflake-primary-stack.html)
-
-![PostgreSQL 主栈架构](/diagrams/vault-postgresql-primary-stack.svg)
-
-[PostgreSQL 主栈交互查看](/diagrams/vault-postgresql-primary-stack.html)
-
-![OpenSearch 主栈架构](/diagrams/vault-opensearch-primary-stack.svg)
-
-[OpenSearch 主栈交互查看](/diagrams/vault-opensearch-primary-stack.html)
+三种主栈并不是把同一张图换一个数据库名称。Snowflake 将目录、表变换和托管检索放在同一数据平台；PostgreSQL 把目录、权限、事务和检索组合进 SQL；OpenSearch 则把在线全文、向量和过滤查询作为核心，原始文档和业务目录仍由外部系统负责。对应的主栈架构图放在第 6–8 节的方案设计处，分别标出数据处理、索引构建、查询授权和证据回取的责任边界。
 
 三种方案共用一条业务生命周期，但结构化与非结构化内容的摄取方式不同。结构化源通常通过 CDC、API 或批量数据接入，重点是 Schema、主键、单位、时间语义和数据质量；非结构化源先保存原件，再解析版面和正文，扫描件需要 OCR，会议录音需要 ASR，随后执行规范化、实体识别、权限映射和语义分块。两路数据在 Document Catalog 和检索投影处汇合。下面的流程图把从入库到证据回传的环节放在一起。
 
