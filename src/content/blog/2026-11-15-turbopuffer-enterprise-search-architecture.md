@@ -72,6 +72,11 @@ Turbopuffer 的架构可以拆成三个相互依赖的部分。
 
 据此可以判断：Turbopuffer 的核心是自研的分布式检索与存储引擎，公开架构使用 Rust 服务、对象存储持久化、WAL、SPFresh ANN、BM25/属性索引、NVMe/内存缓存和自有查询执行器。它不是 PostgreSQL 加 pgvector，也不是 OpenSearch/Lucene 集群换了一个 API。公开资料没有完整披露它内部每一个低层库或存储文件的实现，因而不能进一步断言完全没有借用第三方组件；但没有证据支持把 PostgreSQL 或 OpenSearch 视作其底层核心。
 
+![Turbopuffer 存储与查询引擎结构](/diagrams/turbopuffer-storage-query-engine.svg)
+
+[交互查看 HTML](/diagrams/turbopuffer-storage-query-engine.html)
+
+
 OpenSearch Remote Store 是重要的演进方向。Remote-backed storage 可以把 translog 和 Lucene segment 持久化到 S3、GCS 或 Azure Blob；使用 segment replication 时，副本可以从共享远端 segment store 获取数据，减少主分片向副本直接复制文件的负担。[OpenSearch Remote-backed storage](https://docs.opensearch.org/latest/tuning-your-cluster/availability-and-recovery/remote-store/)
 
 但它仍然是 OpenSearch 的分片存储架构。节点恢复、分片分配、查询节点本地资源和远端文件缓存仍然需要集群管理。它提升了数据耐久性和复制方式，并不自动把 OpenSearch 变成可随时销毁的无状态查询层。
@@ -133,6 +138,11 @@ Document ID 是业务身份，Object Key 是存储定位符。应用通过 Catal
 
 Catalog 保存权威 ACL，搜索索引只保存查询所需的权限投影。查询时必须执行授权检查；撤权不能只依赖异步索引刷新。对高敏感数据，应该支持 Catalog 侧的即时 deny、候选结果二次校验和权限版本水位。索引延迟与权限传播延迟要分别监控。
 
+![Document Catalog 核心实体关系](/diagrams/vault-document-catalog-model.svg)
+
+[交互查看 HTML](/diagrams/vault-document-catalog-model.html)
+
+
 ### 3.4 摄取、处理和索引的生命周期
 
 文档上传先落对象存储，再登记 DocumentVersion、Asset 和待处理事件。Worker 通过幂等任务完成解析与派生工件写入，Catalog 记录 ProcessingRun 和 Manifest。索引 Worker 消费已发布的工件，分别写入全文、向量或分析后端。每个后端独立维护索引水位；全部或指定关键索引完成后，文档版本才达到相应的可检索状态。
@@ -148,6 +158,11 @@ Catalog 保存权威 ACL，搜索索引只保存查询所需的权限投影。�
 
 消息队列可以按现有平台选择，但事件必须可重放，处理必须幂等，产物需要版本化，索引水位也要可观测。搜索后端发生故障时，可以从 Manifest 和工件重新构建；切换后端时，也不需要重新抓取原始来源。
 
+![Document 处理生命周期状态机](/diagrams/vault-document-lifecycle.svg)
+
+[交互查看 HTML](/diagrams/vault-document-lifecycle.html)
+
+
 ### 3.5 总体架构与在线查询
 
 整体架构将在线检索与文档摄取分开。检索请求只访问 Search API、PostgreSQL 控制面和 OpenSearch；文档摄取则经过 Outbox、索引 Worker 和对象存储。Snowflake 消费标准化数据和检索事件，用于分析而不进入每一次在线查询。
@@ -161,6 +176,11 @@ Catalog 保存权威 ACL，搜索索引只保存查询所需的权限投影。�
 Search API 完成身份验证、租户识别、查询解析和权限条件构造。它从 PostgreSQL 获取 Namespace 与 ACL 元数据，再把租户、用户组、来源、时间和业务标签等条件推送到 OpenSearch。OpenSearch 执行 BM25、ANN 或 Hybrid Search，返回候选文档和排序分数。必要时再由检索层执行 RRF、分数归一化或轻量 Rerank。
 
 权限条件必须进入检索过程，不能先全局搜索再在应用层随意删掉不允许访问的结果。对于高敏感数据，可以在返回前用 PostgreSQL 中的权限版本再次核对候选 ID；为了避免过滤后结果数量不足，需要适度 over-fetch，并将权限更新延迟纳入评测。
+
+![在线 Search API 调用时序](/diagrams/vault-search-query-sequence.svg)
+
+[交互查看 HTML](/diagrams/vault-search-query-sequence.html)
+
 
 ### 3.6 结构化与非结构化数据处理流程
 
@@ -534,6 +554,15 @@ Microsoft 的 Harrier OSS v1 27B 是值得关注的高容量候选，模型卡�
 
 模型与索引必须版本化。至少记录 provider、model_id、固定模型 revision、维度、归一化策略、query/document 指令模板、Chunker 版本和输入 Token 统计。文档侧和查询侧要使用同一模型空间及匹配的指令约定；不同模型输出的向量不能直接混在同一 ANN 字段中比较。升级模型时应创建新的索引 generation，离线重算并与旧版本 shadow evaluation，达到质量和延迟门槛后再通过 alias 或路由切换。若要灰度双写，必须保留独立向量字段和模型版本，不能把两个语义空间拼成一个索引。
 
+![可替换 Embedding 服务架构](/diagrams/vault-embedding-platform.svg)
+
+[交互查看 HTML](/diagrams/vault-embedding-platform.html)
+
+![检索索引 Generation 切换状态机](/diagrams/vault-index-generation-lifecycle.svg)
+
+[交互查看 HTML](/diagrams/vault-index-generation-lifecycle.html)
+
+
 ## 7. Turbopuffer 的上游文档处理：从原始资料到可检索记录
 
 Bridgewater 的 Vault 收集来自 135 个外部来源的资料，也包括内部研究、写作、报告和会议录音。公开演讲确认了文档经过组织、索引和权限处理，但没有披露完整的解析器、OCR、ASR、Chunker、Embedding 模型和每个来源的 ETL 实现。因此，下面是依据公开演讲与 Turbopuffer API 还原出的工程流程，不应误认为是 Bridgewater 的内部原样架构。
@@ -599,6 +628,11 @@ OpenSearch 的 efficient k-NN filtering 已经比简单 post-filter 更完整。
 
 检索 API 必须从认证上下文推导 tenant_id 和权限过滤条件，不能允许调用者任意覆盖。索引文档中的权限字段属于安全边界的一部分，权限变化需要有独立的更新和回收流程。对于权限撤销，系统需要定义可接受的传播时间，并通过最终 ACL 校验降低索引更新延迟期间的数据暴露风险。
 
+![Vault 访问控制责任矩阵](/diagrams/vault-authorization-matrix.svg)
+
+[交互查看 HTML](/diagrams/vault-authorization-matrix.html)
+
+
 Namespace 与 OpenSearch index 不应一一对应。Namespace 是逻辑隔离和生命周期概念；Index、Shard 和 Routing 是物理布局决策。两者解耦后，才能根据文档数量、查询负载和租户增长重新分配数据。
 
 ## 9. 开放计算层：Iceberg、Spark 与 Trino
@@ -661,6 +695,11 @@ Spark 和 Trino 不是互相替代的产品。Spark 是通用分布式计算框�
 4. 业务服务继续通过自己的 API 访问 PostgreSQL Catalog、Search API 和受控计算任务，不直接把 Trino SQL 暴露给终端用户或 Agent。
 
 Trino 本身也需要治理：独立的身份认证、Catalog 凭据、行列权限策略、查询审计、Resource Groups、并发和扫描量限制都不可缺少。Trino 的统一 SQL 入口不会自动统一底层数据源的权限语义；应明确最终由 Trino 代理身份访问，还是保留用户身份传递，并验证两种模式的审计与授权行为。
+
+![Spark 与 Trino 的开放计算数据平面](/diagrams/vault-spark-trino-data-plane.svg)
+
+[交互查看 HTML](/diagrams/vault-spark-trino-data-plane.html)
+
 
 对当前阶段的结论是：**Spark 应该先作为开放批处理引擎进入目标架构；Trino 应该作为可选的联邦 SQL 层，在真实跨源查询需求出现时部署。** 最值得先做的不是同时建设 Spark 和 Trino 集群，而是用 Iceberg 建立一个 Snowflake 之外也能读取、写入和重算的数据路径。
 
