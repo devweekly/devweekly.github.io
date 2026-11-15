@@ -11,7 +11,7 @@ tags:
   - Snowflake
   - PostgreSQL
   - Vector Search
-description: "以 Bridgewater Vault 的亿级文档、百余数据源和高并发 Agent 检索为背景，分别设计 Snowflake、PostgreSQL 与 OpenSearch 主栈，比较容量、权限、过滤召回、成本和运维边界。"
+description: "以 Bridgewater Vault 的亿级文档和高并发 Agent 检索为背景，比较 Snowflake、PostgreSQL 与 OpenSearch 主栈，测算 OpenAI Embedding 成本，拆解 Turbopuffer 非结构化数据流水线与纯文本检索差异。"
 ---
 
 # Bridgewater Vault 架构复盘：Snowflake、PostgreSQL 与 OpenSearch 三种主栈
@@ -572,6 +572,12 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 ## 17. 最终建议
 
 对于已经拥有 Snowflake、OpenSearch、PostgreSQL 和 S3 的企业，我仍建议以 OpenSearch 作为统一在线检索引擎，PostgreSQL 管控制面和事务，S3 保存原始数据与可恢复快照，Snowflake 建立治理和评测闭环。这个建议不是因为另外两种主栈不能实现，而是因为 Vault 公开的负载画像把高并发在线检索和高选择性过滤放在了首位：Snowflake 必须先解决 Cortex Search 默认 QPS 与行数配额，PostgreSQL 则需要承担更复杂的向量索引、读写隔离和横向分片工作。若实际业务的 Agent QPS 低得多、数据已集中在 Snowflake，或 SQL 关系事务远比检索吞吐重要，前两种方案都可能更合适。不要一开始就把 pgvector、VectorChord、OpenSearch 和 Cortex Search 全部作为并行检索引擎部署。
+
+Embedding 不应该成为整个入库流水线的硬性步骤。建议先让全文和结构化字段覆盖所有可检索文档，再根据真实查询评测逐步扩大 Dense Vector 的覆盖范围。若确实要为约四亿条 Chunk 建立 OpenAI Embedding，按每条 512 Token 估算，3-small 使用 Batch 的一次性输入费用约 2,048 美元，3-large 约 13,312 美元；这只是模型 Token 费，不包含文档解析、索引、向量存储和后续重算。Turbopuffer Native Embeddings 默认新组织的 2M Token/分钟额度，则意味着同等回填任务的理论时间下限约 71 天，必须在项目计划中单独处理额度和吞吐，不应把它当成即时完成的写入副作用。
+
+
+
+纯文本检索的选择也应按产品真实语义来做：Snowflake 不用向量时走 SQL SEARCH + FULL_TEXT Search Optimization，而不是试图建立只有 TEXT INDEX 的 Cortex Search；PostgreSQL 若原生 ts_rank 无法满足相关性要求，可评估 pg_textsearch 或 ParadeDB pg_search；OpenSearch 则可直接用 BM25 作为完整的在线全文检索路径。只有当评测显示同义改写、概念描述和跨语言表达带来了明显的关键词召回缺口，才值得为对应 Chunk 增加 Embedding。
 
 这套组合可以较快复现 Turbopuffer 的主要业务能力，也能支持 Bridgewater Vault 一类的时间、来源、资产和权限过滤场景。真正不能直接复现的是对象存储原生的索引物理布局、索引与过滤结构的协同，以及查询节点无状态化的完整经济模型。
 
