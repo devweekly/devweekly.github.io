@@ -266,11 +266,37 @@ Trino 本身也需要治理：独立的身份认证、Catalog 凭据、行列权
 
 对当前阶段的结论是：**Spark 应该先作为开放批处理引擎进入目标架构；Trino 应该作为可选的联邦 SQL 层，在真实跨源查询需求出现时部署。** 最值得先做的不是同时建设 Spark 和 Trino 集群，而是用 Iceberg 建立一个 Snowflake 之外也能读取、写入和重算的数据路径。
 
+### 5.11 三种主栈的架构图与完整处理流程
+
+三种主栈并不是把同一张图换一个数据库名称。Snowflake 将目录、表变换和托管检索放在同一数据平台；PostgreSQL 把目录、权限、事务和检索组合进 SQL；OpenSearch 则把在线全文、向量和过滤查询作为核心，原始文档和业务目录仍由外部系统负责。下面三张图分别标出数据处理、索引构建、查询授权和证据回取的责任边界。
+
+![Snowflake 主栈架构](/diagrams/vault-snowflake-primary-stack.svg)
+
+[Snowflake 主栈交互查看](/diagrams/vault-snowflake-primary-stack.html)
+
+![PostgreSQL 主栈架构](/diagrams/vault-postgresql-primary-stack.svg)
+
+[PostgreSQL 主栈交互查看](/diagrams/vault-postgresql-primary-stack.html)
+
+![OpenSearch 主栈架构](/diagrams/vault-opensearch-primary-stack.svg)
+
+[OpenSearch 主栈交互查看](/diagrams/vault-opensearch-primary-stack.html)
+
+三种方案共用一条业务生命周期，但结构化与非结构化内容的摄取方式不同。结构化源通常通过 CDC、API 或批量数据接入，重点是 Schema、主键、单位、时间语义和数据质量；非结构化源先保存原件，再解析版面和正文，扫描件需要 OCR，会议录音需要 ASR，随后执行规范化、实体识别、权限映射和语义分块。两路数据在 Document Catalog 和检索投影处汇合。下面的流程图把从入库到证据回传的环节放在一起。
+
+![结构化与非结构化资料处理和检索流程](/diagrams/vault-document-processing-search-flow.svg)
+
+[文档处理与检索流程交互查看](/diagrams/vault-document-processing-search-flow.html)
+
 ## 6. Snowflake 主栈：治理和分析最统一，在线检索容量必须先验证
 
 Snowflake 可以作为 Vault 类平台的主栈。文档目录、Chunk、来源、实体、权限和版本都保存在 Snowflake 表中，Streams、Tasks、Dynamic Tables 或 Snowpipe 负责持续摄取与变换，Cortex Search 提供关键词、向量和混合检索。对于已经把研究数据和分析工作负载集中在 Snowflake 的机构，这种方式可以减少平台数量，让搜索与数据治理共享一套数据模型。
 
 ### 架构设计
+
+![Snowflake 主栈架构](/diagrams/vault-snowflake-primary-stack.svg)
+
+[交互查看 HTML](/diagrams/vault-snowflake-primary-stack.html)
 
 | 层次 | 组件与职责 | 设计要点 |
 |---|---|---|
@@ -316,6 +342,10 @@ Snowflake 主栈最适合数据本来就在 Snowflake、查询量中等、刷新
 PostgreSQL 主栈把文档目录、Chunk、权限关系、全文索引和向量索引尽量放在同一个数据库中。它的核心吸引力在于，文档版本、ACL 变更和索引任务状态可以在单一事务边界内维护；检索请求也可以在 SQL 中组合全文、向量和关系过滤。这种方案适合检索与复杂关系查询紧密耦合、数据库团队有能力承担分片和索引维护的组织。
 
 ### 架构设计
+
+![PostgreSQL 主栈架构](/diagrams/vault-postgresql-primary-stack.svg)
+
+[交互查看 HTML](/diagrams/vault-postgresql-primary-stack.html)
 
 | 层次 | 组件与职责 | 设计要点 |
 |---|---|---|
@@ -364,6 +394,10 @@ PostgreSQL 主栈的优点是事务、关系 JOIN、数据约束和权限关系�
 OpenSearch 把 BM25、向量 ANN、Hybrid Search、过滤、聚合和排序作为一等能力。对于查询主要围绕来源、时间、国家、市场、概念和用户权限展开的 Vault，OpenSearch 的数据模型与在线检索路径更直接，也更容易按搜索负载扩展节点和副本。
 
 ### 架构设计
+
+![OpenSearch 主栈架构](/diagrams/vault-opensearch-primary-stack.svg)
+
+[交互查看 HTML](/diagrams/vault-opensearch-primary-stack.html)
 
 | 层次 | 组件与职责 | 设计要点 |
 |---|---|---|
@@ -509,6 +543,33 @@ Bridgewater / Turbopuffer 联合演讲中的约四亿条向量记录，可以作
 
 这些数字假设每条向量记录只对一个 Chunk 计算一次 Embedding，并且该 Chunk 平均长度就是表中假设。它们不包括重试、模型版本迁移、重复文档重新计算和查询向量。真正上线前，应先抽样解析一批有代表性的研究报告、财报、邮件和会议转录，统计 Token 数的 P50/P90/P99，再把实际 Chunk 分布代入公式。不要使用“每篇文档平均两千 Token”这样的文件级假设来替代真实分块统计。
 
+### OpenAI Embedding 是否应该成为唯一模型
+
+使用 OpenAI 本身没有技术问题。托管模型省去了 GPU 容量、模型发布、推理优化和运行维护，Batch API 对历史语料回填也很合适。以本文前面的 4 亿条、每条 512 Token 估算，text-embedding-3-small 的一次 Batch 输入成本约 2,048 美元；仅为节省这笔一次性费用而搭建 GPU 集群，通常不划算。
+
+问题在于让 OpenAI 成为不可替换的系统边界。文档 Chunk、查询向量和索引如果直接依赖某个供应商的模型 ID、维度、输入指令和响应格式，模型更换就会变成一次全链路迁移。投研语料还有数据出域、第三方处理条款、供应商限额、批量回填排队和外部 API 可用性等要求。持续的 Query Embedding 费用虽然通常低于大规模索引存储，但 Agent 的多轮改写和高 QPS 会把调用量放大。
+
+企业常见的工程形态不是所有团队都从零训练模型，也不是每个应用自己直接请求 OpenAI。更稳妥的是提供统一的 Embedding API，在后面接托管模型或自部署模型。在线查询和历史回填应分开调度：在线池控制低延迟和突发并发，离线池使用大批次、动态批处理和可重放任务完成回填，避免数亿条历史任务挤占 Agent 的实时查询资源。
+
+自部署时，可以用 Hugging Face Text Embeddings Inference（TEI）或 vLLM 提供模型服务。TEI 面向 Embedding 工作负载，提供 token-based dynamic batching、优化推理内核、Prometheus 指标和 OpenTelemetry tracing，并已列出 Qwen3 Embedding 的支持；vLLM 的 pooling 模型服务则提供 OpenAI-compatible /v1/embeddings 接口，适合已有统一 vLLM 推理平台的组织。[TEI 文档](https://huggingface.co/docs/text-embeddings-inference/index) [vLLM Pooling Models](https://docs.vllm.ai/en/stable/models/pooling_models/)
+
+**可自部署且公开评测达到或超过 text-embedding-3-large 的候选，首先看 Qwen3-Embedding。**Qwen 官方模型卡给出同一份 MTEB Multilingual 对比表（引用的排行榜快照为 2025-05-24）：text-embedding-3-large 的 Mean(Task) 为 58.93、Retrieval 为 59.27；Qwen3-Embedding-4B 分别为 69.45、69.60；8B 分别为 70.58、70.88。两款 Qwen 模型支持 100 多种语言、32K 上下文和自定义输出维度。这个对比足以说明开源权重模型已经可以在通用多语言检索基准上达到更高分数，但不代表它在每一类金融语料和每种 Chunk 策略上都优于 OpenAI。[Qwen3-Embedding 模型卡与评测表](https://huggingface.co/Qwen/Qwen3-Embedding-4B)
+
+| 模型 | 参数规模 | 默认/最大维度 | 公开评测结果 | 适合的定位 |
+|---|---:|---:|---|---|
+| text-embedding-3-large | 托管 API | 3,072 | MTEB Multilingual Mean(Task) 58.93 / Retrieval 59.27 | 托管服务基线，维护成本最低 |
+| Qwen3-Embedding-4B | 4B | 2,560 | 同一表：69.45 / 69.60 | 自部署的首选对照组 |
+| Qwen3-Embedding-8B | 8B | 4,096 | 同一表：70.58 / 70.88 | 更重的模型，验证质量提升是否值得 GPU 成本 |
+| Harrier OSS v1 27B | 27B | 以模型卡为准 | 2026 年 MTEB v2 报告 Mean(Task) 约 74.27 | 高资源实验候选；其 MTEB v2 口径不能与上面旧版多语言表直接排序 |
+
+Microsoft 的 Harrier OSS v1 27B 是值得关注的高容量候选，模型卡标注 MIT License；但 27B 体量会显著提高 GPU 显存、并发服务和冷启动成本。它的 2026 MTEB v2 分数来自新版基准，不应与 Qwen 模型卡中 2025 年的 MTEB Multilingual 分数直接比较。[Harrier OSS v1 模型卡](https://huggingface.co/microsoft/harrier-oss-v1-27b) [MTEB Leaderboard](https://huggingface.co/spaces/mteb/leaderboard)
+
+如果希望先得到可操作的结果，我会用 Qwen3-Embedding-4B 与 text-embedding-3-large 对同一批金融文档做离线 A/B；只有当 4B 明显胜出或 8B 的收益足以覆盖 GPU 成本，才把向量生产切到自部署。若 GPU 平台已具备较高利用率，再评估 8B；Harrier 27B 更适合资源充足时作为质量上限实验，不建议直接作为第一个生产模型。模型卡公布的通用 MTEB 分数只是筛选线索，真正的验收指标应是目标语料上的 Recall@K、nDCG@10、过滤后的有效召回率和 p95 延迟。
+
+这里还要保留一个检索工程上的边界：金融研究中的证券代码、ISIN/CUSIP、报告编号、日期、数值和专有缩写，通常不应只交给 Dense Embedding。即使使用高分模型，全文 BM25、结构化过滤和精确字段检索也应覆盖全库；Embedding 用来补足同义改写、概念表达和跨语言召回。需要进一步提升 Top-K 排名时，可以在候选集上增加专门的 Reranker，而不是把 Embedding 模型单独承担所有排序职责。
+
+模型与索引必须版本化。至少记录 provider、model_id、固定模型 revision、维度、归一化策略、query/document 指令模板、Chunker 版本和输入 Token 统计。文档侧和查询侧要使用同一模型空间及匹配的指令约定；不同模型输出的向量不能直接混在同一 ANN 字段中比较。升级模型时应创建新的索引 generation，离线重算并与旧版本 shadow evaluation，达到质量和延迟门槛后再通过 alias 或路由切换。若要灰度双写，必须保留独立向量字段和模型版本，不能把两个语义空间拼成一个索引。
+
 ### Turbopuffer 如何承接非结构化数据：它是检索层，不是文档 ETL 平台
 
 Bridgewater 的 Vault 收集来自 135 个外部来源的资料，也包括内部研究、写作、报告和会议录音。公开演讲确认了文档经过组织、索引和权限处理，但没有披露完整的解析器、OCR、ASR、Chunker、Embedding 模型和每个来源的 ETL 实现。因此，下面是依据公开演讲与 Turbopuffer API 还原出的工程流程，不应误认为是 Bridgewater 的内部原样架构。
@@ -639,6 +700,16 @@ Namespace 与 OpenSearch index 不应一一对应。Namespace 是逻辑隔离和
 | 计算与存储解耦 | Remote Store 可部分实现 | 对象存储优先的存储引擎 |
 | 索引重建 | 外部快照、批次清单和 alias 切换 | 服务自身管理 |
 
+### Turbopuffer 的底层：不是 PostgreSQL 或 OpenSearch，而是自研的对象存储原生引擎
+
+从公开资料看，Turbopuffer 的查询进程是 Rust binaries，服务节点访问对象存储中的数据库数据；每个 Namespace 有独立对象存储前缀，写入先追加 WAL 文件，成功响应意味着数据已经持久化到对象存储。随后索引异步构建，尚未进入索引的数据仍可通过较慢的扫描路径查询。NVMe SSD 和内存保存热点数据，查询节点可以为 Namespace 做缓存亲和路由，但节点本身不是唯一数据副本。[Turbopuffer Architecture](https://turbopuffer.com/docs/architecture) [Turbopuffer Concepts](https://turbopuffer.com/docs/concepts)
+
+它的索引选择也与 PostgreSQL 和 OpenSearch 不同。向量 ANN 基于 SPFresh 的中心点聚类索引，而不是 HNSW 或 DiskANN 图；这种组织方式把查询集中到若干向量簇，减少对象存储的随机往返和写放大。全文检索是针对对象存储设计的倒排 BM25 索引，属性过滤还有自己的倒排/精确索引，并且知道向量聚类的组织结构，能协助高选择性过滤下的 ANN 搜索。WAL、ANN、BM25、Attribute Index 和冷热缓存共同构成它的数据库内核。[Turbopuffer Architecture](https://turbopuffer.com/docs/architecture)
+
+从版本演进可以更清楚地看到它不是传统搜索集群的简单托管。v1/v2 以向量地址和聚类布局作为主要索引基础，其他查询能力围绕这个向量优先的数据布局扩展；官方在 v3 设计说明中明确指出，这种做法带来了存储放大、写放大和查询向量化受限的问题，因此开始把 ANN 从主索引改成二级索引。v3 公布的方向是列式、Struct-of-Arrays 数据布局，利用 Constant、Dictionary、RLE、Frequency 等编码压缩属性，并让查询算子直接在压缩数据上执行；查询执行也改为向量化流水线。这些属于官方公开的 v3 设计和演进信息，不应被误读为 PostgreSQL 的表存储或 Lucene 的 Segment 实现。[Turbopuffer v3: RIP, vector database](https://turbopuffer.com/blog/rip-vector-database) [Turbopuffer v3 development log](https://turbopuffer.com/v3) [Fully vectorized query execution](https://turbopuffer.com/blog/fully-vectorized-search-engine)
+
+因此，比较合理的判断是：Turbopuffer 的核心是自研的分布式检索与存储引擎，公开架构使用 Rust 服务、对象存储持久化、WAL、SPFresh ANN、BM25/属性索引、NVMe/内存缓存和自有查询执行器。它不是 PostgreSQL 加 pgvector，也不是 OpenSearch/Lucene 集群换了一个 API。公开资料没有完整披露它内部每一个低层库或存储文件的实现，因而不能进一步断言完全没有借用第三方组件；但没有证据支持把 PostgreSQL 或 OpenSearch 视作其底层核心。
+
 OpenSearch Remote Store 是重要的演进方向。Remote-backed storage 可以把 translog 和 Lucene segment 持久化到 S3、GCS 或 Azure Blob；使用 segment replication 时，副本可以从共享远端 segment store 获取数据，减少主分片向副本直接复制文件的负担。[OpenSearch Remote-backed storage](https://docs.opensearch.org/latest/tuning-your-cluster/availability-and-recovery/remote-store/)
 
 但它仍然是 OpenSearch 的分片存储架构。节点恢复、分片分配、查询节点本地资源和远端文件缓存仍然需要集群管理。它提升了数据耐久性和复制方式，并不自动把 OpenSearch 变成可随时销毁的无状态查询层。
@@ -649,7 +720,7 @@ OpenSearch Remote Store 是重要的演进方向。Remote-backed storage 可以�
 
 最近一轮检索基础设施的变化，重点已经不只是 HNSW 参数或 Embedding 模型，而是如何减少向量索引对内存的依赖、如何在对象存储上直接搜索，以及如何让全文、向量和结构化查询共享更高效的执行路径。
 
-### 14.1 OpenSearch：JVector 把 DiskANN 带进搜索集群
+### 15.1 OpenSearch：JVector 把 DiskANN 带进搜索集群
 
 OpenSearch 3.5 引入 JVector 插件。它使用纯 Java 实现 DiskANN 风格的近似最近邻搜索，向量索引从磁盘读取量化表示，再通过重排改善召回。官方文档还描述了并发插入、增量合并和量化码本逐步优化等能力。[OpenSearch JVector plugin](https://docs.opensearch.org/latest/install-and-configure/additional-plugins/opensearch-jvector/)
 
@@ -657,13 +728,13 @@ OpenSearch 3.5 引入 JVector 插件。它使用纯 Java 实现 DiskANN 风格�
 
 不过 JVector 目前有重要的集成限制：它是单独安装的插件，不能与原有的 opensearch-knn 插件共存；当前官方限制还指出，Neural Search 插件不识别 JVector engine，因此无法直接使用上游 Neural Search 的 neural 和 hybrid 查询路径。需要 Hybrid Search 的团队应先验证实际版本、查询管道和排序融合方式，不能只根据 DiskANN 能力就决定替换现有引擎。
 
-### 14.2 OpenSearch Remote Store：远端持久化更完整，但还不是无状态搜索
+### 15.2 OpenSearch Remote Store：远端持久化更完整，但还不是无状态搜索
 
 Remote Store 让 translog、segment 和集群状态可以写入对象存储，Segment Replication 又让副本直接读取远端 segment。它改善了分片恢复和复制模型，也为降低本地副本存储开销创造条件。
 
 这是一条渐进式路线：先把索引段可靠地放到远端，再优化缓存和恢复路径。它适合已经采用 OpenSearch、希望降低本地持久化成本的企业，但不应被描述为完整的计算存储分离。查询节点仍然需要运行 OpenSearch 并管理分片。
 
-### 14.3 Lance 与 RemoteANN：对象存储原生向量检索开始有专门设计
+### 15.3 Lance 与 RemoteANN：对象存储原生向量检索开始有专门设计
 
 Lance 的开源存储格式支持本地文件和多种对象存储，并把向量搜索、全文检索和 SQL 分析放在同一份列式数据集上。[Lance](https://github.com/lance-format/lance)
 
@@ -673,25 +744,25 @@ Lance 的开源存储格式支持本地文件和多种对象存储，并把向�
 
 开源项目 Firn 则把 LanceDB 与 foyer 缓存结合，构建 RAM、NVMe 到 S3 的分层检索服务，提供多租户的向量、BM25 和 Hybrid Search。[Firn repository](https://github.com/gordonmurray/firnflow) 它是值得跟踪的 Turbopuffer 式开源实现，不过当前更适合作为 POC 和架构参考。上线前仍需要自行验证并发写入、删除语义、恢复、权限隔离、冷查询以及大规模数据下的缓存行为。
 
-### 14.4 Quickwit：对象存储上的全文搜索已经有成熟架构实践
+### 15.4 Quickwit：对象存储上的全文搜索已经有成熟架构实践
 
 Quickwit 采用 Rust 实现，支持把索引放在 S3、Azure Blob 和 GCS 等云对象存储上，并让 Indexer 与 Searcher 独立扩缩。它的核心适用场景是日志、追踪、审计记录和其他以追加写入、不可变数据为主的内容。[Quickwit architecture](https://quickwit.io/docs/overview/introduction)
 
 它证明了在对象存储上做低成本全文搜索并不一定要自己写完整搜索引擎。对于日志和审计检索，Quickwit 值得与 OpenSearch 比较；但它的主要定位仍是全文搜索和可观测性，不应直接当成带有同等向量过滤语义的 Turbopuffer 替代品。
 
-### 14.5 PostgreSQL 向量检索：pgvector 之外还有 VectorChord
+### 15.5 PostgreSQL 向量检索：pgvector 之外还有 VectorChord
 
 如果希望把关系数据和向量检索放在同一个 PostgreSQL 查询里，可以继续关注 VectorChord。它在 PostgreSQL 内提供 IVF、RaBitQ 量化、磁盘友好索引和重排等能力；VectorChord-BM25 则提供 PostgreSQL 原生 BM25 检索扩展。[VectorChord](https://github.com/tensorchord/VectorChord) [Hybrid Search documentation](https://docs.vectorchord.ai/vectorchord/use-case/hybrid-search.html)
 
 这比简单地在 PostgreSQL 中加一个 pgvector 列更进一步，也适合需要 SQL JOIN、关系过滤和语义检索组合的系统。它仍然属于 PostgreSQL 的数据和计算模型，没有解决对象存储上的无状态搜索问题。若 OpenSearch 已经是主要检索引擎，再把所有向量复制到 VectorChord 通常只会增加写入和一致性成本。
 
-### 14.6 Vespa：复杂过滤和排序值得单独评估
+### 15.6 Vespa：复杂过滤和排序值得单独评估
 
 Vespa 把全文检索、向量搜索、过滤表达式和自定义排序模型放在同一个查询与排序体系中。它的 HNSW 搜索支持过滤，并提供 ACORN 等优化方向，也支持多个向量字段和多向量文档。[Vespa approximate nearest-neighbor search](https://docs.vespa.ai/en/querying/approximate-nn-hnsw.html)
 
 如果检索质量高度依赖复杂过滤、多个排序特征和业务相关性模型，Vespa 值得与 OpenSearch 进行真实数据对比。它不是以对象存储为持久事实来源的 Turbopuffer 式架构，因此重点是检索质量与排序能力，而非存储成本模型。
 
-### 14.7 Turbopuffer v3：向量索引不再是存储主索引
+### 15.7 Turbopuffer v3：向量索引不再是存储主索引
 
 Turbopuffer 自己也在改变架构。2026 年 9 月公开的 v3 设计说明计划把文档和索引布局转向列式存储，并把 ANN 从主索引变为普通的二级索引；10 月的开发日志进一步描述了端到端向量化查询执行，让批处理成为算子之间的默认数据交换方式。[RIP, vector database](https://turbopuffer.com/blog/rip-vector-database) [The first search engine with fully vectorized query execution](https://turbopuffer.com/blog/fully-vectorized-search-engine)
 
@@ -744,6 +815,8 @@ Embedding 不应该成为整个入库流水线的硬性步骤。建议先让全�
 
 
 纯文本检索的选择也应按产品真实语义来做：Snowflake 不用向量时走 SQL SEARCH + FULL_TEXT Search Optimization，而不是试图建立只有 TEXT INDEX 的 Cortex Search；PostgreSQL 若原生 ts_rank 无法满足相关性要求，可评估 pg_textsearch 或 ParadeDB pg_search；OpenSearch 则可直接用 BM25 作为完整的在线全文检索路径。只有当评测显示同义改写、概念描述和跨语言表达带来了明显的关键词召回缺口，才值得为对应 Chunk 增加 Embedding。
+
+模型层不必在 OpenAI 和自建之间一次性二选一。先把 Embedding API 做成可替换服务，OpenAI 继续作为线上基线和回填选项；内部模型的第一轮对照使用 Qwen3-Embedding-4B，服务端优先评估 TEI，若企业已有统一 vLLM 平台则复用其 Embeddings API。只有实际语料评测、数据驻留要求或持续吞吐证明自部署有收益，再切到 8B 或更大的模型。四亿条向量的单次 OpenAI Batch 费用并不高，GPU 利用率、运维和模型升级成本必须一起核算。
 
 这套组合可以较快复现 Turbopuffer 的主要业务能力，也能支持 Bridgewater Vault 一类的时间、来源、资产和权限过滤场景。真正不能直接复现的是对象存储原生的索引物理布局、索引与过滤结构的协同，以及查询节点无状态化的完整经济模型。
 
@@ -831,5 +904,15 @@ Embedding 不应该成为整个入库流水线的硬性步骤。建议先让全�
 - [Trino query pushdown](https://trino.io/docs/current/optimizer/pushdown.html)
 - [Trino connector ecosystem](https://trino.io/ecosystem/data-source)
 
+
+- [Qwen3-Embedding 模型卡与 MTEB Multilingual 评测](https://huggingface.co/Qwen/Qwen3-Embedding-4B)
+- [Microsoft Harrier OSS v1 27B 模型卡](https://huggingface.co/microsoft/harrier-oss-v1-27b)
+- [MTEB Leaderboard](https://huggingface.co/spaces/mteb/leaderboard)
+- [Hugging Face Text Embeddings Inference](https://huggingface.co/docs/text-embeddings-inference/index)
+- [TEI Supported Models and Hardware](https://huggingface.co/docs/text-embeddings-inference/en/supported_models)
+- [vLLM Pooling Models and OpenAI-compatible Embeddings API](https://docs.vllm.ai/en/stable/models/pooling_models/)
+- [Turbopuffer v3 storage-engine development log](https://turbopuffer.com/v3)
+- [Turbopuffer Fully Vectorized Query Execution](https://turbopuffer.com/blog/fully-vectorized-search-engine)
+- [Turbopuffer Concepts: SPFresh, Attribute Index, WAL and Cache Hierarchy](https://turbopuffer.com/docs/concepts)
 
 资料核对日期：2026-11-15。产品能力、插件限制和开发路线以对应官方文档及项目资料为准；性能和生产成熟度仍需在目标数据集、硬件和查询分布下独立验证。
