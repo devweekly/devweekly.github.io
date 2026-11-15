@@ -16,13 +16,13 @@ description: "从 Anthropic Dreaming 和社区实践出发，梳理开源记忆�
 
 # Agent Memory 不只是 RAG：从 Anthropic Dreaming 到可落地的开源架构
 
-Anthropic 的 [Components of Agent Memory](https://www.anthropic.com/research/components-of-agent-memory) 讨论的不是“给 Agent 接一个向量库”，而是一个更完整的问题：Agent 在多个 Session 中工作，怎样保留有用经历，修正过时结论，并在下一次任务开始时只带入真正相关的信息。
+Agent 连续工作几天、跨多个 Session 修改同一个项目时，真正有用的往往不是上一轮对话的摘要，而是已经确认的项目约定、用户纠正过的错误、做过的决策，以及这些信息后来有没有变化。
 
-这件事很容易被简化成 Claude Code Auto Memory 的复刻。但值得借鉴的是背后的机制：保留原始经历，从经历中提炼候选记忆，再由后台过程重新检查、合并和修正。公开的 Runtime 生命周期 API、持久化事件记录、独立 Memory Store 和后台 Worker，已经足以实现这套思路，不必依赖 Claude Code 未公开的内部实现。
+把历史消息放进向量库，只解决了“以后能不能搜到”；把对话压缩成摘要，只解决了“当前 Session 怎样继续”。两者都没有回答：哪些经历值得留下，旧事实何时失效，错误记忆怎样纠正，以及下一次任务应该注入多少背景。
 
-本文从三个层面展开：先看 Anthropic 的设计和社区使用反馈，再比较现有开源实现，最后给出一套可以接入 Copilot SDK、DeepAgents 和 Pi 的共享架构。核心判断是：**Runtime 可以不同，记忆模型和治理规则不应该各做一套。**
+Anthropic 的 [Components of Agent Memory](https://www.anthropic.com/research/components-of-agent-memory) 把这些问题放进同一套记忆生命周期里，Dreaming 是其中最值得关注的部分。本文先拆解这套机制和现有开源实现，再给出一套可接入 Copilot SDK、DeepAgents 与 Pi 的共享架构。重点不是复刻某个产品，而是把事件、记忆、后台整理和 Runtime 接入的边界划清楚。
 
-## 1. Anthropic 的设计到底解决什么问题
+## 1. 长期记忆和 RAG、Compaction 不是一回事
 
 传统 RAG 会把文档切块、建立索引，再在请求时检索相关内容。它能让模型找到已有信息，却不会自动判断一次长任务中哪些经历值得保留，也不会主动验证旧结论是否已经失效。对话摘要同样不够：它主要压缩当前上下文，目标是让当前 Session 继续运行，不是建立一个能够跨 Session 演化的知识体系。
 
@@ -37,7 +37,7 @@ Anthropic 将 Agent Memory 分成四层：
 
 四层职责不同。原始 Transcript 应尽量保留来源，不应直接全部塞进 System Prompt；Memory Notes 是经过提炼的候选知识，但仍可能出错；Wiki 或知识图谱帮助 Agent 找到关联信息，却不应成为脱离来源的第二套事实源；Injected Context 则是按当前任务和 Token 预算挑选出来的视图，不是完整知识库。
 
-### 1.1 Dreaming 是记忆维护过程，不是定时摘要
+### 1.1 Dreaming：回看经历，修正已有记忆
 
 文章最有价值的部分是 Dreaming。Agent 在工作时可以记录显著事件，但它未必能立即判断一条信息未来是否重要，也可能把当时的猜测误当成事实。Dreaming 让后台任务重新检查历史记录，以来源证据校正旧笔记，合并重复项，识别冲突和过时内容，再生成适合未来检索的知识表示。
 
@@ -45,13 +45,13 @@ Anthropic 的示例包括：Agent 根据任务反馈修正此前回答错误的�
 
 这并不意味着每次 Session 结束都必须运行一次昂贵的总结。整理任务可以由事件数量、时间窗口、重复召回、错误反馈或队列积压触发；一次任务也可以只处理某个 User、Project 或 Agent 的部分记忆。关键是把它设计成可重试、可追踪、可评估的后台工作，而不是放在交互式请求的关键路径里。
 
-### 1.2 不要把 Compaction 当成 Long-term Memory
+### 1.2 Compaction 只管理当前会话
 
 Compaction 解决的是当前上下文窗口接近上限时，如何压缩旧消息并继续当前任务。Long-term Memory 解决的是多个 Session 之间，哪些知识应该留下、如何纠错和如何再次使用。
 
 两者会共享原始对话材料，但生命周期不同。Pi 官方文档也把 Compaction 和 Branch Summarization 作为会话上下文管理机制：它们会保存摘要和保留边界，但这不等于一套完整的跨 Session 知识维护系统。参见 [Pi Compaction Reference](https://pi.dev/docs/latest/compaction)。
 
-### 1.3 社区反馈：记忆系统最容易出问题的地方
+### 1.3 真正的难题是记忆噪声和事实漂移
 
 开源项目的功能列表不能说明记忆在长期使用中是否真的有帮助。Hacker News 和 Reddit 的讨论里，反复出现的并不是“向量检索还不够准”，而是自动记忆写入了太多短期细节、旧事实没有及时失效，以及错误内容被后续 Session 当成背景继续使用。
 
@@ -61,11 +61,11 @@ Compaction 解决的是当前上下文窗口接近上限时，如何压缩旧消
 
 这些反馈对架构有直接影响：原始事件可以完整留存，但不是每条事件都应该晋升为长期记忆；记忆必须保留来源和有效时间；Dreaming 的修改要能检查和回滚；评估要看任务结果、错误注入和上下文开销，而不只是召回率或记忆条数。相关讨论和实验链接放在文末，数据应理解为社区案例，不是独立验证过的普遍结论。
 
-## 2. 开源项目：哪些部分已经可以复用
+## 2. 现有开源实现各自解决了哪一段
 
-目前没有一个开源项目能在所有 Runtime 上原样提供 Anthropic 的全部四层能力。更实际的做法是选用已有项目中成熟的部分，再补齐缺失的 Runtime Adapter 或后台 Worker。
+没有哪个开源项目能直接覆盖所有 Runtime 和完整记忆生命周期。下面按它们实际提供的能力来看，不按功能数量排名。
 
-### 2.1 OpenClaw：最接近完整 Dreaming 流程的参考实现
+### 2.1 OpenClaw：从事件到分阶段整理
 
 [OpenClaw Memory](https://docs.openclaw.ai/concepts/memory) 和 [Dreaming](https://docs.openclaw.ai/concepts/dreaming) 值得作为架构参考。它没有把所有长期记忆塞进一份不断增长的摘要，而是按生命周期使用不同文件：
 
@@ -80,7 +80,7 @@ OpenClaw 的 Dreaming 分为 Light、REM 和 Deep 三个阶段。Light 整理近
 
 OpenClaw 还提供从 Claude Code 自动记忆目录导入 Markdown 文件的功能，但不会把 Claude Code 的完整 Session Transcript 一并导入。这说明可以复用公开的文件约定和迁移入口，不需要反向工程 Claude Code 的运行时。
 
-### 2.2 Pi 生态：从轻量 Markdown 到完整睡眠周期
+### 2.2 Pi 生态：最适合做本地试验
 
 Pi 的社区实现最丰富，且与 TypeScript Runtime 的结合比较直接。
 
@@ -134,7 +134,7 @@ pi install npm:pi-sleep-agent
 
 要注意两点：它不是 Cognee 官方团队维护的 Pi 插件；在 SDK 模式下，实体抽取、Embedding 和搜索补全使用扩展单独配置的模型与服务，并不会自动复用 Pi 当前的模型调用。另外，官方集成文档说明 Recall 并非每轮自动执行，Agent 需要主动调用 `cognee_recall`。因此它更适合承担 Memory Representations 和关系检索，不是完整的自动记忆生命周期。
 
-### 2.3 其他可以作为 Memory Engine 的项目
+### 2.3 独立 Memory Engine 与图谱项目
 
 如果目标是给多个 Runtime 提供共享记忆服务，可以研究以下项目：
 
@@ -148,15 +148,15 @@ pi install npm:pi-sleep-agent
 
 这里要区分 Memory Engine 与 Agent Runtime。Mem0、Hindsight、Cognee 和 Graphiti 更适合提供记忆存储、整理或检索能力；Letta 则把 Agent 本身也纳入框架。它们都不能仅凭某一项功能就被视为完整复制 Anthropic 的架构。
 
-## 3. 架构设计：共享 Memory Core，Runtime 只负责接入
+## 3. 共享架构：Runtime 负责接入，Core 负责记忆
 
-Memory 能力拆成两部分：Runtime Adapter 负责接入各自框架；Memory Core 负责事件归一化、记忆提取、整理、检索和生命周期管理。后台 Dream Worker 与 Agent 的交互循环独立运行。
+这里把系统分成三块：Runtime Adapter 处理框架生命周期；Memory Core 管事件、记忆记录和检索；Dream Worker 在后台提取、校验和整理记忆。Agent 的主循环不负责维护长期知识。
 
 ![统一 Agent Memory 架构：三个 Runtime Adapter 接入共享 Memory Core](/diagrams/agent-memory-reference-architecture.svg)
 
 *图源：[HTML 版本](/diagrams/agent-memory-reference-architecture.html)。*
 
-这张图表达的是逻辑职责，不要求第一版就部署成多个服务。个人开发环境可以是一个 Node.js 进程加 SQLite；团队环境可以将 API、Worker 和数据库分开运行。拆分应由并发、故障隔离和部署边界驱动，而不是先假设需要微服务。
+图中是职责边界，不是部署拓扑。个人环境可以先用一个 Node.js 进程和 SQLite；出现并发、故障隔离或独立扩缩容需求后，再拆 API、Worker 和存储。
 
 ### 3.1 Core 的职责和最小接口
 
@@ -243,7 +243,7 @@ interface MemoryService {
 
 **MemoryRecord 是当前可检索的长期知识。** 它应保留来源引用、更新时间、有效时间和生命周期状态。旧事实不一定要物理覆盖；例如某个服务原来运行在 us-east-1，后来迁移到 eu-central-1，应把旧记录标记为已被替代，并保留它曾经有效的时间范围。
 
-记忆类别可以从五种开始：Profile / Preference、Episodic、Semantic、Procedural 和 Decision。它们分别用于用户偏好、任务经历、稳定事实、操作经验和已经做出的设计或业务决策。当前执行计划和临时任务状态应留在 Session 或 Workflow State 中，不能都当成长久知识保存。
+记忆类别先分五种即可：Profile / Preference 保存用户偏好，Episodic 保存任务经历，Semantic 保存相对稳定的事实，Procedural 保存操作经验，Decision 保存已经做出的设计或业务决策。当前执行计划和临时任务状态仍属于 Session 或 Workflow State，不要混进长期记忆。
 
 ### 3.3 存储先简单，按检索需求逐步增加组件
 
@@ -257,9 +257,9 @@ interface MemoryService {
 
 不要在第一版同时引入 SQLite、PostgreSQL、Qdrant、Neo4j 和独立搜索服务。它们会让事件一致性、删除语义、迁移和备份复杂化。一个数据库先承担事件、结构化记忆和关键词检索，已经足够验证架构。
 
-## 4. Dream Worker：从原始经历到可用记忆
+## 4. Dream Worker：候选记忆怎样变成长期知识
 
-Dream Worker 不应只是一个“把最近 N 条消息总结成 Markdown”的 Prompt。它需要一个有状态的处理流程。
+Dream Worker 不是定时摘要任务。它要能追踪候选项从哪里来、经过哪些校验、是否晋升，以及后续是否被替代。
 
 ![Dreaming 流程：从原始事件、候选事实到校验、合并、晋升和效果评估](/diagrams/agent-memory-dreaming-flow.svg)
 
@@ -326,7 +326,7 @@ Replay 不应该只是测试检索接口是否返回了结果。对一组真实�
 
 可以把每次 Replay 的结果写入评估日志，用于调整候选晋升门槛和检索策略。不能只追求记忆召回率；一个总能召回但经常过时、污染上下文或让任务结果变差的记忆系统，并不是更好的记忆系统。
 
-## 5. 安全边界：隔离、来源与删除
+## 5. 治理边界：隔离、来源、删除和故障
 
 记忆会长期影响 Agent 的行为，因此 Memory Store 本身也是一个新的输入信任边界。它不应因为内容被保存过，就自动拥有更高的指令优先级。
 
@@ -340,11 +340,11 @@ Replay 不应该只是测试检索接口是否返回了结果。对一组真实�
 
 **记忆故障不应阻止 Agent 工作。** 检索超时、Worker 崩溃或索引损坏时，Agent 应能够继续使用当前 Session 和正常工具完成任务；后台任务通过 Outbox、幂等事件 ID 和重试处理恢复。对于检索失败，要能区分“没有记忆”和“记忆服务不可用”，不能让两者表现为同一个空结果。
 
-## 6. Runtime Adapter：接入现有 Agent 框架
+## 6. 接入三个 Runtime
 
-三个框架的关键差异在于：事件从哪里来、上下文在哪个时点注入、后台整理由谁触发。它们不需要拥有相同的 Session 数据格式，但应映射到同一个内部事件和记忆模型。
+三个 Runtime 的接入差异主要在生命周期：事件从哪里捕获、记忆何时注入、后台整理由谁触发。Adapter 负责处理这些差异，Core 不应因此分裂成三套数据模型。
 
-### 6.1 GitHub Copilot SDK：用 Hooks 和事件流接入独立 Memory Core
+### 6.1 GitHub Copilot SDK
 
 Copilot SDK 的定位是把 Copilot CLI 的 Agent Runtime 嵌入应用，而不是提供一套长期记忆数据库。SDK 已有正式的 Session Hooks 和 Streaming Events API，足以建立 Memory Adapter。
 
@@ -410,7 +410,7 @@ session.on((event) => {
 
 参考：[Copilot SDK Hooks](https://github.com/github/copilot-sdk/blob/main/docs/hooks/hooks-overview.md)、[Session Lifecycle](https://github.com/github/copilot-sdk/blob/main/docs/hooks/session-lifecycle.md)、[Streaming Events](https://github.com/github/copilot-sdk/blob/main/docs/features/streaming-events.md)、[Session Persistence](https://github.com/github/copilot-sdk/blob/main/docs/features/session-persistence.md)。
 
-### 6.2 LangChain DeepAgents：把 Store 和 Consolidation Agent 分开
+### 6.2 DeepAgents 与 LangGraph Store
 
 DeepAgents 已将长期记忆做成框架的一等能力。默认的 Thread State 和 Checkpointer 保存当前 Thread 的执行状态；跨 Thread 的长期记忆使用 LangGraph Store。Memory 以文件形式暴露给 Agent，Agent 可以读取或修改这些文件，Backend 决定实际存储在哪里。
 
@@ -463,7 +463,7 @@ LangMem 可以提供记忆处理组件。它的 `create_memory_store_manager` �
 
 如果新 Agent 已经基于 LangGraph / DeepAgents 开发，优先使用它原生的 StoreBackend、Memory Files 和独立 Consolidation Agent。不要为了得到一个记忆库而再包一层 Mem0；只有需要跨多个不同 Runtime 共享同一记忆服务时，才把 Memory Core 外置。
 
-### 6.3 pi.dev / pi-mono：利用 Extension 生命周期做自动捕获和注入
+### 6.3 Pi Extension
 
 Pi 是三个 Runtime 中最容易做本地快速试验的一个。Extension 可以在消息、工具、Agent 和 Session 生命周期的不同阶段运行逻辑，并能通过 `before_agent_start` 修改当前 System Prompt 或插入一条发给模型的自定义消息。
 
@@ -513,9 +513,30 @@ Pi 的 Extension API 足以实现这些能力，不需要改动 pi-mono 内核�
 
 参考：[Pi Extensions](https://pi.dev/docs/latest/extensions)、[Pi SDK](https://pi.dev/docs/latest/sdk)、[Pi Compaction](https://pi.dev/docs/latest/compaction)。
 
-## 7. 实施顺序：先验证，再扩展
+## 7. 落地顺序与 Runtime 选型
 
-不建议同时把三个 Runtime、三种存储和完整知识图谱全部上线。最短的验证路径如下。
+先不要同时建设三个 Runtime Adapter、向量检索和知识图谱。先用一个 Runtime 跑通事件捕获、候选提取、记忆更新、检索、删除和效果评估，再决定哪些能力值得抽成共享服务。
+
+### 三个 Runtime 的边界
+
+| 维度 | Copilot SDK | DeepAgents | pi.dev / pi-mono |
+| --- | --- | --- | --- |
+| 原生长期记忆 | 无完整 Memory Engine | Filesystem + StoreBackend | 通过 Extension / 社区 Package |
+| 自动捕获 | Events + Hooks | Agent State / Tools / Middleware | Extension Events |
+| 上下文注入 | `onSessionStart` | `memory` 文件、Backend、Middleware | `before_agent_start` |
+| 后台整理 | 应用自建 Worker | Consolidation Agent + Cron | 扩展或外部 Dream Worker |
+| 可直接参考的项目 | Memory Core Adapter | LangMem、官方 Consolidation 示例 | pi-hermes-memory、pi-sleep-agent |
+| 推荐定位 | 企业应用中的 Runtime Adapter | 复杂 Agent 的执行和后台管理框架 | 本地试点和快速验证 |
+
+**如果当前主要目标是验证 Memory 机制，先选 Pi。** `pi-hermes-memory` 能快速验证自动捕获与跨 Session 检索，`pi-sleep-agent` 能验证候选记忆、后台整理和 Replay。它们提供了真实可运行的实现，不需要先写一套空框架。
+
+**如果要把 Memory 做成企业内部公共能力，Copilot SDK 是合适的接入对象。** 通过其公开事件和 Hooks 接入统一 Memory API，避免依赖 Copilot CLI 私有文件结构。对于应用已经使用 Copilot SDK 的场景，这条路径改动范围小，也便于和现有审计、身份和业务系统集成。
+
+**如果 Agent 本身是基于 LangGraph 构建，优先使用 DeepAgents 的 Store 和 Memory Files。** 它的长期记忆与 Thread 状态边界清楚，官方也给出了后台 Consolidation Agent 的落地方式。LangMem 可以按需引入，不必为一个提取函数再建立第二套 Memory Store。
+
+## 7. 落地顺序与 Runtime 选型
+
+不要一开始就同时铺开三个 Runtime、多个数据库和知识图谱。按下面的顺序验证，每一步都应有真实任务和验收结果。
 
 ### 第一步：用 Pi 完成端到端试点
 
@@ -549,30 +570,9 @@ Copilot Adapter 不应直接访问数据库表，而是通过 Memory SDK 调用�
 
 此时再决定是否部署向量数据库、图数据库和独立检索服务。不要在评估前先为它们付出部署、备份、权限和一致性成本。
 
-## 8. Runtime 怎么选
+第一版的验收重点不是记忆条数，而是几件具体的事：重复事件不会产生重复记忆；不同 User 和 Project 之间不会串数据；已被替代的事实不会再作为当前状态返回；用户要求删除后，主记录和派生索引都无法召回；注入记忆后，任务结果确实有所改善，或者至少没有变差。达不到这些条件，先不要扩大自动写入范围。
 
-| 维度 | Copilot SDK | DeepAgents | pi.dev / pi-mono |
-| --- | --- | --- | --- |
-| 原生长期记忆 | 无完整 Memory Engine | Filesystem + StoreBackend | 通过 Extension / 社区 Package |
-| 自动捕获 | Events + Hooks | Agent State / Tools / Middleware | Extension Events |
-| 上下文注入 | `onSessionStart` | `memory` 文件、Backend、Middleware | `before_agent_start` |
-| 后台整理 | 应用自建 Worker | Consolidation Agent + Cron | 扩展或外部 Dream Worker |
-| 可直接参考的项目 | Memory Core Adapter | LangMem、官方 Consolidation 示例 | pi-hermes-memory、pi-sleep-agent |
-| 推荐定位 | 企业应用中的 Runtime Adapter | 复杂 Agent 的执行和后台管理框架 | 本地试点和快速验证 |
-
-**如果当前主要目标是验证 Memory 机制，先选 Pi。** `pi-hermes-memory` 能快速验证自动捕获与跨 Session 检索，`pi-sleep-agent` 能验证候选记忆、后台整理和 Replay。它们提供了真实可运行的实现，不需要先写一套空框架。
-
-**如果要把 Memory 做成企业内部公共能力，Copilot SDK 是合适的接入对象。** 通过其公开事件和 Hooks 接入统一 Memory API，避免依赖 Copilot CLI 私有文件结构。对于应用已经使用 Copilot SDK 的场景，这条路径改动范围小，也便于和现有审计、身份和业务系统集成。
-
-**如果 Agent 本身是基于 LangGraph 构建，优先使用 DeepAgents 的 Store 和 Memory Files。** 它的长期记忆与 Thread 状态边界清楚，官方也给出了后台 Consolidation Agent 的落地方式。LangMem 可以按需引入，不必为一个提取函数再建立第二套 Memory Store。
-
-## 9. 结论
-
-Agent Memory 的难点不是把更多历史内容存下来，而是决定哪些经历值得保留、它们在什么范围和时间内有效，以及系统如何发现并纠正错误记忆。Anthropic 的 Dreaming 提供了一种有价值的思路：让记忆维护成为独立于交互主循环的后台工作，定期回看原始经历，而不是只依赖当时生成的一段摘要。
-
-现有开源项目已经覆盖了不少关键环节，但没有一个方案可以不加判断地同时满足所有 Runtime、存储和治理要求。比较稳妥的路径是先用 Pi 验证捕获、提取、整理和 Replay，再抽出稳定的 Memory Contract；Copilot SDK 通过 Hooks 和事件流接入，DeepAgents 则优先利用 LangGraph Store 与 Consolidation Agent。第一版用 SQLite / FTS5 和一个后台 Worker 就够了，是否增加向量检索或知识图谱，应由真实任务的评估结果决定。
-
-不要把自动记忆当成越多越好的功能。一个可靠的系统应该知道何时不保存、何时不确定、何时需要重新验证，也应该允许用户检查和撤销它的整理结果。
+从试点中留下稳定的 Event、Candidate、Record、Scope 和 Source Reference 契约。等第二个 Runtime 确实需要复用时，再把 Core 外置。否则，一个进程、一套 SQLite/FTS5 和一个后台 Worker 就足够了。
 
 ## 参考资料
 
