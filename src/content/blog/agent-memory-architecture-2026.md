@@ -1,7 +1,7 @@
 ---
 author: SW
 pubDatetime: 2026-11-12T00:00:00Z
-title: "Agent Memory 不只是 RAG：基于 Anthropic Dreaming 的开源实现与三种 Runtime 落地方案"
+title: "Agent Memory 不只是 RAG：从 Anthropic Dreaming 到可落地的开源架构"
 featured: false
 draft: false
 tags:
@@ -11,7 +11,7 @@ tags:
   - Copilot SDK
   - LangChain
   - pi-mono
-description: "从 Anthropic 的记忆层次与 Dreaming 出发，比较 Copilot SDK、DeepAgents、pi-mono 的现有实现，并给出统一 Memory Core、Runtime Adapter 和后台整理的可落地架构。"
+description: "从 Anthropic Dreaming 和社区实践出发，梳理开源记忆方案，设计可接入 Copilot SDK、DeepAgents 与 Pi 的共享 Memory Core。"
 ---
 
 # Agent Memory 不只是 RAG：从 Anthropic Dreaming 到可落地的开源架构
