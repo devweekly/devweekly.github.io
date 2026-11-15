@@ -206,6 +206,66 @@ Palantir 还公开了 Ontology 后端的架构演进：Object Storage v2 将原�
 
 ---
 
+
+### 5.8 计算层解绑：Snowflake 不是唯一计算引擎
+
+如果 Snowflake 已经是企业战略平台，不需要为了避免绑定而立即替换它；但也不应该让所有业务计算都只能在 Snowflake 内执行。更稳妥的做法是把数据格式、Catalog、业务计算逻辑和执行引擎分开：Snowflake 继续承担企业分析和现有数据产品，开放计算引擎则能直接读取同一份开放数据。
+
+建议以 S3 + Parquet + Apache Iceberg 作为跨引擎的数据底座，使用独立 Iceberg REST Catalog 管理表元数据。Spark 作为第一种开放批处理引擎，负责大规模 ETL、文档派生数据处理、历史回填和批量特征计算。Snowflake 继续承担企业分析和适合其执行环境的 SQL 工作负载。不要把 Spark 当作在线查询服务，也不要把所有 SQL 都机械地迁移到 Spark。
+
+Trino 则补上另一种能力：它是分布式、MPP SQL 查询引擎，重点是交互式查询和数据联邦，而不是替代 Spark 的批处理能力。它通过 Connector 访问不同数据源，每个 Connector 在 Trino 中配置成一个 Catalog。Trino 可以在同一条 SQL 中引用多个 Catalog，因此可以把 PostgreSQL、Snowflake 和 Iceberg 表放进同一查询中。官方文档列出了 PostgreSQL、Snowflake、Iceberg、Hive、Redshift、OpenSearch 等 Connector。[Trino concepts](https://trino.io/docs/current/overview/concepts.html)
+
+### 5.9 Trino 能连接哪些数据源，跨源查询有什么边界
+
+| 数据源 | Trino 接入方式 | 适合的用途 |
+|---|---|---|
+| PostgreSQL | 官方 PostgreSQL Connector | 查询业务元数据、目录和关系数据；不应把高频 OLTP 流量绕到 Trino |
+| Snowflake | 官方 Snowflake Connector | 查询已有企业数据集，与其他 Catalog 的数据组合 |
+| S3 + Iceberg | Iceberg Connector + REST/Glue 等 Catalog | 直接查询开放数据湖，不经过 Snowflake |
+| S3 + Hive/Parquet | Hive 或 Lakehouse Connector + AWS Glue/Hive Metastore | 查询已登记的外部表和数据湖文件 |
+| AWS Glue Data Catalog | Iceberg、Hive 或 Lakehouse Connector 使用其元数据 | 发现和访问 Glue 管理的表；Glue 本身不是计算引擎 |
+| Amazon Redshift | 官方 Redshift Connector | 查询 Redshift 数据仓库 |
+| OpenSearch | 官方 OpenSearch Connector | 对索引做 SQL 型分析；不替代 OpenSearch 原生搜索 API |
+
+因此，对问题“Trino 能不能用于 Snowflake、PostgreSQL 或 AWS 服务”，答案是可以，但要具体到数据源和 Connector。S3 并不是把任意文件路径直接变成 SQL 表：通常需要 Iceberg、Hive/Glue 等表元数据和受支持的文件格式。AWS Glue 是 Catalog 服务；Trino 使用 Glue 找到表和分区，再从 S3 读取数据。Redshift 有独立 Connector。当前 Trino 官方 Connector 清单没有 DynamoDB，也没有受维护的 Kinesis Connector；Kinesis Connector 已从 Trino 470 移除，不能把“支持 AWS”理解为支持所有 AWS 服务。[Trino Lakehouse Connector](https://trino.io/docs/current/connector/lakehouse.html) [Trino S3 support](https://trino.io/docs/current/object-storage/file-system-s3.html) [Trino Redshift Connector](https://trino.io/docs/current/connector/redshift.html) [Trino ecosystem](https://trino.io/ecosystem/data-source)
+
+例如，以下查询在语法上可以跨 Catalog 组合 Snowflake、PostgreSQL 和 Iceberg 数据：
+
+```sql
+SELECT
+    d.document_id,
+    d.source_type,
+    a.market,
+    p.owner
+FROM snowflake.vault.analytics_documents d
+JOIN postgres.catalog.document_acl p
+    ON p.document_id = d.document_id
+JOIN lakehouse.vault.document_attributes a
+    ON a.document_id = d.document_id
+WHERE d.created_at >= DATE '2026-01-01';
+```
+
+这里的 `snowflake`、`postgres` 和 `lakehouse` 是 Trino Catalog 名称示例。实际表名、Schema 和字段需要按各数据源配置调整。
+
+需要特别注意跨源 Join 的执行位置。Trino 能把查询拆成多个 Stage，让 Worker 分别从不同数据源读取数据，再在 Trino 集群中完成 Join；但这不意味着 Snowflake、PostgreSQL 和 S3 之间自动实现了一个远端联合执行计划。Connector 可以把过滤、投影、聚合或 Join 下推到数据源，但下推能力因 Connector 和查询形态而异。官方文档指出，Join pushdown 通常要求参与 Join 的表属于同一个 Catalog；跨 Catalog Join 一般需要 Trino 拉取必要数据并在自身执行。[Trino pushdown](https://trino.io/docs/current/optimizer/pushdown.html)
+
+所以，不要把 Trino 当作绕过 Snowflake 计算费用的万能代理。若查询主要扫描 Snowflake 的大表，直接在 Snowflake 执行可能更快、更便宜；若要把 Snowflake 大表与 PostgreSQL 小型 Catalog 做联接，应先检查 EXPLAIN、数据量、过滤下推和网络流量。也不要让 Trino 对 PostgreSQL 的业务主库执行无约束的大扫描，否则会把分析负载带到 OLTP 系统。
+
+### 5.10 Spark 与 Trino 的分工，以及 Vault 的部署顺序
+
+Spark 和 Trino 不是互相替代的产品。Spark 是通用分布式计算框架，适合长时间运行的批处理、ETL 和大规模转换；Trino 是面向 SQL 的分布式查询引擎，适合交互式分析和联邦查询。两者都可以访问 Iceberg，但执行模型和工作负载不同。
+
+对 Vault，建议按以下顺序落地：
+
+1. 先把原始文档和派生资产放在 S3，结构化分析数据逐步采用 Parquet/Iceberg，并建立独立 Catalog。
+2. 先用 Snowflake 满足企业既有分析需求，同时验证 Spark 能否独立读取、转换和写回同一批 Iceberg 数据。这一步建立真正可运行的 Snowflake 替代路径。
+3. 当出现跨数据源 SQL、分析工具需要统一入口，或需要直接查询 Iceberg 而不进入 Snowflake 时，再部署 Trino。先从只读和受控查询开始，不把它作为所有应用的通用数据库代理。
+4. 业务服务继续通过自己的 API 访问 PostgreSQL Catalog、Search API 和受控计算任务，不直接把 Trino SQL 暴露给终端用户或 Agent。
+
+Trino 本身也需要治理：独立的身份认证、Catalog 凭据、行列权限策略、查询审计、Resource Groups、并发和扫描量限制都不可缺少。Trino 的统一 SQL 入口不会自动统一底层数据源的权限语义；应明确最终由 Trino 代理身份访问，还是保留用户身份传递，并验证两种模式的审计与授权行为。
+
+对当前阶段的结论是：**Spark 应该先作为开放批处理引擎进入目标架构；Trino 应该作为可选的联邦 SQL 层，在真实跨源查询需求出现时部署。** 最值得先做的不是同时建设 Spark 和 Trino 集群，而是用 Iceberg 建立一个 Snowflake 之外也能读取、写入和重算的数据路径。
+
 ## 6. Snowflake 主栈：治理和分析最统一，在线检索容量必须先验证
 
 Snowflake 可以作为 Vault 类平台的主栈。文档目录、Chunk、来源、实体、权限和版本都保存在 Snowflake 表中，Streams、Tasks、Dynamic Tables 或 Snowpipe 负责持续摄取与变换，Cortex Search 提供关键词、向量和混合检索。对于已经把研究数据和分析工作负载集中在 Snowflake 的机构，这种方式可以减少平台数量，让搜索与数据治理共享一套数据模型。
@@ -677,7 +737,7 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 
 ## 18. 最终建议
 
-对于 Bridgewater Vault，我建议把 S3-compatible Object Storage + 独立 Document Catalog + 可重建的 Search/Analytics Projection 作为长期架构，而不是选择 Snowflake、PostgreSQL 或 OpenSearch 之一作为主栈。第一阶段可以用 S3 保存原件和派生工件、PostgreSQL 实现 Catalog、异步 Worker 处理文档、OpenSearch 提供在线检索；Snowflake 只在需要治理分析和评测闭环时接入。应用只依赖 Catalog API、Processing API 和 Search API，不直接依赖底层产品的数据模型。若后续改用 Cortex Search、Vespa、Quickwit、Lance/Firn 或其他检索后端，应该只替换查询投影和适配器，而不是迁移原始文档。开源项目可借鉴其局部能力，但现阶段没有证据表明其中某一个已经提供了可直接承接 Vault 亿级规模、复杂 ACL 和高并发 Agent 负载的完整方案。
+对于 Bridgewater Vault，我建议把 S3-compatible Object Storage + 独立 Document Catalog + Iceberg + 可替换计算和检索投影作为长期架构，而不是选择 Snowflake、PostgreSQL 或 OpenSearch 之一作为主栈。第一阶段可以用 S3 保存原件和派生工件、PostgreSQL 实现 Catalog、异步 Worker 处理文档、OpenSearch 提供在线检索；Snowflake 继续承担企业分析，Spark 提供开放批处理路径，Trino 则在出现跨源 SQL 需求时再部署。应用只依赖 Catalog API、Processing API 和 Search API，不直接依赖底层产品的数据模型。若后续改用 Cortex Search、Vespa、Quickwit、Lance/Firn 或其他检索后端，应该只替换查询投影和适配器，而不是迁移原始文档。开源项目可借鉴其局部能力，但现阶段没有证据表明其中某一个已经提供了可直接承接 Vault 亿级规模、复杂 ACL 和高并发 Agent 负载的完整方案。
 
 Embedding 不应该成为整个入库流水线的硬性步骤。建议先让全文和结构化字段覆盖所有可检索文档，再根据真实查询评测逐步扩大 Dense Vector 的覆盖范围。若确实要为约四亿条 Chunk 建立 OpenAI Embedding，按每条 512 Token 估算，3-small 使用 Batch 的一次性输入费用约 2,048 美元，3-large 约 13,312 美元；这只是模型 Token 费，不包含文档解析、索引、向量存储和后续重算。Turbopuffer Native Embeddings 默认新组织的 2M Token/分钟额度，则意味着同等回填任务的理论时间下限约 71 天，必须在项目计划中单独处理额度和吞吐，不应把它当成即时完成的写入副作用。
 
@@ -761,5 +821,15 @@ Embedding 不应该成为整个入库流水线的硬性步骤。建议先让全�
 - [Firn](https://github.com/gordonmurray/firnflow)
 - [Quickwit](https://quickwit.io/docs/overview/introduction)
 - [Vespa: Approximate nearest-neighbor search](https://docs.vespa.ai/en/querying/approximate-nn-hnsw.html)
+
+- [Trino concepts and architecture](https://trino.io/docs/current/overview/concepts.html)
+- [Trino Snowflake Connector](https://trino.io/docs/current/connector/snowflake.html)
+- [Trino PostgreSQL Connector](https://trino.io/docs/current/connector/postgresql.html)
+- [Trino Iceberg Connector](https://trino.io/docs/current/connector/iceberg.html)
+- [Trino Lakehouse Connector](https://trino.io/docs/current/connector/lakehouse.html)
+- [Trino S3 file system support](https://trino.io/docs/current/object-storage/file-system-s3.html)
+- [Trino query pushdown](https://trino.io/docs/current/optimizer/pushdown.html)
+- [Trino connector ecosystem](https://trino.io/ecosystem/data-source)
+
 
 资料核对日期：2026-11-15。产品能力、插件限制和开发路线以对应官方文档及项目资料为准；性能和生产成熟度仍需在目标数据集、硬件和查询分布下独立验证。
