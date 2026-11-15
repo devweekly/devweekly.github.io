@@ -528,15 +528,7 @@ Pi 的 Extension API 足以实现这些能力，不需要改动 pi-mono 内核�
 | 可直接参考的项目 | Memory Core Adapter | LangMem、官方 Consolidation 示例 | pi-hermes-memory、pi-sleep-agent |
 | 推荐定位 | 企业应用中的 Runtime Adapter | 复杂 Agent 的执行和后台管理框架 | 本地试点和快速验证 |
 
-**如果当前主要目标是验证 Memory 机制，先选 Pi。** `pi-hermes-memory` 能快速验证自动捕获与跨 Session 检索，`pi-sleep-agent` 能验证候选记忆、后台整理和 Replay。它们提供了真实可运行的实现，不需要先写一套空框架。
-
-**如果要把 Memory 做成企业内部公共能力，Copilot SDK 是合适的接入对象。** 通过其公开事件和 Hooks 接入统一 Memory API，避免依赖 Copilot CLI 私有文件结构。对于应用已经使用 Copilot SDK 的场景，这条路径改动范围小，也便于和现有审计、身份和业务系统集成。
-
-**如果 Agent 本身是基于 LangGraph 构建，优先使用 DeepAgents 的 Store 和 Memory Files。** 它的长期记忆与 Thread 状态边界清楚，官方也给出了后台 Consolidation Agent 的落地方式。LangMem 可以按需引入，不必为一个提取函数再建立第二套 Memory Store。
-
-## 7. 落地顺序与 Runtime 选型
-
-不要一开始就同时铺开三个 Runtime、多个数据库和知识图谱。按下面的顺序验证，每一步都应有真实任务和验收结果。
+按下面的顺序验证，每一步都应有真实任务和验收结果。
 
 ### 第一步：用 Pi 完成端到端试点
 
@@ -569,10 +561,6 @@ Copilot Adapter 不应直接访问数据库表，而是通过 Memory SDK 调用�
 当实际查询开始需要跨多个实体、多段关系和时间状态时，再引入 Graphiti 或 Cognee。若团队要求多个 Runtime 共享记忆、统一审计、集中删除和多租户隔离，则把 Memory Core 从本地 SQLite 升级为 Postgres / 独立服务，并提供 HTTP 和 MCP 双入口。
 
 此时再决定是否部署向量数据库、图数据库和独立检索服务。不要在评估前先为它们付出部署、备份、权限和一致性成本。
-
-第一版的验收重点不是记忆条数，而是几件具体的事：重复事件不会产生重复记忆；不同 User 和 Project 之间不会串数据；已被替代的事实不会再作为当前状态返回；用户要求删除后，主记录和派生索引都无法召回；注入记忆后，任务结果确实有所改善，或者至少没有变差。达不到这些条件，先不要扩大自动写入范围。
-
-从试点中留下稳定的 Event、Candidate、Record、Scope 和 Source Reference 契约。等第二个 Runtime 确实需要复用时，再把 Core 外置。否则，一个进程、一套 SQLite/FTS5 和一个后台 Worker 就足够了。
 
 ## 参考资料
 
