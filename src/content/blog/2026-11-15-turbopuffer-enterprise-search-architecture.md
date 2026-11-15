@@ -372,7 +372,7 @@ OpenSearch Remote Store 是重要的演进方向。Remote-backed storage 可以�
 
 最近一轮检索基础设施的变化，重点已经不只是 HNSW 参数或 Embedding 模型，而是如何减少向量索引对内存的依赖、如何在对象存储上直接搜索，以及如何让全文、向量和结构化查询共享更高效的执行路径。
 
-### 9.1 OpenSearch：JVector 把 DiskANN 带进搜索集群
+### 13.1 OpenSearch：JVector 把 DiskANN 带进搜索集群
 
 OpenSearch 3.5 引入 JVector 插件。它使用纯 Java 实现 DiskANN 风格的近似最近邻搜索，向量索引从磁盘读取量化表示，再通过重排改善召回。官方文档还描述了并发插入、增量合并和量化码本逐步优化等能力。[OpenSearch JVector plugin](https://docs.opensearch.org/latest/install-and-configure/additional-plugins/opensearch-jvector/)
 
@@ -380,13 +380,13 @@ OpenSearch 3.5 引入 JVector 插件。它使用纯 Java 实现 DiskANN 风格�
 
 不过 JVector 目前有重要的集成限制：它是单独安装的插件，不能与原有的 opensearch-knn 插件共存；当前官方限制还指出，Neural Search 插件不识别 JVector engine，因此无法直接使用上游 Neural Search 的 neural 和 hybrid 查询路径。需要 Hybrid Search 的团队应先验证实际版本、查询管道和排序融合方式，不能只根据 DiskANN 能力就决定替换现有引擎。
 
-### 9.2 OpenSearch Remote Store：远端持久化更完整，但还不是无状态搜索
+### 13.2 OpenSearch Remote Store：远端持久化更完整，但还不是无状态搜索
 
 Remote Store 让 translog、segment 和集群状态可以写入对象存储，Segment Replication 又让副本直接读取远端 segment。它改善了分片恢复和复制模型，也为降低本地副本存储开销创造条件。
 
 这是一条渐进式路线：先把索引段可靠地放到远端，再优化缓存和恢复路径。它适合已经采用 OpenSearch、希望降低本地持久化成本的企业，但不应被描述为完整的计算存储分离。查询节点仍然需要运行 OpenSearch 并管理分片。
 
-### 9.3 Lance 与 RemoteANN：对象存储原生向量检索开始有专门设计
+### 13.3 Lance 与 RemoteANN：对象存储原生向量检索开始有专门设计
 
 Lance 的开源存储格式支持本地文件和多种对象存储，并把向量搜索、全文检索和 SQL 分析放在同一份列式数据集上。[Lance](https://github.com/lance-format/lance)
 
@@ -396,25 +396,25 @@ Lance 的开源存储格式支持本地文件和多种对象存储，并把向�
 
 开源项目 Firn 则把 LanceDB 与 foyer 缓存结合，构建 RAM、NVMe 到 S3 的分层检索服务，提供多租户的向量、BM25 和 Hybrid Search。[Firn repository](https://github.com/gordonmurray/firnflow) 它是值得跟踪的 Turbopuffer 式开源实现，不过当前更适合作为 POC 和架构参考。上线前仍需要自行验证并发写入、删除语义、恢复、权限隔离、冷查询以及大规模数据下的缓存行为。
 
-### 9.4 Quickwit：对象存储上的全文搜索已经有成熟架构实践
+### 13.4 Quickwit：对象存储上的全文搜索已经有成熟架构实践
 
 Quickwit 采用 Rust 实现，支持把索引放在 S3、Azure Blob 和 GCS 等云对象存储上，并让 Indexer 与 Searcher 独立扩缩。它的核心适用场景是日志、追踪、审计记录和其他以追加写入、不可变数据为主的内容。[Quickwit architecture](https://quickwit.io/docs/overview/introduction)
 
 它证明了在对象存储上做低成本全文搜索并不一定要自己写完整搜索引擎。对于日志和审计检索，Quickwit 值得与 OpenSearch 比较；但它的主要定位仍是全文搜索和可观测性，不应直接当成带有同等向量过滤语义的 Turbopuffer 替代品。
 
-### 9.5 PostgreSQL 向量检索：pgvector 之外还有 VectorChord
+### 13.5 PostgreSQL 向量检索：pgvector 之外还有 VectorChord
 
 如果希望把关系数据和向量检索放在同一个 PostgreSQL 查询里，可以继续关注 VectorChord。它在 PostgreSQL 内提供 IVF、RaBitQ 量化、磁盘友好索引和重排等能力；VectorChord-BM25 则提供 PostgreSQL 原生 BM25 检索扩展。[VectorChord](https://github.com/tensorchord/VectorChord) [Hybrid Search documentation](https://docs.vectorchord.ai/vectorchord/use-case/hybrid-search.html)
 
 这比简单地在 PostgreSQL 中加一个 pgvector 列更进一步，也适合需要 SQL JOIN、关系过滤和语义检索组合的系统。它仍然属于 PostgreSQL 的数据和计算模型，没有解决对象存储上的无状态搜索问题。若 OpenSearch 已经是主要检索引擎，再把所有向量复制到 VectorChord 通常只会增加写入和一致性成本。
 
-### 9.6 Vespa：复杂过滤和排序值得单独评估
+### 13.6 Vespa：复杂过滤和排序值得单独评估
 
 Vespa 把全文检索、向量搜索、过滤表达式和自定义排序模型放在同一个查询与排序体系中。它的 HNSW 搜索支持过滤，并提供 ACORN 等优化方向，也支持多个向量字段和多向量文档。[Vespa approximate nearest-neighbor search](https://docs.vespa.ai/en/querying/approximate-nn-hnsw.html)
 
 如果检索质量高度依赖复杂过滤、多个排序特征和业务相关性模型，Vespa 值得与 OpenSearch 进行真实数据对比。它不是以对象存储为持久事实来源的 Turbopuffer 式架构，因此重点是检索质量与排序能力，而非存储成本模型。
 
-### 9.7 Turbopuffer v3：向量索引不再是存储主索引
+### 13.7 Turbopuffer v3：向量索引不再是存储主索引
 
 Turbopuffer 自己也在改变架构。2026 年 9 月公开的 v3 设计说明计划把文档和索引布局转向列式存储，并把 ANN 从主索引变为普通的二级索引；10 月的开发日志进一步描述了端到端向量化查询执行，让批处理成为算子之间的默认数据交换方式。[RIP, vector database](https://turbopuffer.com/blog/rip-vector-database) [The first search engine with fully vectorized query execution](https://turbopuffer.com/blog/fully-vectorized-search-engine)
 
@@ -469,23 +469,14 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 ## 参考资料
 
 - [OpenSearch Neural Search tutorial](https://docs.opensearch.org/latest/tutorials/vector-search/neural-search-tutorial/)
-
 - [PostgreSQL Full Text Search](https://www.postgresql.org/docs/current/textsearch.html)
-
 - [Snowflake CREATE CORTEX SEARCH SERVICE](https://docs.snowflake.com/en/sql-reference/sql/create-cortex-search)
-
 - [Can Your AI Analyst Keep a Secret? — Bridgewater and Turbopuffer talk transcript](https://turbopuffer.com/blog/video-can-your-ai-analyst-keep-a-secret)
-
 - [Turbopuffer Write Documents](https://turbopuffer.com/docs/write)
-
 - [Turbopuffer Native Embeddings](https://turbopuffer.com/docs/embedding)
-
 - [Turbopuffer Hybrid Search](https://turbopuffer.com/docs/hybrid)
-
 - [Turbopuffer Vector Search Guide](https://turbopuffer.com/docs/vector)
-
 - [Turbopuffer Full-Text Search Guide](https://turbopuffer.com/docs/fts)
-
 - [Snowflake Cortex Search：Overview、known limitations 与 engine behavior](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-overview)
 - [Snowflake Cortex Search：Query API、filters 与 owner’s rights](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/query-cortex-search-service)
 - [Snowflake Cortex Search：Costs](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-costs)
