@@ -99,7 +99,162 @@ Search API 完成身份验证、租户识别、查询解析和权限条件构造
 
 Snowflake 从对象存储或事件管道读取标准化数据，形成治理和分析数据集。它不需要同步参与每次在线查询。
 
-## 5. 写入一致性比搜索 API 更需要设计
+
+## 8. Snowflake 主栈：治理和分析最统一，在线检索容量必须先验证
+
+Snowflake 可以作为 Vault 类平台的主栈。文档目录、Chunk、来源、实体、权限和版本都保存在 Snowflake 表中，Streams、Tasks、Dynamic Tables 或 Snowpipe 负责持续摄取与变换，Cortex Search 提供关键词、向量和混合检索。对于已经把研究数据和分析工作负载集中在 Snowflake 的机构，这种方式可以减少平台数量，让搜索与数据治理共享一套数据模型。
+
+### 架构设计
+
+| 层次 | 组件与职责 | 设计要点 |
+|---|---|---|
+| 来源接入 | 外部数据连接器、内部研究系统、文件导入 | 为每个来源维护 connector、增量水位、凭证引用和失败重试 |
+| 原始数据 | S3 / Snowflake Stage | 保存原始文件、来源 URI、checksum、版本和批次清单；搜索索引不作为原件归档 |
+| 规范化数据 | Snowflake Raw、Document、Chunk、Entity、ACL 表 | 每个 document 和 chunk 使用稳定 ID；显式记录 document_version、embedding_version 和解析版本 |
+| 数据处理 | Snowpipe、Streams、Tasks、Dynamic Tables、外部解析 Worker | 完成解析、去重、分块、实体归一化、Embedding 计算和增量物化 |
+| 在线检索 | Cortex Search | 正文作为搜索列，tenant、来源、国家、市场、概念、时间和安全域作为 ATTRIBUTES |
+| API 与治理 | Search API、Snowflake 角色体系、审计与评测表 | 后端代理查询，强制注入权限过滤；保存查询 Trace 和人工相关性标签 |
+
+连接器收到新材料后，先把原件写入 S3，再把来源元数据和对象 URI 写入 Snowflake。解析 Worker 根据文件版本生成规范文本和 Chunk；Embedding 可以由 Cortex Search 管理，也可以由外部模型计算后写入表。Cortex Search 从版本化的 Chunk 表构建索引，Search API 通过服务端身份验证用户，再将租户、安全域、时间区间、来源和市场条件作为过滤器传给 Search Service。返回的 chunk_id 用于从 Snowflake 或 S3 取回完整证据片段和原文。
+
+Cortex Search 已提供关键词和向量召回，并在 Hybrid 模式下进行语义重排；评分配置还可以结合字段权重、时间衰减等因素。这样，团队不必自己维护两套召回引擎和一套融合服务。[Cortex Search Overview](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-overview)
+
+### 增量刷新不等于同步写入
+
+Cortex Search 的来源是一个查询结果集。可以指定 PRIMARY KEY，让刷新过程识别变化行并使用增量路径；但底层对象需要满足 Change Tracking 等条件，源查询结构也会影响增量刷新是否可用。没有稳定主键或不适合增量刷新时，索引构建和更新成本会更高。[CREATE CORTEX SEARCH SERVICE](https://docs.snowflake.com/en/sql-reference/sql/create-cortex-search)
+
+TARGET_LAG 表示 Search Service 内容相对源数据的目标延迟，不是写入 Snowflake 表之后立刻可检索的强一致承诺。若 Agent 刚上传了一份研究材料就立即查询，API 应该暴露索引状态或 indexed_version 水位，而不能把表写入成功当成 Cortex Search 已经包含该版本。ACL 撤权也有同样的问题：授权数据变化与搜索索引刷新之间存在传播窗口，必须定义业务可接受的窗口，并准备紧急撤权路径。
+
+### 亿级文档和 Agent QPS 的容量门槛
+
+Snowflake 当前 Cortex Search 文档列出的默认限制需要与 Vault 的负载画像直接对照：单个 Search Service 的物化查询结果应低于 400M 行；超过该行数，创建查询会失败，需要联系 Snowflake 提高上限。默认速率限制为每个 Search Service 20 QPS、账户内所有服务合计 140 QPS；发生限流时客户端会收到 429，需要退避重试。更高额度要由客户与 Snowflake 确认，不能把默认限制当成可自动扩展的容量。[Cortex Search known limitations](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-overview)
+
+这和 Bridgewater 公开演讲中 Agent 查询超过 100 QPS、集群场景可能达到数千 QPS 的描述存在明显差距。一亿份文档也不等于一亿行搜索记录：如果每份文件平均拆成四个 Chunk，就已经接近 400M 行；更细粒度的 Chunk 会更早触及行数上限。这个估算只是容量推演，不是对 Vault 实际 Chunk 数的判断。POC 应先用实际 Chunk 分布核实物化行数，并要求 Snowflake 对目标 QPS、突发流量、服务数量、索引刷新和 SLA 给出明确答复。
+
+水平扩展也不能简单理解成多建几个 Search Service。服务数增加可能绕过单服务的部分限额，却不能绕过账户级默认 QPS 限额；拆分服务还会把查询路由、跨服务去重、权限一致性和聚合融合的责任交还给应用。若把数据按国家、市场或租户拆成几十个服务，查询可能变成扇出请求，延迟和结果合并复杂度也会增加。
+
+### Owner's rights 带来的权限设计
+
+Cortex Search 使用服务所有者权限查询来源数据。官方文档明确指出，获得 Search Service 查询权限的角色可能检索到服务所索引的全部内容，即使该角色对底层源表没有相应 SELECT 权限；底层表的 Row Access Policy 和 Masking Policy 不应被当作 Search Service 的逐用户授权控制。[Query a Cortex Search Service](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/query-cortex-search-service)
+
+因此，不能把 Search Service 直接暴露给浏览器或不可信 Agent。建议只给后端 Search API 授予 USAGE，API 根据用户身份和组成员关系生成不可被请求参数覆盖的 ATTRIBUTES 过滤条件，并记录实际执行的过滤器。对高度隔离的数据域，可以拆分服务和服务所有者角色；但拆分粒度应按真实的安全边界决定，不能每个用户一个服务。ACL 更新必须有传播监控、撤权补偿和审计证据。
+
+### 成本和适用边界
+
+Cortex Search 的成本包括刷新源查询所使用的 Warehouse、文档变化时计算 Embedding 的 Token，以及按未压缩索引数据 GB/月计费的 Serving Compute。Serving Compute 在服务可用期间持续计费，并不只在收到查询时产生；大量文档或频繁更新会把索引和 Embedding 成本推高。[Cortex Search costs](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-costs)
+
+Snowflake 主栈最适合数据本来就在 Snowflake、查询量中等、刷新延迟有余量、希望以托管方式获得 Hybrid Search 的组织。它的主要优点是数据治理、SQL 分析和检索服务统一，运维负担低；主要缺点是默认 QPS/行数限额、owner's rights 权限边界和持续 Serving Compute 成本。对 Vault 公布的高并发 Agent 负载，Snowflake 仍然可以进入候选，但应先完成限额协商、权限威胁建模和成本压测，不宜按默认配置直接承诺生产容量。
+
+## 9. PostgreSQL 主栈：事务和关系模型最完整，搜索规模化由团队自己负责
+
+PostgreSQL 主栈把文档目录、Chunk、权限关系、全文索引和向量索引尽量放在同一个数据库中。它的核心吸引力在于，文档版本、ACL 变更和索引任务状态可以在单一事务边界内维护；检索请求也可以在 SQL 中组合全文、向量和关系过滤。这种方案适合检索与复杂关系查询紧密耦合、数据库团队有能力承担分片和索引维护的组织。
+
+### 架构设计
+
+| 层次 | 组件与职责 | 设计要点 |
+|---|---|---|
+| 数据接入 | Connectors + Kafka / MSK / SQS | 管理 135 类来源的增量同步、削峰和事件回放 |
+| 原始数据 | S3 | 保存原件、规范化快照、版本清单和解析产物 |
+| 元数据与事务 | PostgreSQL | Document、DocumentVersion、Chunk、Source、Entity、Tenant、ACL 和 Outbox |
+| 全文检索 | PostgreSQL FTS / VectorChord-BM25 | GIN/tsvector 适合基础全文；对 BM25 需求评估 VectorChord-BM25 与 tokenizer |
+| 向量检索 | pgvector 或 VectorChord | pgvector 生态成熟、起步简单；VectorChord 提供量化和更丰富的索引路径 |
+| API 与排序 | SQL + Search API | 服务端生成租户和 ACL 过滤；融合全文与向量候选，再做 RRF / rerank |
+| 扩展 | Read Replica、分区、Citus 或应用分片 | 先压测单节点边界，再按明确的 shard key 扩展 |
+
+文档进入系统时，原件先保存到 S3。PostgreSQL 事务写入文档版本、来源元数据和 Outbox 事件。Worker 从消息队列读取任务，完成解析、分块和 Embedding 生成，再批量写入 Chunk 表与向量字段。由于业务状态和 Outbox 处于同一事务，应用不会遇到“文档状态已更新但没有可靠索引任务”的双写窗口。向量索引本身仍可能异步更新，因此要区分业务事务提交和该版本真正可被 ANN 查询的时间。
+
+Chunk 可以用 tenant_id、namespace_id、document_id、version、source_id、published_at、country、market、concept、security_scope、acl_principals 等字段建模。全文检索可以先用 tsvector + GIN 完成；若需要 BM25 评分和更完整的 Hybrid Search，可以评估 VectorChord-BM25。Dense vector 由 pgvector 或 VectorChord 承担，最终在 SQL 或服务层把两路候选用 Reciprocal Rank Fusion 合并。VectorChord 文档提供了稠密向量与 BM25 的混合检索用法，但它属于扩展生态，升级兼容性和生产支持应单独验证。[VectorChord Hybrid Search](https://docs.vectorchord.ai/vectorchord/use-case/hybrid-search.html)
+
+### 权限和事务是一项明显优势
+
+PostgreSQL 的关系模型可以自然表达用户、组、租户、文档和 ACL 之间的多对多关系。检索 SQL 可以把授权条件作为 join 或 filter 执行。Row-Level Security 还能对数据库访问提供额外约束，但要正确设置连接角色：表所有者通常绕过 RLS，具有 BYPASSRLS 的角色也会绕过策略；必要时对表启用 FORCE ROW LEVEL SECURITY，并确保应用连接身份不是高权限管理角色。[PostgreSQL Row Security Policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
+
+与独立搜索引擎相比，权限表更新和文档元数据更新可以在同一个数据库事务里提交。需要注意，外部向量 Worker 和异步索引任务仍然会引入可检索性延迟；事务原子性并不意味着向量索引已同步完成。若使用外部 Embedding 服务，生成失败、模型版本变化、重复任务和乱序事件仍需要通过 Outbox、幂等键和版本控制处理。
+
+### 向量数据体量与过滤召回
+
+容量规划不能只看文件数。以 768 维 float32 向量估算，一条向量仅数值本身约 3 KB；一亿个 Chunk 的原始向量数据约 307 GB，尚未包括 HNSW/IVF 索引、Chunk 正文、元数据、WAL、缓存和副本。若一亿份文档平均产生多个 Chunk，向量规模还会进一步扩大。量化可以降低存储和内存压力，但需要用同一评测集衡量 Recall@K 损失，而不能只看压缩倍数。
+
+pgvector 的近似索引过滤行为是重要限制。HNSW/IVFFlat 会在索引扫描中先取得候选，再应用 SQL 过滤；过滤条件选择性高时，最终结果可能少于所需 K。pgvector 的 iterative index scans 可以继续扫描来补足结果，但会受到 max_scan_tuples 或 max_probes 等上限约束。官方还建议根据过滤条件分布使用 Partial Index 或分区；共享的多租户 ANN 索引也可能因为不同租户的数据分布而影响彼此的召回和查询速度。[pgvector Filtering](https://github.com/pgvector/pgvector#filtering)
+
+因此，需要把 tenant_id、安全域和高频 corpus 条件纳入查询设计。只有少数稳定租户时，可以考虑 Partial Index；租户很多时，可能要按租户组或安全域分区，避免每个小租户都创建一个物理分区。对 ACL 很复杂、选择性变化大的检索，要测过滤后的 Recall@10、有效结果数与 p95，而不能只用不带过滤的 ANN benchmark。
+
+### 从单节点扩展到分片
+
+单 PostgreSQL 主库加只读副本是合理的第一步，但只读副本扩展不了写入和索引构建能力。批量导入、向量重建、VACUUM、WAL 归档和在线查询会竞争同一套 CPU、内存和 I/O；应隔离长事务与批处理，监控复制延迟，并通过连接池、查询超时和 PITR 演练控制故障面。
+
+当单节点成为瓶颈时，分区可以帮助索引局部化、生命周期管理和 partition pruning，但 PostgreSQL 原生分区仍然运行在一个数据库集群里，不会自动分散 CPU 和内存。Citus 或应用层分片可以把数据分到多个节点，不过必须让高频查询携带 shard key。按 tenant_id 分片可以让单租户查询定位到较少节点，但跨租户搜索需要扇出、候选合并和全局排序；热点租户还可能使 shard 分布失衡。pgvector 文档列出了 Citus 等水平扩展路径，但如果使用 VectorChord，必须验证所选扩展版本与分布式部署方式的兼容性，不能默认所有 PostgreSQL 扩展都能透明运行在分片集群中。[pgvector Scaling](https://github.com/pgvector/pgvector#scaling) [PostgreSQL Table Partitioning](https://www.postgresql.org/docs/current/ddl-partitioning.html)
+
+### 优缺点与适用判断
+
+PostgreSQL 主栈的优点是事务、关系 JOIN、数据约束和权限关系都在一个系统里，基础设施数量少，团队可复用成熟的 SQL、备份、复制和监控体系。对于数据规模尚可、检索流量稳定、关系查询和事务一致性比极限 QPS 更重要的知识平台，这会是一个很有效的架构。
+
+代价是检索型负载会和 OLTP 资源争用。向量索引体积大，过滤会影响 ANN 召回，批量更新与删除带来 Vacuum 和索引维护负担；要覆盖 Vault 的 Agent 并发画像，往往需要读写分离、分区、专用向量扩展和分片路由。组件数量看起来少了，数据库团队实际接手了搜索引擎的一部分职责。
+
+**判断：PostgreSQL 可以实现完整的 Vault 类系统，也能够通过量化、分区和分片承载很大的向量数据集；但对高并发 Agent 检索，它不是默认的省事方案。它更适合关系事务驱动、过滤关系复杂、团队具备 PostgreSQL 扩展和分片运维经验的场景。**
+
+## 10. OpenSearch 主栈：在线检索能力最贴近 Vault，索引生命周期和集群运维是主要代价
+
+OpenSearch 把 BM25、向量 ANN、Hybrid Search、过滤、聚合和排序作为一等能力。对于查询主要围绕来源、时间、国家、市场、概念和用户权限展开的 Vault，OpenSearch 的数据模型与在线检索路径更直接，也更容易按搜索负载扩展节点和副本。
+
+### 架构设计
+
+| 层次 | 组件与职责 | 设计要点 |
+|---|---|---|
+| 数据接入 | Connectors + Kafka / MSK / SQS | 来源同步、削峰、死信队列和事件回放 |
+| 原始数据 | S3 | 保存原件、版本快照、批次清单和可重建索引的数据 |
+| 文档处理 | Ingestion Workers / Data Prepper | 解析、去重、Chunk 切分、实体归一化和 Embedding |
+| 在线索引 | OpenSearch | 每个 Chunk 一条文档，包含正文、向量、时间、来源、业务标签、tenant 和 ACL 字段 |
+| 查询服务 | Search API + OpenSearch Query DSL | BM25、k-NN、Hybrid、共同过滤、RRF / normalization 和可选 reranker |
+| 生命周期 | Index Template、Alias、ISM、Snapshot / Remote Store | 索引 generation、冷热策略、重建、归档和恢复 |
+| 治理与评测 | 查询日志、ACL 更新事件、离线评测数据集 | 观测索引延迟、过滤召回、查询尾延迟和版本差异 |
+
+连接器将原始材料和版本清单写入 S3，消息队列发送 DocumentChanged 事件。Worker 解析文档并创建 Chunk，计算 Embedding，批量写入 OpenSearch。建议以稳定的 chunk_id 作为文档 ID，并写入 document_id、document_version、source_id、published_at、country、market、concept、tenant_id、security_scope 和 acl_principals。原文和规范化快照留在 S3，OpenSearch 只承担可重建的查询投影。
+
+Search API 根据用户身份生成强制过滤条件，再在同一个 Hybrid Search 请求中执行关键词与向量召回。共同的 tenant、时间、来源和安全域过滤应应用于各子查询，防止 BM25 和 ANN 面对不同候选空间。OpenSearch 的 search pipeline 可以对多路分数归一化，也支持 RRF 融合；对于研究问答，可以在候选集上叠加时间衰减、来源可信度和外部 reranker。[OpenSearch Hybrid Search](https://docs.opensearch.org/latest/vector-search/ai-search/hybrid-search/)
+
+### 向量引擎与容量规划
+
+OpenSearch 支持多种 k-NN 引擎。Lucene HNSW、Faiss HNSW/IVF 和 JVector 对内存、查询性能、过滤和部署的取舍不同。Faiss 通常是大规模向量检索的重点候选；JVector 作为单独插件提供 DiskANN 风格的磁盘向量搜索，可以降低对全量向量常驻内存的依赖，但必须单独验证插件版本、升级路径和上层查询能力。[OpenSearch Methods and Engines](https://docs.opensearch.org/latest/mappings/supported-field-types/knn-methods-engines/) [OpenSearch JVector](https://docs.opensearch.org/latest/install-and-configure/additional-plugins/opensearch-jvector/)
+
+容量估算同样必须按 Chunk 数计算。对一亿个 768 维 float32 向量，原始向量数值约 307 GB。OpenSearch 文档给出的 HNSW 粗略估算公式为 1.1 × (4 × dimension + 8 × m) 字节/向量；在 dimension=768、m=16 时约 3.5 KB/向量，对一亿条记录约 352 GB 的索引量级。这个值是索引内存估算，不包括正文、元数据、Lucene 段、JVM Heap、OS 缓存和副本；副本会增加总向量数据量。实际常驻内存取决于引擎、量化、内存优化模式和缓存行为，必须用真实映射与并发压测确认。[OpenSearch vector memory estimation](https://docs.opensearch.org/latest/mappings/supported-field-types/knn-methods-engines/)
+
+量化、IVF 和磁盘向量索引能改变成本曲线，但都需要评测召回损失、重排开销和冷缓存延迟。JVector 不能仅凭“DiskANN 风格”就假定会自然融入已有 Neural Search 或 Hybrid Search 流程；当前插件限制和 API 兼容性应按部署版本核实。对需要稳定 Hybrid Search 的平台，可以先用成熟引擎构建基线，再单独验证 JVector，而不是在上线第一天就同时迁移索引和查询管道。
+
+### 高选择性过滤和权限
+
+Vault 的问题往往包含明确时间范围、来源和市场条件。OpenSearch efficient k-NN filtering 能在搜索过程中应用过滤，Lucene、Faiss 和 JVector 在相应引擎及版本下均有支持。这样比先取全局 Top-K 再做 post-filter 更有机会返回足够的匹配结果。Hybrid Query 也能把共同过滤器应用到每个子查询。[Efficient k-NN filtering](https://docs.opensearch.org/latest/vector-search/filter-search-knn/efficient-knn-filtering/)
+
+但“支持过滤”并不等于各种过滤组合都有相同召回和延迟。需要把时间窗、国家、市场、来源、租户和 ACL 作为组合条件测试，并专门覆盖高选择性过滤和极不均匀租户分布。若 ACL 只在召回后由应用层删除，结果数量和召回率都会受影响；权限条件应在查询执行前由服务端构造，并在索引更新延迟期间定义额外的授权校验策略。
+
+OpenSearch Security 的 Document-Level Security（DLS）可以根据角色限制读取哪些文档，但官方文档明确说明 DLS 只限制读取，不限制写入；具有写权限的身份仍可能修改被隐藏的文档。因此 DLS 适合作为角色或安全域级纵深防御，不能取代写入身份隔离和 Search API 的租户过滤。细粒度 ACL 通常应由后端服务根据授权系统生成 Filter，并对权限撤销设置传播 SLO。[OpenSearch Document-Level Security](https://docs.opensearch.org/latest/security/access-control/document-level-security/)
+
+### 更新一致性和索引恢复
+
+OpenSearch 不是关系数据库。Bulk API 中的每个操作独立处理，批量请求可能部分成功，Worker 必须检查逐条结果并重试失败记录。事件应包含 document_id、version、operation 和 source checksum；对乱序事件使用外部版本或乐观并发控制，防止旧版本覆盖新版本。删除和 ACL 撤销要作为明确事件处理，不能靠定期全量同步碰运气。[OpenSearch Bulk API](https://docs.opensearch.org/latest/api-reference/document-apis/bulk/)
+
+索引重建应使用新 generation：从 S3 清单读取确定版本，重放文档和变更事件，运行数据完整性与检索评测，再切换 Alias。这样可以保留旧索引作为回滚点。Index Template 统一字段映射、分析器和向量配置；生命周期策略负责 rollover、归档与删除。远端快照或 Remote Store 有助于恢复和降低部分本地持久化成本，但不能取消分片、节点、缓存和查询容量管理。
+
+### 优缺点与适用判断
+
+OpenSearch 的优势是检索能力集中、查询模型成熟，支持高并发在线搜索，能够按 Shard、副本和节点扩展。BM25、ANN、Hybrid、过滤和聚合都在同一个查询引擎内完成，适合 Agent 高频调用和复杂检索条件。其主要代价是集群运维、分片布局、向量索引内存/磁盘、段合并、升级兼容、索引重建和最终一致的权限传播。它不适合承担所有业务元数据事务，因此常见设计仍会保留轻量 PostgreSQL 控制面；但这不改变 OpenSearch 是在线检索主引擎的定位。
+
+**判断：三种方案中，OpenSearch 最贴合 Vault 的在线检索负载画像。它并不自动解决对象存储原生索引和计算存储完全解耦的问题，但在 BM25、ANN、Hybrid 和过滤检索上提供更直接的主栈能力。对这类系统，S3 保存事实数据、OpenSearch 保存可重建搜索投影，是较清晰的责任边界。**
+
+### 三种主栈的总体取舍
+
+| 维度 | Snowflake 主栈 | PostgreSQL 主栈 | OpenSearch 主栈 |
+|---|---|---|---|
+| 主优势 | 数据治理、SQL 分析、托管 Hybrid Search | ACID、关系 JOIN、事务性 ACL | 在线 BM25、ANN、Hybrid 和查询扩展 |
+| 亿级 Chunk | 受 Cortex Search 行数额度影响，需先确认上限 | 需量化、分区、读写隔离与分片规划 | 分片、量化及磁盘 ANN 更贴近搜索负载 |
+| Agent 高并发 | 默认 QPS 是直接的准入风险 | 依赖读副本和分片，数据库资源会竞争 | 更符合搜索集群的水平扩展模型 |
+| 过滤召回 | 托管实现，属性列和服务行为受产品约束 | SQL 过滤表达力强，ANN 候选受过滤影响 | 支持查询过程内高效 k-NN 过滤，仍需压测 |
+| 权限 | owner’s rights 要求后端集中代理 | RLS 与关系 ACL 可在事务中组合 | API Filter + DLS 纵深防御 |
+| 更新模型 | 源表与 Search Service 刷新之间存在延迟 | 业务状态和 Outbox 可事务提交 | 事件驱动的最终一致，需版本控制 |
+| 运维 | 搜索集群负担较轻，配额和服务成本依赖 Snowflake | 组件少，但数据库团队承担搜索扩展复杂度 | 搜索集群运维最重，但检索控制力最高 |
+| 适用条件 | 数据已在 Snowflake、检索 QPS 可协商满足 | 关系查询和事务是主导需求，团队擅长 PG 扩展 | 在线检索是核心，Agent QPS 和过滤召回优先 |
+
+## 8. 写入一致性比搜索 API 更需要设计
 
 这套系统没有一个跨 S3、PostgreSQL 和 OpenSearch 的分布式事务。不能假设三边写入会同时成功。应当使用可重放的事件驱动流程，把文档版本作为一致性主线。
 
@@ -114,7 +269,7 @@ Snowflake 从对象存储或事件管道读取标准化数据，形成治理和�
 
 这样做的代价是最终一致，而不是跨系统强一致。对于 Agent 即时写入后马上检索的场景，可以提供写入确认水位：只有索引确认达到对应版本，API 才向调用方报告该版本可检索。若调用方选择异步写入，就需要接受短暂的索引延迟。
 
-## 6. 过滤召回决定了检索质量上限
+## 9. 过滤召回决定了检索质量上限
 
 Vault 案例中的时间、来源、资产和国家条件不是可有可无的附加参数。它们会直接改变向量搜索应该访问的候选空间。过滤条件选择性越高，普通 ANN 搜索越容易出现两个极端：先搜索后过滤可能只剩少量结果；先过滤再精确计算则可能需要扫描很大的候选集。
 
@@ -124,7 +279,7 @@ OpenSearch 的 efficient k-NN filtering 已经比简单 post-filter 更完整。
 
 因此，OpenSearch 方案必须用真实查询分布验证过滤性能。不能只测没有过滤条件的 ANN Recall@10。至少要按过滤选择性、租户规模、时间范围和 ACL 条件分别测量。
 
-## 7. 多租户和权限模型
+## 10. 多租户和权限模型
 
 建议先采用共享索引加 tenant_id、namespace_id、ACL 标签和 routing key 的模式，避免每个租户都创建独立索引导致分片数量膨胀。对于数据量特别大的租户、严格的资源隔离要求或独立生命周期要求，再使用专属索引或专属集群。
 
@@ -132,7 +287,7 @@ OpenSearch 的 efficient k-NN filtering 已经比简单 post-filter 更完整。
 
 Namespace 与 OpenSearch index 不应一一对应。Namespace 是逻辑隔离和生命周期概念；Index、Shard 和 Routing 是物理布局决策。两者解耦后，才能根据文档数量、查询负载和租户增长重新分配数据。
 
-## 8. 与 Turbopuffer 的架构差距
+## 11. 与 Turbopuffer 的架构差距
 
 | 能力 | 推荐组合 | Turbopuffer |
 |---|---|---|
@@ -151,7 +306,7 @@ OpenSearch Remote Store 是重要的演进方向。Remote-backed storage 可以�
 
 成本上也有类似的差距。OpenSearch 集群仍需要为分片、索引段、查询缓存、写入合并和副本保留计算与本地存储资源。S3 快照或 Remote Store 可以降低部分持久化成本，但不会自然带来 Turbopuffer 那种按热点数据缓存、冷数据远端读取的完整经济模型。
 
-## 9. 2026 年检索引擎的演进：磁盘向量、对象存储和列式执行
+## 12. 2026 年检索引擎的演进：磁盘向量、对象存储和列式执行
 
 最近一轮检索基础设施的变化，重点已经不只是 HNSW 参数或 Embedding 模型，而是如何减少向量索引对内存的依赖、如何在对象存储上直接搜索，以及如何让全文、向量和结构化查询共享更高效的执行路径。
 
@@ -205,7 +360,7 @@ Turbopuffer 自己也在改变架构。2026 年 9 月公开的 v3 设计说明�
 
 这些内容属于 Turbopuffer v3 的公开开发方向。其文章在 2026 年 10 月仍将正式投入生产描述为后续计划，不应当把开发日志中的设计目标当作当前所有生产环境已具备的能力。
 
-## 10. 实施顺序：先验证检索，再投资对象存储原生引擎
+## 13. 实施顺序：先验证检索，再投资对象存储原生引擎
 
 ### 第一阶段：建立检索质量基线
 
@@ -227,7 +382,7 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 
 如果仍无法达到目标成本，再用 LanceDB、Firn 或自建基于 Lance 的检索 POC 验证对象存储原生路线。此时应该用同样的评测集、文档版本和查询流量，与 OpenSearch 进行端到端比较，而不是只比较向量索引微基准。
 
-## 11. 评估矩阵与验收指标
+## 14. 评估矩阵与验收指标
 
 | 维度 | 必须验证的场景 | 指标 |
 |---|---|---|
@@ -241,7 +396,7 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 
 测试数据要保留真实的租户大小分布和元数据偏斜。例如，某些来源可能占多数文档，某些资产可能只对应少量记录；这些情况会影响过滤选择性和分片负载。评估时还应分别报告冷查询与热查询，避免平均值掩盖尾延迟。
 
-## 12. 最终建议
+## 15. 最终建议
 
 对于已经拥有 Snowflake、OpenSearch、PostgreSQL 和 S3 的企业，我仍建议以 OpenSearch 作为统一在线检索引擎，PostgreSQL 管控制面和事务，S3 保存原始数据与可恢复快照，Snowflake 建立治理和评测闭环。这个建议不是因为另外两种主栈不能实现，而是因为 Vault 公开的负载画像把高并发在线检索和高选择性过滤放在了首位：Snowflake 必须先解决 Cortex Search 默认 QPS 与行数配额，PostgreSQL 则需要承担更复杂的向量索引、读写隔离和横向分片工作。若实际业务的 Agent QPS 低得多、数据已集中在 Snowflake，或 SQL 关系事务远比检索吞吐重要，前两种方案都可能更合适。不要一开始就把 pgvector、VectorChord、OpenSearch 和 Cortex Search 全部作为并行检索引擎部署。
 
