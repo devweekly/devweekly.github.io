@@ -1,7 +1,7 @@
 ---
 author: SW
 pubDatetime: 2026-11-15T00:00:00Z
-title: "Bridgewater Vault 架构复盘：Snowflake、PostgreSQL 与 OpenSearch 三种主栈"
+title: "Bridgewater Vault 架构复盘：对象存储、Document Catalog 与可替换检索层"
 featured: false
 draft: false
 tags:
@@ -11,18 +11,18 @@ tags:
   - Snowflake
   - PostgreSQL
   - Vector Search
-description: "以 Bridgewater Vault 的亿级文档和高并发 Agent 检索为背景，比较 Snowflake、PostgreSQL 与 OpenSearch 主栈，测算 OpenAI Embedding 成本，拆解 Turbopuffer 非结构化数据流水线与纯文本检索差异。"
+description: "以 Bridgewater Vault 为背景，分析对象存储优先的 Document Lake、独立 Catalog、可替换检索引擎、开源实现与 Palantir Foundry 架构。"
 ---
 
 # Bridgewater Vault 架构复盘：Snowflake、PostgreSQL 与 OpenSearch 三种主栈
 
 ## 结论先行
 
-使用 Snowflake、OpenSearch、PostgreSQL 和对象存储，可以做出功能上接近 Turbopuffer 的企业检索平台：BM25、向量搜索、Hybrid Search、元数据过滤、多租户、文档版本、权限控制和分析工作流都能覆盖。对于已有这些基础设施的企业，这通常比从零开发搜索引擎更现实。
+Snowflake、OpenSearch 和 PostgreSQL 都能构建企业检索能力，但把它们当作互斥的“主栈”会把文档存储、元数据、权限、处理流水线和搜索索引绑在一起。对于 Bridgewater Vault 这种包含大量 PDF、Office、邮件、网页、表格和结构化记录的系统，更合理的基础是 Object Storage + 独立 Document Catalog + 可替换的 Processing 与 Search。
 
-但这不等于复刻了 Turbopuffer。Turbopuffer 最有价值的部分不是把 BM25 和 ANN 放进一个 API，而是围绕对象存储设计数据布局、索引、写入日志、缓存和查询执行。OpenSearch 的远端存储、磁盘向量索引分别解决了其中一部分问题，却仍然运行在分片和节点模型上。Snowflake 与 PostgreSQL 也不会自动补齐这段差距。
+建议将 S3 或 S3-compatible Object Storage 作为原始文件和派生工件的持久化底座；由独立 Catalog 管理文档身份、版本、来源、ACL、关系和处理状态；解析、OCR、Chunking、Embedding 作为可版本化的异步流水线；OpenSearch、Snowflake Cortex Search、PostgreSQL、Vespa 或对象存储原生检索则作为不同的查询投影。初期可以用 PostgreSQL 实现 Catalog、OpenSearch 实现在线检索、Snowflake 做分析，但应用只依赖稳定的 Catalog API 和 Search API，不依赖这些产品的数据模型。
 
-建议采用明确分工：S3 或兼容对象存储保存原始文档和可恢复的数据快照；OpenSearch 承担在线全文、向量和混合检索；PostgreSQL 管理 Namespace、ACL、版本、任务状态和事务性 Outbox；Snowflake 负责数据治理、历史分析和检索质量评估。初期不再增加 pgvector，除非业务有明确的关系型向量查询场景。
+这不是要自建一个新的数据库，而是把“文档事实来源”和“检索加速结构”分开。索引可以删除重建，Embedding 可以更换模型重新生成，搜索后端可以迁移；原始文档、版本和处理产物不应随之迁移或丢失。
 
 ## 1. 从 Bridgewater Vault 看真正的业务要求
 
@@ -100,7 +100,134 @@ Search API 完成身份验证、租户识别、查询解析和权限条件构造
 Snowflake 从对象存储或事件管道读取标准化数据，形成治理和分析数据集。它不需要同步参与每次在线查询。
 
 
-## 5. Snowflake 主栈：治理和分析最统一，在线检索容量必须先验证
+## 5. 从主栈选择转向 Document Lake：对象存储、Catalog 与可替换索引
+
+上一节的组合仍然容易被理解为“PostgreSQL + OpenSearch + Snowflake 是固定架构”。更准确的设计是把它们降级为可替换实现：对象存储是内容持久层，Document Catalog 是控制面，处理流水线生成版本化工件，检索系统只是面向查询的物化投影。
+
+### 5.1 四个职责边界
+
+| 层 | 保存或管理什么 | 设计约束 |
+|---|---|---|
+| Object Storage | 原始文件、规范化文本、页面图片、表格、Chunk、Embedding、清单和快照 | 按文档版本组织；对象可校验、可恢复、可迁移 |
+| Document Catalog | Document、Version、Asset、ACL、来源、关系、处理状态、索引水位 | 业务身份和权限的权威来源；通过 API 暴露 |
+| Processing | 文件解析、OCR、版面理解、切分、分类、实体抽取、Embedding | 每个产物记录 Parser、Pipeline、Schema 和 Model 版本 |
+| Search / Analytics | BM25、ANN、Hybrid Search、SQL、聚合和评测 | 只保存查询投影；允许重建和替换 |
+
+Document Catalog 不应等同于 Glue Catalog 或 Iceberg Catalog。前者需要理解一份文档的业务身份、版本、来源、附件、ACL、保留策略和派生资产；后者主要管理分析表、Schema、Snapshot、Manifest 与数据文件。两者可以通过 Document ID 和数据集清单关联，但不应强行合并。
+
+Catalog 的第一版可以用 PostgreSQL 实现，因为它擅长事务、关系和唯一约束；但业务接口不应该暴露 PostgreSQL 表结构。后续可以把分析数据投影到 Iceberg，由 REST Catalog 提供跨引擎访问。这样 PostgreSQL 是实现选择，不是系统边界。
+
+### 5.2 对象存储中的文档不是一个 PDF Key
+
+一个逻辑 Document 可以有多个 DocumentVersion，每个版本又有多个 Asset。比如一份研究报告会同时产生原始 PDF、解析后的 Markdown/JSON、页面图像、表格数据、Chunk、Embedding 和摘要。它们都应通过 Catalog 中的关系追溯到原始版本。
+
+推荐的逻辑对象布局如下。实际 Bucket 和 Key 可以根据租户、保留策略及成本分层调整，业务代码不要依赖目录层级：
+
+```text
+document-lake/
+  raw/{document_id}/{version_id}/original.pdf
+  normalized/{document_id}/{version_id}/document.md
+  extracted/{document_id}/{version_id}/pages/
+  extracted/{document_id}/{version_id}/tables/
+  extracted/{document_id}/{version_id}/images/
+  chunks/{document_id}/{version_id}/{pipeline_version}/chunks.parquet
+  embeddings/{document_id}/{version_id}/{model_id}/vectors.parquet
+  manifests/{document_id}/{version_id}/manifest.json
+```
+
+原始文件不可被解析器覆盖。解析器、切分策略或模型升级时，生成新的派生版本，并记录 source_document_id、source_version_id、pipeline_version、parser_version、model_id、schema_version、checksum 和生成时间。Embedding 是派生工件，不是文档本身；从 OpenAI 模型切换到自部署模型，只应重算对应的向量产物和索引。
+
+Document ID 是业务身份，Object Key 是存储定位符。应用通过 Catalog 获取对象位置，不拼接 S3 路径。这样迁移到 R2、MinIO、Ceph、Garage 或其他 S3-compatible 存储时，不必改变文档模型。需要注意，S3 API 兼容不代表对象锁、版本控制、条件写入、事件通知、生命周期和权限语义完全相同，存储适配层必须有能力测试。
+
+### 5.3 Catalog 的最小领域模型
+
+| 实体 | 责任 |
+|---|---|
+| Document | 稳定的逻辑文档身份 |
+| DocumentVersion | 不可变的来源版本、时间和内容校验和 |
+| Asset | 原件、解析文本、图片、表格、Chunk 文件等具体对象 |
+| Chunk | 文本片段及页码、段落、坐标和来源位置 |
+| Entity / DocumentRelation | 人物、机构、市场、证券及文档间引用关系 |
+| Source | 来源系统、连接器、外部 ID、同步水位 |
+| ProcessingRun | 解析、OCR、抽取、Embedding 等任务及其输入输出版本 |
+| AccessPolicy | 文档权限、继承关系、保密级别和授权主体 |
+| IndexManifest | 索引名称、后端、版本、模型、完成水位和切换状态 |
+
+Catalog 保存权威 ACL，搜索索引只保存查询所需的权限投影。查询时必须执行授权检查；撤权不能只依赖异步索引刷新。对高敏感数据，应该支持 Catalog 侧的即时 deny、候选结果二次校验和权限版本水位。索引延迟与权限传播延迟要分别监控。
+
+### 5.4 摄取和索引是两个独立的生命周期
+
+文档上传先落对象存储，再登记 DocumentVersion、Asset 和待处理事件。Worker 通过幂等任务完成解析与派生工件写入，Catalog 记录 ProcessingRun 和 Manifest。索引 Worker 消费已发布的工件，分别写入全文、向量或分析后端。每个后端独立维护索引水位；全部或指定关键索引完成后，文档版本才达到相应的可检索状态。
+
+```mermaid
+flowchart TB
+    A["Sources: PDF / Office / Email / Web / DB"]
+    B["Ingestion API"]
+    C["Object Storage: immutable originals"]
+    D["Document Catalog: identity / version / ACL"]
+    E["Processing workers: parse / OCR / extract"]
+    F["Derived artifacts: text / tables / images / chunks"]
+    G["Embedding and enrichment"]
+    H["Search projections: BM25 / ANN / Hybrid"]
+    I["Analytics: Iceberg / Snowflake"]
+    J["Catalog API + Search API"]
+    K["Applications and Agents"]
+
+    A --> B
+    B --> C
+    B --> D
+    C --> E
+    E --> F
+    E --> D
+    F --> G
+    F --> H
+    G --> H
+    F --> I
+    D --> J
+    H --> J
+    I --> J
+    J --> K
+```
+
+这里的关键不是必须采用某个消息队列，而是要有可重放的事件、幂等处理、版本化产物和可观测的索引水位。搜索后端发生故障时，可以从 Manifest 和工件重新构建；切换后端时，也不需要重新抓取原始来源。
+
+### 5.5 开源项目：有相近实现，但成熟度和边界不同
+
+| 项目 | 与 Document Lake 的匹配点 | 主要差异与评估 |
+|---|---|---|
+| [Autofile](https://github.com/joekhoobyar/autofile) | S3-compatible 对象存储保存文件，PostgreSQL 保存元数据和搜索索引；OCR、文档分类、自定义元数据和全文搜索 | 架构最接近本文提出的轻量底座，但项目明确标注 Alpha。适合研究实现和做小规模 POC，不应直接当作亿级生产系统 |
+| [FormKiQ Core](https://github.com/formkiq/formkiq-core) | API-first 文档服务；S3、元数据、标签、搜索、版本、事件、访问控制、OCR；支持 AWS 部署和本地 Docker | 企业文档管理能力较完整，MIT 许可；架构明显偏 AWS，核心依赖 S3、DynamoDB、Lambda/API Gateway 等服务。适合 AWS 内落地，不是跨云中立 Catalog |
+| [NemakiWare](https://github.com/aegif/NemakiWare) | CMIS 文档仓库、文档版本和关系、继承 ACL、全文与向量混合检索、MCP；支持 S3 冷归档 | 更像可直接使用的文档仓库。当前主要使用 CouchDB + Solr，默认部署是单副本；要做大规模分布式系统，需要单独验证扩展与运维边界 |
+| [Pansoph](https://github.com/autoargos/pansoph) | 将 Connector、Parser、Embedder、VectorStore、Authz、ObjectStore 等抽象为可替换 Port，强调文档级权限 | 架构抽象与避免技术栈绑定的目标高度一致，但项目较新，默认组合仍包含 PostgreSQL、Qdrant、SpiceDB、Garage/SeaweedFS 等多个服务；需要验证代码、测试和生产成熟度 |
+| [RAGFlow](https://github.com/infiniflow/ragflow) | 复杂文档解析、Chunking、知识抽取、检索和 Agent/RAG 工作流 | 更偏完整 RAG/知识处理平台，不是中立的文档事实存储和 Catalog。可以借鉴处理流水线，不建议让它成为唯一原始文档仓库 |
+
+这些项目解决的问题并不相同。Autofile 和 FormKiQ 更接近“文件 + 元数据 + 文档处理”；NemakiWare 更接近“权限感知的文档仓库”；Pansoph 更强调模块化和可替换适配器；RAGFlow 的强项是文档理解和检索工作流。没有必要为了复用其中一个项目而接受它的全部存储和检索栈。更现实的做法是先评估它们的数据模型、API、ACL 和对象存储适配方式，再决定复用服务还是只借鉴设计。
+
+另外，OpenMetadata 和 DataHub 这类数据 Catalog 主要管理数据集、表、Schema、Owner、Lineage 和治理信息，不能直接替代文档级内容仓库。Iceberg Catalog 管理分析数据集，也不负责 PDF 的版本、附件、Chunk 和逐文档权限。选型时必须区分 Data Catalog、Document Catalog 和 Search Index。
+
+### 5.6 Palantir Foundry：公开架构确实采用了相似的分层思想
+
+Palantir 的公开文档给出了很直接的证据。Foundry Dataset 被定义为一组文件的逻辑包装，支持结构化、半结构化和非结构化内容；文件本身不一定存放在 Foundry 服务内部，而是通过逻辑路径映射到 backing filesystem。官方文档称这个底层文件系统可以是自建 HDFS，但更常见的是云存储，例如 Amazon S3。[Foundry Datasets](https://www.palantir.com/docs/foundry/data-integration/datasets)
+
+对于非结构化内容，Foundry 另有 Media Sets，面向大规模图片、音频、视频和文档，提供适配媒体处理的存储、计算和转换工作流。例如可以通过 Pipeline Builder 从 PDF 中提取文本。[Foundry Media Sets](https://www.palantir.com/docs/foundry/data-integration/media-sets)
+
+再往上，Foundry Ontology 把数据源映射成业务对象、属性和关系，并把数据、逻辑、动作和安全策略组合起来。它不只是一个 Data Catalog，也不是简单的知识图谱，而是供应用和 Agent 使用的业务操作模型。[The Ontology System](https://www.palantir.com/docs/foundry/architecture-center/ontology-system)
+
+Palantir 还公开了 Ontology 后端的架构演进：Object Storage v2 将原先集中在一个子系统中的索引、查询和数据职责进一步拆开，使索引与查询能够独立扩展。这与本文强调的“事实存储、索引投影、查询服务分离”方向一致。[Ontology Backend Architecture](https://www.palantir.com/docs/foundry/object-backend/overview)
+
+因此，可以回答：**是的，Palantir 确实构建了与此相近、而且覆盖范围更大的企业数据底座。** 但不能据此推断其所有客户部署都使用 S3，也不能把 Foundry 内部实现等同于公开的 S3 + PostgreSQL + OpenSearch 组合。Palantir 的文档只披露了部分架构和抽象，核心平台是专有产品。它真正值得借鉴的不是某个具体数据库，而是 Dataset/Media Set 的内容组织、Ontology 的业务语义层、统一安全模型，以及索引和查询服务的职责分离。
+
+### 5.7 对 Bridgewater Vault 的建议
+
+不要把 Autofile、FormKiQ 或 NemakiWare 原样部署后就称为 Vault。它们的功能范围、扩展方式和权限模型各不相同。建议先定义自己的 Document Catalog API 和对象存储契约，再从这些项目中选择可以复用的解析、归档、搜索或权限模块。
+
+第一阶段的最小实现可以是 S3 + PostgreSQL Catalog + 异步 Worker + 一个 Search Adapter。Snowflake 不进入在线检索关键路径，OpenSearch 也不是数据事实来源。结构化数据和大规模分析需要时再输出 Parquet/Iceberg；需要不同检索能力时，通过 Search Adapter 接入 OpenSearch、Cortex Search 或其他后端。
+
+这会把架构的长期稳定点放在 Document ID、Version、Asset、ACL、Manifest 和 API 契约上，而不是某个数据库产品上。对于亿级文档，真正需要压测的是 Catalog 热点、元数据索引、对象存储请求成本、解析吞吐、索引构建与重建时间、权限过滤和查询延迟，而不是先决定哪一个数据库做“主栈”。
+
+---
+
+## 7. Snowflake 主栈：治理和分析最统一，在线检索容量必须先验证
 
 Snowflake 可以作为 Vault 类平台的主栈。文档目录、Chunk、来源、实体、权限和版本都保存在 Snowflake 表中，Streams、Tasks、Dynamic Tables 或 Snowpipe 负责持续摄取与变换，Cortex Search 提供关键词、向量和混合检索。对于已经把研究数据和分析工作负载集中在 Snowflake 的机构，这种方式可以减少平台数量，让搜索与数据治理共享一套数据模型。
 
@@ -145,7 +272,7 @@ Cortex Search 的成本包括刷新源查询所使用的 Warehouse、文档变�
 
 Snowflake 主栈最适合数据本来就在 Snowflake、查询量中等、刷新延迟有余量、希望以托管方式获得 Hybrid Search 的组织。它的主要优点是数据治理、SQL 分析和检索服务统一，运维负担低；主要缺点是默认 QPS/行数限额、owner's rights 权限边界和持续 Serving Compute 成本。对 Vault 公布的高并发 Agent 负载，Snowflake 仍然可以进入候选，但应先完成限额协商、权限威胁建模和成本压测，不宜按默认配置直接承诺生产容量。
 
-## 6. PostgreSQL 主栈：事务和关系模型最完整，搜索规模化由团队自己负责
+## 7. PostgreSQL 主栈：事务和关系模型最完整，搜索规模化由团队自己负责
 
 PostgreSQL 主栈把文档目录、Chunk、权限关系、全文索引和向量索引尽量放在同一个数据库中。它的核心吸引力在于，文档版本、ACL 变更和索引任务状态可以在单一事务边界内维护；检索请求也可以在 SQL 中组合全文、向量和关系过滤。这种方案适合检索与复杂关系查询紧密耦合、数据库团队有能力承担分片和索引维护的组织。
 
@@ -193,7 +320,7 @@ PostgreSQL 主栈的优点是事务、关系 JOIN、数据约束和权限关系�
 
 **判断：PostgreSQL 可以实现完整的 Vault 类系统，也能够通过量化、分区和分片承载很大的向量数据集；但对高并发 Agent 检索，它不是默认的省事方案。它更适合关系事务驱动、过滤关系复杂、团队具备 PostgreSQL 扩展和分片运维经验的场景。**
 
-## 7. OpenSearch 主栈：在线检索能力最贴近 Vault，索引生命周期和集群运维是主要代价
+## 8. OpenSearch 主栈：在线检索能力最贴近 Vault，索引生命周期和集群运维是主要代价
 
 OpenSearch 把 BM25、向量 ANN、Hybrid Search、过滤、聚合和排序作为一等能力。对于查询主要围绕来源、时间、国家、市场、概念和用户权限展开的 Vault，OpenSearch 的数据模型与在线检索路径更直接，也更容易按搜索负载扩展节点和副本。
 
@@ -255,7 +382,7 @@ OpenSearch 的优势是检索能力集中、查询模型成熟，支持高并发
 | 适用条件 | 数据已在 Snowflake、检索 QPS 可协商满足 | 关系查询和事务是主导需求，团队擅长 PG 扩展 | 在线检索是核心，Agent QPS 和过滤召回优先 |
 
 
-## 8. Embedding 是可选检索通道，不是文档入库的前置条件
+## 9. Embedding 是可选检索通道，不是文档入库的前置条件
 
 前面三种主栈的设计都提到了 Embedding，但它并不等于“搜索索引”。传统全文检索会把文本切词并建立倒排索引，BM25 根据查询词、词频和文档长度计算相关性；元数据过滤则依靠结构化字段索引。两者都不需要把文本转换成向量。
 
@@ -375,7 +502,7 @@ Turbopuffer 当前文档还列出 Native Embeddings 的组织级限速：新组�
 
 最后，不要把“四亿条向量”理解成 Turbopuffer 自动把一亿份原始 PDF 拆成四亿段并完成所有 Embedding。演讲只确认了文档数和向量记录规模；具体分块方式、哪些来源没有进入向量检索、如何处理表格与录音，公开信息不足。它能证明的是这套生产检索链路在大规模向量与复杂权限过滤下运行，而不是一个端到端无代码的文档理解流水线。
 
-## 9. 纯文本检索的真实差异：Snowflake SEARCH、PostgreSQL FTS 和 OpenSearch BM25
+## 10. 纯文本检索的真实差异：Snowflake SEARCH、PostgreSQL FTS 和 OpenSearch BM25
 
 “不用 Embedding”并不意味着三种平台提供相同的全文搜索能力。它们的索引结构、查询表达、相关性排序以及扩展方式差异很大。特别是 Snowflake Cortex Search 和 Snowflake SQL SEARCH 是两条不同的产品路径，不能把后者当成前者的 text-only 开关。
 
@@ -426,7 +553,7 @@ OpenSearch 把全文检索作为基础能力。写入时，text 字段经 Analyz
 
 对于 Vault 这样的亿级投研库，如果要求完全不用 Embedding，OpenSearch 是三者中最直接的全文检索主栈；PostgreSQL 适合全文只是关系数据库查询的一部分、规模和并发有明确边界的环境；Snowflake 则适合搜索与仓库分析紧密结合、SQL 过滤已能满足排名要求的环境。若需要 Snowflake 的托管检索接口和语义召回，应选择 Cortex Search，并接受其向量索引要求；若只是查找关键词，使用 SEARCH + FULL_TEXT Search Optimization 更准确。
 
-## 10. 写入一致性比搜索 API 更需要设计
+## 11. 写入一致性比搜索 API 更需要设计
 
 这套系统没有一个跨 S3、PostgreSQL 和 OpenSearch 的分布式事务。不能假设三边写入会同时成功。应当使用可重放的事件驱动流程，把文档版本作为一致性主线。
 
@@ -442,7 +569,7 @@ OpenSearch 把全文检索作为基础能力。写入时，text 字段经 Analyz
 这样做的代价是最终一致，而不是跨系统强一致。对于 Agent 即时写入后马上检索的场景，可以提供写入确认水位：只有索引确认达到对应版本，API 才向调用方报告该版本可检索。若调用方选择异步写入，就需要接受短暂的索引延迟。
 
 
-## 11. 过滤召回决定了检索质量上限
+## 12. 过滤召回决定了检索质量上限
 
 Vault 案例中的时间、来源、资产和国家条件不是可有可无的附加参数。它们会直接改变向量搜索应该访问的候选空间。过滤条件选择性越高，普通 ANN 搜索越容易出现两个极端：先搜索后过滤可能只剩少量结果；先过滤再精确计算则可能需要扫描很大的候选集。
 
@@ -452,7 +579,7 @@ OpenSearch 的 efficient k-NN filtering 已经比简单 post-filter 更完整。
 
 因此，OpenSearch 方案必须用真实查询分布验证过滤性能。不能只测没有过滤条件的 ANN Recall@10。至少要按过滤选择性、租户规模、时间范围和 ACL 条件分别测量。
 
-## 12. 多租户和权限模型
+## 13. 多租户和权限模型
 
 建议先采用共享索引加 tenant_id、namespace_id、ACL 标签和 routing key 的模式，避免每个租户都创建独立索引导致分片数量膨胀。对于数据量特别大的租户、严格的资源隔离要求或独立生命周期要求，再使用专属索引或专属集群。
 
@@ -460,7 +587,7 @@ OpenSearch 的 efficient k-NN filtering 已经比简单 post-filter 更完整。
 
 Namespace 与 OpenSearch index 不应一一对应。Namespace 是逻辑隔离和生命周期概念；Index、Shard 和 Routing 是物理布局决策。两者解耦后，才能根据文档数量、查询负载和租户增长重新分配数据。
 
-## 13. 与 Turbopuffer 的架构差距
+## 14. 与 Turbopuffer 的架构差距
 
 | 能力 | 推荐组合 | Turbopuffer |
 |---|---|---|
@@ -479,7 +606,7 @@ OpenSearch Remote Store 是重要的演进方向。Remote-backed storage 可以�
 
 成本上也有类似的差距。OpenSearch 集群仍需要为分片、索引段、查询缓存、写入合并和副本保留计算与本地存储资源。S3 快照或 Remote Store 可以降低部分持久化成本，但不会自然带来 Turbopuffer 那种按热点数据缓存、冷数据远端读取的完整经济模型。
 
-## 14. 2026 年检索引擎的演进：磁盘向量、对象存储和列式执行
+## 15. 2026 年检索引擎的演进：磁盘向量、对象存储和列式执行
 
 最近一轮检索基础设施的变化，重点已经不只是 HNSW 参数或 Embedding 模型，而是如何减少向量索引对内存的依赖、如何在对象存储上直接搜索，以及如何让全文、向量和结构化查询共享更高效的执行路径。
 
@@ -533,7 +660,7 @@ Turbopuffer 自己也在改变架构。2026 年 9 月公开的 v3 设计说明�
 
 这些内容属于 Turbopuffer v3 的公开开发方向。其文章在 2026 年 10 月仍将正式投入生产描述为后续计划，不应当把开发日志中的设计目标当作当前所有生产环境已具备的能力。
 
-## 15. 实施顺序：先验证检索，再投资对象存储原生引擎
+## 16. 实施顺序：先验证检索，再投资对象存储原生引擎
 
 ### 第一阶段：建立检索质量基线
 
@@ -555,7 +682,7 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 
 如果仍无法达到目标成本，再用 LanceDB、Firn 或自建基于 Lance 的检索 POC 验证对象存储原生路线。此时应该用同样的评测集、文档版本和查询流量，与 OpenSearch 进行端到端比较，而不是只比较向量索引微基准。
 
-## 16. 评估矩阵与验收指标
+## 17. 评估矩阵与验收指标
 
 | 维度 | 必须验证的场景 | 指标 |
 |---|---|---|
@@ -569,9 +696,9 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 
 测试数据要保留真实的租户大小分布和元数据偏斜。例如，某些来源可能占多数文档，某些资产可能只对应少量记录；这些情况会影响过滤选择性和分片负载。评估时还应分别报告冷查询与热查询，避免平均值掩盖尾延迟。
 
-## 17. 最终建议
+## 18. 最终建议
 
-对于已经拥有 Snowflake、OpenSearch、PostgreSQL 和 S3 的企业，我仍建议以 OpenSearch 作为统一在线检索引擎，PostgreSQL 管控制面和事务，S3 保存原始数据与可恢复快照，Snowflake 建立治理和评测闭环。这个建议不是因为另外两种主栈不能实现，而是因为 Vault 公开的负载画像把高并发在线检索和高选择性过滤放在了首位：Snowflake 必须先解决 Cortex Search 默认 QPS 与行数配额，PostgreSQL 则需要承担更复杂的向量索引、读写隔离和横向分片工作。若实际业务的 Agent QPS 低得多、数据已集中在 Snowflake，或 SQL 关系事务远比检索吞吐重要，前两种方案都可能更合适。不要一开始就把 pgvector、VectorChord、OpenSearch 和 Cortex Search 全部作为并行检索引擎部署。
+对于 Bridgewater Vault，我建议把 S3-compatible Object Storage + 独立 Document Catalog + 可重建的 Search/Analytics Projection 作为长期架构，而不是选择 Snowflake、PostgreSQL 或 OpenSearch 之一作为主栈。第一阶段可以用 S3 保存原件和派生工件、PostgreSQL 实现 Catalog、异步 Worker 处理文档、OpenSearch 提供在线检索；Snowflake 只在需要治理分析和评测闭环时接入。应用只依赖 Catalog API、Processing API 和 Search API，不直接依赖底层产品的数据模型。若后续改用 Cortex Search、Vespa、Quickwit、Lance/Firn 或其他检索后端，应该只替换查询投影和适配器，而不是迁移原始文档。开源项目可借鉴其局部能力，但现阶段没有证据表明其中某一个已经提供了可直接承接 Vault 亿级规模、复杂 ACL 和高并发 Agent 负载的完整方案。
 
 Embedding 不应该成为整个入库流水线的硬性步骤。建议先让全文和结构化字段覆盖所有可检索文档，再根据真实查询评测逐步扩大 Dense Vector 的覆盖范围。若确实要为约四亿条 Chunk 建立 OpenAI Embedding，按每条 512 Token 估算，3-small 使用 Batch 的一次性输入费用约 2,048 美元，3-large 约 13,312 美元；这只是模型 Token 费，不包含文档解析、索引、向量存储和后续重算。Turbopuffer Native Embeddings 默认新组织的 2M Token/分钟额度，则意味着同等回填任务的理论时间下限约 71 天，必须在项目计划中单独处理额度和吞吐，不应把它当成即时完成的写入副作用。
 
@@ -584,6 +711,16 @@ Embedding 不应该成为整个入库流水线的硬性步骤。建议先让全�
 2026 年的技术进展已经让这条路更容易探索：OpenSearch 有 JVector 和 Remote Store，PostgreSQL 有 VectorChord，Lance/Firn 在推进对象存储原生检索，Quickwit 已经证明云存储上的全文搜索可行，Turbopuffer v3 则进一步走向列式主存储和向量化查询。下一步应该用业务数据验证哪个瓶颈最贵，再决定是否需要自建更接近 Turbopuffer 的存储引擎。
 
 ## 参考资料
+
+- [Autofile](https://github.com/joekhoobyar/autofile)
+- [FormKiQ Core](https://github.com/formkiq/formkiq-core)
+- [NemakiWare](https://github.com/aegif/NemakiWare)
+- [Pansoph](https://github.com/autoargos/pansoph)
+- [RAGFlow](https://github.com/infiniflow/ragflow)
+- [Palantir Foundry Datasets](https://www.palantir.com/docs/foundry/data-integration/datasets)
+- [Palantir Foundry Media Sets](https://www.palantir.com/docs/foundry/data-integration/media-sets)
+- [Palantir Ontology System](https://www.palantir.com/docs/foundry/architecture-center/ontology-system)
+- [Palantir Ontology Backend Architecture](https://www.palantir.com/docs/foundry/object-backend/overview)
 
 - [ParadeDB pg_search](https://github.com/paradedb/paradedb)
 
