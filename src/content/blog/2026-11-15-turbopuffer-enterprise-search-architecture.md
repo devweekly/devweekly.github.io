@@ -1,7 +1,7 @@
 ---
 author: SW
 pubDatetime: 2026-11-15T00:00:00Z
-title: "用 Snowflake、OpenSearch 和 PostgreSQL 构建 Turbopuffer 式检索平台"
+title: "Bridgewater Vault 架构复盘：Snowflake、PostgreSQL 与 OpenSearch 三种主栈"
 featured: false
 draft: false
 tags:
@@ -11,10 +11,10 @@ tags:
   - Snowflake
   - PostgreSQL
   - Vector Search
-description: "以 Bridgewater Vault 为业务背景，分析如何用 S3、Snowflake、OpenSearch 和 PostgreSQL 构建 Turbopuffer 式企业检索平台，明确能力边界、数据一致性、过滤召回和 2026 年检索引擎的最新演进。"
+description: "以 Bridgewater Vault 的亿级文档、百余数据源和高并发 Agent 检索为背景，分别设计 Snowflake、PostgreSQL 与 OpenSearch 主栈，比较容量、权限、过滤召回、成本和运维边界。"
 ---
 
-# 用 Snowflake、OpenSearch 和 PostgreSQL 构建 Turbopuffer 式检索平台
+# Bridgewater Vault 架构复盘：Snowflake、PostgreSQL 与 OpenSearch 三种主栈
 
 ## 结论先行
 
@@ -243,7 +243,7 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 
 ## 12. 最终建议
 
-对于已经拥有 Snowflake、OpenSearch、PostgreSQL 和 S3 的企业，我会先选择 OpenSearch 作为统一在线检索引擎，PostgreSQL 管控制面和事务，S3 保存原始数据与可恢复快照，Snowflake 建立治理和评测闭环。不要一开始就把 pgvector、VectorChord、OpenSearch 和 Cortex Search 全部作为并行检索引擎部署。
+对于已经拥有 Snowflake、OpenSearch、PostgreSQL 和 S3 的企业，我仍建议以 OpenSearch 作为统一在线检索引擎，PostgreSQL 管控制面和事务，S3 保存原始数据与可恢复快照，Snowflake 建立治理和评测闭环。这个建议不是因为另外两种主栈不能实现，而是因为 Vault 公开的负载画像把高并发在线检索和高选择性过滤放在了首位：Snowflake 必须先解决 Cortex Search 默认 QPS 与行数配额，PostgreSQL 则需要承担更复杂的向量索引、读写隔离和横向分片工作。若实际业务的 Agent QPS 低得多、数据已集中在 Snowflake，或 SQL 关系事务远比检索吞吐重要，前两种方案都可能更合适。不要一开始就把 pgvector、VectorChord、OpenSearch 和 Cortex Search 全部作为并行检索引擎部署。
 
 这套组合可以较快复现 Turbopuffer 的主要业务能力，也能支持 Bridgewater Vault 一类的时间、来源、资产和权限过滤场景。真正不能直接复现的是对象存储原生的索引物理布局、索引与过滤结构的协同，以及查询节点无状态化的完整经济模型。
 
@@ -251,6 +251,19 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 
 ## 参考资料
 
+- [Snowflake Cortex Search：Overview、known limitations 与 engine behavior](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-overview)
+- [Snowflake Cortex Search：Query API、filters 与 owner’s rights](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/query-cortex-search-service)
+- [Snowflake Cortex Search：Costs](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-costs)
+- [PostgreSQL pgvector：Filtering、multitenancy and scaling](https://github.com/pgvector/pgvector)
+- [PostgreSQL Row Security Policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
+- [PostgreSQL Table Partitioning](https://www.postgresql.org/docs/current/ddl-partitioning.html)
+- [VectorChord Hybrid Search](https://docs.vectorchord.ai/vectorchord/use-case/hybrid-search.html)
+- [OpenSearch Hybrid Search](https://docs.opensearch.org/latest/vector-search/ai-search/hybrid-search/)
+- [OpenSearch Efficient k-NN filtering](https://docs.opensearch.org/latest/vector-search/filter-search-knn/efficient-knn-filtering/)
+- [OpenSearch Document-Level Security](https://docs.opensearch.org/latest/security/access-control/document-level-security/)
+- [OpenSearch Methods and Engines](https://docs.opensearch.org/latest/mappings/supported-field-types/knn-methods-engines/)
+- [OpenSearch JVector plugin](https://docs.opensearch.org/latest/install-and-configure/additional-plugins/opensearch-jvector/)
+- [OpenSearch Bulk API](https://docs.opensearch.org/latest/api-reference/document-apis/bulk/)
 - [Bridgewater：一亿份文档背后的 AI 投研系统](https://mp.weixin.qq.com/s/bqOGYz70R-aNrtXo0Cmn5g)
 - [Turbopuffer Architecture](https://turbopuffer.com/docs/architecture)
 - [Turbopuffer Native Filtering](https://turbopuffer.com/blog/native-filtering)
