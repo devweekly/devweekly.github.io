@@ -560,9 +560,9 @@ Bridgewater / Turbopuffer 联合演讲中的约四亿条向量记录，可以作
 | text-embedding-3-large | 托管 API | 3,072 | MTEB Multilingual Mean(Task) 58.93 / Retrieval 59.27 | 托管服务基线，维护成本最低 |
 | Qwen3-Embedding-4B | 4B | 2,560 | 同一表：69.45 / 69.60 | 自部署的首选对照组 |
 | Qwen3-Embedding-8B | 8B | 4,096 | 同一表：70.58 / 70.88 | 更重的模型，验证质量提升是否值得 GPU 成本 |
-| Harrier OSS v1 27B | 27B | 以模型卡为准 | 2026 年 MTEB v2 报告 Mean(Task) 约 74.27 | 高资源实验候选；其 MTEB v2 口径不能与上面旧版多语言表直接排序 |
+| Harrier OSS v1 27B | 27B | 5,376；32,768 Token | MTEB v2 74.3 | 94 种语言；模型文件约 54.1 GB，适合高资源实验；新版基准不能与上面旧版多语言表直接排序 |
 
-Microsoft 的 Harrier OSS v1 27B 是值得关注的高容量候选，模型卡标注 MIT License；但 27B 体量会显著提高 GPU 显存、并发服务和冷启动成本。它的 2026 MTEB v2 分数来自新版基准，不应与 Qwen 模型卡中 2025 年的 MTEB Multilingual 分数直接比较。[Harrier OSS v1 模型卡](https://huggingface.co/microsoft/harrier-oss-v1-27b) [MTEB Leaderboard](https://huggingface.co/spaces/mteb/leaderboard)
+Microsoft 的 Harrier OSS v1 27B 是值得关注的高容量候选，模型卡标注 MIT License、94 种语言和 5,376 维输出；模型文件约 54.1 GB（BF16），还未计算运行时显存与并发余量。它的 MTEB v2 分数来自新版基准，不应与 Qwen 模型卡中 2025 年的 MTEB Multilingual 分数直接比较。可下载权重不等于自动满足企业许可要求，生产使用仍要核查模型卡和适用条款。[Harrier OSS v1 模型卡](https://huggingface.co/microsoft/harrier-oss-v1-27b) [MTEB Leaderboard](https://huggingface.co/spaces/mteb/leaderboard)
 
 如果希望先得到可操作的结果，我会用 Qwen3-Embedding-4B 与 text-embedding-3-large 对同一批金融文档做离线 A/B；只有当 4B 明显胜出或 8B 的收益足以覆盖 GPU 成本，才把向量生产切到自部署。若 GPU 平台已具备较高利用率，再评估 8B；Harrier 27B 更适合资源充足时作为质量上限实验，不建议直接作为第一个生产模型。模型卡公布的通用 MTEB 分数只是筛选线索，真正的验收指标应是目标语料上的 Recall@K、nDCG@10、过滤后的有效召回率和 p95 延迟。
 
