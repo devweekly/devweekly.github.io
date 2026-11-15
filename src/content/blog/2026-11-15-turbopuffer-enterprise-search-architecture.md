@@ -1,7 +1,7 @@
 ---
 author: SW
 pubDatetime: 2026-11-15T00:00:00Z
-title: "Bridgewater Vault 架构复盘：对象存储、Document Catalog 与可替换检索层"
+title: "Bridgewater Vault 架构复盘：Document Lake、三种检索主栈与 Turbopuffer"
 featured: false
 draft: false
 tags:
@@ -11,20 +11,16 @@ tags:
   - Snowflake
   - PostgreSQL
   - Vector Search
-description: "以 Bridgewater Vault 为背景，分析对象存储优先的 Document Lake、独立 Catalog、可替换检索引擎、开源实现与 Palantir Foundry 架构。"
+description: "从 Bridgewater Vault 的文档与检索负载出发，比较 Snowflake、PostgreSQL 和 OpenSearch 主栈，梳理 Document Lake、Embedding、权限过滤与 Turbopuffer 的底层设计。"
 ---
 
-# Bridgewater Vault 架构复盘：Snowflake、PostgreSQL 与 OpenSearch 三种主栈
+# Bridgewater Vault 架构复盘：Document Lake、三种检索主栈与 Turbopuffer
 
-## 结论先行
+Bridgewater Vault 的公开案例适合用来讨论一类企业系统：把外部数据、内部研究材料和会议记录放进同一个资料库，再让研究员和 Agent 按时间、来源、资产和权限检索证据。难点不只是找到相似文本，还包括材料来源、版本、授权范围，以及命中后能否回到原始证据。
 
-Snowflake、OpenSearch 和 PostgreSQL 都能构建企业检索能力，但把它们当作互斥的“主栈”会把文档存储、元数据、权限、处理流水线和搜索索引绑在一起。对于 Bridgewater Vault 这种包含大量 PDF、Office、邮件、网页、表格和结构化记录的系统，更合理的基础是 Object Storage + 独立 Document Catalog + 可替换的 Processing 与 Search。
+本文从 Vault 公布的规模和负载入手，先梳理文档事实层与检索索引的边界，再比较 Snowflake、PostgreSQL 和 OpenSearch 三种实现。Embedding 的模型和费用、Turbopuffer 的上游文档处理、对象存储原生检索的技术路线，放在相应的设计问题下讨论。
 
-建议将 S3 或 S3-compatible Object Storage 作为原始文件和派生工件的持久化底座；由独立 Catalog 管理文档身份、版本、来源、ACL、关系和处理状态；解析、OCR、Chunking、Embedding 作为可版本化的异步流水线；OpenSearch、Snowflake Cortex Search、PostgreSQL、Vespa 或对象存储原生检索则作为不同的查询投影。初期可以用 PostgreSQL 实现 Catalog、OpenSearch 实现在线检索、Snowflake 做分析，但应用只依赖稳定的 Catalog API 和 Search API，不依赖这些产品的数据模型。
-
-这不是要自建一个新的数据库，而是把“文档事实来源”和“检索加速结构”分开。索引可以删除重建，Embedding 可以更换模型重新生成，搜索后端可以迁移；原始文档、版本和处理产物不应随之迁移或丢失。
-
-## 1. 从 Bridgewater Vault 看真正的业务要求
+## 1. Vault 的负载画像：规模、过滤条件与 Agent 并发
 
 参考文章介绍了 Bridgewater 的 Vault。它接入超过一亿份文档、135 个外部数据来源和内部研究记录，每天继续增加数千份文档。文档需要关联国家、市场、概念、来源和讨论时间，投资者与 Agent 都通过同一套平台检索证据。[Bridgewater：一亿份文档背后的 AI 投研系统](https://mp.weixin.qq.com/s/bqOGYz70R-aNrtXo0Cmn5g)
 
@@ -34,7 +30,7 @@ Bridgewater 还介绍了一个很实际的检索质量问题：团队先建立�
 
 人和 Agent 对检索系统的压力也不同。演讲中描述的人类使用量约为每小时 100 次查询；Agent 查询轻易超过每秒 100 次，集群场景可能达到每秒数千次。前者更在意首屏结果准确率，后者需要高召回、吞吐和稳定的过滤性能。两种工作负载共用一套知识库是合理的，但不能只用人工交互的流量模型来估算容量。
 
-## 2. Turbopuffer 值得复制的是什么
+## 2. Turbopuffer 的设计取舍：检索能力与存储架构
 
 Turbopuffer 的架构可以拆成三个相互依赖的部分。
 
@@ -53,58 +49,40 @@ Turbopuffer 的架构可以拆成三个相互依赖的部分。
 
 第一项是平台集成问题，第二项是搜索引擎和存储引擎设计问题。后者不能靠多加几个数据库产品来解决。
 
-## 3. 基础设施应该怎样分工
+### 2.1 推荐组合与 Turbopuffer 的差距
 
-### 对象存储：保存可恢复的事实数据
+| 能力 | 推荐组合 | Turbopuffer |
+|---|---|---|
+| 原始文档持久化 | S3 / R2 | 对象存储为持久化基础 |
+| 全文和向量检索 | OpenSearch | 统一查询引擎 |
+| 属性过滤 | OpenSearch filter + ACL 约束 | 与向量索引协同的 Native Filtering |
+| 事务和租户元数据 | PostgreSQL | 内建 Namespace / 文档模型 |
+| 历史分析 | Snowflake | 主要面向检索服务 |
+| 冷热缓存 | OpenSearch 节点缓存 + 自建缓存策略 | 内存和 NVMe 分层缓存 |
+| 计算与存储解耦 | Remote Store 可部分实现 | 对象存储优先的存储引擎 |
+| 索引重建 | 外部快照、批次清单和 alias 切换 | 服务自身管理 |
 
-S3、Cloudflare R2 或兼容对象存储保存原始文件、标准化文档快照、附件、批次清单和离线索引快照。文档需要有稳定的 document_id、source_id、version 和 checksum。对象存储保存的是可以重新解析、重新索引的数据，不应该只存一份已经无法追溯来源的 Chunk。
+#### 底层实现：自研的对象存储原生引擎
 
-对象存储成为事实来源后，OpenSearch 的索引可以被视为可重建的查询投影。索引丢失时，系统应能根据文档版本和批次清单重新构建，而不是把搜索集群当成唯一的数据副本。
+公开资料显示，Turbopuffer 的查询进程是 Rust binaries，服务节点访问对象存储中的数据库数据；每个 Namespace 有独立对象存储前缀，写入先追加 WAL 文件，成功响应意味着数据已经持久化到对象存储。随后索引异步构建，尚未进入索引的数据仍可通过较慢的扫描路径查询。NVMe SSD 和内存保存热点数据，查询节点可以为 Namespace 做缓存亲和路由，但节点本身不是唯一数据副本。[Turbopuffer Architecture](https://turbopuffer.com/docs/architecture) [Turbopuffer Concepts](https://turbopuffer.com/docs/concepts)
 
-### OpenSearch：在线检索引擎
+它的索引选择也与 PostgreSQL 和 OpenSearch 不同。向量 ANN 基于 SPFresh 的中心点聚类索引，而不是 HNSW 或 DiskANN 图；这种组织方式把查询集中到若干向量簇，减少对象存储的随机往返和写放大。全文检索是针对对象存储设计的倒排 BM25 索引，属性过滤还有自己的倒排/精确索引，并且知道向量聚类的组织结构，能协助高选择性过滤下的 ANN 搜索。WAL、ANN、BM25、Attribute Index 和冷热缓存共同构成它的数据库内核。[Turbopuffer Architecture](https://turbopuffer.com/docs/architecture)
 
-OpenSearch 承担全文索引、向量 ANN、过滤、排序和查询融合。文档中可以同时保存正文或检索片段、Embedding、时间字段、来源、国家、市场、概念、租户和 ACL 标签。这样 BM25、向量和过滤都在同一检索请求中完成，不需要每次跨多个数据库拼装候选集。
+从版本演进可以更清楚地看到它不是传统搜索集群的简单托管。v1/v2 以向量地址和聚类布局作为主要索引基础，其他查询能力围绕这个向量优先的数据布局扩展；官方在 v3 设计说明中明确指出，这种做法带来了存储放大、写放大和查询向量化受限的问题，因此开始把 ANN 从主索引改成二级索引。v3 公布的方向是列式、Struct-of-Arrays 数据布局，利用 Constant、Dictionary、RLE、Frequency 等编码压缩属性，并让查询算子直接在压缩数据上执行；查询执行也改为向量化流水线。这些属于官方公开的 v3 设计和演进信息，不应被误读为 PostgreSQL 的表存储或 Lucene 的 Segment 实现。[Turbopuffer v3: RIP, vector database](https://turbopuffer.com/blog/rip-vector-database) [Turbopuffer v3 development log](https://turbopuffer.com/v3) [Fully vectorized query execution](https://turbopuffer.com/blog/fully-vectorized-search-engine)
 
-OpenSearch 支持 Hybrid Search，也支持将过滤条件放进 k-NN 查询。其 efficient k-NN filtering 会根据引擎和数据情况选择过滤与近邻搜索的执行方式；Lucene、Faiss 和 JVector 引擎都有相应能力，但实现和适用参数不同。[OpenSearch：Filtering vector search results](https://docs.opensearch.org/latest/vector-search/filter-search-knn/)
+据此可以判断：Turbopuffer 的核心是自研的分布式检索与存储引擎，公开架构使用 Rust 服务、对象存储持久化、WAL、SPFresh ANN、BM25/属性索引、NVMe/内存缓存和自有查询执行器。它不是 PostgreSQL 加 pgvector，也不是 OpenSearch/Lucene 集群换了一个 API。公开资料没有完整披露它内部每一个低层库或存储文件的实现，因而不能进一步断言完全没有借用第三方组件；但没有证据支持把 PostgreSQL 或 OpenSearch 视作其底层核心。
 
-### PostgreSQL：控制面与事务边界
+OpenSearch Remote Store 是重要的演进方向。Remote-backed storage 可以把 translog 和 Lucene segment 持久化到 S3、GCS 或 Azure Blob；使用 segment replication 时，副本可以从共享远端 segment store 获取数据，减少主分片向副本直接复制文件的负担。[OpenSearch Remote-backed storage](https://docs.opensearch.org/latest/tuning-your-cluster/availability-and-recovery/remote-store/)
 
-PostgreSQL 负责 Namespace、租户、ACL、来源目录、文档版本、任务状态、索引水位和写入 Outbox。它适合保存需要事务约束的结构化状态，例如某个文档当前版本是否已完成索引、某个租户有哪些检索空间、某个来源是否暂停同步。
+但它仍然是 OpenSearch 的分片存储架构。节点恢复、分片分配、查询节点本地资源和远端文件缓存仍然需要集群管理。它提升了数据耐久性和复制方式，并不自动把 OpenSearch 变成可随时销毁的无状态查询层。
 
-不要让 PostgreSQL 与 OpenSearch 同时成为全量文档的事实来源。那会带来双份更新、权限同步和删除一致性问题。PostgreSQL 保存控制面和必要的业务元数据，正文与检索投影各自有清晰归属。
+成本上也有类似的差距。OpenSearch 集群仍需要为分片、索引段、查询缓存、写入合并和副本保留计算与本地存储资源。S3 快照或 Remote Store 可以降低部分持久化成本，但不会自然带来 Turbopuffer 那种按热点数据缓存、冷数据远端读取的完整经济模型。
 
-### Snowflake：治理、分析和质量评估
-
-Snowflake 用于汇总来源质量、数据覆盖率、时间分布、实体标注、索引延迟和检索评测结果。它可以从对象存储或数据管道读取标准化数据，形成可审计的分析层。
-
-Cortex Search 也值得评估。它提供托管的关键词与向量 Hybrid Search，并支持通过 ATTRIBUTES 指定过滤字段；TARGET_LAG 控制搜索服务内容相对源表数据的目标延迟，刷新由 Snowflake 管理。[Snowflake Cortex Search](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-overview) 对于数据本来就集中在 Snowflake、希望少维护一套检索集群的场景，它可能直接成为 OpenSearch 的替代选项。但如果目标是自定义索引布局、细粒度的写入控制、特殊的过滤查询规划和对象存储原生缓存，Cortex Search 并不等价于 Turbopuffer。
-
-## 4. 推荐架构
-
-推荐架构把检索服务和数据摄取分成两个路径。检索请求只访问 Search API、PostgreSQL 控制面和 OpenSearch；文档摄取则经过 Outbox、索引 Worker 和对象存储。Snowflake 消费标准化数据和检索事件，用于分析而不进入每一次在线查询。
-
-![Snowflake、OpenSearch、PostgreSQL 与对象存储组成的企业检索架构](/diagrams/turbopuffer-enterprise-search-architecture.svg)
-
-[打开架构图 HTML 版本](/diagrams/turbopuffer-enterprise-search-architecture.html)
-
-### 在线查询路径
-
-Search API 完成身份验证、租户识别、查询解析和权限条件构造。它从 PostgreSQL 获取 Namespace 与 ACL 元数据，再把租户、用户组、来源、时间和业务标签等条件推送到 OpenSearch。OpenSearch 执行 BM25、ANN 或 Hybrid Search，返回候选文档和排序分数。必要时由检索层做 RRF、分数归一化或轻量 Rerank。
-
-权限条件必须进入检索过程，不能先全局搜索再在应用层随意删掉不允许访问的结果。对于高敏感数据，可以在返回前用 PostgreSQL 中的权限版本再次核对候选 ID；为了避免过滤后结果数量不足，需要适度 over-fetch，并将权限更新延迟纳入评测。
-
-### 数据摄取路径
-
-连接器把来源文件和元数据送入 Ingestion API。系统先将原始文件写入对象存储，再在 PostgreSQL 事务中记录文档版本、状态和 Outbox 事件。Worker 读取事件，完成格式解析、去重、文本抽取、分块、Embedding 和元数据规范化，然后批量写入 OpenSearch。索引确认成功后，Worker 更新 PostgreSQL 中的索引水位。
-
-Snowflake 从对象存储或事件管道读取标准化数据，形成治理和分析数据集。它不需要同步参与每次在线查询。
-
-
-## 5. 从主栈选择转向 Document Lake：对象存储、Catalog 与可替换索引
+## 3. 文档事实层：Document Lake、Catalog 与可替换索引
 
 上一节的组合仍然容易被理解为“PostgreSQL + OpenSearch + Snowflake 是固定架构”。更准确的设计是把它们降级为可替换实现：对象存储是内容持久层，Document Catalog 是控制面，处理流水线生成版本化工件，检索系统只是面向查询的物化投影。
 
-### 5.1 四个职责边界
+### 3.1 四个职责边界
 
 | 层 | 保存或管理什么 | 设计约束 |
 |---|---|---|
@@ -117,7 +95,7 @@ Document Catalog 不应等同于 Glue Catalog 或 Iceberg Catalog。前者需要
 
 Catalog 的第一版可以用 PostgreSQL 实现，因为它擅长事务、关系和唯一约束；但业务接口不应该暴露 PostgreSQL 表结构。后续可以把分析数据投影到 Iceberg，由 REST Catalog 提供跨引擎访问。这样 PostgreSQL 是实现选择，不是系统边界。
 
-### 5.2 对象存储中的文档不是一个 PDF Key
+### 3.2 文档、版本与派生资产
 
 一个逻辑 Document 可以有多个 DocumentVersion，每个版本又有多个 Asset。比如一份研究报告会同时产生原始 PDF、解析后的 Markdown/JSON、页面图像、表格数据、Chunk、Embedding 和摘要。它们都应通过 Catalog 中的关系追溯到原始版本。
 
@@ -139,7 +117,7 @@ document-lake/
 
 Document ID 是业务身份，Object Key 是存储定位符。应用通过 Catalog 获取对象位置，不拼接 S3 路径。这样迁移到 R2、MinIO、Ceph、Garage 或其他 S3-compatible 存储时，不必改变文档模型。需要注意，S3 API 兼容不代表对象锁、版本控制、条件写入、事件通知、生命周期和权限语义完全相同，存储适配层必须有能力测试。
 
-### 5.3 Catalog 的最小领域模型
+### 3.3 Document Catalog 的最小模型
 
 | 实体 | 责任 |
 |---|---|
@@ -155,7 +133,7 @@ Document ID 是业务身份，Object Key 是存储定位符。应用通过 Catal
 
 Catalog 保存权威 ACL，搜索索引只保存查询所需的权限投影。查询时必须执行授权检查；撤权不能只依赖异步索引刷新。对高敏感数据，应该支持 Catalog 侧的即时 deny、候选结果二次校验和权限版本水位。索引延迟与权限传播延迟要分别监控。
 
-### 5.4 摄取和索引是两个独立的生命周期
+### 3.4 摄取、处理和索引的生命周期
 
 文档上传先落对象存储，再登记 DocumentVersion、Asset 和待处理事件。Worker 通过幂等任务完成解析与派生工件写入，Catalog 记录 ProcessingRun 和 Manifest。索引 Worker 消费已发布的工件，分别写入全文、向量或分析后端。每个后端独立维护索引水位；全部或指定关键索引完成后，文档版本才达到相应的可检索状态。
 
@@ -168,23 +146,33 @@ Catalog 保存权威 ACL，搜索索引只保存查询所需的权限投影。�
 | 5. Analyze | 将标准化数据和事件投影到 Iceberg 或 Snowflake | 治理、统计、历史分析和检索评测数据集 |
 | 6. Query | Catalog API 提供身份、版本和权限；Search API 路由检索 | 应用和 Agent 获得可追溯、经过授权的证据 |
 
-这里的关键不是必须采用某个消息队列，而是要有可重放的事件、幂等处理、版本化产物和可观测的索引水位。搜索后端发生故障时，可以从 Manifest 和工件重新构建；切换后端时，也不需要重新抓取原始来源。
+消息队列可以按现有平台选择，但事件必须可重放，处理必须幂等，产物需要版本化，索引水位也要可观测。搜索后端发生故障时，可以从 Manifest 和工件重新构建；切换后端时，也不需要重新抓取原始来源。
 
-### 5.5 开源项目：有相近实现，但成熟度和边界不同
+### 3.5 总体架构与在线查询
 
-| 项目 | 与 Document Lake 的匹配点 | 主要差异与评估 |
-|---|---|---|
-| [Autofile](https://github.com/joekhoobyar/autofile) | S3-compatible 对象存储保存文件，PostgreSQL 保存元数据和搜索索引；OCR、文档分类、自定义元数据和全文搜索 | 架构最接近本文提出的轻量底座，但项目明确标注 Alpha。适合研究实现和做小规模 POC，不应直接当作亿级生产系统 |
-| [FormKiQ Core](https://github.com/formkiq/formkiq-core) | API-first 文档服务；S3、元数据、标签、搜索、版本、事件、访问控制、OCR；支持 AWS 部署和本地 Docker | 企业文档管理能力较完整，MIT 许可；架构明显偏 AWS，核心依赖 S3、DynamoDB、Lambda/API Gateway 等服务。适合 AWS 内落地，不是跨云中立 Catalog |
-| [NemakiWare](https://github.com/aegif/NemakiWare) | CMIS 文档仓库、文档版本和关系、继承 ACL、全文与向量混合检索、MCP；支持 S3 冷归档 | 更像可直接使用的文档仓库。当前主要使用 CouchDB + Solr，默认部署是单副本；要做大规模分布式系统，需要单独验证扩展与运维边界 |
-| [Pansoph](https://github.com/autoargos/pansoph) | 将 Connector、Parser、Embedder、VectorStore、Authz、ObjectStore 等抽象为可替换 Port，强调文档级权限 | 架构抽象与避免技术栈绑定的目标高度一致，但项目较新，默认组合仍包含 PostgreSQL、Qdrant、SpiceDB、Garage/SeaweedFS 等多个服务；需要验证代码、测试和生产成熟度 |
-| [RAGFlow](https://github.com/infiniflow/ragflow) | 复杂文档解析、Chunking、知识抽取、检索和 Agent/RAG 工作流 | 更偏完整 RAG/知识处理平台，不是中立的文档事实存储和 Catalog。可以借鉴处理流水线，不建议让它成为唯一原始文档仓库 |
+整体架构将在线检索与文档摄取分开。检索请求只访问 Search API、PostgreSQL 控制面和 OpenSearch；文档摄取则经过 Outbox、索引 Worker 和对象存储。Snowflake 消费标准化数据和检索事件，用于分析而不进入每一次在线查询。
 
-这些项目解决的问题并不相同。Autofile 和 FormKiQ 更接近“文件 + 元数据 + 文档处理”；NemakiWare 更接近“权限感知的文档仓库”；Pansoph 更强调模块化和可替换适配器；RAGFlow 的强项是文档理解和检索工作流。没有必要为了复用其中一个项目而接受它的全部存储和检索栈。更现实的做法是先评估它们的数据模型、API、ACL 和对象存储适配方式，再决定复用服务还是只借鉴设计。
+![Snowflake、OpenSearch、PostgreSQL 与对象存储组成的企业检索架构](/diagrams/turbopuffer-enterprise-search-architecture.svg)
 
-另外，OpenMetadata 和 DataHub 这类数据 Catalog 主要管理数据集、表、Schema、Owner、Lineage 和治理信息，不能直接替代文档级内容仓库。Iceberg Catalog 管理分析数据集，也不负责 PDF 的版本、附件、Chunk 和逐文档权限。选型时必须区分 Data Catalog、Document Catalog 和 Search Index。
+[打开架构图 HTML 版本](/diagrams/turbopuffer-enterprise-search-architecture.html)
 
-### 5.6 Palantir Foundry：公开架构确实采用了相似的分层思想
+### 在线查询路径
+
+Search API 完成身份验证、租户识别、查询解析和权限条件构造。它从 PostgreSQL 获取 Namespace 与 ACL 元数据，再把租户、用户组、来源、时间和业务标签等条件推送到 OpenSearch。OpenSearch 执行 BM25、ANN 或 Hybrid Search，返回候选文档和排序分数。必要时再由检索层执行 RRF、分数归一化或轻量 Rerank。
+
+权限条件必须进入检索过程，不能先全局搜索再在应用层随意删掉不允许访问的结果。对于高敏感数据，可以在返回前用 PostgreSQL 中的权限版本再次核对候选 ID；为了避免过滤后结果数量不足，需要适度 over-fetch，并将权限更新延迟纳入评测。
+
+### 3.6 结构化与非结构化数据处理流程
+
+三种主栈并非同一张图的简单换名。Snowflake 将目录、表变换和托管检索放在同一数据平台；PostgreSQL 把目录、权限、事务和检索组合进 SQL；OpenSearch 则把在线全文、向量和过滤查询作为核心，原始文档和业务目录仍由外部系统负责。三种主栈的独立架构图放在第 4 节，分别标出数据处理、索引构建、查询授权和证据回取的责任边界。
+
+三种方案共用一条业务生命周期，但结构化与非结构化内容的摄取方式不同。结构化源通常通过 CDC、API 或批量数据接入，重点是 Schema、主键、单位、时间语义和数据质量；非结构化源先保存原件，再解析版面和正文，扫描件需要 OCR，会议录音需要 ASR，随后执行规范化、实体识别、权限映射和语义分块。两路数据在 Document Catalog 和检索投影处汇合。下面的流程图展示从入库到证据回传的完整链路。
+
+![结构化与非结构化资料处理和检索流程](/diagrams/vault-document-processing-search-flow.svg)
+
+[文档处理与检索流程交互查看](/diagrams/vault-document-processing-search-flow.html)
+
+### 3.7 Palantir Foundry：相似的分层思想
 
 Palantir 的公开文档给出了很直接的证据。Foundry Dataset 被定义为一组文件的逻辑包装，支持结构化、半结构化和非结构化内容；文件本身不一定存放在 Foundry 服务内部，而是通过逻辑路径映射到 backing filesystem。官方文档称这个底层文件系统可以是自建 HDFS，但更常见的是云存储，例如 Amazon S3。[Foundry Datasets](https://www.palantir.com/docs/foundry/data-integration/datasets)
 
@@ -196,87 +184,21 @@ Palantir 还公开了 Ontology 后端的架构演进：Object Storage v2 将原�
 
 因此，可以回答：**是的，Palantir 确实构建了与此相近、而且覆盖范围更大的企业数据底座。** 但不能据此推断其所有客户部署都使用 S3，也不能把 Foundry 内部实现等同于公开的 S3 + PostgreSQL + OpenSearch 组合。Palantir 的文档只披露了部分架构和抽象，核心平台是专有产品。它真正值得借鉴的不是某个具体数据库，而是 Dataset/Media Set 的内容组织、Ontology 的业务语义层、统一安全模型，以及索引和查询服务的职责分离。
 
-### 5.7 对 Bridgewater Vault 的建议
+### 3.8 可借鉴的开源项目
 
-不要把 Autofile、FormKiQ 或 NemakiWare 原样部署后就称为 Vault。它们的功能范围、扩展方式和权限模型各不相同。建议先定义自己的 Document Catalog API 和对象存储契约，再从这些项目中选择可以复用的解析、归档、搜索或权限模块。
-
-第一阶段的最小实现可以是 S3 + PostgreSQL Catalog + 异步 Worker + 一个 Search Adapter。Snowflake 不进入在线检索关键路径，OpenSearch 也不是数据事实来源。结构化数据和大规模分析需要时再输出 Parquet/Iceberg；需要不同检索能力时，通过 Search Adapter 接入 OpenSearch、Cortex Search 或其他后端。
-
-这会把架构的长期稳定点放在 Document ID、Version、Asset、ACL、Manifest 和 API 契约上，而不是某个数据库产品上。对于亿级文档，真正需要压测的是 Catalog 热点、元数据索引、对象存储请求成本、解析吞吐、索引构建与重建时间、权限过滤和查询延迟，而不是先决定哪一个数据库做“主栈”。
-
----
-
-
-### 5.8 计算层解绑：Snowflake 不是唯一计算引擎
-
-如果 Snowflake 已经是企业战略平台，不需要为了避免绑定而立即替换它；但也不应该让所有业务计算都只能在 Snowflake 内执行。更稳妥的做法是把数据格式、Catalog、业务计算逻辑和执行引擎分开：Snowflake 继续承担企业分析和现有数据产品，开放计算引擎则能直接读取同一份开放数据。
-
-建议以 S3 + Parquet + Apache Iceberg 作为跨引擎的数据底座，使用独立 Iceberg REST Catalog 管理表元数据。Spark 作为第一种开放批处理引擎，负责大规模 ETL、文档派生数据处理、历史回填和批量特征计算。Snowflake 继续承担企业分析和适合其执行环境的 SQL 工作负载。不要把 Spark 当作在线查询服务，也不要把所有 SQL 都机械地迁移到 Spark。
-
-Trino 则补上另一种能力：它是分布式、MPP SQL 查询引擎，重点是交互式查询和数据联邦，而不是替代 Spark 的批处理能力。它通过 Connector 访问不同数据源，每个 Connector 在 Trino 中配置成一个 Catalog。Trino 可以在同一条 SQL 中引用多个 Catalog，因此可以把 PostgreSQL、Snowflake 和 Iceberg 表放进同一查询中。官方文档列出了 PostgreSQL、Snowflake、Iceberg、Hive、Redshift、OpenSearch 等 Connector。[Trino concepts](https://trino.io/docs/current/overview/concepts.html)
-
-### 5.9 Trino 能连接哪些数据源，跨源查询有什么边界
-
-| 数据源 | Trino 接入方式 | 适合的用途 |
+| 项目 | 与 Document Lake 的匹配点 | 主要差异与评估 |
 |---|---|---|
-| PostgreSQL | 官方 PostgreSQL Connector | 查询业务元数据、目录和关系数据；不应把高频 OLTP 流量绕到 Trino |
-| Snowflake | 官方 Snowflake Connector | 查询已有企业数据集，与其他 Catalog 的数据组合 |
-| S3 + Iceberg | Iceberg Connector + REST/Glue 等 Catalog | 直接查询开放数据湖，不经过 Snowflake |
-| S3 + Hive/Parquet | Hive 或 Lakehouse Connector + AWS Glue/Hive Metastore | 查询已登记的外部表和数据湖文件 |
-| AWS Glue Data Catalog | Iceberg、Hive 或 Lakehouse Connector 使用其元数据 | 发现和访问 Glue 管理的表；Glue 本身不是计算引擎 |
-| Amazon Redshift | 官方 Redshift Connector | 查询 Redshift 数据仓库 |
-| OpenSearch | 官方 OpenSearch Connector | 对索引做 SQL 型分析；不替代 OpenSearch 原生搜索 API |
+| [Autofile](https://github.com/joekhoobyar/autofile) | S3-compatible 对象存储保存文件，PostgreSQL 保存元数据和搜索索引；OCR、文档分类、自定义元数据和全文搜索 | 架构最接近本文提出的轻量底座，但项目明确标注 Alpha。适合研究实现和做小规模 POC，不应直接当作亿级生产系统 |
+| [FormKiQ Core](https://github.com/formkiq/formkiq-core) | API-first 文档服务；S3、元数据、标签、搜索、版本、事件、访问控制、OCR；支持 AWS 部署和本地 Docker | 企业文档管理能力较完整，MIT 许可；架构明显偏 AWS，核心依赖 S3、DynamoDB、Lambda/API Gateway 等服务。适合 AWS 内落地，不是跨云中立 Catalog |
+| [NemakiWare](https://github.com/aegif/NemakiWare) | CMIS 文档仓库、文档版本和关系、继承 ACL、全文与向量混合检索、MCP；支持 S3 冷归档 | 更像可直接使用的文档仓库。当前主要使用 CouchDB + Solr，默认部署是单副本；要做大规模分布式系统，需要单独验证扩展与运维边界 |
+| [Pansoph](https://github.com/autoargos/pansoph) | 将 Connector、Parser、Embedder、VectorStore、Authz、ObjectStore 等抽象为可替换 Port，强调文档级权限 | 架构抽象与避免技术栈绑定的目标高度一致，但项目较新，默认组合仍包含 PostgreSQL、Qdrant、SpiceDB、Garage/SeaweedFS 等多个服务；需要验证代码、测试和生产成熟度 |
+| [RAGFlow](https://github.com/infiniflow/ragflow) | 复杂文档解析、Chunking、知识抽取、检索和 Agent/RAG 工作流 | 更偏完整 RAG/知识处理平台，不是中立的文档事实存储和 Catalog。可以借鉴处理流水线，不建议让它成为唯一原始文档仓库 |
 
-因此，对问题“Trino 能不能用于 Snowflake、PostgreSQL 或 AWS 服务”，答案是可以，但要具体到数据源和 Connector。S3 并不是把任意文件路径直接变成 SQL 表：通常需要 Iceberg、Hive/Glue 等表元数据和受支持的文件格式。AWS Glue 是 Catalog 服务；Trino 使用 Glue 找到表和分区，再从 S3 读取数据。Redshift 有独立 Connector。当前 Trino 官方 Connector 清单没有 DynamoDB，也没有受维护的 Kinesis Connector；Kinesis Connector 已从 Trino 470 移除，不能把“支持 AWS”理解为支持所有 AWS 服务。[Trino Lakehouse Connector](https://trino.io/docs/current/connector/lakehouse.html) [Trino S3 support](https://trino.io/docs/current/object-storage/file-system-s3.html) [Trino Redshift Connector](https://trino.io/docs/current/connector/redshift.html) [Trino ecosystem](https://trino.io/ecosystem/data-source)
+这些项目的定位差异很大。Autofile 和 FormKiQ 更接近“文件 + 元数据 + 文档处理”；NemakiWare 更接近“权限感知的文档仓库”；Pansoph 更强调模块化和可替换适配器；RAGFlow 的强项是文档理解和检索工作流。没有必要为了复用其中一个项目而接受它的全部存储和检索栈。更现实的做法是先评估它们的数据模型、API、ACL 和对象存储适配方式，再决定复用服务还是只借鉴设计。
 
-例如，以下查询在语法上可以跨 Catalog 组合 Snowflake、PostgreSQL 和 Iceberg 数据：
+另外，OpenMetadata 和 DataHub 这类数据 Catalog 主要管理数据集、表、Schema、Owner、Lineage 和治理信息，不能直接替代文档级内容仓库。Iceberg Catalog 管理分析数据集，也不负责 PDF 的版本、附件、Chunk 和逐文档权限。选型时必须区分 Data Catalog、Document Catalog 和 Search Index。
 
-```sql
-SELECT
-    d.document_id,
-    d.source_type,
-    a.market,
-    p.owner
-FROM snowflake.vault.analytics_documents d
-JOIN postgres.catalog.document_acl p
-    ON p.document_id = d.document_id
-JOIN lakehouse.vault.document_attributes a
-    ON a.document_id = d.document_id
-WHERE d.created_at >= DATE '2026-01-01';
-```
-
-这里的 `snowflake`、`postgres` 和 `lakehouse` 是 Trino Catalog 名称示例。实际表名、Schema 和字段需要按各数据源配置调整。
-
-需要特别注意跨源 Join 的执行位置。Trino 能把查询拆成多个 Stage，让 Worker 分别从不同数据源读取数据，再在 Trino 集群中完成 Join；但这不意味着 Snowflake、PostgreSQL 和 S3 之间自动实现了一个远端联合执行计划。Connector 可以把过滤、投影、聚合或 Join 下推到数据源，但下推能力因 Connector 和查询形态而异。官方文档指出，Join pushdown 通常要求参与 Join 的表属于同一个 Catalog；跨 Catalog Join 一般需要 Trino 拉取必要数据并在自身执行。[Trino pushdown](https://trino.io/docs/current/optimizer/pushdown.html)
-
-所以，不要把 Trino 当作绕过 Snowflake 计算费用的万能代理。若查询主要扫描 Snowflake 的大表，直接在 Snowflake 执行可能更快、更便宜；若要把 Snowflake 大表与 PostgreSQL 小型 Catalog 做联接，应先检查 EXPLAIN、数据量、过滤下推和网络流量。也不要让 Trino 对 PostgreSQL 的业务主库执行无约束的大扫描，否则会把分析负载带到 OLTP 系统。
-
-### 5.10 Spark 与 Trino 的分工，以及 Vault 的部署顺序
-
-Spark 和 Trino 不是互相替代的产品。Spark 是通用分布式计算框架，适合长时间运行的批处理、ETL 和大规模转换；Trino 是面向 SQL 的分布式查询引擎，适合交互式分析和联邦查询。两者都可以访问 Iceberg，但执行模型和工作负载不同。
-
-对 Vault，建议按以下顺序落地：
-
-1. 先把原始文档和派生资产放在 S3，结构化分析数据逐步采用 Parquet/Iceberg，并建立独立 Catalog。
-2. 先用 Snowflake 满足企业既有分析需求，同时验证 Spark 能否独立读取、转换和写回同一批 Iceberg 数据。这一步建立真正可运行的 Snowflake 替代路径。
-3. 当出现跨数据源 SQL、分析工具需要统一入口，或需要直接查询 Iceberg 而不进入 Snowflake 时，再部署 Trino。先从只读和受控查询开始，不把它作为所有应用的通用数据库代理。
-4. 业务服务继续通过自己的 API 访问 PostgreSQL Catalog、Search API 和受控计算任务，不直接把 Trino SQL 暴露给终端用户或 Agent。
-
-Trino 本身也需要治理：独立的身份认证、Catalog 凭据、行列权限策略、查询审计、Resource Groups、并发和扫描量限制都不可缺少。Trino 的统一 SQL 入口不会自动统一底层数据源的权限语义；应明确最终由 Trino 代理身份访问，还是保留用户身份传递，并验证两种模式的审计与授权行为。
-
-对当前阶段的结论是：**Spark 应该先作为开放批处理引擎进入目标架构；Trino 应该作为可选的联邦 SQL 层，在真实跨源查询需求出现时部署。** 最值得先做的不是同时建设 Spark 和 Trino 集群，而是用 Iceberg 建立一个 Snowflake 之外也能读取、写入和重算的数据路径。
-
-### 5.11 三种主栈的架构图与完整处理流程
-
-三种主栈并不是把同一张图换一个数据库名称。Snowflake 将目录、表变换和托管检索放在同一数据平台；PostgreSQL 把目录、权限、事务和检索组合进 SQL；OpenSearch 则把在线全文、向量和过滤查询作为核心，原始文档和业务目录仍由外部系统负责。对应的主栈架构图放在第 6–8 节的方案设计处，分别标出数据处理、索引构建、查询授权和证据回取的责任边界。
-
-三种方案共用一条业务生命周期，但结构化与非结构化内容的摄取方式不同。结构化源通常通过 CDC、API 或批量数据接入，重点是 Schema、主键、单位、时间语义和数据质量；非结构化源先保存原件，再解析版面和正文，扫描件需要 OCR，会议录音需要 ASR，随后执行规范化、实体识别、权限映射和语义分块。两路数据在 Document Catalog 和检索投影处汇合。下面的流程图把从入库到证据回传的环节放在一起。
-
-![结构化与非结构化资料处理和检索流程](/diagrams/vault-document-processing-search-flow.svg)
-
-[文档处理与检索流程交互查看](/diagrams/vault-document-processing-search-flow.html)
-
-## 6. Snowflake 主栈：治理和分析最统一，在线检索容量必须先验证
+## 4.1 Snowflake：治理和分析统一，检索容量需要先验证
 
 Snowflake 可以作为 Vault 类平台的主栈。文档目录、Chunk、来源、实体、权限和版本都保存在 Snowflake 表中，Streams、Tasks、Dynamic Tables 或 Snowpipe 负责持续摄取与变换，Cortex Search 提供关键词、向量和混合检索。对于已经把研究数据和分析工作负载集中在 Snowflake 的机构，这种方式可以减少平台数量，让搜索与数据治理共享一套数据模型。
 
@@ -325,7 +247,7 @@ Cortex Search 的成本包括刷新源查询所使用的 Warehouse、文档变�
 
 Snowflake 主栈最适合数据本来就在 Snowflake、查询量中等、刷新延迟有余量、希望以托管方式获得 Hybrid Search 的组织。它的主要优点是数据治理、SQL 分析和检索服务统一，运维负担低；主要缺点是默认 QPS/行数限额、owner's rights 权限边界和持续 Serving Compute 成本。对 Vault 公布的高并发 Agent 负载，Snowflake 仍然可以进入候选，但应先完成限额协商、权限威胁建模和成本压测，不宜按默认配置直接承诺生产容量。
 
-## 7. PostgreSQL 主栈：事务和关系模型最完整，搜索规模化由团队自己负责
+## 4.2 PostgreSQL：事务与关系查询完整，搜索扩展由团队负责
 
 PostgreSQL 主栈把文档目录、Chunk、权限关系、全文索引和向量索引尽量放在同一个数据库中。它的核心吸引力在于，文档版本、ACL 变更和索引任务状态可以在单一事务边界内维护；检索请求也可以在 SQL 中组合全文、向量和关系过滤。这种方案适合检索与复杂关系查询紧密耦合、数据库团队有能力承担分片和索引维护的组织。
 
@@ -377,7 +299,7 @@ PostgreSQL 主栈的优点是事务、关系 JOIN、数据约束和权限关系�
 
 **判断：PostgreSQL 可以实现完整的 Vault 类系统，也能够通过量化、分区和分片承载很大的向量数据集；但对高并发 Agent 检索，它不是默认的省事方案。它更适合关系事务驱动、过滤关系复杂、团队具备 PostgreSQL 扩展和分片运维经验的场景。**
 
-## 8. OpenSearch 主栈：在线检索能力最贴近 Vault，索引生命周期和集群运维是主要代价
+## 4.3 OpenSearch：在线检索能力完整，运维负担也最大
 
 OpenSearch 把 BM25、向量 ANN、Hybrid Search、过滤、聚合和排序作为一等能力。对于查询主要围绕来源、时间、国家、市场、概念和用户权限展开的 Vault，OpenSearch 的数据模型与在线检索路径更直接，也更容易按搜索负载扩展节点和副本。
 
@@ -442,155 +364,7 @@ OpenSearch 的优势是检索能力集中、查询模型成熟，支持高并发
 | 运维 | 搜索集群负担较轻，配额和服务成本依赖 Snowflake | 组件少，但数据库团队承担搜索扩展复杂度 | 搜索集群运维最重，但检索控制力最高 |
 | 适用条件 | 数据已在 Snowflake、检索 QPS 可协商满足 | 关系查询和事务是主导需求，团队擅长 PG 扩展 | 在线检索是核心，Agent QPS 和过滤召回优先 |
 
-
-## 9. Embedding 是可选检索通道，不是文档入库的前置条件
-
-前面三种主栈的设计都提到了 Embedding，但它并不等于“搜索索引”。传统全文检索会把文本切词并建立倒排索引，BM25 根据查询词、词频和文档长度计算相关性；元数据过滤则依靠结构化字段索引。两者都不需要把文本转换成向量。
-
-Embedding 解决的是另一类问题：把文本映射为高维数值向量，使表达不同、含义相近的内容能够通过向量距离匹配。只有系统启用 Dense Vector / ANN 语义检索时，文档侧才需要预先生成向量，查询侧也需要使用兼容的模型生成 Query Embedding。Hybrid Search 同时运行 BM25 和向量召回，因此才同时需要两套索引。
-
-### Turbopuffer 没有强制要求每份文档都带 Embedding
-
-Turbopuffer 的官方文档把 Full-Text Search 和 Vector Search 分成了两条独立能力。
-
-它的 [Full-Text Search Guide](https://turbopuffer.com/docs/fts) 用一个只有 id、content 的数据集演示 BM25。Schema 中只需要将文本字段设置为 full_text_search: true，然后按 content、BM25 和查询文本进行排序。示例没有 vector 字段，也没有调用 Embedding 模型。普通字符串过滤、时间和来源等属性过滤同样不依赖 Embedding。
-
-[Vector Search Guide](https://turbopuffer.com/docs/vector) 则使用 ANN 查询。向量可以由应用自己的模型生成后写入，也可以采用 Turbopuffer 的 [Native Embeddings](https://turbopuffer.com/docs/embedding)：在 schema 上为文本属性配置 embed 模型，Turbopuffer 在写入时生成文档向量，在查询时把查询文本转换为向量。Native Embeddings 只是代替应用自行调用 Embedding Provider 的托管方式，并不意味着向量检索可以不生成向量。
-
-这两种能力可以组合，也可以分开使用。Turbopuffer 的 [Hybrid Search](https://turbopuffer.com/docs/hybrid) 示例同时运行 ANN 与 BM25，再通过 RRF 合并结果；只有启用向量查询的那条分支需要 Embedding。换句话说，使用 Turbopuffer 不等于必须先把所有文本 Embedding 一遍。
-
-有一个容易忽略的存储约束：Turbopuffer 文档说明，一个 Namespace 可以没有向量索引；一旦 Namespace 建立了向量索引，其中的文档就必须包含相应的向量属性。因此，如果业务明确只想给一部分资料生成向量，需要在 Namespace / 检索分区层面设计边界，或在实施前向厂商确认当前版本对缺失向量值的处理方式。不能简单假定同一个向量索引里可以任意混入大量没有向量字段的记录。[Write documents](https://turbopuffer.com/docs/write)
-
-Native Embeddings 还会带来独立的成本和生命周期要求。Turbopuffer 按 Embedding Token 计费，并对模型调用实施速率限制；修改 schema 中的模型配置也不会自动重新计算历史向量，旧数据需要重新摄取。因而，模型升级、文档重分块和重新 Embedding 都应视为数据版本变更，而不是一次普通字段更新。[Embedding documentation](https://turbopuffer.com/docs/embedding)
-
-### Bridgewater Vault 确实大规模使用了向量，但公开资料没有证明所有原始文档都采用同一种 Embedding 策略
-
-Bridgewater 与 Turbopuffer 在 2026 年 10 月的联合演讲，比此前介绍 Vault 的演讲披露了更多检索实现细节。Aaron Linsky 说明 Vault 收录约一亿份文档；Turbopuffer CTO Nikhil Benesch 随后解释向量索引、权限过滤和聚类搜索，并报告这批文档对应约四亿条向量记录，测量口径覆盖约 4.5 亿条向量，搜索 P90 约 120 毫秒。[Can Your AI Analyst Keep a Secret? — 演讲与完整转录](https://turbopuffer.com/blog/video-can-your-ai-analyst-keep-a-secret)
-
-这足以说明 Bridgewater 的生产检索路径大量依赖 Dense Vector。演讲还说明权限过滤索引与向量聚类协同工作：系统先判断用户有权限访问哪些向量簇，再在相关簇中进行近邻搜索。这一实现依赖向量空间及其聚类结构，不是单纯 BM25 能替代的能力。
-
-四亿向量对应一亿文档，平均约为每份文档四条向量记录。比较合理的工程解释是系统对长文进行了分块或为不同文本单元生成了多条向量，但演讲没有公开具体的 chunking 规则、每类来源的向量覆盖率、模型配置，也没有明确说明是否存在不参与向量检索的文档类型。因此，不能把“平均四条向量/文档”写成每份文档固定切成四块，更不能据此断言 Vault 对所有原始材料都以相同方式生成 Embedding。
-
-这也解释了为什么该案例值得借鉴，但不应直接复制它的向量规模。Bridgewater 的目标包括投资研究中的语义检索，以及在复杂文档级权限下保持高召回。它需要回答“市场参与者如何看待某种变化”这类不一定包含资料原文关键词的问题，语义向量能够帮助找出使用不同表述但讨论相同概念的研究材料。与此同时，演讲中反复出现的时间、来源、资产和访问权限条件仍由结构化过滤处理。Embedding 没有取代元数据索引，向量索引也没有取代 BM25。
-
-### 三种主栈分别在什么情况下需要 Embedding
-
-| 主栈 | 不使用 Embedding 的检索方式 | 启用语义向量时 |
-|---|---|---|
-| Snowflake | 可用 SEARCH 函数做 Token/短语匹配，并为列启用 FULL_TEXT Search Optimization；这条路径不生成向量 | Cortex Search 的单索引模式默认使用托管 Embedding；多索引模式虽然有独立 TEXT INDEX，但仍强制至少声明一个 VECTOR INDEX |
-| PostgreSQL | 原生 Full Text Search（tsvector / GIN）和 BM25 扩展都不需要 Dense Embedding | pgvector 或 VectorChord 的 Dense ANN 列需要预先生成向量，查询文本也要生成同空间 Query Vector |
-| OpenSearch | text 字段和 BM25 倒排索引不需要 Dense Embedding | k-NN / Neural Search 需要向量，可由 ingest pipeline 的模型生成，也可由外部 Worker 写入；Hybrid 同时执行 BM25 与向量分支 |
-| Turbopuffer | full_text_search、BM25 和属性过滤不需要向量 | Namespace 启用向量索引后需要向量属性；可用 Native Embeddings 或自行生成并写入 |
-
-Snowflake 的边界需要说得更准确：它确实有不依赖 Embedding 的纯文本路径，但这条路径不是 Cortex Search。SQL SEARCH 函数可以对 VARCHAR、VARIANT、OBJECT 和 ARRAY 中的文本做 Token 匹配，支持 OR、AND、PHRASE 和 EXACT 等模式；配合 Search Optimization Service 的 FULL_TEXT access path，可以加速符合条件的文本查询。它返回的是匹配判断，不提供 Cortex Search 那种托管检索服务和相关性排序，也不是 BM25。Cortex Search 的单索引 ON 模式使用托管向量 Embedding；多索引模式虽然允许 TEXT INDEX 做纯关键词查询，但创建服务仍要求至少一个 VECTOR INDEX。因此，Snowflake 的纯文本选择是 SQL SEARCH + FULL_TEXT Search Optimization，而不是只声明 TEXT INDEX 的 Cortex Search。
-
-PostgreSQL 和 OpenSearch 则可以很自然地先部署纯文本检索。PostgreSQL 原生全文检索建立 tsvector 和 GIN 索引；OpenSearch 默认使用 BM25 对关键词查询评分。OpenSearch 官方的 Neural Search 教程把文本 Embedding 放在语义检索链路中单独介绍，也提供普通 match 关键词查询作为另一条路径。[PostgreSQL Full Text Search](https://www.postgresql.org/docs/current/textsearch.html) [OpenSearch Neural Search](https://docs.opensearch.org/latest/tutorials/vector-search/neural-search-tutorial/)
-
-### 对 Vault 类资料库，不建议在入库时无差别 Embedding 全部原始内容
-
-首先要区分原始文档、可检索文本和向量化单元。一个 PDF、研究报告或会议记录可能包含几十页内容。向量检索通常针对 Chunk，而不是把整份文件压缩成一个向量。Chunk 太大，向量只表达了混合主题；Chunk 太小，上下文被切碎，模型可能失去资产、日期、说话人和论证之间的关系。应把章节、段落、表格说明和时间戳作为切分线索，保留 document_id、chunk_id、页码或时间区间，以便检索结果可以回到原文。
-
-对于一亿份文档，Embedding 成本取决于实际进入模型的 Token 总量，而不只是文档数。大量重复材料、短通知、低价值来源、过期快照和只用于审计留存的附件，未必值得生成 Dense Embedding。对相同正文的不同版本，可以在 checksum 或规范化文本层做去重；只对内容发生有效变化的 Chunk 重新生成向量。需要保留每条向量对应的模型名、模型版本、维度、分块版本和源文档版本，否则模型升级后无法判断索引中的向量是否处于同一个语义空间。
-
-推荐先建立覆盖全库的文本与元数据索引，再把 Embedding 作为可扩展的语义检索层。一个较稳妥的起点是：所有通过质量门槛的文档都可用来源、时间、资产、国家、市场、概念和 ACL 字段过滤；有可提取正文的内容建立 BM25 索引；高价值的研究报告、内部研究记录和会议转录按 Chunk 生成 Dense Embedding。低价值、短期留存或只需要精确字段过滤的记录可以暂时不生成向量。查询时同时运行 BM25 全库检索和 Dense Vector 子集检索，使用 RRF 合并，并在需要时对候选集做 Rerank。结果中必须保留检索通道和覆盖范围，避免用户误以为语义检索覆盖了未向量化的全部资料。
-
-这种分层方式有明确的召回边界：如果某份文档没有向量，它就不会成为 Dense ANN 分支的直接命中结果；它仍可能通过 BM25 和元数据过滤被找到。若业务要求“任何一份有权限的资料，都能通过自然语言语义相似度找到”，那么最终就需要对该搜索范围内所有可检索 Chunk 建立向量，而不是永久只 Embedding 一个精选子集。选择性向量化是成本与覆盖率的折中，必须通过真实查询评测量化遗漏。
-
-### 用检索评测决定 Embedding 覆盖范围
-
-不要先给所有数据做 Embedding，再期待模型自动带来更好的检索质量。先从真实投资研究问题中抽取评测集，标记目标文档、必须满足的时间/来源/资产条件，以及用户权限。对同一批问题分别测试 BM25、Dense ANN 和 Hybrid：BM25 更容易命中专有名词、证券代码、报告标题、精确短语和稀有术语；Dense 更擅长同义改写、概念描述和不使用原文词汇的自然语言提问；Hybrid 则尝试兼顾两者。
-
-评估时既看 Precision@10、Recall@10 和 NDCG@10，也按查询类型分析失败原因。特别要记录“BM25 已经能找到、Embedding 没有改善”的问题，以及“只有向量召回才找到”的问题。若新增向量索引没有实质提升目标查询集的 Recall 或排名质量，就没有必要扩大覆盖范围；如果有明显语义召回缺口，再按来源类别、文档价值和查询热度扩大 Embedding 覆盖。模型、分块策略或覆盖比例发生变化，都应保留独立版本并执行回归测试。
-
-对 Bridgewater 这类平台，我的建议不是把 Embedding 当成整个文档治理流水线的必经步骤，而是把它作为经过评测证明有价值的检索通道。BM25 和结构化过滤覆盖全库，Dense Vector 针对需要语义理解的文本单元扩展，权限与时间条件在两条检索路径中保持一致。若最终测试证明投资研究中的自然语言问题高度依赖语义召回，再把向量覆盖扩大到全部可检索 Chunk；在此之前，先做全量 Embedding 只会提前支付模型调用、向量存储和索引维护成本。
-
-
-### 四亿条向量用 OpenAI Embedding，成本取决于每条记录的 Token 数
-
-Bridgewater / Turbopuffer 联合演讲中的约四亿条向量记录，可以作为估算规模，但不能直接用“四亿”乘一个固定单价。OpenAI Embeddings 按输入 Token 计费，不按向量条数计费；一条向量通常对应一个文本输入单元，真正影响价格的是该单元在分块后有多少 Token。
-
-截至 2026 年 11 月，OpenAI 官方列出的文本 Embedding 模型价格为：text-embedding-3-small 每百万输入 Token 约 0.02 美元，text-embedding-3-large 每百万输入 Token 约 0.13 美元。Batch API 支持 /v1/embeddings，适合离线处理内容库；官方说明其价格比同步 API 低 50%，每个 Batch 通常在 24 小时内完成。[OpenAI Embeddings models](https://developers.openai.com/api/docs/models/text-embedding-3-small) [OpenAI Batch API](https://developers.openai.com/api/docs/guides/batch)
-
-对四亿条输入记录，成本可以按以下公式估算：
-
-每次完整向量化费用 = 400,000,000 × 平均每条输入 Token 数 ÷ 1,000,000 × 每百万 Token 价格。
-
-“正常金融和投研文档”没有一个可信的统一平均长度。研究报告经常包含长段落、表格和多个主题，因此应当按最终送入 Embedding 模型的 Chunk 长度测算，而不能用文件字节数或页数直接替代 Token。下表把 256、512 和 1,024 Token 作为三个容量情景；它们是工程假设，不是 Bridgewater 已公开的 Chunk 大小。
-
-| 每条向量输入平均 Token | 总输入 Token | 3-small 同步 | 3-small Batch | 3-large 同步 | 3-large Batch |
-|---:|---:|---:|---:|---:|---:|
-| 256 | 1,024 亿 | $2,048 | $1,024 | $13,312 | $6,656 |
-| 512 | 2,048 亿 | $4,096 | $2,048 | $26,624 | $13,312 |
-| 1,024 | 4,096 亿 | $8,192 | $4,096 | $53,248 | $26,624 |
-
-因此，以每条 512 Token 作为中间估算，四亿条 Chunk 全部跑一遍 OpenAI Embedding，使用 3-small 的 Batch 大约是 2,048 美元，3-large 的 Batch 大约是 13,312 美元。单看一次性 Token 费用，这并不是不可承受的企业级成本。真正需要考虑的是文档解析、音视频转录、重复内容、增量更新、重分块后的重算，以及向量存储和 ANN 索引的长期成本。若文档有大量扫描件，OCR 的费用可能独立于 Embedding；如果把会议录音送入检索库，ASR 也不是 Embedding 价格的一部分。
-
-模型维度会影响存储而非上述 Token 价格。OpenAI 当前默认输出维度为 3-small 的 1,536 维和 3-large 的 3,072 维，也允许使用 dimensions 参数缩短向量。若四亿条记录都以 float32 保存，原始向量数值约为 2.46 TB（3-small）或 4.92 TB（3-large），尚未包括 ANN 索引、元数据、正文、副本和缓存；采用 float16 或索引量化可以降低物理占用，但要用 Recall@K 验证精度变化。[OpenAI Embeddings guide](https://developers.openai.com/api/docs/guides/embeddings)
-
-还要把初次建库和线上查询分开预算。假设 Agent 全天候持续以 100 QPS 运行，平均每条查询 50 Token，按 30 天计算，每月 Query Embedding 约需 129.6 亿 Token；用 3-small 同步价格估算约 259 美元。若持续 1,000 QPS，则约为每月 1,296 亿 Token、约 2,592 美元。实际值应按真实查询 Token、每次 Agent 任务触发的向量查询次数和高峰持续时间计算；多路 Query Rewrite 会增加调用量，而只用 BM25 的查询不需要 Query Embedding。
-
-这些数字假设每条向量记录只对一个 Chunk 计算一次 Embedding，并且该 Chunk 平均长度就是表中假设。它们不包括重试、模型版本迁移、重复文档重新计算和查询向量。真正上线前，应先抽样解析一批有代表性的研究报告、财报、邮件和会议转录，统计 Token 数的 P50/P90/P99，再把实际 Chunk 分布代入公式。不要使用“每篇文档平均两千 Token”这样的文件级假设来替代真实分块统计。
-
-### OpenAI Embedding 是否应该成为唯一模型
-
-使用 OpenAI 本身没有技术问题。托管模型省去了 GPU 容量、模型发布、推理优化和运行维护，Batch API 对历史语料回填也很合适。以本文前面的 4 亿条、每条 512 Token 估算，text-embedding-3-small 的一次 Batch 输入成本约 2,048 美元；仅为节省这笔一次性费用而搭建 GPU 集群，通常不划算。
-
-问题在于让 OpenAI 成为不可替换的系统边界。文档 Chunk、查询向量和索引如果直接依赖某个供应商的模型 ID、维度、输入指令和响应格式，模型更换就会变成一次全链路迁移。投研语料还有数据出域、第三方处理条款、供应商限额、批量回填排队和外部 API 可用性等要求。持续的 Query Embedding 费用虽然通常低于大规模索引存储，但 Agent 的多轮改写和高 QPS 会把调用量放大。
-
-企业常见的工程形态不是所有团队都从零训练模型，也不是每个应用自己直接请求 OpenAI。更稳妥的是提供统一的 Embedding API，在后面接托管模型或自部署模型。在线查询和历史回填应分开调度：在线池控制低延迟和突发并发，离线池使用大批次、动态批处理和可重放任务完成回填，避免数亿条历史任务挤占 Agent 的实时查询资源。
-
-自部署时，可以用 Hugging Face Text Embeddings Inference（TEI）或 vLLM 提供模型服务。TEI 面向 Embedding 工作负载，提供 token-based dynamic batching、优化推理内核、Prometheus 指标和 OpenTelemetry tracing，并已列出 Qwen3 Embedding 的支持；vLLM 的 pooling 模型服务则提供 OpenAI-compatible /v1/embeddings 接口，适合已有统一 vLLM 推理平台的组织。[TEI 文档](https://huggingface.co/docs/text-embeddings-inference/index) [vLLM Pooling Models](https://docs.vllm.ai/en/stable/models/pooling_models/)
-
-**可自部署且公开评测达到或超过 text-embedding-3-large 的候选，首先看 Qwen3-Embedding。**Qwen 官方模型卡给出同一份 MTEB Multilingual 对比表（引用的排行榜快照为 2025-05-24）：text-embedding-3-large 的 Mean(Task) 为 58.93、Retrieval 为 59.27；Qwen3-Embedding-4B 分别为 69.45、69.60；8B 分别为 70.58、70.88。两款 Qwen 模型支持 100 多种语言、32K 上下文和自定义输出维度。这个对比足以说明开源权重模型已经可以在通用多语言检索基准上达到更高分数，但不代表它在每一类金融语料和每种 Chunk 策略上都优于 OpenAI。[Qwen3-Embedding 模型卡与评测表](https://huggingface.co/Qwen/Qwen3-Embedding-4B)
-
-| 模型 | 参数规模 | 默认/最大维度 | 公开评测结果 | 适合的定位 |
-|---|---:|---:|---|---|
-| text-embedding-3-large | 托管 API | 3,072 | MTEB Multilingual Mean(Task) 58.93 / Retrieval 59.27 | 托管服务基线，维护成本最低 |
-| Qwen3-Embedding-4B | 4B | 2,560 | 同一表：69.45 / 69.60 | 自部署的首选对照组 |
-| Qwen3-Embedding-8B | 8B | 4,096 | 同一表：70.58 / 70.88 | 更重的模型，验证质量提升是否值得 GPU 成本 |
-| Harrier OSS v1 27B | 27B | 5,376；32,768 Token | MTEB v2 74.3 | 94 种语言；模型文件约 54.1 GB，适合高资源实验；新版基准不能与上面旧版多语言表直接排序 |
-
-Microsoft 的 Harrier OSS v1 27B 是值得关注的高容量候选，模型卡标注 MIT License、94 种语言和 5,376 维输出；模型文件约 54.1 GB（BF16），还未计算运行时显存与并发余量。它的 MTEB v2 分数来自新版基准，不应与 Qwen 模型卡中 2025 年的 MTEB Multilingual 分数直接比较。可下载权重不等于自动满足企业许可要求，生产使用仍要核查模型卡和适用条款。[Harrier OSS v1 模型卡](https://huggingface.co/microsoft/harrier-oss-v1-27b) [MTEB Leaderboard](https://huggingface.co/spaces/mteb/leaderboard)
-
-如果希望先得到可操作的结果，我会用 Qwen3-Embedding-4B 与 text-embedding-3-large 对同一批金融文档做离线 A/B；只有当 4B 明显胜出或 8B 的收益足以覆盖 GPU 成本，才把向量生产切到自部署。若 GPU 平台已具备较高利用率，再评估 8B；Harrier 27B 更适合资源充足时作为质量上限实验，不建议直接作为第一个生产模型。模型卡公布的通用 MTEB 分数只是筛选线索，真正的验收指标应是目标语料上的 Recall@K、nDCG@10、过滤后的有效召回率和 p95 延迟。
-
-这里还要保留一个检索工程上的边界：金融研究中的证券代码、ISIN/CUSIP、报告编号、日期、数值和专有缩写，通常不应只交给 Dense Embedding。即使使用高分模型，全文 BM25、结构化过滤和精确字段检索也应覆盖全库；Embedding 用来补足同义改写、概念表达和跨语言召回。需要进一步提升 Top-K 排名时，可以在候选集上增加专门的 Reranker，而不是把 Embedding 模型单独承担所有排序职责。
-
-模型与索引必须版本化。至少记录 provider、model_id、固定模型 revision、维度、归一化策略、query/document 指令模板、Chunker 版本和输入 Token 统计。文档侧和查询侧要使用同一模型空间及匹配的指令约定；不同模型输出的向量不能直接混在同一 ANN 字段中比较。升级模型时应创建新的索引 generation，离线重算并与旧版本 shadow evaluation，达到质量和延迟门槛后再通过 alias 或路由切换。若要灰度双写，必须保留独立向量字段和模型版本，不能把两个语义空间拼成一个索引。
-
-### Turbopuffer 如何承接非结构化数据：它是检索层，不是文档 ETL 平台
-
-Bridgewater 的 Vault 收集来自 135 个外部来源的资料，也包括内部研究、写作、报告和会议录音。公开演讲确认了文档经过组织、索引和权限处理，但没有披露完整的解析器、OCR、ASR、Chunker、Embedding 模型和每个来源的 ETL 实现。因此，下面是依据公开演讲与 Turbopuffer API 还原出的工程流程，不应误认为是 Bridgewater 的内部原样架构。
-
-Turbopuffer 接收的是带 ID 和属性字段的文档行。它的 API 能保存文本、元数据、权限字段和向量，建立 BM25、ANN 与过滤索引；Native Embeddings 可以在写入和查询时调用模型，把文本字段转换为向量。但它不是一个从外部网站、PDF、Word 和录音开始的通用内容理解平台。来源连接、授权核验、文件解析、OCR、ASR、规范化和 Chunk 切分仍应在上游的数据接入与处理系统完成。
-
-建议把链路拆成以下阶段：
-
-| 阶段 | 处理内容 | 应持久化的产物 |
-|---|---|---|
-| 1. Source Connectors | 对接数据供应商、内部知识库、邮件、文件库和会议系统；处理凭证、订阅、增量水位和许可范围 | source_id、原始 URI、来源版本、授权条款引用、同步水位 |
-| 2. 原始材料归档 | 文件或录音先进入 S3 等对象存储，保留原始版本和 checksum | 原件、对象版本、checksum、采集时间和来源记录 |
-| 3. 内容抽取 | PDF/HTML/Office 文档解析；必要时对扫描件 OCR；会议录音 ASR；提取表格、标题、作者和页码 | 规范化文本、表格文本、时间戳、解析版本和质量状态 |
-| 4. 清洗与实体治理 | 去重、语言检测、编码修复、来源质量标记；识别国家、市场、公司、资产、概念和讨论时期 | document metadata、实体关系、ontology 标签、ACL 关系 |
-| 5. Chunk 切分 | 按标题、章节、段落、表格和会议时间片切分；保留可追溯位置，避免跨主题拼接 | chunk_id、document_id、版本、页码/时间区间、正文 |
-| 6. 检索特征生成 | 全文索引对文本切词；需要语义检索的 Chunk 生成 Embedding；结构化过滤字段独立保留 | BM25 文本、向量、模型版本、维度、过滤属性 |
-| 7. Turbopuffer 写入 | 将每个 Chunk 作为带 ID 的 Row Upsert；启用 full_text_search、向量列和过滤属性索引 | 文档行、BM25 索引、ANN 索引和 Attribute Index |
-| 8. 查询与证据回传 | 服务端解析用户权限，构造 ACL/时间/来源/市场过滤；运行 BM25、ANN 或 Hybrid；合并候选并取回原文证据 | 命中 Chunk、分数、检索通道、原文引用和查询 Trace |
-| 9. 反馈与再摄取 | 研究员和 Agent 产生的新研究结论进入内容接入流程；修订原文或权限时按版本回放更新 | 新文档版本、增量事件、评测标签和审计记录 |
-
-这个过程里最容易低估的是元数据和权限的价值。投资研究的查询通常不仅问“这段文字讲了什么”，还要限制材料的来源、发布时间、研究所讨论的市场时期、国家、资产以及当前用户的访问范围。文档本身和 Chunk 都需要保留稳定身份；权限可以继承自文档，也可以在少数场景下细化到 Chunk。Search API 根据用户和组生成过滤表达式，Turbopuffer 执行过滤与检索。Bridgewater 演讲明确说明，他们把用户、组和文档权限映射成查询过滤条件；过滤不是由 Embedding 自动理解或替代的。
-
-Turbopuffer 自己负责的是数据持久化和检索索引。文本属性可以启用 BM25 full-text search；向量属性会进入其 ANN 索引；元数据属性使用 Attribute Index 支持过滤。官方文档描述其向量索引会自动构建，属性索引了解向量聚类结构，因此 Native Filtering 能先排除没有授权候选的簇，再在相关簇内查找近邻。它还管理对象存储、NVMe 和内存缓存。换句话说，复杂的向量索引和过滤执行在 Turbopuffer 内部，但把杂乱来源变成可检索的文档行，仍是客户的数据工程工作。[Turbopuffer FTS](https://turbopuffer.com/docs/fts) [Turbopuffer Vector Search](https://turbopuffer.com/docs/vector) [Turbopuffer Write API](https://turbopuffer.com/docs/write)
-
-Embedding 的具体位置可以有两种实现。使用 Native Embeddings 时，写入指定文本属性及模型，Turbopuffer 在写入和查询时生成向量；应用不必自行调用模型 API，但需要承担其模型费率、Token 速率限制和重摄取要求。外部生成则由 Worker 调用 OpenAI Embeddings 或企业自部署模型，保存模型与分块版本后把向量和文本一起写进 Turbopuffer。外部方式更容易结合 OpenAI Batch API 做大规模初始回填，也更容易控制重试、限速和多模型评测。Native Embeddings 当前不支持输入后由模型自行切成可变数量向量的 contextual chunking 模式，因此文档切分不能交给它自动完成。[Turbopuffer Native Embeddings](https://turbopuffer.com/docs/embedding)
-
-Turbopuffer 当前文档还列出 Native Embeddings 的组织级限速：新组织默认每分钟 1,024 个请求、每个模型 200 万 Token；厂商可以根据工作负载提高额度。按四亿条、每条 512 Token 计算，总量约 2,048 亿 Token；若完全按 200 万 Token/分钟处理，理论下限约 102,400 分钟，也就是 71 天。这个只是限速上限下的理想值，不包含解析、分批写入、重试、索引构建和其他客户流量。若要在较短窗口内回填大型历史语料，需要提前与 Turbopuffer 协商提升额度，或在外部 Worker 侧使用 OpenAI Batch API 等离线 Embedding 路径，再把向量批量写入。需要注意，OpenAI Batch API 的 50% 优惠适用于直接调用 OpenAI 的 Batch endpoint；不能假定 Turbopuffer Native Embeddings 会自动继承这项折扣。
-
-对于只想给一部分文档生成向量的场景，还有一个需要落实到数据布局的细节：Turbopuffer Namespace 可以没有向量索引；一旦 Namespace 有向量索引，写入的文档就必须包含对应的向量属性。可行做法是把全库文本和元数据放在一个 BM25 Namespace，把精选的语义 Chunk 放在另一个带向量索引的 Namespace。查询时全库 BM25 和向量子集 ANN 并行检索，再按稳定 chunk_id 去重并用 RRF 融合。文档更新和 ACL 撤权必须同步投影到两个 Namespace，避免权限只在其中一个索引生效。[Turbopuffer Write API](https://turbopuffer.com/docs/write)
-
-最后，不要把“四亿条向量”理解成 Turbopuffer 自动把一亿份原始 PDF 拆成四亿段并完成所有 Embedding。演讲只确认了文档数和向量记录规模；具体分块方式、哪些来源没有进入向量检索、如何处理表格与录音，公开信息不足。它能证明的是这套生产检索链路在大规模向量与复杂权限过滤下运行，而不是一个端到端无代码的文档理解流水线。
-
-## 10. 纯文本检索的真实差异：Snowflake SEARCH、PostgreSQL FTS 和 OpenSearch BM25
+## 5. 不用 Embedding 时，三种数据库怎样做全文检索
 
 “不用 Embedding”并不意味着三种平台提供相同的全文搜索能力。它们的索引结构、查询表达、相关性排序以及扩展方式差异很大。特别是 Snowflake Cortex Search 和 Snowflake SQL SEARCH 是两条不同的产品路径，不能把后者当成前者的 text-only 开关。
 
@@ -641,7 +415,156 @@ OpenSearch 把全文检索作为基础能力。写入时，text 字段经 Analyz
 
 对于 Vault 这样的亿级投研库，如果要求完全不用 Embedding，OpenSearch 是三者中最直接的全文检索主栈；PostgreSQL 适合全文只是关系数据库查询的一部分、规模和并发有明确边界的环境；Snowflake 则适合搜索与仓库分析紧密结合、SQL 过滤已能满足排名要求的环境。若需要 Snowflake 的托管检索接口和语义召回，应选择 Cortex Search，并接受其向量索引要求；若只是查找关键词，使用 SEARCH + FULL_TEXT Search Optimization 更准确。
 
-## 11. 写入一致性比搜索 API 更需要设计
+## 6. Embedding：覆盖范围、模型选择与成本
+
+前面三种主栈的设计都提到了 Embedding，但它并不等于“搜索索引”。传统全文检索会把文本切词并建立倒排索引，BM25 根据查询词、词频和文档长度计算相关性；元数据过滤则依靠结构化字段索引。两者都不需要把文本转换成向量。
+
+Embedding 解决的是另一类问题：把文本映射为高维数值向量，使表达不同、含义相近的内容能够通过向量距离匹配。只有系统启用 Dense Vector / ANN 语义检索时，文档侧才需要预先生成向量，查询侧也需要使用兼容的模型生成 Query Embedding。Hybrid Search 同时运行 BM25 和向量召回，因此才同时需要两套索引。
+
+### BM25 与向量检索是两条独立通道
+
+Turbopuffer 的官方文档把 Full-Text Search 和 Vector Search 分成了两条独立能力。
+
+它的 [Full-Text Search Guide](https://turbopuffer.com/docs/fts) 用一个只有 id、content 的数据集演示 BM25。Schema 中只需要将文本字段设置为 full_text_search: true，然后按 content、BM25 和查询文本进行排序。示例没有 vector 字段，也没有调用 Embedding 模型。普通字符串过滤、时间和来源等属性过滤同样不依赖 Embedding。
+
+[Vector Search Guide](https://turbopuffer.com/docs/vector) 则使用 ANN 查询。向量可以由应用自己的模型生成后写入，也可以采用 Turbopuffer 的 [Native Embeddings](https://turbopuffer.com/docs/embedding)：在 schema 上为文本属性配置 embed 模型，Turbopuffer 在写入时生成文档向量，在查询时把查询文本转换为向量。Native Embeddings 只是代替应用自行调用 Embedding Provider 的托管方式，并不意味着向量检索可以不生成向量。
+
+这两种能力可以组合，也可以分开使用。Turbopuffer 的 [Hybrid Search](https://turbopuffer.com/docs/hybrid) 示例同时运行 ANN 与 BM25，再通过 RRF 合并结果；只有启用向量查询的那条分支需要 Embedding。也就是说，使用 Turbopuffer 不等于必须先把所有文本 Embedding 一遍。
+
+有一个容易忽略的存储约束：Turbopuffer 文档说明，一个 Namespace 可以没有向量索引；一旦 Namespace 建立了向量索引，其中的文档就必须包含相应的向量属性。因此，如果业务明确只想给一部分资料生成向量，需要在 Namespace / 检索分区层面设计边界，或在实施前向厂商确认当前版本对缺失向量值的处理方式。不能简单假定同一个向量索引里可以任意混入大量没有向量字段的记录。[Write documents](https://turbopuffer.com/docs/write)
+
+Native Embeddings 还会带来独立的成本和生命周期要求。Turbopuffer 按 Embedding Token 计费，并对模型调用实施速率限制；修改 schema 中的模型配置也不会自动重新计算历史向量，旧数据需要重新摄取。因而，模型升级、文档重分块和重新 Embedding 都应视为数据版本变更，而不是一次普通字段更新。[Embedding documentation](https://turbopuffer.com/docs/embedding)
+
+### Vault 的向量规模说明了什么
+
+Bridgewater 与 Turbopuffer 在 2026 年 10 月的联合演讲，比此前介绍 Vault 的演讲披露了更多检索实现细节。Aaron Linsky 说明 Vault 收录约一亿份文档；Turbopuffer CTO Nikhil Benesch 随后解释向量索引、权限过滤和聚类搜索，并报告这批文档对应约四亿条向量记录，测量口径覆盖约 4.5 亿条向量，搜索 P90 约 120 毫秒。[Can Your AI Analyst Keep a Secret? — 演讲与完整转录](https://turbopuffer.com/blog/video-can-your-ai-analyst-keep-a-secret)
+
+这足以说明 Bridgewater 的生产检索路径大量依赖 Dense Vector。演讲还说明权限过滤索引与向量聚类协同工作：系统先判断用户有权限访问哪些向量簇，再在相关簇中进行近邻搜索。这一实现依赖向量空间及其聚类结构，不是单纯 BM25 能替代的能力。
+
+四亿向量对应一亿文档，平均约为每份文档四条向量记录。比较合理的工程解释是系统对长文进行了分块或为不同文本单元生成了多条向量，但演讲没有公开具体的 chunking 规则、每类来源的向量覆盖率、模型配置，也没有明确说明是否存在不参与向量检索的文档类型。因此，不能把“平均四条向量/文档”写成每份文档固定切成四块，更不能据此断言 Vault 对所有原始材料都以相同方式生成 Embedding。
+
+原因在于该案例值得借鉴，但不应直接复制它的向量规模。Bridgewater 的目标包括投资研究中的语义检索，以及在复杂文档级权限下保持高召回。它需要回答“市场参与者如何看待某种变化”这类不一定包含资料原文关键词的问题，语义向量能够帮助找出使用不同表述但讨论相同概念的研究材料。与此同时，演讲中反复出现的时间、来源、资产和访问权限条件仍由结构化过滤处理。Embedding 没有取代元数据索引，向量索引也没有取代 BM25。
+
+### 三种主栈的向量检索路径
+
+| 主栈 | 不使用 Embedding 的检索方式 | 启用语义向量时 |
+|---|---|---|
+| Snowflake | 可用 SEARCH 函数做 Token/短语匹配，并为列启用 FULL_TEXT Search Optimization；这条路径不生成向量 | Cortex Search 的单索引模式默认使用托管 Embedding；多索引模式虽然有独立 TEXT INDEX，但仍强制至少声明一个 VECTOR INDEX |
+| PostgreSQL | 原生 Full Text Search（tsvector / GIN）和 BM25 扩展都不需要 Dense Embedding | pgvector 或 VectorChord 的 Dense ANN 列需要预先生成向量，查询文本也要生成同空间 Query Vector |
+| OpenSearch | text 字段和 BM25 倒排索引不需要 Dense Embedding | k-NN / Neural Search 需要向量，可由 ingest pipeline 的模型生成，也可由外部 Worker 写入；Hybrid 同时执行 BM25 与向量分支 |
+| Turbopuffer | full_text_search、BM25 和属性过滤不需要向量 | Namespace 启用向量索引后需要向量属性；可用 Native Embeddings 或自行生成并写入 |
+
+Snowflake 的边界需要说得更准确：它确实有不依赖 Embedding 的纯文本路径，但这条路径不是 Cortex Search。SQL SEARCH 函数可以对 VARCHAR、VARIANT、OBJECT 和 ARRAY 中的文本做 Token 匹配，支持 OR、AND、PHRASE 和 EXACT 等模式；配合 Search Optimization Service 的 FULL_TEXT access path，可以加速符合条件的文本查询。它返回的是匹配判断，不提供 Cortex Search 那种托管检索服务和相关性排序，也不是 BM25。Cortex Search 的单索引 ON 模式使用托管向量 Embedding；多索引模式虽然允许 TEXT INDEX 做纯关键词查询，但创建服务仍要求至少一个 VECTOR INDEX。因此，Snowflake 的纯文本选择是 SQL SEARCH + FULL_TEXT Search Optimization，而不是只声明 TEXT INDEX 的 Cortex Search。
+
+PostgreSQL 和 OpenSearch 则可以很自然地先部署纯文本检索。PostgreSQL 原生全文检索建立 tsvector 和 GIN 索引；OpenSearch 默认使用 BM25 对关键词查询评分。OpenSearch 官方的 Neural Search 教程把文本 Embedding 放在语义检索链路中单独介绍，也提供普通 match 关键词查询作为另一条路径。[PostgreSQL Full Text Search](https://www.postgresql.org/docs/current/textsearch.html) [OpenSearch Neural Search](https://docs.opensearch.org/latest/tutorials/vector-search/neural-search-tutorial/)
+
+### 向量覆盖范围应由查询需求决定
+
+首先要区分原始文档、可检索文本和向量化单元。一个 PDF、研究报告或会议记录可能包含几十页内容。向量检索通常针对 Chunk，而不是把整份文件压缩成一个向量。Chunk 太大，向量只表达了混合主题；Chunk 太小，上下文被切碎，模型可能失去资产、日期、说话人和论证之间的关系。应把章节、段落、表格说明和时间戳作为切分线索，保留 document_id、chunk_id、页码或时间区间，以便检索结果可以回到原文。
+
+对于一亿份文档，Embedding 成本取决于实际进入模型的 Token 总量，而不只是文档数。大量重复材料、短通知、低价值来源、过期快照和只用于审计留存的附件，未必值得生成 Dense Embedding。对相同正文的不同版本，可以在 checksum 或规范化文本层做去重；只对内容发生有效变化的 Chunk 重新生成向量。需要保留每条向量对应的模型名、模型版本、维度、分块版本和源文档版本，否则模型升级后无法判断索引中的向量是否处于同一个语义空间。
+
+推荐先建立覆盖全库的文本与元数据索引，再把 Embedding 作为可扩展的语义检索层。一个较稳妥的起点是：所有通过质量门槛的文档都可用来源、时间、资产、国家、市场、概念和 ACL 字段过滤；有可提取正文的内容建立 BM25 索引；高价值的研究报告、内部研究记录和会议转录按 Chunk 生成 Dense Embedding。低价值、短期留存或只需要精确字段过滤的记录可以暂时不生成向量。查询时同时运行 BM25 全库检索和 Dense Vector 子集检索，使用 RRF 合并，并在需要时对候选集做 Rerank。结果中必须保留检索通道和覆盖范围，避免用户误以为语义检索覆盖了未向量化的全部资料。
+
+这种分层方式有明确的召回边界：如果某份文档没有向量，它就不会成为 Dense ANN 分支的直接命中结果；它仍可能通过 BM25 和元数据过滤被找到。若业务要求“任何一份有权限的资料，都能通过自然语言语义相似度找到”，那么最终就需要对该搜索范围内所有可检索 Chunk 建立向量，而不是永久只 Embedding 一个精选子集。选择性向量化是成本与覆盖率的折中，必须通过真实查询评测量化遗漏。
+
+### 用检索评测确定覆盖比例
+
+不要先给所有数据做 Embedding，再期待模型自动带来更好的检索质量。先从真实投资研究问题中抽取评测集，标记目标文档、必须满足的时间/来源/资产条件，以及用户权限。对同一批问题分别测试 BM25、Dense ANN 和 Hybrid：BM25 更容易命中专有名词、证券代码、报告标题、精确短语和稀有术语；Dense 更擅长同义改写、概念描述和不使用原文词汇的自然语言提问；Hybrid 则尝试兼顾两者。
+
+评估时既看 Precision@10、Recall@10 和 NDCG@10，也按查询类型分析失败原因。特别要记录“BM25 已经能找到、Embedding 没有改善”的问题，以及“只有向量召回才找到”的问题。若新增向量索引没有实质提升目标查询集的 Recall 或排名质量，就没有必要扩大覆盖范围；如果有明显语义召回缺口，再按来源类别、文档价值和查询热度扩大 Embedding 覆盖。模型、分块策略或覆盖比例发生变化，都应保留独立版本并执行回归测试。
+
+对 Bridgewater 这类平台，我的建议不是把 Embedding 当成整个文档治理流水线的必经步骤，而是把它作为经过评测证明有价值的检索通道。BM25 和结构化过滤覆盖全库，Dense Vector 针对需要语义理解的文本单元扩展，权限与时间条件在两条检索路径中保持一致。若最终测试证明投资研究中的自然语言问题高度依赖语义召回，再把向量覆盖扩大到全部可检索 Chunk；在此之前，先做全量 Embedding 只会提前支付模型调用、向量存储和索引维护成本。
+
+
+### 四亿条向量的 OpenAI Embedding 成本
+
+Bridgewater / Turbopuffer 联合演讲中的约四亿条向量记录，可以作为估算规模，但不能直接用“四亿”乘一个固定单价。OpenAI Embeddings 按输入 Token 计费，不按向量条数计费；一条向量通常对应一个文本输入单元，真正影响价格的是该单元在分块后有多少 Token。
+
+截至 2026 年 11 月，OpenAI 官方列出的文本 Embedding 模型价格为：text-embedding-3-small 每百万输入 Token 约 0.02 美元，text-embedding-3-large 每百万输入 Token 约 0.13 美元。Batch API 支持 /v1/embeddings，适合离线处理内容库；官方说明其价格比同步 API 低 50%，每个 Batch 通常在 24 小时内完成。[OpenAI Embeddings models](https://developers.openai.com/api/docs/models/text-embedding-3-small) [OpenAI Batch API](https://developers.openai.com/api/docs/guides/batch)
+
+对四亿条输入记录，成本可以按以下公式估算：
+
+每次完整向量化费用 = 400,000,000 × 平均每条输入 Token 数 ÷ 1,000,000 × 每百万 Token 价格。
+
+“正常金融和投研文档”没有一个可信的统一平均长度。研究报告经常包含长段落、表格和多个主题，因此应当按最终送入 Embedding 模型的 Chunk 长度测算，而不能用文件字节数或页数直接替代 Token。下表把 256、512 和 1,024 Token 作为三个容量情景；它们是工程假设，不是 Bridgewater 已公开的 Chunk 大小。
+
+| 每条向量输入平均 Token | 总输入 Token | 3-small 同步 | 3-small Batch | 3-large 同步 | 3-large Batch |
+|---:|---:|---:|---:|---:|---:|
+| 256 | 1,024 亿 | $2,048 | $1,024 | $13,312 | $6,656 |
+| 512 | 2,048 亿 | $4,096 | $2,048 | $26,624 | $13,312 |
+| 1,024 | 4,096 亿 | $8,192 | $4,096 | $53,248 | $26,624 |
+
+因此，以每条 512 Token 作为中间估算，四亿条 Chunk 全部跑一遍 OpenAI Embedding，使用 3-small 的 Batch 大约是 2,048 美元，3-large 的 Batch 大约是 13,312 美元。单看一次性 Token 费用，这并不是不可承受的企业级成本。真正需要考虑的是文档解析、音视频转录、重复内容、增量更新、重分块后的重算，以及向量存储和 ANN 索引的长期成本。若文档有大量扫描件，OCR 的费用可能独立于 Embedding；如果把会议录音送入检索库，ASR 也不是 Embedding 价格的一部分。
+
+模型维度会影响存储而非上述 Token 价格。OpenAI 当前默认输出维度为 3-small 的 1,536 维和 3-large 的 3,072 维，也允许使用 dimensions 参数缩短向量。若四亿条记录都以 float32 保存，原始向量数值约为 2.46 TB（3-small）或 4.92 TB（3-large），尚未包括 ANN 索引、元数据、正文、副本和缓存；采用 float16 或索引量化可以降低物理占用，但要用 Recall@K 验证精度变化。[OpenAI Embeddings guide](https://developers.openai.com/api/docs/guides/embeddings)
+
+还要把初次建库和线上查询分开预算。假设 Agent 全天候持续以 100 QPS 运行，平均每条查询 50 Token，按 30 天计算，每月 Query Embedding 约需 129.6 亿 Token；用 3-small 同步价格估算约 259 美元。若持续 1,000 QPS，则约为每月 1,296 亿 Token、约 2,592 美元。实际值应按真实查询 Token、每次 Agent 任务触发的向量查询次数和高峰持续时间计算；多路 Query Rewrite 会增加调用量，而只用 BM25 的查询不需要 Query Embedding。
+
+这些数字假设每条向量记录只对一个 Chunk 计算一次 Embedding，并且该 Chunk 平均长度就是表中假设。它们不包括重试、模型版本迁移、重复文档重新计算和查询向量。真正上线前，应先抽样解析一批有代表性的研究报告、财报、邮件和会议转录，统计 Token 数的 P50/P90/P99，再把实际 Chunk 分布代入公式。不要使用“每篇文档平均两千 Token”这样的文件级假设来替代真实分块统计。
+
+### 托管模型、自部署模型与统一 Embedding API
+
+使用 OpenAI 本身没有技术问题。托管模型省去了 GPU 容量、模型发布、推理优化和运行维护，Batch API 对历史语料回填也很合适。以本文前面的 4 亿条、每条 512 Token 估算，text-embedding-3-small 的一次 Batch 输入成本约 2,048 美元；仅为节省这笔一次性费用而搭建 GPU 集群，通常不划算。
+
+问题在于让 OpenAI 成为不可替换的系统边界。文档 Chunk、查询向量和索引如果直接依赖某个供应商的模型 ID、维度、输入指令和响应格式，模型更换就会变成一次全链路迁移。投研语料还有数据出域、第三方处理条款、供应商限额、批量回填排队和外部 API 可用性等要求。持续的 Query Embedding 费用虽然通常低于大规模索引存储，但 Agent 的多轮改写和高 QPS 会把调用量放大。
+
+企业常见的工程形态不是所有团队都从零训练模型，也不是每个应用自己直接请求 OpenAI。实际落地可以提供统一的 Embedding API，在后面接托管模型或自部署模型。在线查询和历史回填应分开调度：在线池控制低延迟和突发并发，离线池使用大批次、动态批处理和可重放任务完成回填，避免数亿条历史任务挤占 Agent 的实时查询资源。
+
+自部署时，可以用 Hugging Face Text Embeddings Inference（TEI）或 vLLM 提供模型服务。TEI 面向 Embedding 工作负载，提供 token-based dynamic batching、优化推理内核、Prometheus 指标和 OpenTelemetry tracing，并已列出 Qwen3 Embedding 的支持；vLLM 的 pooling 模型服务则提供 OpenAI-compatible /v1/embeddings 接口，适合已有统一 vLLM 推理平台的组织。[TEI 文档](https://huggingface.co/docs/text-embeddings-inference/index) [vLLM Pooling Models](https://docs.vllm.ai/en/stable/models/pooling_models/)
+
+**可自部署且公开评测达到或超过 text-embedding-3-large 的候选，首先看 Qwen3-Embedding。**Qwen 官方模型卡给出同一份 MTEB Multilingual 对比表（引用的排行榜快照为 2025-05-24）：text-embedding-3-large 的 Mean(Task) 为 58.93、Retrieval 为 59.27；Qwen3-Embedding-4B 分别为 69.45、69.60；8B 分别为 70.58、70.88。两款 Qwen 模型支持 100 多种语言、32K 上下文和自定义输出维度。这个对比足以说明开源权重模型已经可以在通用多语言检索基准上达到更高分数，但不代表它在每一类金融语料和每种 Chunk 策略上都优于 OpenAI。[Qwen3-Embedding 模型卡与评测表](https://huggingface.co/Qwen/Qwen3-Embedding-4B)
+
+| 模型 | 参数规模 | 默认/最大维度 | 公开评测结果 | 适合的定位 |
+|---|---:|---:|---|---|
+| text-embedding-3-large | 托管 API | 3,072 | MTEB Multilingual Mean(Task) 58.93 / Retrieval 59.27 | 托管服务基线，维护成本最低 |
+| Qwen3-Embedding-4B | 4B | 2,560 | 同一表：69.45 / 69.60 | 自部署的首选对照组 |
+| Qwen3-Embedding-8B | 8B | 4,096 | 同一表：70.58 / 70.88 | 更重的模型，验证质量提升是否值得 GPU 成本 |
+| Harrier OSS v1 27B | 27B | 5,376；32,768 Token | MTEB v2 74.3 | 94 种语言；模型文件约 54.1 GB，适合高资源实验；新版基准不能与上面旧版多语言表直接排序 |
+
+Microsoft 的 Harrier OSS v1 27B 是值得关注的高容量候选，模型卡标注 MIT License、94 种语言和 5,376 维输出；模型文件约 54.1 GB（BF16），还未计算运行时显存与并发余量。它的 MTEB v2 分数来自新版基准，不应与 Qwen 模型卡中 2025 年的 MTEB Multilingual 分数直接比较。可下载权重不等于自动满足企业许可要求，生产使用仍要核查模型卡和适用条款。[Harrier OSS v1 模型卡](https://huggingface.co/microsoft/harrier-oss-v1-27b) [MTEB Leaderboard](https://huggingface.co/spaces/mteb/leaderboard)
+
+如果希望先得到可操作的结果，我会用 Qwen3-Embedding-4B 与 text-embedding-3-large 对同一批金融文档做离线 A/B；只有当 4B 明显胜出或 8B 的收益足以覆盖 GPU 成本，才把向量生产切到自部署。若 GPU 平台已具备较高利用率，再评估 8B；Harrier 27B 更适合资源充足时作为质量上限实验，不建议直接作为第一个生产模型。模型卡公布的通用 MTEB 分数只是筛选线索，真正的验收指标应是目标语料上的 Recall@K、nDCG@10、过滤后的有效召回率和 p95 延迟。
+
+这里还要保留一个检索工程上的边界：金融研究中的证券代码、ISIN/CUSIP、报告编号、日期、数值和专有缩写，通常不应只交给 Dense Embedding。即使使用高分模型，全文 BM25、结构化过滤和精确字段检索也应覆盖全库；Embedding 用来补足同义改写、概念表达和跨语言召回。需要进一步提升 Top-K 排名时，可以在候选集上增加专门的 Reranker，而不是把 Embedding 模型单独承担所有排序职责。
+
+模型与索引必须版本化。至少记录 provider、model_id、固定模型 revision、维度、归一化策略、query/document 指令模板、Chunker 版本和输入 Token 统计。文档侧和查询侧要使用同一模型空间及匹配的指令约定；不同模型输出的向量不能直接混在同一 ANN 字段中比较。升级模型时应创建新的索引 generation，离线重算并与旧版本 shadow evaluation，达到质量和延迟门槛后再通过 alias 或路由切换。若要灰度双写，必须保留独立向量字段和模型版本，不能把两个语义空间拼成一个索引。
+
+## 7. Turbopuffer 的上游文档处理：从原始资料到可检索记录
+
+Bridgewater 的 Vault 收集来自 135 个外部来源的资料，也包括内部研究、写作、报告和会议录音。公开演讲确认了文档经过组织、索引和权限处理，但没有披露完整的解析器、OCR、ASR、Chunker、Embedding 模型和每个来源的 ETL 实现。因此，下面是依据公开演讲与 Turbopuffer API 还原出的工程流程，不应误认为是 Bridgewater 的内部原样架构。
+
+Turbopuffer 接收的是带 ID 和属性字段的文档行。它的 API 能保存文本、元数据、权限字段和向量，建立 BM25、ANN 与过滤索引；Native Embeddings 可以在写入和查询时调用模型，把文本字段转换为向量。但它不是一个从外部网站、PDF、Word 和录音开始的通用内容理解平台。来源连接、授权核验、文件解析、OCR、ASR、规范化和 Chunk 切分仍应在上游的数据接入与处理系统完成。
+
+可以把上游处理链路拆成以下阶段：
+
+| 阶段 | 处理内容 | 应持久化的产物 |
+|---|---|---|
+| 1. Source Connectors | 对接数据供应商、内部知识库、邮件、文件库和会议系统；处理凭证、订阅、增量水位和许可范围 | source_id、原始 URI、来源版本、授权条款引用、同步水位 |
+| 2. 原始材料归档 | 文件或录音先进入 S3 等对象存储，保留原始版本和 checksum | 原件、对象版本、checksum、采集时间和来源记录 |
+| 3. 内容抽取 | PDF/HTML/Office 文档解析；必要时对扫描件 OCR；会议录音 ASR；提取表格、标题、作者和页码 | 规范化文本、表格文本、时间戳、解析版本和质量状态 |
+| 4. 清洗与实体治理 | 去重、语言检测、编码修复、来源质量标记；识别国家、市场、公司、资产、概念和讨论时期 | document metadata、实体关系、ontology 标签、ACL 关系 |
+| 5. Chunk 切分 | 按标题、章节、段落、表格和会议时间片切分；保留可追溯位置，避免跨主题拼接 | chunk_id、document_id、版本、页码/时间区间、正文 |
+| 6. 检索特征生成 | 全文索引对文本切词；需要语义检索的 Chunk 生成 Embedding；结构化过滤字段独立保留 | BM25 文本、向量、模型版本、维度、过滤属性 |
+| 7. Turbopuffer 写入 | 将每个 Chunk 作为带 ID 的 Row Upsert；启用 full_text_search、向量列和过滤属性索引 | 文档行、BM25 索引、ANN 索引和 Attribute Index |
+| 8. 查询与证据回传 | 服务端解析用户权限，构造 ACL/时间/来源/市场过滤；运行 BM25、ANN 或 Hybrid；合并候选并取回原文证据 | 命中 Chunk、分数、检索通道、原文引用和查询 Trace |
+| 9. 反馈与再摄取 | 研究员和 Agent 产生的新研究结论进入内容接入流程；修订原文或权限时按版本回放更新 | 新文档版本、增量事件、评测标签和审计记录 |
+
+这个过程里最容易低估的是元数据和权限的价值。投资研究的查询通常不仅问“这段文字讲了什么”，还要限制材料的来源、发布时间、研究所讨论的市场时期、国家、资产以及当前用户的访问范围。文档本身和 Chunk 都需要保留稳定身份；权限可以继承自文档，也可以在少数场景下细化到 Chunk。Search API 根据用户和组生成过滤表达式，Turbopuffer 执行过滤与检索。Bridgewater 演讲明确说明，他们把用户、组和文档权限映射成查询过滤条件；过滤不是由 Embedding 自动理解或替代的。
+
+Turbopuffer 自己负责的是数据持久化和检索索引。文本属性可以启用 BM25 full-text search；向量属性会进入其 ANN 索引；元数据属性使用 Attribute Index 支持过滤。官方文档描述其向量索引会自动构建，属性索引了解向量聚类结构，因此 Native Filtering 能先排除没有授权候选的簇，再在相关簇内查找近邻。它还管理对象存储、NVMe 和内存缓存。也就是说，复杂的向量索引和过滤执行在 Turbopuffer 内部，但把杂乱来源变成可检索的文档行，仍是客户的数据工程工作。[Turbopuffer FTS](https://turbopuffer.com/docs/fts) [Turbopuffer Vector Search](https://turbopuffer.com/docs/vector) [Turbopuffer Write API](https://turbopuffer.com/docs/write)
+
+Embedding 的具体位置可以有两种实现。使用 Native Embeddings 时，写入指定文本属性及模型，Turbopuffer 在写入和查询时生成向量；应用不必自行调用模型 API，但需要承担其模型费率、Token 速率限制和重摄取要求。外部生成则由 Worker 调用 OpenAI Embeddings 或企业自部署模型，保存模型与分块版本后把向量和文本一起写进 Turbopuffer。外部方式更容易结合 OpenAI Batch API 做大规模初始回填，也更容易控制重试、限速和多模型评测。Native Embeddings 当前不支持输入后由模型自行切成可变数量向量的 contextual chunking 模式，因此文档切分不能交给它自动完成。[Turbopuffer Native Embeddings](https://turbopuffer.com/docs/embedding)
+
+Turbopuffer 当前文档还列出 Native Embeddings 的组织级限速：新组织默认每分钟 1,024 个请求、每个模型 200 万 Token；厂商可以根据工作负载提高额度。按四亿条、每条 512 Token 计算，总量约 2,048 亿 Token；若完全按 200 万 Token/分钟处理，理论下限约 102,400 分钟，也就是 71 天。这个只是限速上限下的理想值，不包含解析、分批写入、重试、索引构建和其他客户流量。若要在较短窗口内回填大型历史语料，需要提前与 Turbopuffer 协商提升额度，或在外部 Worker 侧使用 OpenAI Batch API 等离线 Embedding 路径，再把向量批量写入。需要注意，OpenAI Batch API 的 50% 优惠适用于直接调用 OpenAI 的 Batch endpoint；不能假定 Turbopuffer Native Embeddings 会自动继承这项折扣。
+
+对于只想给一部分文档生成向量的场景，还有一个需要落实到数据布局的细节：Turbopuffer Namespace 可以没有向量索引；一旦 Namespace 有向量索引，写入的文档就必须包含对应的向量属性。可行做法是把全库文本和元数据放在一个 BM25 Namespace，把精选的语义 Chunk 放在另一个带向量索引的 Namespace。查询时全库 BM25 和向量子集 ANN 并行检索，再按稳定 chunk_id 去重并用 RRF 融合。文档更新和 ACL 撤权必须同步投影到两个 Namespace，避免权限只在其中一个索引生效。[Turbopuffer Write API](https://turbopuffer.com/docs/write)
+
+最后，不要把“四亿条向量”理解成 Turbopuffer 自动把一亿份原始 PDF 拆成四亿段并完成所有 Embedding。演讲只确认了文档数和向量记录规模；具体分块方式、哪些来源没有进入向量检索、如何处理表格与录音，公开信息不足。它能证明的是这套生产检索链路在大规模向量与复杂权限过滤下运行，而不是一个端到端无代码的文档理解流水线。
+
+## 8. 写入一致性、过滤召回与多租户权限
+
+### 8.1 跨存储写入的一致性
 
 这套系统没有一个跨 S3、PostgreSQL 和 OpenSearch 的分布式事务。不能假设三边写入会同时成功。应当使用可重放的事件驱动流程，把文档版本作为一致性主线。
 
@@ -656,8 +579,7 @@ OpenSearch 把全文检索作为基础能力。写入时，text 字段经 Analyz
 
 这样做的代价是最终一致，而不是跨系统强一致。对于 Agent 即时写入后马上检索的场景，可以提供写入确认水位：只有索引确认达到对应版本，API 才向调用方报告该版本可检索。若调用方选择异步写入，就需要接受短暂的索引延迟。
 
-
-## 12. 过滤召回决定了检索质量上限
+### 8.2 过滤条件与召回率
 
 Vault 案例中的时间、来源、资产和国家条件不是可有可无的附加参数。它们会直接改变向量搜索应该访问的候选空间。过滤条件选择性越高，普通 ANN 搜索越容易出现两个极端：先搜索后过滤可能只剩少量结果；先过滤再精确计算则可能需要扫描很大的候选集。
 
@@ -667,7 +589,7 @@ OpenSearch 的 efficient k-NN filtering 已经比简单 post-filter 更完整。
 
 因此，OpenSearch 方案必须用真实查询分布验证过滤性能。不能只测没有过滤条件的 ANN Recall@10。至少要按过滤选择性、租户规模、时间范围和 ACL 条件分别测量。
 
-## 13. 多租户和权限模型
+### 8.3 多租户和权限模型
 
 建议先采用共享索引加 tenant_id、namespace_id、ACL 标签和 routing key 的模式，避免每个租户都创建独立索引导致分片数量膨胀。对于数据量特别大的租户、严格的资源隔离要求或独立生命周期要求，再使用专属索引或专属集群。
 
@@ -675,40 +597,74 @@ OpenSearch 的 efficient k-NN filtering 已经比简单 post-filter 更完整。
 
 Namespace 与 OpenSearch index 不应一一对应。Namespace 是逻辑隔离和生命周期概念；Index、Shard 和 Routing 是物理布局决策。两者解耦后，才能根据文档数量、查询负载和租户增长重新分配数据。
 
-## 14. 与 Turbopuffer 的架构差距
+## 9. 开放计算层：Iceberg、Spark 与 Trino
 
-| 能力 | 推荐组合 | Turbopuffer |
+Snowflake 可以继续作为企业分析平台，但文档标准化数据最好保留开放格式，避免批处理和跨源查询被锁定在单一计算引擎中。这里讨论的是分析计算，不是在线检索路径。
+
+### 9.1 用 Iceberg 建立开放数据路径
+
+如果 Snowflake 已经是企业战略平台，不需要为了避免绑定而立即替换它；但也不应该让所有业务计算都只能在 Snowflake 内执行。更稳妥的做法是把数据格式、Catalog、业务计算逻辑和执行引擎分开：Snowflake 继续承担企业分析和现有数据产品，开放计算引擎则能直接读取同一份开放数据。
+
+建议以 S3 + Parquet + Apache Iceberg 作为跨引擎的数据底座，使用独立 Iceberg REST Catalog 管理表元数据。Spark 作为第一种开放批处理引擎，负责大规模 ETL、文档派生数据处理、历史回填和批量特征计算。Snowflake 继续承担企业分析和适合其执行环境的 SQL 工作负载。不要把 Spark 当作在线查询服务，也不要把所有 SQL 都机械地迁移到 Spark。
+
+Trino 则补上另一种能力：它是分布式、MPP SQL 查询引擎，重点是交互式查询和数据联邦，而不是替代 Spark 的批处理能力。它通过 Connector 访问不同数据源，每个 Connector 在 Trino 中配置成一个 Catalog。Trino 可以在同一条 SQL 中引用多个 Catalog，因此可以把 PostgreSQL、Snowflake 和 Iceberg 表放进同一查询中。官方文档列出了 PostgreSQL、Snowflake、Iceberg、Hive、Redshift、OpenSearch 等 Connector。[Trino concepts](https://trino.io/docs/current/overview/concepts.html)
+
+### 9.2 Trino 的 Connector 与跨源查询边界
+
+| 数据源 | Trino 接入方式 | 适合的用途 |
 |---|---|---|
-| 原始文档持久化 | S3 / R2 | 对象存储为持久化基础 |
-| 全文和向量检索 | OpenSearch | 统一查询引擎 |
-| 属性过滤 | OpenSearch filter + ACL 约束 | 与向量索引协同的 Native Filtering |
-| 事务和租户元数据 | PostgreSQL | 内建 Namespace / 文档模型 |
-| 历史分析 | Snowflake | 主要面向检索服务 |
-| 冷热缓存 | OpenSearch 节点缓存 + 自建缓存策略 | 内存和 NVMe 分层缓存 |
-| 计算与存储解耦 | Remote Store 可部分实现 | 对象存储优先的存储引擎 |
-| 索引重建 | 外部快照、批次清单和 alias 切换 | 服务自身管理 |
+| PostgreSQL | 官方 PostgreSQL Connector | 查询业务元数据、目录和关系数据；不应把高频 OLTP 流量绕到 Trino |
+| Snowflake | 官方 Snowflake Connector | 查询已有企业数据集，与其他 Catalog 的数据组合 |
+| S3 + Iceberg | Iceberg Connector + REST/Glue 等 Catalog | 直接查询开放数据湖，不经过 Snowflake |
+| S3 + Hive/Parquet | Hive 或 Lakehouse Connector + AWS Glue/Hive Metastore | 查询已登记的外部表和数据湖文件 |
+| AWS Glue Data Catalog | Iceberg、Hive 或 Lakehouse Connector 使用其元数据 | 发现和访问 Glue 管理的表；Glue 本身不是计算引擎 |
+| Amazon Redshift | 官方 Redshift Connector | 查询 Redshift 数据仓库 |
+| OpenSearch | 官方 OpenSearch Connector | 对索引做 SQL 型分析；不替代 OpenSearch 原生搜索 API |
 
-### Turbopuffer 的底层：不是 PostgreSQL 或 OpenSearch，而是自研的对象存储原生引擎
+因此，对问题“Trino 能不能用于 Snowflake、PostgreSQL 或 AWS 服务”，答案是可以，但要具体到数据源和 Connector。S3 并不是把任意文件路径直接变成 SQL 表：通常需要 Iceberg、Hive/Glue 等表元数据和受支持的文件格式。AWS Glue 是 Catalog 服务；Trino 使用 Glue 找到表和分区，再从 S3 读取数据。Redshift 有独立 Connector。当前 Trino 官方 Connector 清单没有 DynamoDB，也没有受维护的 Kinesis Connector；Kinesis Connector 已从 Trino 470 移除，不能把“支持 AWS”理解为支持所有 AWS 服务。[Trino Lakehouse Connector](https://trino.io/docs/current/connector/lakehouse.html) [Trino S3 support](https://trino.io/docs/current/object-storage/file-system-s3.html) [Trino Redshift Connector](https://trino.io/docs/current/connector/redshift.html) [Trino ecosystem](https://trino.io/ecosystem/data-source)
 
-从公开资料看，Turbopuffer 的查询进程是 Rust binaries，服务节点访问对象存储中的数据库数据；每个 Namespace 有独立对象存储前缀，写入先追加 WAL 文件，成功响应意味着数据已经持久化到对象存储。随后索引异步构建，尚未进入索引的数据仍可通过较慢的扫描路径查询。NVMe SSD 和内存保存热点数据，查询节点可以为 Namespace 做缓存亲和路由，但节点本身不是唯一数据副本。[Turbopuffer Architecture](https://turbopuffer.com/docs/architecture) [Turbopuffer Concepts](https://turbopuffer.com/docs/concepts)
+例如，以下查询在语法上可以跨 Catalog 组合 Snowflake、PostgreSQL 和 Iceberg 数据：
 
-它的索引选择也与 PostgreSQL 和 OpenSearch 不同。向量 ANN 基于 SPFresh 的中心点聚类索引，而不是 HNSW 或 DiskANN 图；这种组织方式把查询集中到若干向量簇，减少对象存储的随机往返和写放大。全文检索是针对对象存储设计的倒排 BM25 索引，属性过滤还有自己的倒排/精确索引，并且知道向量聚类的组织结构，能协助高选择性过滤下的 ANN 搜索。WAL、ANN、BM25、Attribute Index 和冷热缓存共同构成它的数据库内核。[Turbopuffer Architecture](https://turbopuffer.com/docs/architecture)
+```sql
+SELECT
+    d.document_id,
+    d.source_type,
+    a.market,
+    p.owner
+FROM snowflake.vault.analytics_documents d
+JOIN postgres.catalog.document_acl p
+    ON p.document_id = d.document_id
+JOIN lakehouse.vault.document_attributes a
+    ON a.document_id = d.document_id
+WHERE d.created_at >= DATE '2026-01-01';
+```
 
-从版本演进可以更清楚地看到它不是传统搜索集群的简单托管。v1/v2 以向量地址和聚类布局作为主要索引基础，其他查询能力围绕这个向量优先的数据布局扩展；官方在 v3 设计说明中明确指出，这种做法带来了存储放大、写放大和查询向量化受限的问题，因此开始把 ANN 从主索引改成二级索引。v3 公布的方向是列式、Struct-of-Arrays 数据布局，利用 Constant、Dictionary、RLE、Frequency 等编码压缩属性，并让查询算子直接在压缩数据上执行；查询执行也改为向量化流水线。这些属于官方公开的 v3 设计和演进信息，不应被误读为 PostgreSQL 的表存储或 Lucene 的 Segment 实现。[Turbopuffer v3: RIP, vector database](https://turbopuffer.com/blog/rip-vector-database) [Turbopuffer v3 development log](https://turbopuffer.com/v3) [Fully vectorized query execution](https://turbopuffer.com/blog/fully-vectorized-search-engine)
+这里的 `snowflake`、`postgres` 和 `lakehouse` 是 Trino Catalog 名称示例。实际表名、Schema 和字段需要按各数据源配置调整。
 
-因此，比较合理的判断是：Turbopuffer 的核心是自研的分布式检索与存储引擎，公开架构使用 Rust 服务、对象存储持久化、WAL、SPFresh ANN、BM25/属性索引、NVMe/内存缓存和自有查询执行器。它不是 PostgreSQL 加 pgvector，也不是 OpenSearch/Lucene 集群换了一个 API。公开资料没有完整披露它内部每一个低层库或存储文件的实现，因而不能进一步断言完全没有借用第三方组件；但没有证据支持把 PostgreSQL 或 OpenSearch 视作其底层核心。
+需要特别注意跨源 Join 的执行位置。Trino 能把查询拆成多个 Stage，让 Worker 分别从不同数据源读取数据，再在 Trino 集群中完成 Join；但这不意味着 Snowflake、PostgreSQL 和 S3 之间自动实现了一个远端联合执行计划。Connector 可以把过滤、投影、聚合或 Join 下推到数据源，但下推能力因 Connector 和查询形态而异。官方文档指出，Join pushdown 通常要求参与 Join 的表属于同一个 Catalog；跨 Catalog Join 一般需要 Trino 拉取必要数据并在自身执行。[Trino pushdown](https://trino.io/docs/current/optimizer/pushdown.html)
 
-OpenSearch Remote Store 是重要的演进方向。Remote-backed storage 可以把 translog 和 Lucene segment 持久化到 S3、GCS 或 Azure Blob；使用 segment replication 时，副本可以从共享远端 segment store 获取数据，减少主分片向副本直接复制文件的负担。[OpenSearch Remote-backed storage](https://docs.opensearch.org/latest/tuning-your-cluster/availability-and-recovery/remote-store/)
+所以，不要把 Trino 当作绕过 Snowflake 计算费用的万能代理。若查询主要扫描 Snowflake 的大表，直接在 Snowflake 执行可能更快、更便宜；若要把 Snowflake 大表与 PostgreSQL 小型 Catalog 做联接，应先检查 EXPLAIN、数据量、过滤下推和网络流量。也不要让 Trino 对 PostgreSQL 的业务主库执行无约束的大扫描，否则会把分析负载带到 OLTP 系统。
 
-但它仍然是 OpenSearch 的分片存储架构。节点恢复、分片分配、查询节点本地资源和远端文件缓存仍然需要集群管理。它提升了数据耐久性和复制方式，并不自动把 OpenSearch 变成可随时销毁的无状态查询层。
+### 9.3 Spark 与 Trino 的分工
 
-成本上也有类似的差距。OpenSearch 集群仍需要为分片、索引段、查询缓存、写入合并和副本保留计算与本地存储资源。S3 快照或 Remote Store 可以降低部分持久化成本，但不会自然带来 Turbopuffer 那种按热点数据缓存、冷数据远端读取的完整经济模型。
+Spark 和 Trino 不是互相替代的产品。Spark 是通用分布式计算框架，适合长时间运行的批处理、ETL 和大规模转换；Trino 是面向 SQL 的分布式查询引擎，适合交互式分析和联邦查询。两者都可以访问 Iceberg，但执行模型和工作负载不同。
 
-## 15. 2026 年检索引擎的演进：磁盘向量、对象存储和列式执行
+对 Vault，建议按以下顺序落地：
+
+1. 先把原始文档和派生资产放在 S3，结构化分析数据逐步采用 Parquet/Iceberg，并建立独立 Catalog。
+2. 先用 Snowflake 满足企业既有分析需求，同时验证 Spark 能否独立读取、转换和写回同一批 Iceberg 数据。这一步建立真正可运行的 Snowflake 替代路径。
+3. 当出现跨数据源 SQL、分析工具需要统一入口，或需要直接查询 Iceberg 而不进入 Snowflake 时，再部署 Trino。先从只读和受控查询开始，不把它作为所有应用的通用数据库代理。
+4. 业务服务继续通过自己的 API 访问 PostgreSQL Catalog、Search API 和受控计算任务，不直接把 Trino SQL 暴露给终端用户或 Agent。
+
+Trino 本身也需要治理：独立的身份认证、Catalog 凭据、行列权限策略、查询审计、Resource Groups、并发和扫描量限制都不可缺少。Trino 的统一 SQL 入口不会自动统一底层数据源的权限语义；应明确最终由 Trino 代理身份访问，还是保留用户身份传递，并验证两种模式的审计与授权行为。
+
+对当前阶段的结论是：**Spark 应该先作为开放批处理引擎进入目标架构；Trino 应该作为可选的联邦 SQL 层，在真实跨源查询需求出现时部署。** 最值得先做的不是同时建设 Spark 和 Trino 集群，而是用 Iceberg 建立一个 Snowflake 之外也能读取、写入和重算的数据路径。
+
+## 10. 检索引擎的技术路线：磁盘向量、对象存储与列式执行
 
 最近一轮检索基础设施的变化，重点已经不只是 HNSW 参数或 Embedding 模型，而是如何减少向量索引对内存的依赖、如何在对象存储上直接搜索，以及如何让全文、向量和结构化查询共享更高效的执行路径。
 
-### 15.1 OpenSearch：JVector 把 DiskANN 带进搜索集群
+### 10.1 OpenSearch：JVector 把 DiskANN 带进搜索集群
 
 OpenSearch 3.5 引入 JVector 插件。它使用纯 Java 实现 DiskANN 风格的近似最近邻搜索，向量索引从磁盘读取量化表示，再通过重排改善召回。官方文档还描述了并发插入、增量合并和量化码本逐步优化等能力。[OpenSearch JVector plugin](https://docs.opensearch.org/latest/install-and-configure/additional-plugins/opensearch-jvector/)
 
@@ -716,41 +672,41 @@ OpenSearch 3.5 引入 JVector 插件。它使用纯 Java 实现 DiskANN 风格�
 
 不过 JVector 目前有重要的集成限制：它是单独安装的插件，不能与原有的 opensearch-knn 插件共存；当前官方限制还指出，Neural Search 插件不识别 JVector engine，因此无法直接使用上游 Neural Search 的 neural 和 hybrid 查询路径。需要 Hybrid Search 的团队应先验证实际版本、查询管道和排序融合方式，不能只根据 DiskANN 能力就决定替换现有引擎。
 
-### 15.2 OpenSearch Remote Store：远端持久化更完整，但还不是无状态搜索
+### 10.2 OpenSearch Remote Store：远端持久化更完整，但还不是无状态搜索
 
 Remote Store 让 translog、segment 和集群状态可以写入对象存储，Segment Replication 又让副本直接读取远端 segment。它改善了分片恢复和复制模型，也为降低本地副本存储开销创造条件。
 
 这是一条渐进式路线：先把索引段可靠地放到远端，再优化缓存和恢复路径。它适合已经采用 OpenSearch、希望降低本地持久化成本的企业，但不应被描述为完整的计算存储分离。查询节点仍然需要运行 OpenSearch 并管理分片。
 
-### 15.3 Lance 与 RemoteANN：对象存储原生向量检索开始有专门设计
+### 10.3 Lance 与 RemoteANN：对象存储原生向量检索开始有专门设计
 
 Lance 的开源存储格式支持本地文件和多种对象存储，并把向量搜索、全文检索和 SQL 分析放在同一份列式数据集上。[Lance](https://github.com/lance-format/lance)
 
 2026 年 10 月发布的论文《A Native Vector Search Engine for Cloud Object Storage》进一步研究了面向云对象存储共同设计索引与查询的 RemoteANN。它讨论的重点是如何降低对象存储访问延迟和请求开销，而不是简单地把为本地 SSD 设计的索引搬到 S3。[RemoteANN paper](https://arxiv.org/abs/2610.25172)
 
-这条路线和 Turbopuffer 的架构目标更接近。需要强调的是，论文结果属于研究评估，不能直接推导出某个部署规模下的生产 SLA；但它说明对象存储原生 ANN 已经成为一个有明确研究和实现方向的领域。
+这条路线在存储模型上更接近 Turbopuffer。需要强调的是，论文结果属于研究评估，不能直接推导出某个部署规模下的生产 SLA；但它说明对象存储原生 ANN 已经成为一个有明确研究和实现方向的领域。
 
 开源项目 Firn 则把 LanceDB 与 foyer 缓存结合，构建 RAM、NVMe 到 S3 的分层检索服务，提供多租户的向量、BM25 和 Hybrid Search。[Firn repository](https://github.com/gordonmurray/firnflow) 它是值得跟踪的 Turbopuffer 式开源实现，不过当前更适合作为 POC 和架构参考。上线前仍需要自行验证并发写入、删除语义、恢复、权限隔离、冷查询以及大规模数据下的缓存行为。
 
-### 15.4 Quickwit：对象存储上的全文搜索已经有成熟架构实践
+### 10.4 Quickwit：对象存储上的全文搜索已经有成熟架构实践
 
 Quickwit 采用 Rust 实现，支持把索引放在 S3、Azure Blob 和 GCS 等云对象存储上，并让 Indexer 与 Searcher 独立扩缩。它的核心适用场景是日志、追踪、审计记录和其他以追加写入、不可变数据为主的内容。[Quickwit architecture](https://quickwit.io/docs/overview/introduction)
 
 它证明了在对象存储上做低成本全文搜索并不一定要自己写完整搜索引擎。对于日志和审计检索，Quickwit 值得与 OpenSearch 比较；但它的主要定位仍是全文搜索和可观测性，不应直接当成带有同等向量过滤语义的 Turbopuffer 替代品。
 
-### 15.5 PostgreSQL 向量检索：pgvector 之外还有 VectorChord
+### 10.5 PostgreSQL 向量检索：pgvector 之外还有 VectorChord
 
 如果希望把关系数据和向量检索放在同一个 PostgreSQL 查询里，可以继续关注 VectorChord。它在 PostgreSQL 内提供 IVF、RaBitQ 量化、磁盘友好索引和重排等能力；VectorChord-BM25 则提供 PostgreSQL 原生 BM25 检索扩展。[VectorChord](https://github.com/tensorchord/VectorChord) [Hybrid Search documentation](https://docs.vectorchord.ai/vectorchord/use-case/hybrid-search.html)
 
 这比简单地在 PostgreSQL 中加一个 pgvector 列更进一步，也适合需要 SQL JOIN、关系过滤和语义检索组合的系统。它仍然属于 PostgreSQL 的数据和计算模型，没有解决对象存储上的无状态搜索问题。若 OpenSearch 已经是主要检索引擎，再把所有向量复制到 VectorChord 通常只会增加写入和一致性成本。
 
-### 15.6 Vespa：复杂过滤和排序值得单独评估
+### 10.6 Vespa：复杂过滤和排序值得单独评估
 
 Vespa 把全文检索、向量搜索、过滤表达式和自定义排序模型放在同一个查询与排序体系中。它的 HNSW 搜索支持过滤，并提供 ACORN 等优化方向，也支持多个向量字段和多向量文档。[Vespa approximate nearest-neighbor search](https://docs.vespa.ai/en/querying/approximate-nn-hnsw.html)
 
 如果检索质量高度依赖复杂过滤、多个排序特征和业务相关性模型，Vespa 值得与 OpenSearch 进行真实数据对比。它不是以对象存储为持久事实来源的 Turbopuffer 式架构，因此重点是检索质量与排序能力，而非存储成本模型。
 
-### 15.7 Turbopuffer v3：向量索引不再是存储主索引
+### 10.7 Turbopuffer v3：向量索引不再是存储主索引
 
 Turbopuffer 自己也在改变架构。2026 年 9 月公开的 v3 设计说明计划把文档和索引布局转向列式存储，并把 ANN 从主索引变为普通的二级索引；10 月的开发日志进一步描述了端到端向量化查询执行，让批处理成为算子之间的默认数据交换方式。[RIP, vector database](https://turbopuffer.com/blog/rip-vector-database) [The first search engine with fully vectorized query execution](https://turbopuffer.com/blog/fully-vectorized-search-engine)
 
@@ -758,7 +714,9 @@ Turbopuffer 自己也在改变架构。2026 年 9 月公开的 v3 设计说明�
 
 这些内容属于 Turbopuffer v3 的公开开发方向。其文章在 2026 年 10 月仍将正式投入生产描述为后续计划，不应当把开发日志中的设计目标当作当前所有生产环境已具备的能力。
 
-## 16. 实施顺序：先验证检索，再投资对象存储原生引擎
+## 11. 实施顺序与验收
+
+### 实施顺序
 
 ### 第一阶段：建立检索质量基线
 
@@ -780,7 +738,7 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 
 如果仍无法达到目标成本，再用 LanceDB、Firn 或自建基于 Lance 的检索 POC 验证对象存储原生路线。此时应该用同样的评测集、文档版本和查询流量，与 OpenSearch 进行端到端比较，而不是只比较向量索引微基准。
 
-## 17. 评估矩阵与验收指标
+### 验收指标
 
 | 维度 | 必须验证的场景 | 指标 |
 |---|---|---|
@@ -794,69 +752,47 @@ Bridgewater 的经验说明，评测集不需要一开始就很大，约两百�
 
 测试数据要保留真实的租户大小分布和元数据偏斜。例如，某些来源可能占多数文档，某些资产可能只对应少量记录；这些情况会影响过滤选择性和分片负载。评估时还应分别报告冷查询与热查询，避免平均值掩盖尾延迟。
 
-## 18. 最终建议
+## 12. 架构建议
 
-对于 Bridgewater Vault，我建议把 S3-compatible Object Storage + 独立 Document Catalog + Iceberg + 可替换计算和检索投影作为长期架构，而不是选择 Snowflake、PostgreSQL 或 OpenSearch 之一作为主栈。第一阶段可以用 S3 保存原件和派生工件、PostgreSQL 实现 Catalog、异步 Worker 处理文档、OpenSearch 提供在线检索；Snowflake 继续承担企业分析，Spark 提供开放批处理路径，Trino 则在出现跨源 SQL 需求时再部署。应用只依赖 Catalog API、Processing API 和 Search API，不直接依赖底层产品的数据模型。若后续改用 Cortex Search、Vespa、Quickwit、Lance/Firn 或其他检索后端，应该只替换查询投影和适配器，而不是迁移原始文档。开源项目可借鉴其局部能力，但现阶段没有证据表明其中某一个已经提供了可直接承接 Vault 亿级规模、复杂 ACL 和高并发 Agent 负载的完整方案。
+对于 Vault 这类资料库，建议先落地 S3 + PostgreSQL Document Catalog + 异步处理 Worker + OpenSearch。原始文件、解析结果和 Chunk 保存在对象存储；Catalog 管理身份、版本、来源和 ACL；OpenSearch 承担 BM25、ANN、Hybrid 与在线过滤。Snowflake 继续负责企业分析和质量评估，Spark 提供开放批处理路径。只有出现稳定的跨源 SQL 需求时，再部署 Trino。
 
-Embedding 不应该成为整个入库流水线的硬性步骤。建议先让全文和结构化字段覆盖所有可检索文档，再根据真实查询评测逐步扩大 Dense Vector 的覆盖范围。若确实要为约四亿条 Chunk 建立 OpenAI Embedding，按每条 512 Token 估算，3-small 使用 Batch 的一次性输入费用约 2,048 美元，3-large 约 13,312 美元；这只是模型 Token 费，不包含文档解析、索引、向量存储和后续重算。Turbopuffer Native Embeddings 默认新组织的 2M Token/分钟额度，则意味着同等回填任务的理论时间下限约 71 天，必须在项目计划中单独处理额度和吞吐，不应把它当成即时完成的写入副作用。
+三种主栈的选择取决于主要工作负载。数据和治理已经集中在 Snowflake、检索 QPS 能满足产品限额时，可以优先评估 Cortex Search；关系事务、复杂 JOIN 和数据库内权限关系占主导时，PostgreSQL 更合适；如果高并发在线检索、BM25、向量召回和过滤是系统核心，OpenSearch 更直接。它的代价是独立集群的分片、索引和升级运维。
 
+检索覆盖先从全文和结构化字段开始。Embedding 作为独立通道按查询评测逐步扩展，不必在入库时无差别处理所有 Chunk。四亿条记录、每条 512 Token 的估算中，OpenAI text-embedding-3-small Batch 一次性输入费用约 2,048 美元，3-large 约 13,312 美元；这笔费用本身不足以证明自建 GPU 服务更经济。建议先用 OpenAI 建立基线，再以 Qwen3-Embedding-4B 做同语料对照。统一 Embedding API、模型版本和索引 generation，才是避免供应商绑定的关键。
 
-
-纯文本检索的选择也应按产品真实语义来做：Snowflake 不用向量时走 SQL SEARCH + FULL_TEXT Search Optimization，而不是试图建立只有 TEXT INDEX 的 Cortex Search；PostgreSQL 若原生 ts_rank 无法满足相关性要求，可评估 pg_textsearch 或 ParadeDB pg_search；OpenSearch 则可直接用 BM25 作为完整的在线全文检索路径。只有当评测显示同义改写、概念描述和跨语言表达带来了明显的关键词召回缺口，才值得为对应 Chunk 增加 Embedding。
-
-模型层不必在 OpenAI 和自建之间一次性二选一。先把 Embedding API 做成可替换服务，OpenAI 继续作为线上基线和回填选项；内部模型的第一轮对照使用 Qwen3-Embedding-4B，服务端优先评估 TEI，若企业已有统一 vLLM 平台则复用其 Embeddings API。只有实际语料评测、数据驻留要求或持续吞吐证明自部署有收益，再切到 8B 或更大的模型。四亿条向量的单次 OpenAI Batch 费用并不高，GPU 利用率、运维和模型升级成本必须一起核算。
-
-这套组合可以较快复现 Turbopuffer 的主要业务能力，也能支持 Bridgewater Vault 一类的时间、来源、资产和权限过滤场景。真正不能直接复现的是对象存储原生的索引物理布局、索引与过滤结构的协同，以及查询节点无状态化的完整经济模型。
-
-2026 年的技术进展已经让这条路更容易探索：OpenSearch 有 JVector 和 Remote Store，PostgreSQL 有 VectorChord，Lance/Firn 在推进对象存储原生检索，Quickwit 已经证明云存储上的全文搜索可行，Turbopuffer v3 则进一步走向列式主存储和向量化查询。下一步应该用业务数据验证哪个瓶颈最贵，再决定是否需要自建更接近 Turbopuffer 的存储引擎。
+Turbopuffer 的核心也不在于某个 Embedding 模型。它把 Rust 查询引擎、对象存储持久化、WAL、SPFresh 向量聚类、BM25 倒排索引、属性过滤和分层缓存组合成一个专用系统。OpenSearch、PostgreSQL 与 S3 能覆盖大部分业务能力，但无法仅靠产品拼装获得相同的远端索引布局和查询执行效率。只有当本地索引成本、冷数据查询或节点扩缩已经成为可测量的瓶颈，再投入对象存储原生检索的 POC，才有明确的工程依据。
 
 ## 参考资料
 
-- [Autofile](https://github.com/joekhoobyar/autofile)
-- [FormKiQ Core](https://github.com/formkiq/formkiq-core)
-- [NemakiWare](https://github.com/aegif/NemakiWare)
-- [Pansoph](https://github.com/autoargos/pansoph)
-- [RAGFlow](https://github.com/infiniflow/ragflow)
-- [Palantir Foundry Datasets](https://www.palantir.com/docs/foundry/data-integration/datasets)
-- [Palantir Foundry Media Sets](https://www.palantir.com/docs/foundry/data-integration/media-sets)
-- [Palantir Ontology System](https://www.palantir.com/docs/foundry/architecture-center/ontology-system)
-- [Palantir Ontology Backend Architecture](https://www.palantir.com/docs/foundry/object-backend/overview)
+### Bridgewater 与 Turbopuffer
 
-- [ParadeDB pg_search](https://github.com/paradedb/paradedb)
-
-- [Timescale pg_textsearch](https://github.com/timescale/pg_textsearch)
-
-- [OpenSearch Match Query](https://docs.opensearch.org/latest/query-dsl/full-text/match/)
-
-- [OpenSearch Keyword Search and BM25](https://docs.opensearch.org/latest/search-plugins/keyword-search/)
-
-- [OpenSearch Text field type](https://docs.opensearch.org/latest/mappings/supported-field-types/text/)
-
-- [Snowflake Search Optimization Service](https://docs.snowflake.com/en/user-guide/search-optimization-service)
-
-- [Snowflake FULL_TEXT search optimization](https://docs.snowflake.com/en/user-guide/search-optimization/text-queries)
-
-- [Snowflake SEARCH function](https://docs.snowflake.com/en/sql-reference/functions/search)
-
-- [OpenAI Batch API guide](https://developers.openai.com/api/docs/guides/batch)
-
-- [OpenAI Embeddings guide](https://developers.openai.com/api/docs/guides/embeddings)
-
-- [OpenAI text-embedding-3-large model](https://developers.openai.com/api/docs/models/text-embedding-3-large)
-
-- [OpenAI text-embedding-3-small model](https://developers.openai.com/api/docs/models/text-embedding-3-small)
-
-- [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing)
-
-- [OpenSearch Neural Search tutorial](https://docs.opensearch.org/latest/tutorials/vector-search/neural-search-tutorial/)
-- [PostgreSQL Full Text Search](https://www.postgresql.org/docs/current/textsearch.html)
-- [Snowflake CREATE CORTEX SEARCH SERVICE](https://docs.snowflake.com/en/sql-reference/sql/create-cortex-search)
 - [Can Your AI Analyst Keep a Secret? — Bridgewater and Turbopuffer talk transcript](https://turbopuffer.com/blog/video-can-your-ai-analyst-keep-a-secret)
 - [Turbopuffer Write Documents](https://turbopuffer.com/docs/write)
 - [Turbopuffer Native Embeddings](https://turbopuffer.com/docs/embedding)
 - [Turbopuffer Hybrid Search](https://turbopuffer.com/docs/hybrid)
 - [Turbopuffer Vector Search Guide](https://turbopuffer.com/docs/vector)
 - [Turbopuffer Full-Text Search Guide](https://turbopuffer.com/docs/fts)
+- [Bridgewater：一亿份文档背后的 AI 投研系统](https://mp.weixin.qq.com/s/bqOGYz70R-aNrtXo0Cmn5g)
+- [Turbopuffer Architecture](https://turbopuffer.com/docs/architecture)
+- [Turbopuffer Native Filtering](https://turbopuffer.com/blog/native-filtering)
+- [Turbopuffer v3: RIP, vector database](https://turbopuffer.com/blog/rip-vector-database)
+- [Turbopuffer: Fully vectorized query execution](https://turbopuffer.com/blog/fully-vectorized-search-engine)
+- [Turbopuffer v3 storage-engine development log](https://turbopuffer.com/v3)
+- [Turbopuffer Concepts: SPFresh, Attribute Index, WAL and Cache Hierarchy](https://turbopuffer.com/docs/concepts)
+
+### 数据库与检索引擎
+
+- [ParadeDB pg_search](https://github.com/paradedb/paradedb)
+- [Timescale pg_textsearch](https://github.com/timescale/pg_textsearch)
+- [OpenSearch Match Query](https://docs.opensearch.org/latest/query-dsl/full-text/match/)
+- [OpenSearch Keyword Search and BM25](https://docs.opensearch.org/latest/search-plugins/keyword-search/)
+- [OpenSearch Text field type](https://docs.opensearch.org/latest/mappings/supported-field-types/text/)
+- [Snowflake Search Optimization Service](https://docs.snowflake.com/en/user-guide/search-optimization-service)
+- [Snowflake FULL_TEXT search optimization](https://docs.snowflake.com/en/user-guide/search-optimization/text-queries)
+- [Snowflake SEARCH function](https://docs.snowflake.com/en/sql-reference/functions/search)
+- [OpenSearch Neural Search tutorial](https://docs.opensearch.org/latest/tutorials/vector-search/neural-search-tutorial/)
+- [PostgreSQL Full Text Search](https://www.postgresql.org/docs/current/textsearch.html)
+- [Snowflake CREATE CORTEX SEARCH SERVICE](https://docs.snowflake.com/en/sql-reference/sql/create-cortex-search)
 - [Snowflake Cortex Search：Overview、known limitations 与 engine behavior](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-overview)
 - [Snowflake Cortex Search：Query API、filters 与 owner’s rights](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/query-cortex-search-service)
 - [Snowflake Cortex Search：Costs](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-costs)
@@ -870,19 +806,38 @@ Embedding 不应该成为整个入库流水线的硬性步骤。建议先让全�
 - [OpenSearch Methods and Engines](https://docs.opensearch.org/latest/mappings/supported-field-types/knn-methods-engines/)
 - [OpenSearch JVector plugin](https://docs.opensearch.org/latest/install-and-configure/additional-plugins/opensearch-jvector/)
 - [OpenSearch Bulk API](https://docs.opensearch.org/latest/api-reference/document-apis/bulk/)
-- [Bridgewater：一亿份文档背后的 AI 投研系统](https://mp.weixin.qq.com/s/bqOGYz70R-aNrtXo0Cmn5g)
-- [Turbopuffer Architecture](https://turbopuffer.com/docs/architecture)
-- [Turbopuffer Native Filtering](https://turbopuffer.com/blog/native-filtering)
-- [Turbopuffer v3: RIP, vector database](https://turbopuffer.com/blog/rip-vector-database)
-- [Turbopuffer: Fully vectorized query execution](https://turbopuffer.com/blog/fully-vectorized-search-engine)
 - [OpenSearch Remote-backed storage](https://docs.opensearch.org/latest/tuning-your-cluster/availability-and-recovery/remote-store/)
 - [VectorChord](https://github.com/tensorchord/VectorChord)
-- [Lance format](https://github.com/lance-format/lance)
-- [RemoteANN: A Native Vector Search Engine for Cloud Object Storage](https://arxiv.org/abs/2610.25172)
-- [Firn](https://github.com/gordonmurray/firnflow)
-- [Quickwit](https://quickwit.io/docs/overview/introduction)
 - [Vespa: Approximate nearest-neighbor search](https://docs.vespa.ai/en/querying/approximate-nn-hnsw.html)
 
+### Embedding 模型与推理服务
+
+- [OpenAI Batch API guide](https://developers.openai.com/api/docs/guides/batch)
+- [OpenAI Embeddings guide](https://developers.openai.com/api/docs/guides/embeddings)
+- [OpenAI text-embedding-3-large model](https://developers.openai.com/api/docs/models/text-embedding-3-large)
+- [OpenAI text-embedding-3-small model](https://developers.openai.com/api/docs/models/text-embedding-3-small)
+- [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing)
+- [Qwen3-Embedding 模型卡与 MTEB Multilingual 评测](https://huggingface.co/Qwen/Qwen3-Embedding-4B)
+- [Microsoft Harrier OSS v1 27B 模型卡](https://huggingface.co/microsoft/harrier-oss-v1-27b)
+- [MTEB Leaderboard](https://huggingface.co/spaces/mteb/leaderboard)
+- [Hugging Face Text Embeddings Inference](https://huggingface.co/docs/text-embeddings-inference/index)
+- [TEI Supported Models and Hardware](https://huggingface.co/docs/text-embeddings-inference/en/supported_models)
+- [vLLM Pooling Models and OpenAI-compatible Embeddings API](https://docs.vllm.ai/en/stable/models/pooling_models/)
+
+### 文档平台、数据湖与计算
+
+- [Autofile](https://github.com/joekhoobyar/autofile)
+- [FormKiQ Core](https://github.com/formkiq/formkiq-core)
+- [NemakiWare](https://github.com/aegif/NemakiWare)
+- [Pansoph](https://github.com/autoargos/pansoph)
+- [RAGFlow](https://github.com/infiniflow/ragflow)
+- [Palantir Foundry Datasets](https://www.palantir.com/docs/foundry/data-integration/datasets)
+- [Palantir Foundry Media Sets](https://www.palantir.com/docs/foundry/data-integration/media-sets)
+- [Palantir Ontology System](https://www.palantir.com/docs/foundry/architecture-center/ontology-system)
+- [Palantir Ontology Backend Architecture](https://www.palantir.com/docs/foundry/object-backend/overview)
+- [Lance format](https://github.com/lance-format/lance)
+- [Firn](https://github.com/gordonmurray/firnflow)
+- [Quickwit](https://quickwit.io/docs/overview/introduction)
 - [Trino concepts and architecture](https://trino.io/docs/current/overview/concepts.html)
 - [Trino Snowflake Connector](https://trino.io/docs/current/connector/snowflake.html)
 - [Trino PostgreSQL Connector](https://trino.io/docs/current/connector/postgresql.html)
@@ -892,15 +847,8 @@ Embedding 不应该成为整个入库流水线的硬性步骤。建议先让全�
 - [Trino query pushdown](https://trino.io/docs/current/optimizer/pushdown.html)
 - [Trino connector ecosystem](https://trino.io/ecosystem/data-source)
 
+### 研究资料
 
-- [Qwen3-Embedding 模型卡与 MTEB Multilingual 评测](https://huggingface.co/Qwen/Qwen3-Embedding-4B)
-- [Microsoft Harrier OSS v1 27B 模型卡](https://huggingface.co/microsoft/harrier-oss-v1-27b)
-- [MTEB Leaderboard](https://huggingface.co/spaces/mteb/leaderboard)
-- [Hugging Face Text Embeddings Inference](https://huggingface.co/docs/text-embeddings-inference/index)
-- [TEI Supported Models and Hardware](https://huggingface.co/docs/text-embeddings-inference/en/supported_models)
-- [vLLM Pooling Models and OpenAI-compatible Embeddings API](https://docs.vllm.ai/en/stable/models/pooling_models/)
-- [Turbopuffer v3 storage-engine development log](https://turbopuffer.com/v3)
-- [Turbopuffer Fully Vectorized Query Execution](https://turbopuffer.com/blog/fully-vectorized-search-engine)
-- [Turbopuffer Concepts: SPFresh, Attribute Index, WAL and Cache Hierarchy](https://turbopuffer.com/docs/concepts)
+- [RemoteANN: A Native Vector Search Engine for Cloud Object Storage](https://arxiv.org/abs/2610.25172)
 
-资料核对日期：2026-11-15。产品能力、插件限制和开发路线以对应官方文档及项目资料为准；性能和生产成熟度仍需在目标数据集、硬件和查询分布下独立验证。
+资料核对日期：2026-11-15。产品能力、配额和开发路线应以对应版本的官方资料为准；性能结论仍需在目标语料、硬件和查询分布下验证。
