@@ -720,43 +720,43 @@ Anthropic 的 AI-Native SDLC Playbook 把 SDD 推进了一步：重点不再只�
 
 ## 参考资料
 
-18. Den Delimarsky, [Spec-driven development with AI: Get started with a new open source toolkit](https://github.blog/ai-and-ml/generative-ai/spec-driven-development-with-ai-get-started-with-a-new-open-source-toolkit/), GitHub Blog, 2025-09-02.
-19. [GitHub Spec Kit](https://github.com/github/spec-kit), GitHub 开源项目。
-20. [Kiro Specs](https://kiro.dev/docs/specs/)、[Feature Specs](https://kiro.dev/docs/specs/feature-specs/) 和 [Best Practices](https://kiro.dev/docs/specs/best-practices/)，AWS Kiro 官方文档。
-21. Hojae Han et al., [ArchCode: Incorporating Software Requirements in Code Generation with Large Language Models](https://arxiv.org/abs/2408.00994), 2024.
-22. Zhao Tian, [WiseSpec: Requirements-Driven Agents for Code Generation](https://doi.org/10.1145/3832783.3844573), ASE 2026.
-23. Di Yang et al., [Clarity Is Not Assumed: Understanding LLM-Based Code Generation under Ambiguous Requirements](https://arxiv.org/abs/2604.21505), 2026.
-24. Grant Hamblin et al., [SpecBench: Evaluating Specification-Level Reasoning for Software Engineering LLM Agents](https://arxiv.org/abs/2605.30314), 2026.
-25. Elise Paradis et al., [How much does AI impact development speed? An enterprise-based randomized controlled trial](https://arxiv.org/abs/2410.12944), 2024.
-26. Joel Becker, Nate Rush, Beth Barnes and David Rein, [Measuring the Impact of Early-2025 AI on Experienced Open-Source Developer Productivity](https://arxiv.org/abs/2507.09089), METR, 2025.
-27. [DORA Research: 2025](https://dora.dev/research/2025/dora-report/), State of AI-assisted Software Development, 2025.
-28. Hao He et al., [AI Writes Faster Than Humans Can Review: A Longitudinal Study of an Enterprise 2x Mandate](https://arxiv.org/abs/2607.01904), 2026.
+1. Den Delimarsky, [Spec-driven development with AI: Get started with a new open source toolkit](https://github.blog/ai-and-ml/generative-ai/spec-driven-development-with-ai-get-started-with-a-new-open-source-toolkit/), GitHub Blog, 2025-09-02.
+2. [GitHub Spec Kit](https://github.com/github/spec-kit), GitHub 开源项目。
+3. [Kiro Specs](https://kiro.dev/docs/specs/)、[Feature Specs](https://kiro.dev/docs/specs/feature-specs/) 和 [Best Practices](https://kiro.dev/docs/specs/best-practices/)，AWS Kiro 官方文档。
+4. Hojae Han et al., [ArchCode: Incorporating Software Requirements in Code Generation with Large Language Models](https://arxiv.org/abs/2408.00994), 2024.
+5. Zhao Tian, [WiseSpec: Requirements-Driven Agents for Code Generation](https://doi.org/10.1145/3832783.3844573), ASE 2026.
+6. Di Yang et al., [Clarity Is Not Assumed: Understanding LLM-Based Code Generation under Ambiguous Requirements](https://arxiv.org/abs/2604.21505), 2026.
+7. Grant Hamblin et al., [SpecBench: Evaluating Specification-Level Reasoning for Software Engineering LLM Agents](https://arxiv.org/abs/2605.30314), 2026.
+8. Elise Paradis et al., [How much does AI impact development speed? An enterprise-based randomized controlled trial](https://arxiv.org/abs/2410.12944), 2024.
+9. Joel Becker, Nate Rush, Beth Barnes and David Rein, [Measuring the Impact of Early-2025 AI on Experienced Open-Source Developer Productivity](https://arxiv.org/abs/2507.09089), METR, 2025.
+10. [DORA Research: 2025](https://dora.dev/research/2025/dora-report/), State of AI-assisted Software Development, 2025.
+11. Hao He et al., [AI Writes Faster Than Humans Can Review: A Longitudinal Study of an Enterprise 2x Mandate](https://arxiv.org/abs/2607.01904), 2026.
 
-29. Louis Claxton, Anthropic, [The AI-native SDLC playbook](https://claude.com/resources/articles/the-ai-native-sdlc-playbook), 2026-08-21.
-30. Anthropic Academy, [The AI-native SDLC playbook](https://academy.claude.com/courses/ai-native-sdlc-playbook), 14 lessons covering six SDLC stages and twelve plays, 2026.
-31. Anthropic Academy, [Requirements and design](https://academy.claude.com/courses/ai-native-sdlc-playbook/requirements-and-design).
-32. Anthropic Academy, [Claude Code plan mode as the default starting point](https://academy.claude.com/courses/ai-native-sdlc-playbook/plan-mode).
-33. Anthropic Academy, [Give Claude a feedback loop](https://academy.claude.com/courses/ai-native-sdlc-playbook/give-claude-a-feedback-loop).
-34. Anthropic, [Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents), 2025.
-35. Anthropic, [Claude Code best practices](https://www.anthropic.com/engineering/claude-code-best-practices), official documentation.
-36. Anthropic, [How Claude Code is used in practice](https://www.anthropic.com/research/claude-code-expertise), 2026.
-37. Anthropic, [How AI is transforming work at Anthropic](https://www.anthropic.com/research/how-ai-is-transforming-work-at-anthropic), 2025.
-38. Anthropic Institute, [When AI builds itself](https://www.anthropic.com/institute/recursive-self-improvement), 2026.
-39. Anthropic, [How Anthropic teams use Claude Code](https://www-cdn.anthropic.com/58284b19e702b49db9302d5b6f135ad8871e7658.pdf), internal team practice guide.
-40. OpenAI, [Harness engineering: leveraging Codex in an agent-first world](https://openai.com/index/harness-engineering/), 2026-02-11.
-41. LangChain, [How to turn Claude Code into a domain specific coding agent](https://www.langchain.com/blog/how-to-turn-claude-code-into-a-domain-specific-coding-agent), 2025-09-11.
-42. LangChain, [What Is Eval-Driven Development?](https://www.langchain.com/blog/what-is-eval-driven-development), 2026-11-09.
-43. LangChain / Monday.com, [Building a Code-First Evaluation Strategy from Day 1](https://www.langchain.com/blog/customers-monday), 2026-02-18.
-44. Renuka Kumar and Prashanth Ramagopal, [Agentic Engineering: How Swarms of AI Agents Are Redefining Software Engineering](https://www.langchain.com/blog/agentic-engineering-redefining-software-engineering), 2026-04-17 (Cisco guest case).
-45. Birgitta Böckeler, [Understanding Spec-Driven-Development: Kiro, spec-kit, and Tessl](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html), 2025-10-15.
-46. Wei Zhang and Jessie Jie Xia, [Structured Prompt-Driven Development](https://martinfowler.com/articles/structured-prompt-driven/), 2026-04-28.
-47. [open-spdd](https://github.com/gszhangwei/open-spdd), reusable SPDD templates and commands.
-48. [token-billing](https://github.com/gszhangwei/token-billing/tree/after-enhancement), SPDD example project.
-49. GitHub, [Spec Kit](https://github.com/github/spec-kit).
-50. AWS Kiro, [Specs](https://kiro.dev/docs/specs/) and [Feature Specs](https://kiro.dev/docs/specs/feature-specs/).
-51. Haoxiang Jia et al., [Automated Repair of Ambiguous Problem Descriptions for LLM-Based Code Generation](https://arxiv.org/abs/2505.07270), 2025.
-52. S. Feng, B. Chen, B. H. Meyer and G. Mussbacher, [LLM-Assisted Repository-Level Generation with Structured Spec-Driven Engineering](https://arxiv.org/abs/2605.02455), 2026 pilot study.
-53. Oscar Caddeo and Flora Lindberg, [A Performance Evaluation of Test-Driven and Spec-Driven Development using AI-Assisted Code Generation](https://kth.diva-portal.org/smash/record.jsf?pid=diva2%3A2101100), KTH degree thesis, 2026.
-54. Sabry E. Farrag, [The Productivity-Reliability Paradox: Specification-Driven Governance for AI-Augmented Software Development](https://arxiv.org/abs/2605.01160), 2026 preprint and illustrative pilot.
-55. [langchain-ai/claude-code-evals](https://github.com/langchain-ai/claude-code-evals), evaluation prompts and code-quality checks.
-56. [anthropics/claude-quickstarts/autonomous-coding](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding), long-running coding-agent example.
+12. Louis Claxton, Anthropic, [The AI-native SDLC playbook](https://claude.com/resources/articles/the-ai-native-sdlc-playbook), 2026-08-21.
+13. Anthropic Academy, [The AI-native SDLC playbook](https://academy.claude.com/courses/ai-native-sdlc-playbook), 14 lessons covering six SDLC stages and twelve plays, 2026.
+14. Anthropic Academy, [Requirements and design](https://academy.claude.com/courses/ai-native-sdlc-playbook/requirements-and-design).
+15. Anthropic Academy, [Claude Code plan mode as the default starting point](https://academy.claude.com/courses/ai-native-sdlc-playbook/plan-mode).
+16. Anthropic Academy, [Give Claude a feedback loop](https://academy.claude.com/courses/ai-native-sdlc-playbook/give-claude-a-feedback-loop).
+17. Anthropic, [Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents), 2025.
+18. Anthropic, [Claude Code best practices](https://www.anthropic.com/engineering/claude-code-best-practices), official documentation.
+19. Anthropic, [How Claude Code is used in practice](https://www.anthropic.com/research/claude-code-expertise), 2026.
+20. Anthropic, [How AI is transforming work at Anthropic](https://www.anthropic.com/research/how-ai-is-transforming-work-at-anthropic), 2025.
+21. Anthropic Institute, [When AI builds itself](https://www.anthropic.com/institute/recursive-self-improvement), 2026.
+22. Anthropic, [How Anthropic teams use Claude Code](https://www-cdn.anthropic.com/58284b19e702b49db9302d5b6f135ad8871e7658.pdf), internal team practice guide.
+23. OpenAI, [Harness engineering: leveraging Codex in an agent-first world](https://openai.com/index/harness-engineering/), 2026-02-11.
+24. LangChain, [How to turn Claude Code into a domain specific coding agent](https://www.langchain.com/blog/how-to-turn-claude-code-into-a-domain-specific-coding-agent), 2025-09-11.
+25. LangChain, [What Is Eval-Driven Development?](https://www.langchain.com/blog/what-is-eval-driven-development), 2026-11-09.
+26. LangChain / Monday.com, [Building a Code-First Evaluation Strategy from Day 1](https://www.langchain.com/blog/customers-monday), 2026-02-18.
+27. Renuka Kumar and Prashanth Ramagopal, [Agentic Engineering: How Swarms of AI Agents Are Redefining Software Engineering](https://www.langchain.com/blog/agentic-engineering-redefining-software-engineering), 2026-04-17 (Cisco guest case).
+28. Birgitta Böckeler, [Understanding Spec-Driven-Development: Kiro, spec-kit, and Tessl](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html), 2025-10-15.
+29. Wei Zhang and Jessie Jie Xia, [Structured Prompt-Driven Development](https://martinfowler.com/articles/structured-prompt-driven/), 2026-04-28.
+30. [open-spdd](https://github.com/gszhangwei/open-spdd), reusable SPDD templates and commands.
+31. [token-billing](https://github.com/gszhangwei/token-billing/tree/after-enhancement), SPDD example project.
+32. GitHub, [Spec Kit](https://github.com/github/spec-kit).
+33. AWS Kiro, [Specs](https://kiro.dev/docs/specs/) and [Feature Specs](https://kiro.dev/docs/specs/feature-specs/).
+34. Haoxiang Jia et al., [Automated Repair of Ambiguous Problem Descriptions for LLM-Based Code Generation](https://arxiv.org/abs/2505.07270), 2025.
+35. S. Feng, B. Chen, B. H. Meyer and G. Mussbacher, [LLM-Assisted Repository-Level Generation with Structured Spec-Driven Engineering](https://arxiv.org/abs/2605.02455), 2026 pilot study.
+36. Oscar Caddeo and Flora Lindberg, [A Performance Evaluation of Test-Driven and Spec-Driven Development using AI-Assisted Code Generation](https://kth.diva-portal.org/smash/record.jsf?pid=diva2%3A2101100), KTH degree thesis, 2026.
+37. Sabry E. Farrag, [The Productivity-Reliability Paradox: Specification-Driven Governance for AI-Augmented Software Development](https://arxiv.org/abs/2605.01160), 2026 preprint and illustrative pilot.
+38. [langchain-ai/claude-code-evals](https://github.com/langchain-ai/claude-code-evals), evaluation prompts and code-quality checks.
+39. [anthropics/claude-quickstarts/autonomous-coding](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding), long-running coding-agent example.
