@@ -74,7 +74,7 @@ Anthropic 的公开实践很有代表性，因为它关注的不是先产出一�
 
 ### 从一个高层目标，生成可逐项验收的功能清单
 
-Anthropic 在 2025 年发布的 [Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) 记录了一种双 Agent 工作方式。第一个是 initializer，负责把任务建立成后续 Agent 能继续执行的工程环境；之后每个 Session 都由 coding agent 逐步完成一个功能，并留下 Git 历史和进度记录。
+Anthropic 在 2025 年发布的 [Effective harnesses for long-running agents](https://www.anthropic.com/research/effective-harnesses-for-long-running-agents) 记录了一种双 Agent 工作方式。第一个是 initializer，负责把任务建立成后续 Agent 能继续执行的工程环境；之后每个 Session 都由 coding agent 逐步完成一个功能，并留下 Git 历史和进度记录。
 
 这个例子不是让 Agent 直接读取一句“做一个 Claude.ai 克隆”就开始写代码。Initializer 会先读取项目规格，再把用户目标展开成一份详细的功能清单。Anthropic 给出的示例超过 200 个功能项，范围不仅包括聊天主流程，还覆盖模型切换、会话管理、文件 Artifact、设置、响应式布局和辅助功能。每一项都带有可执行的验证步骤，初始状态统一标记为未通过。后续 Agent 每次只选一个未完成项，实施后通过真实浏览器交互、截图和测试验证，再更新状态并提交 Git。
 
@@ -164,7 +164,7 @@ Thoughtworks 内部 IT 团队公开的 [Structured Prompt-Driven Development（S
 这些是实践项目和模板，不是经严格控制的生产率实验。它们的价值在于让读者看到，规格不一定只是一份面向 Agent 的功能说明，也可以把业务推理和设计决策留下来，成为后续维护的上下文。
 
 
-## 业界工具正在把 Spec 放到开发流程中## 业界工具正在把 Spec 放到开发流程中
+## 业界工具正在把 Spec 放到开发流程中
 
 GitHub Spec Kit 是较早明确推动 SDD 的开源工具之一。它把规格放在工程流程中心，并将工作划分为四个阶段。Specify 先整理用户、问题、使用流程和成功标准；Plan 再加入技术栈、架构和约束；Tasks 将计划分解为可审查和可测试的工作项；Implement 才进入代码修改。GitHub 的设计强调每个阶段的产物都要经过人工检查，Agent 负责大量文档和代码生成，人负责方向和结果确认。
 
@@ -252,7 +252,7 @@ WiseSpec 在 SWE-bench-Lite、SWE-bench-Verified 和 SWE-bench-Pro 上各抽样 
 因此目前最稳妥的判断是：规格结构和上下文质量能够影响代码生成正确率，复杂需求的系统化拆解有真实工程价值；SDD 是否带来净生产率提升，则取决于规格成本是否被更少的返工、故障和审查等待抵消。现有公开证据尚不足以给出一个适用于所有团队的平均 ROI。
 
 
-## AI 编码工具本身能提速，但效率收益并不稳定## AI 编码工具本身能提速，但效率收益并不稳定
+## AI 编码工具本身能提速，但效率收益并不稳定
 
 讨论 SDD 是否提高生产率之前，需要先看 AI 编码工具整体的生产率证据。这个领域已有不少研究，但结果并不一致，而且研究对象不是 SDD。
 
@@ -494,7 +494,7 @@ Schema 能检查字段是否存在、类型是否正确、需求 ID 是否重复
 对复杂功能，最有价值的审查通常不是再加一段“注意安全”，而是指出某条规则仍然有两种可能的解释，并要求业务 Owner 作出决定。
 
 
-## 把 Spec 接入 Agent 工作流，而不是增加文档步骤## 把 Spec 接入 Agent 工作流，而不是增加文档步骤
+## 把 Spec 接入 Agent 工作流，而不是增加文档步骤
 
 可以从一条轻量的端到端流程开始。
 
