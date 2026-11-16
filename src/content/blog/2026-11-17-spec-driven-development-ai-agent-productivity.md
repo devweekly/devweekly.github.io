@@ -124,8 +124,6 @@ Anthropic 自己的 [How Anthropic teams use Claude Code](https://www-cdn.anthro
 
 ## OpenAI、LangChain 和 Thoughtworks：Spec 正在和 Harness、Eval 融合
 
-## OpenAI、LangChain 和 Thoughtworks：Spec 正在和 Harness、Eval 融合
-
 SDD 并不是这些团队唯一使用的术语。它与 Harness Engineering、Context Engineering、Eval-Driven Development 有交叉：共同关注点是把目标、约束、工程上下文和验证变成 Agent 可持续消费的工作材料。
 
 ### OpenAI：把设计约束、代码库结构和反馈回路做成 Agent 的工作环境
