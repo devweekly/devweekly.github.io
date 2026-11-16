@@ -122,6 +122,182 @@ Anthropic 在 2026 年的内部总结 [When AI builds itself](https://www.anthro
 Anthropic 自己的 [How Anthropic teams use Claude Code](https://www-cdn.anthropic.com/58284b19e702b49db9302d5b6f135ad8871e7658.pdf)还记录了不同团队的使用方式：快速原型可以采用较高自主度的循环，但关键业务逻辑会使用更详细的指令、实时监督和更严格的检查；Claude 自主完成 Vim 键位功能的案例中，约 70% 的最终实现代码由 Claude 编写。它是内部访谈材料，不是对照实验，但很清楚地表明，团队会根据任务风险调整规格细节和人的介入程度。
 
 
+## 核心参考：Anthropic 的 AI-Native SDLC Playbook
+
+2026 年 8 月，Anthropic 发布 [The AI-native SDLC playbook](https://claude.com/resources/articles/the-ai-native-sdlc-playbook)，并在 [Claude Academy](https://academy.claude.com/courses/ai-native-sdlc-playbook) 提供了配套的 14 节课程。它是本文最值得深入研究的实践材料。它面向已经在使用 Claude Code、但仍被传统需求交接、人工审查、测试和发布流程拖慢的工程、平台与安全负责人，尤其关注大型企业和受监管组织。它不是一个新的代码生成 Prompt 模板，而是对完整 SDLC 的重新组织。
+
+Playbook 的出发点很直接：AI 已经把 Build 阶段压缩得很快，但 Plan、Review、Test 和 Deploy 仍按人的速度运转。代码生成能力越强，瓶颈越容易从写代码转移到需求澄清、设计审查、测试反馈、发布审批和安全治理。如果只把 AI 接入编码环节，而不调整这些周边流程，团队得到的可能只是更大的 PR 队列、更重的 Review 负担，以及更快产生的返工。
+
+Anthropic 因此提出的不是线性的“需求文档—设计文档—开发—测试—发布”，而是一套由版本化交付物串联起来的闭环。每个阶段结束时都要提交一个明确产物，下一阶段以该产物为输入；当产物经过人工批准，才触发下一阶段。最初可以手工运行这些步骤，稳定后再把 Git 合并、CI Job 和 Agent 工作流连接起来。
+
+### 六个阶段、十二项 Play：不只是 Spec，而是完整的交付链
+
+Claude Academy 将 Playbook 拆成六个 SDLC 阶段和十二项 Play：
+
+| SDLC 阶段 | Anthropic 的 Play | 关键产物或控制点 |
+| --- | --- | --- |
+| Plan | Capture as intent.md | 由需求发起人确认的意图文件 |
+| Design | Requirements and design | 经过 Product Owner 审核的 spec.md |
+| Build | Claude Code plan mode；CLAUDE.md；Skills；Parallel sessions and subagents | 已批准的 plan.md、仓库级上下文、组织技能、可并行的工作单元 |
+| Test | Give Claude a feedback loop；Continuous evals in CI | 可执行验证命令、持续运行的 Agent Eval Suite |
+| Deploy | AI in the PR review loop；Hooks as approval gates；CI/CD integration and deployment | PR Review 结果、审批 Hook、受控 Pipeline |
+| Maintain | Closing the loop on metrics | 生产指标、控制区间、事件记录和新的 intent.md |
+
+这十二项 Play 并非要求一次全部上线。Anthropic 给出了依赖关系：CLAUDE.md、Skills、反馈循环、Hooks、Plan Mode 和 Intent Capture 可以先独立采用；Subagents 依赖项目上下文，Evals 依赖上下文和反馈循环，Requirements and Design 依赖 Intent Capture 与 Skills；PR Review 依赖 Evals 和 Subagents；CI/CD 依赖 PR Review 与 Hooks；最后才把生产监控闭环接回 Intent。对组织而言，这意味着可以按能力成熟度分阶段引入，而不是先买一套工具、再强制所有团队走同一套重流程。
+
+### 第一步不是写 Spec，而是由需求发起人写出 intent.md
+
+Anthropic 将最初的输入命名为 intent.md，而不是直接要求业务人员写完整 PRD 或技术规格。它是一份短小、可读、可版本化的意图记录，回答四个问题：想要什么、为什么需要、影响哪些用户和系统、有哪些约束和未决问题。
+
+Playbook 的示例来自保险理赔场景：
+
+    # Intent: claims status self-service
+    Author: J. Ortiz (claims operations). Status: draft.
+
+    ## Problem
+    Customers phone the contact center to ask where their claim is.
+    Handlers spend roughly a third of call time on status-only queries.
+
+    ## Proposed outcome
+    Customers see claim status, next step and expected date in the portal.
+
+    ## Affected users and systems
+    Claims handlers, portal team, claims-core API.
+
+    ## Constraints
+    No new PII in the portal session. Existing authentication only.
+
+    ## Open questions
+    Do third-party loss adjusters need access too?
+
+这个例子刻意没有写 API 路径、数据库表、缓存策略或 React 组件。因为它描述的是业务意图，而不是提前替工程团队作技术决定。需求发起人可以是业务运营人员、产品经理、内部用户，也可以是事故告警或工单的提交者；他们不必先掌握 Git 或需求工程术语。可以通过 Claude 或 Cowork 与 Agent 讨论，Agent 扮演分析师角色追问范围、用户、约束和成功标准，再生成 intent.md 草案。
+
+但 Agent 生成不等于批准。发起人必须校正 Agent 对原意的误解；Product Owner 决定接受还是拒绝，并对批准的版本负责。Anthropic 建议把文件放在产品仓库的 intent/ 目录；只有当意图跨越多个仓库时，才值得单独建立 intent repository。没有 Git 使用经验的业务人员，也可以通过 GitHub Connector 等方式让 Agent 代为提交 Markdown，但作者、时间和审查历史仍应保留。
+
+这里体现了一个重要的角色变化：业务人员不再必须先把想法交给分析师，再等待需求文档被重新表达；Agent 可以帮助把原始表达整理成统一产物，但业务意图的确认权仍属于发起人和 Product Owner。
+
+### 第二步：Agent 写 requirements + design，Product Owner 审核而不是亲自从头撰写
+
+在 intent.md 获得批准后，Claude 根据组织已有的 Skills 生成 spec.md。这些 Skills 可以包含安全、合规、品牌、UX、API 设计和数据处理标准。Anthropic 的建议是把 Requirements 与 Design 合并在一次 Agent 工作会话中完成，减少传统流程里分析师写需求、设计师再二次解释的交接损耗。
+
+Playbook 的 claims 示例给出了一个可直接参考的 spec.md 形态：
+
+    # Spec: claims status self-service
+    From: intent.md (J. Ortiz, claims operations).
+    Status: ready for product owner review.
+    Skills applied: secure-api-review, brand-voice, portal-ux.
+
+    ## Requirements
+    - R1. A signed-in customer sees status, next step and expected date for each open claim.
+    - R2. Status is one of four states: received, in review, approved, paid.
+    - R3. The response carries those three fields and nothing else.
+    - R4. What the customer sees is at most 60 seconds old.
+
+    ## Design
+    - New endpoint GET /claims/{id}/status in claims-api, behind the gateway JWT.
+    - claims-api reads the claim from claims-core. The portal never calls claims-core.
+    - New StatusPanel on the portal claims page. It caches each answer for 60 seconds.
+
+    ## How each constraint in the intent is met
+    | Constraint | Met by |
+    | :---- | :---- |
+    | No new PII in the portal session | R3. None of the three fields is tagged pii in the schema. |
+    | Existing authentication only | The gateway JWT. No new login, token or role. |
+
+    ## Open questions from the intent
+    - Do third-party loss adjusters need access too? Not answered. Carried forward as concern 1.
+
+    ## Areas of concern
+    1. Loss adjusters have no portal account. Giving them access breaks "existing authentication only", so they are left out of this spec. Owner: security.
+    2. The portal-ux skill says every status shows a date. The brand-voice skill says never to state a payment date as a commitment. I cannot satisfy both as written. Proposed label: "Estimated date". Owner: compliance.
+    3. claims-core allows 50 requests a second. The 60-second cache should keep the portal under that, but nobody has load tested it. Owner: claims-core team.
+
+这个例子比只列功能点更重要的地方，是它把需求、设计、约束映射和风险放在同一份工作规格里。R1 到 R4 可以被后续计划、代码和测试引用；Design 说明系统边界和主要实现路径；约束映射解释原始意图如何被满足；Areas of concern 则把冲突和未经验证的假设显式交给有权决策的人。
+
+尤其是第三方理赔人员是否需要访问、UX 与品牌规范冲突、下游系统吞吐量未经压测等问题，Agent 不应该自行编造答案。它应标记问题、给出影响和建议 Owner，由 Product Owner 与安全、合规或系统负责人解决。Product Owner 审核 Spec 是否忠于原始意图、未决问题是否得到回答或被明确保留；高风险事项还要咨询 Tech Lead。通过后，intent.md 和 spec.md 一起提交，形成“当初要求了什么、最终决定了什么”的版本记录。
+
+这也修正了一个常见误区：Spec 并不一定要由业务分析师或架构师逐字写完。在 Anthropic 的模式里，Agent 承担草拟和综合，Product Owner 对业务意图和范围负责，政策 Owner 解释安全/合规等规则，Tech Lead 对高风险技术设计把关。Spec 的作者可以是 Agent，Spec 的责任人不能是 Agent。
+
+### 第三步：Spec 批准之后，工程师仍要审查 plan.md
+
+spec.md 不是直接交给 Agent 开始改代码。工程师在 Claude Code Plan Mode 下，让 Agent 只读代码库，结合 Spec 生成 plan.md，列出需要修改的文件、实现顺序、测试方式、风险和备选方案。工程师通过追问“会破坏什么”“哪一步风险最高”“为什么不选其他方案”来检查计划。
+
+Anthropic 给出的判断标准非常实用：一个从未参与过这次讨论的工程师，应该能够只看批准的 Plan 就理解怎样实施。Plan 经工程师确认后提交到 Git；如果实现过程中偏离 Plan，应在同一个变更中同步更新 plan.md。后续 PR Review 再检查最终 diff 是否与 Spec 和 Plan 一致。
+
+这三个文件的职责不能混淆：
+
+| 文件 | 回答的问题 | 主要责任人 |
+| --- | --- | --- |
+| intent.md | 为什么做、想改变什么、影响谁、有哪些业务约束？ | 需求发起人提出，Product Owner 确认 |
+| spec.md | 系统应表现出什么行为、遵循什么约束、采用什么设计、还有哪些风险？ | Agent 草拟，Product Owner / Policy Owner / Tech Lead 审核 |
+| plan.md | 在当前仓库里改哪些地方、按什么顺序实施、怎样证明完成？ | Agent 草拟，工程师 / Tech Lead 审核 |
+
+因此，Spec 的细节不应该无限膨胀。intent.md 保持短小；spec.md 要足够明确到可以计划、审查和验证；plan.md 再落到仓库文件、模块、接口、测试和迁移步骤。三层文档分别服务于业务意图、系统行为和工程执行，避免一份超长 PRD 同时承担所有职责。
+
+### 第四步：把 CLAUDE.md、Skills 和 Hooks 分开管理
+
+Playbook 对 Agent 上下文的分层值得单独吸收，因为它能避免把所有规则都塞进一份越来越长的 CLAUDE.md。
+
+- CLAUDE.md：仓库级工作说明，放新成员第一天就需要知道的命令、架构地图、编码约定和常见陷阱。Anthropic 建议从 /init 生成初稿，再人工删减到一页左右；规则应简短、稳定，并在 Agent 重复犯错后补充。示例包括 Java 版本、构建/测试命令、Money 必须使用 BigDecimal、目录职责、哪些依赖不能自行升级。
+- Skills：组织的制度性知识和可复用工作流程，例如 API 安全审查、品牌规范、合规要求。Skill 应有明确触发条件、权威来源和责任 Owner；放在 .claude/skills/<name>/ 或通过组织 Plugin 分发。政策变化时由 Policy Owner 审批更新。
+- Hooks：需要确定性执行的控制点，例如禁止未通过测试就报告完成、限制修改特定文件、在发布前等待人工审批。Prompt 和 Skill 是 Agent 需要理解并遵守的指引；Hook、权限、沙箱和 CI 才能把关键约束落实为执行边界。
+
+Playbook 给出的原则是：同一错误出现两次，就考虑把纠正方法写入 CLAUDE.md；但不要把仓库里本来就能读到的代码结构、API 文档全文复制进去。常驻上下文越长，越容易消耗 Context Window 并引入过期信息。
+
+### 第五步：测试不是最后一个阶段，而是 Agent 每次工作都要运行的反馈循环
+
+Anthropic 区分了两个容易混淆的概念：Feedback Loop 是实现过程中持续运行的反馈回路；Verifier Subagent 则是在 Agent 认为任务完成后，用一个新的 Context Window 独立复核结果。前者反复执行，后者用于避免最终检查完全沿用实现 Agent 自己的假设。
+
+最简单的反馈回路可以就是一段 CLAUDE.md：
+
+    ## Verifying your work
+    - Build: make build (must finish with "Build succeeded")
+    - Test: make test (all green; never skip or delete a failing test)
+    - Lint: make lint (zero warnings)
+
+    Run all three before reporting any task complete, and paste the output.
+    If a test fails, fix the code, not the test.
+
+更重要的是，Agent 的工作环境本身也需要回归测试。Playbook 建议收集 20–50 个近期真实任务，每个任务都保留输入 Prompt 和定义可接受结果的 Checks；形成 Evals Suite，在 CI 中定期运行，并在 CLAUDE.md、Skills 或 Hooks 发生变化时触发。模型升级、Prompt 改写、Skill 调整都可能改变 Agent 行为，因此不能只测试业务代码，不测试驱动 Agent 的配置。
+
+每次生产事故也应该沉淀为新的 Eval Case。这样，团队不是只在某个 PR 上修复一次问题，而是让同类问题成为后续 Agent 必须持续通过的回归场景。Eval 的通过率下降时，应像代码测试失败一样阻止配置变更合并。
+
+### 第六步：Review、审批与部署也要适应 Agent 的速度
+
+Playbook 并不主张让 Agent 自动批准所有代码。它提出多层 Review：Agent 可以先检查 PR 是否符合 Spec、Plan、项目规范和测试证据；人类则集中审查业务意图、架构取舍、高风险变更和监管关键代码。REVIEW.md 可以承载组织的审查规则；自动 Review 负责发现问题和提供证据，而不是取代代码 Owner 的责任。
+
+Hooks 作为审批门禁，负责在需要人类决策时暂停执行，例如生产发布、敏感操作或策略例外。CI/CD 中可以用非交互式 Claude Code 处理构建失败分类、生成变更说明、修复 lint 或响应 Review 意见，但 Agent 应运行在沙箱中，使用短时、最小权限凭证；部署工具通过 MCP 暴露为按环境授权的操作，而不是把生产凭证直接交给 Agent。开发环境可以有更高自主度，生产环境则由发布负责人批准，Hook 强制执行。
+
+这套方法的核心不是“Agent Review 代替人工 Review”，而是把 Review 分工：机械性、重复性和可验证的问题尽可能前移自动化；人集中在需要业务判断、风险接受和责任承担的决策上。
+
+### 第七步：生产运行状态重新进入需求入口
+
+Maintain 阶段把 Playbook 从一次性交付流程变成闭环。Agent 监控生产指标；当指标超出正常控制区间（control band），先按预先定义的权限和风险等级进行诊断，再把问题写成新的 intent.md，重新进入 Plan 阶段。也就是说，生产反馈不再只是一个孤立告警或待办，而成为可追踪的新需求来源。
+
+例如，理赔状态 API 的 P95 延迟连续超出控制区间，系统可以触发诊断任务，Agent 汇总影响、相关部署、日志和指标，草拟一份 intent，描述受影响的用户、业务后果和预期改善。是否扩大缓存、调整数据源或改变业务 SLA，仍由有权人员确认；Agent 不应因为发现指标越界就自行改变业务承诺或生产策略。
+
+这使 intent.md 不仅是新功能的起点，也成为事故、性能退化和运营问题进入工程改进流程的统一入口。
+
+### Anthropic Playbook 怎样衡量效果？
+
+Playbook 的一个优点是没有只用代码行数或 Agent 生成速度衡量转型，而是为每个 Play 提出 Leading Indicator 和 Lagging Indicator。举例来说：
+
+| Play | 领先指标 | 滞后指标 |
+| --- | --- | --- |
+| Capture intent | 从首次讨论到提交 intent.md 的时间 | Intent 被 Product Owner 接受进入设计阶段的比例；Spec 提交后又回改 Intent 的次数 |
+| Requirements and design | intent.md 到 spec.md 的提交时间 | Build 开始后仍需修改 Spec 的次数 |
+| Plan mode | Spec 到批准 Plan 的时间 | 实现过程中 Plan 变更频率、PR 对 Plan 的偏离 |
+| Feedback loop | Agent 首次运行 Build/Test/Lint 的成功率 | 每个 PR 的人工 Review 时间、变更失败率 |
+| Continuous evals | Eval Suite 覆盖的真实任务数和运行频率 | Agent 配置变更后任务通过率的回归幅度 |
+| PR review / Hooks | 自动 Review 覆盖率、被 Hook 拦截的未授权操作 | Review 等待时间、未经批准的高风险变更数量 |
+| CI/CD | Pipeline 中 Agent 可安全处理的步骤比例 | 部署失败率、回滚时间、生产变更失败率 |
+| Maintain | 指标越界到诊断和 Intent 生成的时间 | 事故恢复时间、同类问题复发率 |
+
+需要特别说明：Playbook 中“从数周降到数小时”等表述，是流程改善的预期和建议观测指标，不是一项公开的随机对照实验结果。Playbook 是 Anthropic Applied AI 团队基于内部实践和客户项目经验整理的实施指南，不是证明 AI-native SDLC 平均提升某个百分比的学术研究。采用时应把它的指标当成团队自己的基线和验证框架，而不是引用成已被实验验证的生产率增幅。
+
+对 SDD 的意义在于：Spec 不再是一份写完就归档的文档，而是整个 Agent 交付链中的一个受控版本化工件。它要能被 Plan 引用、被测试验证、被 PR Review 检查；发生偏离时要能回写更新；上线后的问题还可以重新生成 Intent，启动下一轮需求与设计。
+
+
 ## OpenAI、LangChain 和 Thoughtworks：Spec 正在和 Harness、Eval 融合
 
 SDD 并不是这些团队唯一使用的术语。它与 Harness Engineering、Context Engineering、Eval-Driven Development 有交叉：共同关注点是把目标、约束、工程上下文和验证变成 Agent 可持续消费的工作材料。
@@ -530,50 +706,57 @@ SDD 本身也有成本。规格越细，生成、审查和维护它所花的时�
 
 最终比较的是单位时间内交付的、经过验证并能持续维护的变更，而不是 Agent 生成了多少行代码、创建了多少个 PR，或者消耗了多少 Token。只有在总耗时下降且质量没有明显退化时，才能说这套流程提高了生产率。
 
-## 结论：把 Spec 当作 Agent 的工程契约
+## 结论：把 Spec 当作 Agent 交付链中的受控工件
 
-SDD 不是一种新的 Prompt 技巧，也不是要求每个需求都写成严格的 JSON。它真正改变的是 Agent 接收任务的方式：把原始需求、仓库上下文、行为约束、技术设计、实施任务和验证结果连接起来，让一个模糊目标逐渐成为能够检查的工程契约。
+Anthropic 的 AI-Native SDLC Playbook 把 SDD 推进了一步：重点不再只是“先写规格再写代码”，而是让 intent.md、spec.md、plan.md、代码与测试、PR Review 和生产反馈成为一条可追踪、可验证、能持续回流的交付链。业务发起人表达意图，Agent 整理和生成规格，Product Owner 与政策负责人确认业务和治理约束，工程师审核实施计划，Agent 在持续反馈和 Eval 中实现，Hooks、权限和 CI 控制发布边界，生产问题再回到新的 Intent。
 
-现有研究已经表明，结构化需求和歧义控制可以影响代码生成正确率；GitHub Spec Kit 和 AWS Kiro 则展示了如何把规格、任务和实现组织成可持续迭代的流程。但这些证据还不足以证明 SDD 在各种团队和任务中都会缩短端到端交付时间。规格自身的质量、人工确认成本、代码库上下文、测试有效性和下游审查能力，都会改变最终结果。
+这套方法最有价值的地方，是把人类判断放在真正需要判断的关口，而不是要求人逐字撰写每份文档或检查 Agent 生成的每一行代码。它也明确了不同工件的职责：Intent 说清为什么做，Spec 说清系统要满足什么行为和约束，Plan 说清在当前仓库如何实现，测试和 Eval 提供可观察证据，Hook 和权限控制真正不可越过的边界。
 
-更务实的做法，是先对复杂或高风险任务采用轻量 Spec：用稳定 ID 标识需求，显式记录业务规则、权限约束、验收条件和未决问题，再把这些信息传递给实现和测试 Agent。简单任务继续直接驱动，不需要为了方法论而增加文档。
+但 Playbook 是实践指南，不是 SDD 生产率提升幅度的受控实验。它提出的流程指标和预期改善方向值得借鉴，却不能被引用为已经验证的平均提速百分比。现有研究支持结构化需求、上下文和验证能改善部分代码生成结果；至于端到端 ROI，仍需把 Spec 编写和审批成本、实现时间、返工、Review 等待、变更失败率和事故恢复时间放在同一条链路中测量。
 
-真正值得追求的不是让 Agent 遵守更多格式，而是让它少猜一些、少返工一些，并让团队更早知道它到底有没有做对。
+对团队而言，合理的起点不是一次性引入全部十二项 Play，而是先让一个复杂功能跑通 intent → spec → plan → implementation + eval → review，保存每个阶段的版本和耗时，再逐步接入 Hooks、CI/CD 和生产反馈。简单、低风险、局部的修改仍然可以直接交给 Agent；跨系统、高风险、长周期和需要多人协作的变更，才值得投入更完整的规格和治理流程。
+
+真正值得追求的不是更多文档，而是更少的猜测、更早的验证、更明确的责任，以及能从生产结果持续改进的 Agent 工程系统。
 
 ## 参考资料
 
-1. Den Delimarsky, [Spec-driven development with AI: Get started with a new open source toolkit](https://github.blog/ai-and-ml/generative-ai/spec-driven-development-with-ai-get-started-with-a-new-open-source-toolkit/), GitHub Blog, 2025-09-02.
-2. [GitHub Spec Kit](https://github.com/github/spec-kit), GitHub 开源项目。
-3. [Kiro Specs](https://kiro.dev/docs/specs/)、[Feature Specs](https://kiro.dev/docs/specs/feature-specs/) 和 [Best Practices](https://kiro.dev/docs/specs/best-practices/)，AWS Kiro 官方文档。
-4. Hojae Han et al., [ArchCode: Incorporating Software Requirements in Code Generation with Large Language Models](https://arxiv.org/abs/2408.00994), 2024.
-5. Zhao Tian, [WiseSpec: Requirements-Driven Agents for Code Generation](https://doi.org/10.1145/3832783.3844573), ASE 2026.
-6. Di Yang et al., [Clarity Is Not Assumed: Understanding LLM-Based Code Generation under Ambiguous Requirements](https://arxiv.org/abs/2604.21505), 2026.
-7. Grant Hamblin et al., [SpecBench: Evaluating Specification-Level Reasoning for Software Engineering LLM Agents](https://arxiv.org/abs/2605.30314), 2026.
-8. Elise Paradis et al., [How much does AI impact development speed? An enterprise-based randomized controlled trial](https://arxiv.org/abs/2410.12944), 2024.
-9. Joel Becker, Nate Rush, Beth Barnes and David Rein, [Measuring the Impact of Early-2025 AI on Experienced Open-Source Developer Productivity](https://arxiv.org/abs/2507.09089), METR, 2025.
-10. [DORA Research: 2025](https://dora.dev/research/2025/dora-report/), State of AI-assisted Software Development, 2025.
-11. Hao He et al., [AI Writes Faster Than Humans Can Review: A Longitudinal Study of an Enterprise 2x Mandate](https://arxiv.org/abs/2607.01904), 2026.
+18. Den Delimarsky, [Spec-driven development with AI: Get started with a new open source toolkit](https://github.blog/ai-and-ml/generative-ai/spec-driven-development-with-ai-get-started-with-a-new-open-source-toolkit/), GitHub Blog, 2025-09-02.
+19. [GitHub Spec Kit](https://github.com/github/spec-kit), GitHub 开源项目。
+20. [Kiro Specs](https://kiro.dev/docs/specs/)、[Feature Specs](https://kiro.dev/docs/specs/feature-specs/) 和 [Best Practices](https://kiro.dev/docs/specs/best-practices/)，AWS Kiro 官方文档。
+21. Hojae Han et al., [ArchCode: Incorporating Software Requirements in Code Generation with Large Language Models](https://arxiv.org/abs/2408.00994), 2024.
+22. Zhao Tian, [WiseSpec: Requirements-Driven Agents for Code Generation](https://doi.org/10.1145/3832783.3844573), ASE 2026.
+23. Di Yang et al., [Clarity Is Not Assumed: Understanding LLM-Based Code Generation under Ambiguous Requirements](https://arxiv.org/abs/2604.21505), 2026.
+24. Grant Hamblin et al., [SpecBench: Evaluating Specification-Level Reasoning for Software Engineering LLM Agents](https://arxiv.org/abs/2605.30314), 2026.
+25. Elise Paradis et al., [How much does AI impact development speed? An enterprise-based randomized controlled trial](https://arxiv.org/abs/2410.12944), 2024.
+26. Joel Becker, Nate Rush, Beth Barnes and David Rein, [Measuring the Impact of Early-2025 AI on Experienced Open-Source Developer Productivity](https://arxiv.org/abs/2507.09089), METR, 2025.
+27. [DORA Research: 2025](https://dora.dev/research/2025/dora-report/), State of AI-assisted Software Development, 2025.
+28. Hao He et al., [AI Writes Faster Than Humans Can Review: A Longitudinal Study of an Enterprise 2x Mandate](https://arxiv.org/abs/2607.01904), 2026.
 
-12. Anthropic, [Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents), 2025.
-13. Anthropic, [Claude Code best practices](https://www.anthropic.com/engineering/claude-code-best-practices), official documentation.
-14. Anthropic, [How Claude Code is used in practice](https://www.anthropic.com/research/claude-code-expertise), 2026.
-15. Anthropic, [How AI is transforming work at Anthropic](https://www.anthropic.com/research/how-ai-is-transforming-work-at-anthropic), 2025.
-16. Anthropic Institute, [When AI builds itself](https://www.anthropic.com/institute/recursive-self-improvement), 2026.
-17. Anthropic, [How Anthropic teams use Claude Code](https://www-cdn.anthropic.com/58284b19e702b49db9302d5b6f135ad8871e7658.pdf), internal team practice guide.
-18. OpenAI, [Harness engineering: leveraging Codex in an agent-first world](https://openai.com/index/harness-engineering/), 2026-02-11.
-19. LangChain, [How to turn Claude Code into a domain specific coding agent](https://www.langchain.com/blog/how-to-turn-claude-code-into-a-domain-specific-coding-agent), 2025-09-11.
-20. LangChain, [What Is Eval-Driven Development?](https://www.langchain.com/blog/what-is-eval-driven-development), 2026-11-09.
-21. LangChain / Monday.com, [Building a Code-First Evaluation Strategy from Day 1](https://www.langchain.com/blog/customers-monday), 2026-02-18.
-22. Renuka Kumar and Prashanth Ramagopal, [Agentic Engineering: How Swarms of AI Agents Are Redefining Software Engineering](https://www.langchain.com/blog/agentic-engineering-redefining-software-engineering), 2026-04-17 (Cisco guest case).
-23. Birgitta Böckeler, [Understanding Spec-Driven-Development: Kiro, spec-kit, and Tessl](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html), 2025-10-15.
-24. Wei Zhang and Jessie Jie Xia, [Structured Prompt-Driven Development](https://martinfowler.com/articles/structured-prompt-driven/), 2026-04-28.
-25. [open-spdd](https://github.com/gszhangwei/open-spdd), reusable SPDD templates and commands.
-26. [token-billing](https://github.com/gszhangwei/token-billing/tree/after-enhancement), SPDD example project.
-27. GitHub, [Spec Kit](https://github.com/github/spec-kit).
-28. AWS Kiro, [Specs](https://kiro.dev/docs/specs/) and [Feature Specs](https://kiro.dev/docs/specs/feature-specs/).
-29. Haoxiang Jia et al., [Automated Repair of Ambiguous Problem Descriptions for LLM-Based Code Generation](https://arxiv.org/abs/2505.07270), 2025.
-30. S. Feng, B. Chen, B. H. Meyer and G. Mussbacher, [LLM-Assisted Repository-Level Generation with Structured Spec-Driven Engineering](https://arxiv.org/abs/2605.02455), 2026 pilot study.
-31. Oscar Caddeo and Flora Lindberg, [A Performance Evaluation of Test-Driven and Spec-Driven Development using AI-Assisted Code Generation](https://kth.diva-portal.org/smash/record.jsf?pid=diva2%3A2101100), KTH degree thesis, 2026.
-32. Sabry E. Farrag, [The Productivity-Reliability Paradox: Specification-Driven Governance for AI-Augmented Software Development](https://arxiv.org/abs/2605.01160), 2026 preprint and illustrative pilot.
-33. [langchain-ai/claude-code-evals](https://github.com/langchain-ai/claude-code-evals), evaluation prompts and code-quality checks.
-34. [anthropics/claude-quickstarts/autonomous-coding](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding), long-running coding-agent example.
+29. Louis Claxton, Anthropic, [The AI-native SDLC playbook](https://claude.com/resources/articles/the-ai-native-sdlc-playbook), 2026-08-21.
+30. Anthropic Academy, [The AI-native SDLC playbook](https://academy.claude.com/courses/ai-native-sdlc-playbook), 14 lessons covering six SDLC stages and twelve plays, 2026.
+31. Anthropic Academy, [Requirements and design](https://academy.claude.com/courses/ai-native-sdlc-playbook/requirements-and-design).
+32. Anthropic Academy, [Claude Code plan mode as the default starting point](https://academy.claude.com/courses/ai-native-sdlc-playbook/plan-mode).
+33. Anthropic Academy, [Give Claude a feedback loop](https://academy.claude.com/courses/ai-native-sdlc-playbook/give-claude-a-feedback-loop).
+34. Anthropic, [Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents), 2025.
+35. Anthropic, [Claude Code best practices](https://www.anthropic.com/engineering/claude-code-best-practices), official documentation.
+36. Anthropic, [How Claude Code is used in practice](https://www.anthropic.com/research/claude-code-expertise), 2026.
+37. Anthropic, [How AI is transforming work at Anthropic](https://www.anthropic.com/research/how-ai-is-transforming-work-at-anthropic), 2025.
+38. Anthropic Institute, [When AI builds itself](https://www.anthropic.com/institute/recursive-self-improvement), 2026.
+39. Anthropic, [How Anthropic teams use Claude Code](https://www-cdn.anthropic.com/58284b19e702b49db9302d5b6f135ad8871e7658.pdf), internal team practice guide.
+40. OpenAI, [Harness engineering: leveraging Codex in an agent-first world](https://openai.com/index/harness-engineering/), 2026-02-11.
+41. LangChain, [How to turn Claude Code into a domain specific coding agent](https://www.langchain.com/blog/how-to-turn-claude-code-into-a-domain-specific-coding-agent), 2025-09-11.
+42. LangChain, [What Is Eval-Driven Development?](https://www.langchain.com/blog/what-is-eval-driven-development), 2026-11-09.
+43. LangChain / Monday.com, [Building a Code-First Evaluation Strategy from Day 1](https://www.langchain.com/blog/customers-monday), 2026-02-18.
+44. Renuka Kumar and Prashanth Ramagopal, [Agentic Engineering: How Swarms of AI Agents Are Redefining Software Engineering](https://www.langchain.com/blog/agentic-engineering-redefining-software-engineering), 2026-04-17 (Cisco guest case).
+45. Birgitta Böckeler, [Understanding Spec-Driven-Development: Kiro, spec-kit, and Tessl](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html), 2025-10-15.
+46. Wei Zhang and Jessie Jie Xia, [Structured Prompt-Driven Development](https://martinfowler.com/articles/structured-prompt-driven/), 2026-04-28.
+47. [open-spdd](https://github.com/gszhangwei/open-spdd), reusable SPDD templates and commands.
+48. [token-billing](https://github.com/gszhangwei/token-billing/tree/after-enhancement), SPDD example project.
+49. GitHub, [Spec Kit](https://github.com/github/spec-kit).
+50. AWS Kiro, [Specs](https://kiro.dev/docs/specs/) and [Feature Specs](https://kiro.dev/docs/specs/feature-specs/).
+51. Haoxiang Jia et al., [Automated Repair of Ambiguous Problem Descriptions for LLM-Based Code Generation](https://arxiv.org/abs/2505.07270), 2025.
+52. S. Feng, B. Chen, B. H. Meyer and G. Mussbacher, [LLM-Assisted Repository-Level Generation with Structured Spec-Driven Engineering](https://arxiv.org/abs/2605.02455), 2026 pilot study.
+53. Oscar Caddeo and Flora Lindberg, [A Performance Evaluation of Test-Driven and Spec-Driven Development using AI-Assisted Code Generation](https://kth.diva-portal.org/smash/record.jsf?pid=diva2%3A2101100), KTH degree thesis, 2026.
+54. Sabry E. Farrag, [The Productivity-Reliability Paradox: Specification-Driven Governance for AI-Augmented Software Development](https://arxiv.org/abs/2605.01160), 2026 preprint and illustrative pilot.
+55. [langchain-ai/claude-code-evals](https://github.com/langchain-ai/claude-code-evals), evaluation prompts and code-quality checks.
+56. [anthropics/claude-quickstarts/autonomous-coding](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding), long-running coding-agent example.
