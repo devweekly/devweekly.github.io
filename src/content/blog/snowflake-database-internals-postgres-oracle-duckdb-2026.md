@@ -403,6 +403,7 @@ DuckDB 的执行能力可以很强，Quack 也增加了服务访问方式，但�
 
 ### Snowflake
 - [Key Concepts and Architecture](https://docs.snowflake.com/en/user-guide/intro-key-concepts)
+- [Understanding Snowflake Table Structures](https://docs.snowflake.com/en/user-guide/tables-micro-partitions)
 - [Micro-partitions & Data Clustering](https://docs.snowflake.com/en/user-guide/tables-clustering-micropartitions)
 - [Time Travel](https://docs.snowflake.com/en/user-guide/data-time-travel)
 - [Fail-safe](https://docs.snowflake.com/en/user-guide/data-failsafe)
@@ -412,13 +413,16 @@ DuckDB 的执行能力可以很强，Quack 也增加了服务访问方式，但�
 
 ### PostgreSQL 与 Oracle
 - [PostgreSQL MVCC Introduction](https://www.postgresql.org/docs/current/mvcc-intro.html)
+- [PostgreSQL Write-Ahead Logging](https://www.postgresql.org/docs/current/wal-intro.html)
 - [PostgreSQL Database Page Layout](https://www.postgresql.org/docs/current/storage-page-layout.html)
+- [Oracle Transactions and System Change Numbers](https://docs.oracle.com/en/database/oracle/oracle-database/21/cncpt/transactions.html)
+- [Oracle Data Concurrency and Consistency](https://docs.oracle.com/en/database/oracle/oracle-database/21/cncpt/data-concurrency-and-consistency.html)
 - [Oracle Flashback Technology](https://docs.oracle.com/en/database/oracle/oracle-database/26/adfns/flashback.html)
 - [Oracle In-Memory Column Store Architecture](https://docs.oracle.com/en/database/oracle/oracle-database/26/inmem/in-memory-column-store-architecture.html)
 
 ### Data Lake、Iceberg 与 DuckDB
 - [Apache Parquet File Format](https://parquet.apache.org/docs/file-format/)
-- [Apache Iceberg Table Specification](https://iceberg.apache.org/spec/)
+- [Apache Iceberg Table Specification](https://iceberg.apache.org/spec/) — Snapshot、Manifest、原子元数据提交与乐观并发控制
 - [DuckDB Internals](https://duckdb.org/docs/current/internals/overview)
 - [DuckDB Concurrency](https://duckdb.org/docs/2.0/connect/concurrency.html)
 - [DuckDB 2.0 Release](https://duckdb.org/2026/10/21/announcing-duckdb-200.html)
