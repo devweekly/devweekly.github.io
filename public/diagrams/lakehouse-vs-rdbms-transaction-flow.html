@@ -1,6 +1,7 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>湖仓表格式与传统数据库事务流程</title><link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet"><style>
 *{box-sizing:border-box}body{margin:0;padding:32px 24px;background:#F9F6EF;color:#221C17;font-family:Geist,'Noto Sans SC',system-ui,sans-serif}.frame{max-width:1500px;margin:auto}.eyebrow{font:500 11px 'Geist Mono',monospace;letter-spacing:.18em;color:#75695F;text-transform:uppercase;margin:0 0 8px}h1{font:400 clamp(25px,3vw,34px) 'Instrument Serif','Noto Serif SC',serif;margin:0 0 22px}.diagram-container{width:100%;overflow-x:auto}svg{display:block;width:100%;height:auto;min-width:1000px}@media print{.diagram-container{overflow:visible}svg{min-width:0}}
 </style></head><body><main class="frame"><p class="eyebrow">TRANSACTION SEMANTICS · SIDE-BY-SIDE</p><h1>湖仓表格式与传统数据库事务流程</h1><div class="diagram-container"><?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1440" height="850" viewBox="0 0 1440 850" role="img" aria-labelledby="lakehouse-vs-rdbms-transactions-title lakehouse-vs-rdbms-transactions-desc"><title id="lakehouse-vs-rdbms-transactions-title">湖仓表格式与传统数据库事务流程</title><desc id="lakehouse-vs-rdbms-transactions-desc">Three transaction paths compare raw Parquet files, Iceberg or Delta snapshot commits, and PostgreSQL or Oracle record-level transaction logging.</desc><defs><marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#65584D"/></marker><filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#221C17" flood-opacity=".08"/></filter></defs><rect width="100%" height="100%" fill="#F9F6EF"/><style>
 text{font-family:'Geist','Noto Sans SC',system-ui,sans-serif;fill:#221C17}
 .mono{font-family:'Geist Mono','Noto Sans SC',monospace}
@@ -59,7 +60,7 @@ text{font-family:'Geist','Noto Sans SC',system-ui,sans-serif;fill:#221C17}
 <path d="M1094 420 H1116" class="line"/>
 <rect x="1120" y="364" width="236" height="112" rx="8" class="softgreen"/>
 <text x="1238" y="393" text-anchor="middle" class="label">读者固定 Snapshot</text><text x="1238" y="418" text-anchor="middle" class="sub">只读已提交文件集合</text><text x="1238" y="440" text-anchor="middle" class="micro">旧快照可继续被读取</text>
-<text x="282" y="495" class="tiny">原子边界是“表当前指向哪个快照 / 日志版本”，不是逐行锁定并原地更新 Parquet。</text>
+<text x="282" y="495" class="tiny">原子边界是表快照 / 日志版本；并发冲突在提交时校验，不靠逐行锁。</text>
 
 <!-- lane 3 RDBMS -->
 <rect x="56" y="536" width="1328" height="252" rx="12" class="zone"/>
@@ -73,7 +74,7 @@ text{font-family:'Geist','Noto Sans SC',system-ui,sans-serif;fill:#221C17}
 <text x="392" y="599" text-anchor="middle" class="label">修改记录</text>
 <text x="300" y="630" class="tiny">PostgreSQL</text><text x="300" y="650" class="micro">新 Tuple 版本</text><text x="300" y="669" class="micro">行锁 / MVCC</text>
 <line x1="300" y1="684" x2="484" y2="684" class="divider"/>
-<text x="300" y="707" class="tiny">Oracle</text><text x="300" y="726" class="micro">数据块修改 + Undo</text>
+<text x="300" y="707" class="tiny">Oracle</text><text x="300" y="726" class="micro">数据块修改 + 行锁</text>
 <path d="M502 657 H554" class="line"/>
 <rect x="558" y="570" width="244" height="174" rx="8" class="node"/>
 <text x="680" y="599" text-anchor="middle" class="label">持久化恢复日志</text>
