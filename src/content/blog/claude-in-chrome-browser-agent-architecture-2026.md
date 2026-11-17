@@ -116,7 +116,7 @@ Claude Code 可以通过 `claude --chrome` 启动 Chrome 集成，也可以通�
 | 默认隔离浏览器 | Cowork 内置浏览器可提供 | Agent 创建页面默认隔离 |
 | DOM / Accessibility | 页面状态可读，具体内部实现未完整公开 | 明确提供页面可访问信息 |
 | 截图与视觉验证 | 支持 | 支持 |
-| Console / Network 调试 | Claude Code 集成支持 | VS Code 浏览器工具支持相关调试能力 |
+| Console / Network 调试 | Claude Code 集成支持 Console 和 Network 检查 | VS Code 文档明确支持读取 Console 错误和页面状态 |
 | 直接执行 Playwright | 通过浏览器工具和开发流程实现 | 提供 runPlaywrightCode |
 | 本地代码和终端 | Claude Code 原生能力 | Copilot Agent 原生能力 |
 | 跨应用工作 | Cowork、Connectors、Skills | 取决于 Agent 工具、MCP 和扩展 |
