@@ -406,7 +406,113 @@ DuckDB 的执行能力可以很强，Quack 也增加了服务访问方式，但�
 因此，Snowflake 的技术价值不在于它独占了某项数据库理论，而在于它把已经成熟的数据库技术重新组织成适合云环境的大规模分析服务。Time Travel、列存储和快照在其他数据库与湖仓系统中都能找到对应实现；真正需要比较的是这些能力由谁管理、版本如何提交、计算如何扩展、权限在哪里执行，以及系统故障时由谁负责恢复。
 
 
-## 10. 进一步阅读：Lakehouse 的内部实现与架构设计
+
+## 10. Snowflake、Databricks 与 DuckDB：三个系统的内部设计
+
+前面讨论了行存储、列存储、微分区、Time Travel 和开放表格式，但这些仍然是局部机制。要理解 Snowflake、Databricks 和 DuckDB 的差异，需要把视角再向下一层：一条 SQL 从哪里进入系统，谁负责解析和优化，执行计划如何运行，数据文件如何定位，事务由谁提交，计算资源又如何扩展。
+
+这三个系统并不是同一类产品的三个版本。Snowflake 是把数据库引擎和云服务控制面整合在一起的托管分析平台；Databricks 是围绕开放对象存储、开放表格式和多种计算引擎构建的数据与 AI 平台；DuckDB 则是嵌入式、单机优先的分析数据库引擎。它们都能执行 SQL，也都能处理 Parquet，但系统边界和责任划分完全不同。
+
+### 10.1 Snowflake：数据库引擎、元数据服务与云控制面是一体化系统
+
+Snowflake 的关键不是简单地把数据库文件放到 S3，而是把持久化数据、查询执行和全局元数据管理拆成不同层，再通过一个托管服务协调它们。
+
+**数据面。** 标准 Snowflake Table 的数据由 Snowflake 转换为内部压缩列式格式，并组织成不可由用户直接管理的 Micro-partitions。微分区保存列数据和统计信息，底层对象存储负责持久化。Warehouse 执行查询时，从存储层读取必要的微分区和列数据，并利用本地缓存降低远程读取成本。用户不能像操作 Iceberg 一样直接管理这些内部文件，也不能把 Snowflake 原生表文件交给任意 Parquet 引擎读取。
+
+**元数据与控制面。** Cloud Services 不只是连接入口。它管理身份和权限、数据库对象、查询编译与优化、事务协调、Warehouse 生命周期及其他平台服务。Snowflake 2018 年公开的 FoundationDB 工程文章给出了很有价值的内部视角：元数据的访问模式更接近 OLTP，而不是数据仓库扫描，因此需要大量低延迟的小型事务。文章明确提到对象定义、用户、会话、访问控制、复制历史、语句执行统计、事务状态和锁队列等数据都依赖元数据服务。Snowflake 2026 年关于 Execution Anchor 的工程文章又进一步披露，FoundationDB 仍是其元数据骨干之一，查询、表、分区和事务状态会通过它持久化；同一查询任一时刻只能由一个 Global Services 实例提交相关元数据事务。
+
+这两篇文章的时间点不同，适合用来理解架构演进，但不能据此假定所有内部服务、数据结构和部署拓扑都已完整公开。Snowflake 的内部实现并不是开源规范，外部能够确认的是公开披露的设计原则和局部机制。
+
+**查询执行面。** SQL 首先经过 Cloud Services 的认证、解析、绑定和优化，然后被分配给一个 Virtual Warehouse。Warehouse 是独立的 MPP 计算集群，多个节点并行扫描微分区、执行过滤和 Join、交换中间数据并完成聚合。不同 Warehouse 可以访问同一份持久数据，却使用各自的计算资源，因此 BI、ETL 和临时分析可以在资源层面隔离。
+
+从一次查询的生命周期看，Snowflake 的特殊之处在于：查询计划和全局元数据由控制面协调，真正的大规模数据处理则发生在 Warehouse。查询重试、节点故障恢复和结果登记不能只看成计算任务重跑，因为系统还必须保证查询状态、事务状态和最终结果的元数据不会被两个服务实例重复提交。2026 年公开的 Execution Anchor 正是针对这一问题，把哪个 Global Services 实例有权为某条查询提交持久状态，变成可在事务提交时验证的约束。
+
+**元数据本身也是性能优化结构。** 微分区的统计信息不仅用于减少扫描量。在部分简单查询中，优化器可以只根据元数据回答结果，而不读取实际数据文件。Zero-copy Clone、Time Travel 和 Data Sharing 也大量依赖元数据引用关系：克隆可以复用已有微分区引用，历史版本可以继续指向旧的微分区集合，数据共享则可以授权消费者访问提供方的数据对象，而不是先复制整份数据。
+
+这解释了 Snowflake 为什么需要一个强事务性的元数据层。它不仅保存表的位置，还参与决定数据版本、查询可见性、权限边界和服务操作的正确性。对 Snowflake 来说，元数据不是附属目录，而是数据库系统的一部分。
+
+参考：[Snowflake Key Concepts and Architecture](https://docs.snowflake.com/en/user-guide/intro-key-concepts)、[How FoundationDB Powers Snowflake Metadata](https://www.snowflake.com/en/blog/how-foundationdb-powers-snowflake-metadata-forward/)、[Strengthening Snowflake’s Distributed Query Lifecycle with Execution Anchors](https://www.snowflake.com/en/blog/engineering/snowflake-distributed-query-execution-anchors/)。
+
+### 10.2 Databricks：开放数据文件之上的事务协议与计算平台
+
+Databricks 的内部架构与 Snowflake 有一个根本区别：Lakehouse 的数据文件通常保存在客户云账号的对象存储中，表通过 Delta Lake 等开放表格式管理。Databricks 提供计算、优化、治理和运维平台，但数据文件与表协议并不等同于一个封闭的数据库存储格式。
+
+可以把 Databricks 的核心拆成四个部分：
+
+- **Object Storage** 保存 Parquet 数据文件以及 Delta 日志、Checkpoint 等元数据文件。数据通常留在客户控制的 S3、ADLS 或 GCS 中。
+- **Delta Lake** 在 Parquet 文件之上定义事务日志和表快照。它记录文件新增、移除、表元数据和协议能力，使一组普通文件具有表级一致性和版本语义。
+- **Unity Catalog** 管理表和其他数据资产的发现、权限、审计、血缘与治理。它不是 Delta Transaction Log 的另一个名字；前者是平台级治理和目录服务，后者描述具体表的版本与文件状态。
+- **Compute** 包括 Apache Spark、Databricks SQL 以及 Photon 等执行能力。Spark API 和执行计划提供数据处理抽象，Photon 在支持的算子路径上使用原生 C++ 向量化执行引擎。
+
+**Delta Lake 的事务提交路径。** 一次写入通常先生成新的 Parquet 文件，再通过事务日志提交新的表版本。日志中的 AddFile 和 RemoveFile 等 Action 描述哪些文件进入或离开当前快照；Metadata 和 Protocol 等 Action 描述表结构及读写协议能力。读者根据一个已提交的 Snapshot 获取一致的文件集合，不会因为写入者正在生成新文件，就看到一半新数据、一半旧数据。
+
+Delta Lake 采用乐观并发控制。写入者先基于一个读取版本计算变更，提交时检查自读取版本以来是否出现与本次写入冲突的提交；没有冲突则提交新版本，有冲突则按事务类型和冲突规则失败或重试。这个机制与传统数据库的行锁模型不同：它主要围绕表快照、文件集合和读写冲突检测工作。对于大范围覆盖、MERGE 或多个作业同时改写相同数据区域的情况，文件粒度和谓词范围会影响冲突概率及重写成本。
+
+Checkpoint 用于压缩和加速日志重放，避免每次读取表都从最早的 JSON 日志逐条重建状态。随着表变大，查询规划不只受 Parquet 数据量影响，也会受到日志规模、文件数量、统计信息和 Catalog 元数据访问成本影响。因此，Compaction、数据布局优化、旧版本清理和孤儿文件管理都是表的长期维护工作。
+
+**Spark 与 Photon 不是同一个东西。** Spark 提供分布式执行框架、DataFrame/SQL API、计划优化和任务调度。Photon 是 Databricks 为分析工作负载提供的原生向量化查询引擎，以 C++ 实现，并与 Spark API 兼容。它优化的是实际执行阶段的 CPU 效率、内存访问和算子实现，而不是替代 Delta Lake 的事务协议，也不是 Catalog。把 Databricks 简化成 Spark + Delta 会漏掉 Photon、SQL Warehouse、Unity Catalog、数据优化服务和托管控制面；把 Photon 说成另一个独立数据库也不准确。
+
+**Unity Catalog 的角色正在向事务协调扩展。** 传统 Delta 表的提交协调主要发生在单表事务日志层。Databricks 已公开 Catalog-managed commits：把提交协调移到 Unity Catalog，由 Catalog 成为 Delta Lake 和 Iceberg 表状态的权威来源，并支持跨多表事务边界。它不是所有 Delta 表天然都采用的默认提交路径，必须区分传统日志提交与启用 Catalog-managed 特性的表。这个变化说明 Catalog 不一定永远只是命名和权限服务；在特定协议模式下，它可以成为事务协调路径的一部分。
+
+**Databricks 的开放性也有边界。** Parquet、Delta Protocol 和 Iceberg 使数据文件与表状态能够被其他兼容引擎访问，但格式开放不等于任意引擎都能完整复现 Databricks 的性能和治理行为。Photon、Predictive Optimization、部分事务能力、Catalog 集成和平台调度仍然依赖 Databricks 的实现。跨引擎访问必须检查协议版本、Deletion Vectors、Catalog 能力、凭据下发和并发写入规则，而不能只验证另一套引擎能否读出 Parquet 文件。
+
+参考：[Databricks Lakehouse Architecture](https://docs.databricks.com/aws/en/lakehouse/)、[Delta Lake](https://docs.databricks.com/aws/en/delta/)、[Delta Transaction Log Protocol](https://github.com/delta-io/delta/blob/master/PROTOCOL.md)、[Photon](https://www.databricks.com/product/photon)、[Catalog Commits](https://docs.databricks.com/aws/en/tables/features/catalog-commits)。
+
+### 10.3 DuckDB：嵌入式数据库内核，执行路径比平台边界更重要
+
+DuckDB 与前两者的比较维度不同。它首先是一个数据库引擎库，通常运行在应用进程内部。应用通过 Python、R、Node.js、Java 或 C/C++ API 调用它，SQL 解析、优化、执行和本地事务都发生在当前进程中。它可以并行使用一台机器的多个 CPU 核心，但默认架构不是跨多台机器的 MPP 集群，也没有 Snowflake 那种独立的全局云控制面。
+
+DuckDB 的内部执行路径相对容易研究，因为它的核心实现和官方内部文档是公开的。
+
+**从 SQL 到物理算子。** Parser 将 SQL 转换为语法树；Binder 解析表名和列名、确定类型并绑定函数；Logical Planner 构建逻辑算子树；Optimizer 执行表达式简化、Filter Pushdown、Join Reordering 和公共子表达式消除；Physical Plan Generator 再把逻辑计划转换为物理算子树。最后由执行引擎运行这些物理算子。DuckDB 的 Join Order Optimizer 使用 DPhyp 算法，这也是它在多表 Join 中进行成本优化的重要组成部分。
+
+**向量化执行。** DuckDB 不是每次只把一行记录交给下一个算子，而是以 DataChunk 为批次，在算子之间传递一组列向量。官方文档中的默认 STANDARD_VECTOR_SIZE 是 2048 个 tuple。Vector 可以采用 Flat、Constant、Dictionary 或 Sequence 等不同表示；例如字典压缩的数据可以继续以 Dictionary Vector 形式参与执行，不必在进入算子前立即完全展开。这样能够减少逐行函数调用和不必要的数据复制，同时让执行算子围绕列批次进行计算。
+
+这和磁盘上是列存储是两个不同层次。列式存储描述持久化数据如何组织；向量化执行描述内存中的数据如何在算子之间流动。两者配合，才构成 DuckDB 对分析型查询的优化路径。
+
+**本地存储结构。** DuckDB 的原生数据库文件采用列式组织，并以 Row Group 和 Column Segment 等结构管理数据。Row Group 是一组行的水平分块，内部再按列保存数据段；扫描时可以只读取所需列，并利用统计信息跳过不匹配的数据范围。DuckDB 也可以直接扫描 Parquet 文件，此时查询引擎通过文件元数据和 Row Group 统计信息完成列裁剪与过滤下推，不必先把所有数据导入自己的数据库文件。
+
+原生 .duckdb 文件与 Parquet 并不等价。前者是 DuckDB 自己的可更新数据库存储，包含数据库内部元数据和事务相关结构；后者是开放的分析文件格式，更适合跨引擎交换和数据湖存储。DuckDB 可以同时读取两者，但两者的写入、事务和并发语义不同。
+
+**事务和并发。** DuckDB 在进程内使用 MVCC 和乐观并发控制支持事务。多个线程可以在同一数据库实例中并发执行读写；发生写写冲突时，事务可能需要回滚或重试。传统嵌入式文件模式下，多个进程同时只读访问可以成立，但多个进程并发写同一个数据库文件并不是默认支持的共享数据库服务模式。DuckDB 2.0 增加的 Server/Quack 访问方式扩展了客户端连接形态，但它并没有因此自动变成 Snowflake 那种跨节点 MPP 数据库。
+
+**DuckDB 的扩展边界。** 它可以通过扩展读取 Iceberg、Delta 或其他数据源，也可以结合 DuckLake 使用外部对象存储和中心 Catalog。这样可以把 DuckDB 当作一个轻量计算引擎，访问由外部表格式管理的数据。但需要区分三件事：DuckDB 原生数据库文件的事务、DuckDB 作为外部表读取引擎的能力，以及 DuckLake 这类外部表格式提供的快照和并发协调。不能把它们统称为 DuckDB 的存储层。
+
+参考：[DuckDB Internals Overview](https://duckdb.org/docs/current/internals/overview)、[Execution Format](https://duckdb.org/docs/current/internals/vector)、[Storage Versions and Format](https://duckdb.org/docs/current/internals/storage)、[Concurrency](https://duckdb.org/docs/2.0/connect/concurrency.html)。
+
+### 10.4 三种架构的关键差异
+
+| 维度 | Snowflake | Databricks | DuckDB |
+| --- | --- | --- | --- |
+| 系统边界 | 完整托管的云数据库与分析平台 | 数据与 AI 平台，组合开放表格式和托管计算 | 可嵌入应用的数据库引擎 |
+| 持久数据 | Snowflake 管理的内部列式格式和对象存储 | 客户云对象存储中的 Parquet 等文件 | 本地原生数据库文件，也可直接读外部文件 |
+| 表状态与事务 | Cloud Services 管理全局元数据和原生表版本 | Delta Log 或 Iceberg 元数据；部分模式由 Catalog 协调提交 | 原生数据库事务由 DuckDB 内核管理；外部湖表事务由对应表格式/Catalog 管理 |
+| 查询执行 | 独立 Virtual Warehouse 上的 MPP 引擎 | Spark 分布式执行、Photon 原生向量化引擎及 SQL Warehouse | 进程内、单机多线程向量化执行 |
+| 元数据职责 | 数据库控制面的一部分，参与事务和服务协调 | Delta/Iceberg 管理表快照，Unity Catalog 管理治理与目录 | 内置 Catalog 管理本地数据库对象；外部 Catalog 由扩展或集成访问 |
+| 扩展方式 | 增大 Warehouse、增加集群并发 | 扩展 Spark/SQL 计算资源，数据留在对象存储 | 使用单机 CPU、内存和磁盘；可部署多个实例，但不等于自动分布式执行 |
+| 开放性 | 原生表格式由平台管理；另有 Iceberg Table | 开放文件与表协议，但平台优化和治理能力有实现边界 | 引擎开源，支持多种开放文件和表格式 |
+
+这张表不能用来简单排名。它说明的是三套系统把复杂性放在了不同位置。
+
+Snowflake 把数据布局、事务协调、元数据服务和计算调度集成到一个平台，用户换取的是较低的运维负担和统一的服务语义，代价是原生表和执行环境对平台的依赖。
+
+Databricks 把数据留在开放存储中，通过 Delta/Iceberg 定义表状态，再由 Spark、Photon 等计算引擎访问。它提供更强的数据与计算可组合性，但用户和平台团队需要理解文件布局、表协议、Catalog、引擎兼容性及长期维护。
+
+DuckDB 把数据库核心做得轻量、可嵌入、易于组合。它不需要先建立一个分布式服务平台就能完成大量分析工作，但单机引擎不会自动提供多租户、跨节点查询、统一权限、全局调度和高可用控制面。
+
+### 10.5 用同一条 SQL 看三种执行路径
+
+假设有一条分析 SQL，需要读取交易数据、过滤日期、关联证券维表，再按证券聚合成交量。三个系统最终执行的逻辑运算可能相似：Scan、Filter、Join、Aggregate；差异在于这些算子如何获得数据、在哪些节点执行，以及谁维护读取时的一致性。
+
+在 Snowflake 中，Cloud Services 根据微分区统计信息生成计划，Warehouse 节点并行读取需要的微分区和列。查询的事务状态和全局元数据提交由服务层协调。
+
+在 Databricks 中，Spark SQL 构建逻辑和物理计划，Delta Log 或 Iceberg Metadata 确定当前表快照，执行引擎读取对象存储中的 Parquet 文件。支持的算子可以由 Photon 执行；文件和快照协议决定读取到的是哪一个一致版本。
+
+在 DuckDB 中，Parser、Binder 和 Optimizer 在本地生成物理计划，Scan 算子可以读取本地数据库文件或 Parquet Row Groups，多个算子以 DataChunk/Vector 传递数据，在单机线程池中完成 Join 和聚合。事务可见性由 DuckDB 内核或所连接的外部表格式负责。
+
+所以，看到三者都支持 SQL，并不能推断它们的数据库内部结构相似。SQL 是接口，执行计划是逻辑，数据访问、事务协调和资源调度才决定系统的真实架构。
+
+## 11. 进一步阅读：Lakehouse 的内部实现与架构设计
 
 如果希望真正理解 Lakehouse，而不是停留在“对象存储 + Parquet + Spark”的概念图，建议把它拆成几个层次来看：文件格式负责数据如何编码，表格式负责一张表由哪些文件组成以及如何提交版本，Catalog 负责定位和协调表元数据，计算引擎负责执行查询，平台层再处理摄取、治理、权限、调度和运维。下面这些资料按这个思路筛选，优先选择能看到内部结构、协议和读写过程的内容。
 
@@ -489,6 +595,14 @@ DuckDB 的执行能力可以很强，Quack 也增加了服务访问方式，但�
 - [Oracle Data Concurrency and Consistency](https://docs.oracle.com/en/database/oracle/oracle-database/21/cncpt/data-concurrency-and-consistency.html)
 - [Oracle Flashback Technology](https://docs.oracle.com/en/database/oracle/oracle-database/26/adfns/flashback.html)
 - [Oracle In-Memory Column Store Architecture](https://docs.oracle.com/en/database/oracle/oracle-database/26/inmem/in-memory-column-store-architecture.html)
+
+
+### Databricks
+- [Databricks Lakehouse Architecture](https://docs.databricks.com/aws/en/lakehouse/) — 对象存储、Delta Lake、Unity Catalog 与计算层的关系
+- [What is Delta Lake?](https://docs.databricks.com/aws/en/delta/) — Delta 的事务日志和表格式职责
+- [Delta Transaction Log Protocol](https://github.com/delta-io/delta/blob/master/PROTOCOL.md) — Add/Remove、Metadata、Protocol、Checkpoint 等协议结构
+- [Photon](https://www.databricks.com/product/photon) — 原生 C++ 向量化查询引擎
+- [Catalog Commits](https://docs.databricks.com/aws/en/tables/features/catalog-commits) — Catalog 参与 Delta/Iceberg 表提交协调的实现模式
 
 ### Data Lake、Iceberg 与 DuckDB
 - [Apache Parquet File Format](https://parquet.apache.org/docs/file-format/)
