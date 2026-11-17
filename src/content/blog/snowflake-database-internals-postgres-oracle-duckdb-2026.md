@@ -574,6 +574,92 @@ DuckDB 把数据库核心做得轻量、可嵌入、易于组合。它不需要�
 读完这组资料，应该能够回答几个比“Lakehouse 是什么”更有价值的问题：一次写入究竟何时对读者可见？两个写入者同时提交时由谁检测冲突？查询引擎如何从表快照定位到需要扫描的 Parquet 文件？小文件和元数据如何随时间增长？多个计算引擎如何共享同一张表而不破坏一致性？这些才是判断一套 Lakehouse 架构能否长期运行的关键。
 
 
+### 11.6 手把手教程、实验和代码练习
+
+前面的书籍和规范适合建立架构模型，但如果目标是理解系统内部行为，最好为每个系统安排一组可重复的实验。下面按“能实际操作什么”来选资料，而不是按课程数量堆链接。
+
+#### Snowflake：通过 Query Profile 观察闭源引擎
+
+Snowflake 不开放原生数据库引擎源码，因此不存在像 DuckDB 或 BusTub 那样从头实现其存储引擎的官方课程。可行的方法是创建小规模、可控的数据集，改变数据分布和 SQL 写法，再从 Query Profile、查询历史和系统视图观察内部行为。
+
+- **[Snowflake Quickstarts](https://quickstarts.snowflake.com/)**：官方动手教程集合，覆盖数据加载、SQL、Snowpark、Streams & Tasks、数据工程和应用开发。建议挑选数据加载与查询优化相关实验，不必从头完成所有业务型 Quickstart。
+- **[Snowflake Hands-on Essentials](https://learn.snowflake.com/)**：Snowflake 官方学习平台。可按 Data Warehousing、Data Engineering 等路径学习，适合作为基础操作和平台机制的实验环境。
+- **[Micro-partitions & Data Clustering](https://docs.snowflake.com/en/user-guide/tables-clustering-micropartitions)**：官方机制说明。配合 Query Profile 做实验，重点观察扫描的 micro-partitions、扫描行数、过滤效果和 clustering depth。
+- **[How to use the Snowflake Query Profile](https://select.dev/blog/how-to-use-the-snowflake-query-profile)**：以实际查询计划解释 Query Profile 的算子、数据流和性能指标，比只看 SQL 执行时间更有用。
+- **[Snowflake Architecture and SQL](https://coffingdw.com/snowflake-architecture-and-sql/)**：Tom Coffing、David Cook。偏实操的 Snowflake SQL 与平台使用参考书，包含大量示例；适合练习 SQL、对象管理和常见平台操作，但它不是 Snowflake 内核源码或分布式事务实现教材。
+
+建议完成三个小实验。第一，生成两份数据量相同、但日期字段分布不同的表，分别执行相同过滤查询，比较 micro-partition pruning。第二，对一份表按常用过滤字段组织数据，再比较 clustering 前后的扫描量、Query Profile 和维护成本。第三，分别执行多列扫描、聚合、Join 和窗口函数，沿着 Query Profile 观察算子、数据量变化、Exchange 和 spill。每个实验都应记录 SQL、数据规模、Warehouse 大小、缓存状态和 Query Profile；否则很容易把缓存命中误判成执行计划优化。
+
+需要注意：Snowflake 的 Query Profile 是执行行为的可观察窗口，不是完整的内部实现说明。它能验证扫描、算子和资源消耗，却不能让用户直接看到微分区文件格式、Cloud Services 内部代码或 FoundationDB 的事务实现。
+
+#### Databricks：从 Notebook 一直追到 Delta Transaction Log
+
+Databricks 的实践重点是把 Spark 的执行计划和 Delta 的表事务分开观察。不要只完成一个 ETL Notebook 就认为理解了 Lakehouse。
+
+- **[Databricks Free Edition](https://www.databricks.com/learn/free-edition)**：提供学习和实验入口，可结合官方自学课程完成 SQL、Spark 和 Lakehouse 操作。具体计算资源、功能和使用限制以当前 Free Edition 说明为准。
+- **[Databricks Training and Certification](https://www.databricks.com/learn/training/home)**：官方学习路径包含 Data Engineer、Data Analyst 等课程；选择明确标注 Lab 的课程，跟随环境操作，而不是只看视频。
+- **[Databricks Academy Labs](https://www.databricks.com/databricks-academy-labs)**：官方引导式实验环境，适合练习数据工程和平台操作。
+- **[Learn Apache Spark with Delta Lake](https://www.databricks.com/resources/ebook/learn-apache-spark-with-delta-lake)**：Databricks 提供的电子书和配套学习资料，适合把 Spark DataFrame、SQL 与 Delta 表操作结合起来。
+- **[Delta Lake: Up and Running](https://www.oreilly.com/library/view/delta-lake-up/9781098139711/)**：Denny Lee 等，O’Reilly。以实际代码和操作介绍 Delta Lake，适合从创建表、读写、Schema Evolution、Time Travel 逐步进入事务日志和性能维护。
+- **[Learning Spark, 2nd Edition](https://www.oreilly.com/library/view/learning-spark-2nd/9781492050032/)**：Jules Damji 等，O’Reilly。重点是 Spark 的 DataFrame、SQL、执行和数据处理 API；它不是 Delta 协议专著，但理解 Databricks 执行层时很有帮助。
+
+建议按以下顺序做实验：
+
+1. 创建 Delta 表，执行 INSERT、UPDATE、DELETE 和 MERGE。每次操作后查看表目录中的 `_delta_log`，阅读 JSON Action，确认 AddFile、RemoveFile、Metadata 和 Protocol 分别发生了什么变化。
+2. 执行 DESCRIBE HISTORY 和 Time Travel 查询，比较不同版本的 Snapshot。再执行 OPTIMIZE，观察文件数量和数据布局变化；最后研究 VACUUM 对历史文件可用性的影响。不要在有保留要求的表上随意执行清理操作。
+3. 用 Spark UI、SQL Query Profile 或 Query History 检查物理计划和实际执行，观察 Scan、Exchange、Shuffle、Join、Aggregate，以及 Photon 是否参与执行。
+4. 对比普通 Delta Log 提交与 Catalog-managed commits 的适用条件，检查当前 Workspace、Catalog、表类型和 Runtime 是否支持，不要假定所有 Delta 表都走同一种提交路径。
+
+如果要深入 Photon，公开资料主要是产品说明、技术演讲和执行行为分析；Databricks 并未开放 Photon 源码。应把它作为可观察的执行引擎研究，而不是期待通过 Spark 开源代码完整还原 Photon。
+
+#### DuckDB：从 SQL 使用者变成源码阅读者
+
+DuckDB 最适合做从入门到内部实现的连续练习：先用 SQL 和 Python 建立执行直觉，再通过 EXPLAIN、Profiling 和源码追踪理解 Parser、Optimizer、执行算子与存储层。
+
+- **[DuckDB in Action](https://www.manning.com/books/duckdb-in-action)**：Mark Needham、Michael Hunger、Michael Simons，Manning。以动手方式介绍 DuckDB、SQL、数据导入、分析工作流和应用集成，适合先把工具用熟。它主要是使用与实践指南，不应当作完整的数据库内核实现教材。
+- **[DuckDB in Action 在线章节](https://livebook.manning.com/book/duckdb-in-action/chapter-1)**：可以先看在线样章，判断内容和练习方式是否合适。
+- **[MotherDuck：DuckDB in Action 配套免费内容](https://motherduck.com/duckdb-book-brief-orig/)**：提供章节导读和部分配套材料，可作为开始学习的入口。
+- **[DuckDB Internals Documentation](https://duckdb.org/docs/current/internals/overview)**：官方内部实现文档，从 Parser、Binder、Planner、Optimizer 到执行引擎，适合结合源码阅读。
+- **[DuckDB Source Code Guide](https://duckdblab.org/en/post/duckdb-source-code-guide/)**：从代码结构和关键模块入手，适合在熟悉 SQL 执行路径后追踪实现。
+- **[CMU Advanced Databases：DuckDB Internals](https://www.youtube.com/watch?v=bZOvAKGkzpQ)**：CMU 数据库课程中的 DuckDB 内部实现讲座，适合把公开源码和课程中的系统设计解释结合起来。
+
+建议使用 Python 或 DuckDB CLI 做以下练习：
+
+1. 创建 CSV、Parquet 和 DuckDB 原生表，运行相同查询，对比直接扫描 Parquet 与扫描原生表的执行计划和性能。
+2. 对查询执行 `EXPLAIN` 和 `EXPLAIN ANALYZE`，观察逻辑计划、物理算子、基数估计和实际执行统计。尝试改变过滤条件、Join 顺序和数据规模，观察优化器如何改变计划。
+3. 构造多表 Join、GROUP BY、窗口函数和高基数聚合，观察向量化执行与并行度。重点理解 DataChunk、Vector、Operator Pipeline，而不是只比较耗时。
+4. 读源码时从 SQL Parser、Binder、Logical Planner、Optimizer、Physical Planner 逐步进入执行算子，再追踪 Parquet Scan 和原生存储 Scan。每次只跟踪一条 SQL，记录计划节点与源码模块的对应关系。
+5. 用事务实验观察并发读写、冲突和回滚；再比较 DuckDB 原生数据库与外部 Delta/Iceberg 表的事务责任边界。
+
+#### 真正学习数据库内核：CMU BusTub 实现课程
+
+如果希望不止理解三个产品，而是能判断其设计为什么这样实现，建议额外完成一门数据库内核实现课程。产品文档通常解释“系统提供什么”，但不会逐步训练如何实现 Buffer Pool、索引、执行算子和并发控制。
+
+**[CMU 15-445/645: Intro to Database Systems](https://15445.courses.cs.cmu.edu/spring2026/)** 使用 C++ 教学数据库 BusTub。课程通过项目让学生实现数据库核心组件，覆盖 Buffer Pool Manager、索引、查询执行和并发控制。它不是 Snowflake、Databricks 或 DuckDB 的复刻，但这些实验能帮助读者理解三类系统共有的底层问题。
+
+优先完成以下项目：
+- **[Project 1: Buffer Pool Manager](https://15445.courses.cs.cmu.edu/spring2026/project1/)**：理解 Page、Frame、缓存替换、磁盘调度、Pin/Unpin 和线程安全。
+- **[Project 2: Extendible Hash Index](https://15445.courses.cs.cmu.edu/spring2026/project2/)**：理解索引页组织、分裂和并发访问。
+- **[Project 3: Query Execution](https://15445.courses.cs.cmu.edu/spring2026/project3/)**：实现 Scan、Join、Aggregation、Sort 等算子，理解 Volcano 风格的执行模型。
+- **[Project 4: Concurrency Control](https://15445.courses.cs.cmu.edu/spring2026/project4/)**：理解事务、锁、隔离级别和并发冲突。
+
+如果不准备完整实现，可以至少阅读项目说明、接口、测试和参考讲义。对有 C++ 工程经验的开发者而言，直接从 Buffer Pool 和 Query Execution 两个项目切入，能很快把前面讨论的存储与执行机制落实到代码层面。
+
+### 11.7 一条可执行的学习路线
+
+不建议同时啃三套产品的所有资料。可以围绕同一份交易数据集，逐层建立认知：
+
+**第一阶段：理解数据库内核的共同基础。** 用 CMU BusTub 学 Buffer Pool、索引、执行算子和事务。目标是理解数据库为什么需要这些组件，而不是先追求完成全部项目。
+
+**第二阶段：研究 Snowflake 的托管式实现。** 使用 Quickstarts 建表和查询，再围绕 Micro-partition、Clustering 和 Query Profile 做对照实验。重点是观察托管服务如何隐藏存储和集群管理细节，以及用户还能从哪些指标推断执行行为。
+
+**第三阶段：研究 Databricks 的开放表格式与分布式计算。** 在 Free Edition 或 Academy Lab 中完成 Delta 的读写、Time Travel、MERGE、OPTIMIZE 和 VACUUM；检查事务日志，再用 Spark UI 或 Query Profile 观察执行计划。将表事务与计算引擎分开理解。
+
+**第四阶段：研究 DuckDB 的源码和执行路径。** 从 EXPLAIN ANALYZE 开始，选一条包含 Filter、Join 和 Aggregate 的 SQL，依次追踪 Planner、Optimizer、Physical Operator 和 Storage Scan。再对照 CMU DuckDB Internals 讲座和官方文档。
+
+最终应当能自己解释并验证三个问题：数据是如何组织和定位的？一次查询如何从 SQL 变成并行或向量化算子？事务提交时由哪个组件决定新版本何时可见？能回答这三个问题，才算从产品使用进入了内部架构理解。
+
+
 ## 参考资料
 
 ### Snowflake
