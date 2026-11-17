@@ -23,7 +23,7 @@ description: "本地 Agent 用 grep、glob、find 和 bash 已经能完成大量
 
 这套方式简单、透明，而且经常足够好。问题在于，很多知识库项目从一开始就把 Embedding、向量数据库、RAG Pipeline 当成默认配置，反而没有先回答一个更基础的问题：当前检索到底遇到了什么无法通过文件系统和文本搜索解决的问题？
 
-**我的判断是：不要按文档数量决定是否上 Embedding，也不要按数据量决定是否上 OpenSearch。应该按查询任务的失败模式决定。** 当用户知道要找什么、知识有明确路径或标识、内容可通过关键词或结构化查询定位时，Agentic Search 通常更合适；当用户只能描述语义、无法预先知道文档使用了什么词，或者系统必须在大量来源中持续、低延迟、稳定地找出相关内容时，才有充分理由引入预计算索引。即使如此，Embedding 也不等于 OpenSearch，全文检索也不等于向量检索。
+**我的判断是：不要按文档数量决定是否上 Embedding，也不要按数据量决定是否上 OpenSearch。应该按查询任务的失败模式决定。** 而且，在判断 Embedding 之前，必须先把 LLM 的 Query Understanding、Query Decomposition 和 Query Expansion 算进去。用户用自然语言提出问题，并不意味着只能把原句交给 grep；Agent 可以把问题拆成多个概念维度，生成同义词、缩写、中英文表达、实体和子问题，再执行多轮词法或结构化检索。只有当这套动态检索仍存在可测量的语义召回缺口，或运行时探索无法满足延迟、并发和治理要求时，才需要进一步引入索引。Embedding 不等于 OpenSearch，全文检索也不等于向量检索。
 
 ## 1. 为什么 grep / glob / find 已经能做很多事
 
@@ -93,7 +93,7 @@ VS Code Copilot 的工作区文档明确提醒：Grep 或文本搜索返回的�
 | 已知文件或路径模式 | 找到所有 ADR、配置文件、测试文件 | glob / find |
 | 已知代码符号 | 谁调用了这个函数，在哪里实现 | LSP / Symbol / AST 索引 |
 | 结构化属性过滤 | 找出 2024 年之后、某业务域、某状态的文档 | SQL / 元数据过滤 |
-| 词汇不一致 | 用户说“客户退出”，文档写的是“关系终止” | 同义词、词典、全文检索扩展，必要时 Embedding |
+| 词汇不一致 | 用户说“客户退出”，文档写的是“关系终止” | LLM Query Expansion + 多路词法检索；验证后再考虑 Embedding |
 | 自然语言语义发现 | 不知道术语，只能描述一个业务现象 | Semantic Search / Embedding |
 | 大规模跨来源检索 | 同时搜索 Wiki、SharePoint、邮件、工单和文件库 | 统一检索层或联邦检索 |
 | 高并发、低延迟检索 | 每个 Agent 请求都要稳定地检索大量内容 | 预计算索引 |
@@ -109,28 +109,10 @@ VS Code Copilot 的工作区文档明确提醒：Grep 或文本搜索返回的�
 
 下面这棵决策树针对的是“如何为 Agent 选择知识检索方式”，不是“是否要部署某个数据库”。
 
-```mermaid
-flowchart TD
-    A["明确要解决的知识获取任务"] --> B{"是否有稳定的文件路径、实体 ID、符号名或关键词？"}
-    B -->|是| C["文件系统 / grep / glob / LSP / SQL"]
-    B -->|否| D{"能否通过元数据、同义词、词典或查询扩展解决？"}
-    D -->|能| E["先增强词法检索与元数据过滤"]
-    D -->|不能| F{"是否需要按语义发现相关内容？"}
-    F -->|否| G["检查数据源、权限或结构化接口"]
-    F -->|是| H{"是否存在大量跨来源查询、低延迟或高并发要求？"}
-    H -->|否| I["小规模 Embedding 原型 / Agent 辅助探索"]
-    H -->|是| J["建立可持续的检索索引"]
-    J --> K{"精确词项和语义召回是否都重要？"}
-    K -->|是| L["Hybrid Search：BM25 + Vector + Reranking"]
-    K -->|否| M["按评估结果选择全文或向量检索"]
-    L --> N["持续评估 Recall、Precision、Latency、ACL 和成本"]
-    M --> N
-    C --> O{"Agent 探索的延迟、Token 或遗漏是否已成为可测量瓶颈？"}
-    E --> O
-    I --> N
-    O -->|否| P["保持简单方案"]
-    O -->|是| F
-```
+<iframe src="/diagrams/agentic-search-decision-2026.html" title="Agentic Search 与 Embedding 的检索决策树" width="100%" height="1120" loading="lazy" style="border:0;max-width:100%;"></iframe>
+
+<small>图：先由 LLM 做查询理解与分解，再运行 Agentic Search；只有经过诊断、迭代后仍存在语义召回缺口，才试点 Embedding。<a href="/diagrams/agentic-search-decision-2026.html">单独打开图表</a>。</small>
+
 
 这棵树的几个关键判断值得展开。
 
@@ -149,38 +131,83 @@ flowchart TD
 
 不要为了统一架构而把所有查询都转成向量。向量相似度不是精确匹配的替代品。
 
-### 3.2 词汇不一致，不等于必须上 Embedding
+### 3.2 LLM 可以先把自然语言问题变成一组检索任务
 
-在引入向量模型之前，可以先检查词汇问题是否能通过更简单的方式解决。
+这里需要明确纠正一个容易产生误导的说法：“用户不知道应该枚举哪些关键词”并不等于“用户需要 Embedding”。
 
-比如“客户退出”可能对应：
+LLM 本身就可以承担 Query Understanding 和 Query Expansion。它理解用户的真实意图后，可以把一个宽泛的问题分解为若干概念维度，再为每个维度生成适合不同检索工具的查询表达。换句话说，Agent 不必把用户原句原封不动地交给 grep。
 
-```text
-客户退出
-客户关系终止
-账户关闭
-客户注销
-relationship termination
-account closure
-```
-
-可以通过业务词典、同义词扩展、查询重写和 BM25 的 synonym 配置扩大召回范围。金融服务领域尤其值得先做这一步：很多查询依赖明确的业务术语、产品代码、监管条款、指标名称和内部缩写。
-
-如果同义词集合相对稳定，显式词典不仅成本更低，还更容易解释和审计。只有当用户表达与文档表达之间的语义差异无法被有限词典覆盖时，Embedding 才开始体现价值。
-
-### 3.3 真正需要 Embedding 的，是“用户不知道应该搜什么词”
-
-这是一个比较清晰的触发条件。
-
-用户问：
+例如，用户问：
 
 > 找出所有讨论客户资产在市场剧烈波动期间如何保持流动性的材料。
 
-文档可能分别使用“现金缓冲”“流动性覆盖”“赎回压力”“资产变现能力”“liquidity management”等表达。用户并不知道应该枚举哪些关键词。
+Agent 可以先生成一个结构化的查询计划：
 
-Embedding 将文本和查询编码成向量，再通过向量相似度找到语义接近的内容。它解决的是词面不一致带来的发现问题，而不是所有检索问题。
+| 概念维度 | 词法查询变体 | 可能的检索方式 |
+| --- | --- | --- |
+| 现金管理 | 现金缓冲、现金储备、Cash Buffer、Cash Reserve | grep / BM25 |
+| 流动性风险 | 流动性风险、Liquidity Risk、Liquidity Management | grep / BM25 |
+| 资产变现 | 资产变现能力、可变现资产、Asset Liquidation | grep / BM25 |
+| 赎回压力 | 赎回压力、赎回风险、Redemption Pressure | grep / BM25 |
+| 市场压力 | 市场压力、极端市场、Market Stress、Stress Scenario | grep / BM25 |
+| 监管口径 | 流动性覆盖率、LCR、Liquidity Coverage Ratio | grep / BM25 |
+| 相关业务实体 | 客户资产、客户组合、投资组合、Client Assets、Portfolio | grep / 元数据过滤 |
 
-不过，Embedding 也不是业务理解本身。它不能保证理解某个公司内部定义的专有概念，也不能保证区分相似但业务含义不同的术语。企业知识检索仍然需要业务词典、元数据、权限过滤和结果验证。
+随后 Agent 可以并行或分批执行这些查询，合并、去重结果，读取候选文档，再根据命中情况决定下一轮搜索方向。例如，若命中材料集中在赎回管理，却没有覆盖资产变现和现金储备，Agent 可以补充查询；如果文档中出现新的业务术语，也可以把它加入下一轮搜索计划。
+
+一个合理的运行时流程是：
+
+```text
+User Question
+     |
+LLM: intent + entities + concepts + constraints
+     |
+Query Decomposition / Expansion
+     |
+     +--> lexical queries (grep / BM25)
+     +--> metadata filters (SQL / API)
+     +--> structural queries (LSP / graph / relationships)
+     |
+Merge + Deduplicate + Read Evidence
+     |
+Coverage Check / Relevance Feedback
+     |
+     +--> enough evidence: answer with sources
+     +--> gaps remain: generate targeted follow-up queries
+```
+
+这就是 Agentic Search 与传统“一次查询、一次 Top-K 召回”的重要区别：查询计划可以在运行时生成，也可以根据真实命中结果不断修正。LLM 不只是搜索框前面的自然语言接口，它还可以成为检索策略的规划器。
+
+### 3.3 那么，LLM Query Expansion 为什么仍然不总是够用？
+
+既然 LLM 可以生成同义词、子问题和多轮查询，Embedding 的价值就不能再被描述成“用户不知道该用什么关键词”。更准确的边界是：**LLM Query Expansion 只能检索它生成出来的表达；Embedding 提供了另一种不依赖显式词面重合的匹配信号。两者可以互补，而不是二选一。**
+
+Query Expansion 的局限主要有几类：
+
+1. **生成覆盖不是穷尽覆盖。** LLM 生成的是有限数量的候选词和子问题。它可能漏掉某个文档集合内部才使用的术语、历史缩写、团队黑话、特定供应商字段名，或者某个业务概念的非显然表达。
+2. **模型知识不等于语料知识。** 模型可以知道一般金融领域的“流动性管理”，却未必知道某家机构内部把同一类流程命名为某个项目代号或操作简称。没有语料反馈时，生成的查询可能听起来合理，却没有命中目标语料的实际表达。
+3. **词法检索仍然需要词面交集。** 即使查询扩展得很好，如果文档用一段上下文描述某种风险机制，却没有出现生成的关键词，grep / BM25 仍可能找不到它。多轮搜索能缓解，但不能保证覆盖所有隐含表达。
+4. **查询越多，噪声也越多。** 把十几个相关词全部 OR 在一起，可能扩大召回，也可能引入大量主题相近但并不回答问题的材料。多路查询需要独立执行、保留查询来源，并在合并时控制重复和主题漂移。
+5. **每次请求都要付出推理成本。** 动态生成查询、执行多轮工具调用、读取结果和判断覆盖，都发生在请求时。高频、并发、低延迟场景可能更适合预先构建索引，而不是每次都让 Agent 从头探索。
+
+这不是说 Query Expansion 不可靠、Embedding 就天然可靠。研究结果反而提醒我们，查询扩展也需要评估。EMNLP 2024 的一项研究探索了 LLM 生成多个伪参考文本并融合查询的方式，发现它可以改善稀疏和稠密检索，但原始查询与扩展内容的权重平衡很重要。另一项跨数据集研究发现，扩展对较弱的检索器更可能有帮助，而对本来表现较强的检索器可能引入噪声、损害排序。也就是说，扩展并非越多越好。
+
+参考：[Exploring the Best Practices of Query Expansion with Large Language Models (EMNLP Findings 2024)](https://aclanthology.org/2024.findings-emnlp.103/)；[When do Generative Query and Document Expansions Fail? (EACL Findings 2024)](https://aclanthology.org/2024.findings-eacl.134/)。
+
+### 3.4 更准确的 Embedding 触发条件
+
+Embedding 应该在以下情况中通过对照实验争取自己的位置：
+
+- **语料特有表达无法被模型事先枚举。** 文档存在大量组织内部术语、隐含表达、历史叫法或跨语言表达，而且没有经济可维护的词典。
+- **语义关系不是简单同义词。** 用户描述的是一个业务现象、因果机制或情境，文档从不同角度描述相关机制，无法通过有限的关键词列表覆盖。
+- **多路查询仍然漏掉已知相关证据。** 用真实问题集标注相关文档，LLM 扩展 + BM25 / grep 仍存在稳定的 Recall 缺口，而 Dense Retrieval 能补回这些文档。
+- **需要稳定的预计算召回。** 查询频率高、语料持续增长、每次动态探索的 P95 延迟或 Token 成本不可接受，需要把部分检索工作前移到离线索引阶段。
+
+即使触发了这些条件，也不意味着要放弃 Agentic Search。可以保留 LLM 查询分解，再并行执行 BM25 和 Vector Search，融合结果后由 Agent 阅读原文、验证证据。
+
+因此更准确的判断不是“用户不知道关键词，就用 Embedding”，而是：
+
+**先让 LLM 尽可能把问题变成可执行的检索计划；如果词法与结构化检索在真实语料上仍有稳定的语义召回缺口，再用 Embedding 补足。**
 
 ## 4. 不要把 Embedding、向量数据库和 OpenSearch 当成一个决策
 
@@ -253,7 +280,7 @@ Hybrid Search 将两种结果合并，再根据需要做 Reranking。OpenSearch 
 - **继续使用 Agentic Search**：真实任务成功率满足要求，关键证据召回稳定，检索延迟和 Token 成本可接受，内容更新速度符合要求。
 - **先优化现有检索**：失败主要来自目录混乱、排除规则错误、关键词不足、文件解析失败、缺少元数据或 Agent 搜索策略不合理。
 - **先引入全文索引**：主要问题是跨目录、跨来源的精确检索速度、过滤、排序或并发，而语义召回不是主要短板。
-- **试点 Embedding**：在经过人工确认的真实查询集中，词法搜索持续漏掉语义相关证据，而且同义词、词典和查询扩展无法经济地解决。
+- **试点 Embedding**：先运行 LLM Query Decomposition / Expansion，再用多路 grep、BM25 和结构化检索；如果真实查询集中仍持续漏掉语义相关证据，并且 Dense Retrieval 能补回这些证据，才引入 Embedding。
 - **引入 Hybrid Search**：精确术语和语义发现同时重要，并且评估证明两种召回组合能提高最终任务成功率。
 - **部署独立搜索平台**：除了检索质量，还出现跨系统统一接入、并发、服务 SLA、索引隔离、监控、权限过滤、数据生命周期和运维管理等平台级需求。
 
@@ -388,7 +415,7 @@ Answer with file paths / line references
 
 本地 AI Agent 的出现改变了知识检索的默认架构。过去，系统需要预先把大量内容整理成索引，再通过一个查询接口返回候选文档。现在，Agent 可以直接使用文件系统、命令行和结构化工具，按需发现内容、读取证据并继续探索。
 
-这不意味着 Embedding 或 OpenSearch 失去了价值。它们的价值在于解决 Agentic Search 不擅长或无法经济解决的问题：语义表达差异、跨来源发现、稳定的低延迟、高并发、复杂过滤和集中式检索治理。
+这不意味着 Embedding 或 OpenSearch 失去了价值。LLM 可以把问题拆成多组词法和结构化查询，但它生成的表达始终是有限的，也未必知道语料内部的特殊语言。Embedding 可以补充词面之外的语义匹配；预计算索引则可以把高频检索从运行时探索转为稳定服务。两者都应该由真实任务中的召回缺口、延迟和治理要求来证明价值。
 
 真正值得坚持的原则是：
 
@@ -406,3 +433,5 @@ Answer with file paths / line references
 4. OpenSearch, [Vector search concepts](https://docs.opensearch.org/latest/vector-search/getting-started/concepts/)。关于 Embedding、k-NN、Semantic Search、Hybrid Search、Reranking 和 RAG 的能力边界。
 5. OpenSearch, [Hybrid search](https://docs.opensearch.org/latest/vector-search/ai-search/hybrid-search/)。关于词法与语义检索结果的归一化和 RRF 融合。
 6. GitHub Copilot, [Researching with GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/research-with-copilot-cli)。关于使用 grep、glob 和 view 对代码仓库进行探索式研究。
+7. Zhang et al., [Exploring the Best Practices of Query Expansion with Large Language Models](https://aclanthology.org/2024.findings-emnlp.103/), EMNLP Findings 2024。关于多样化查询扩展、融合策略及其效果。
+8. Weller et al., [When do Generative Query and Document Expansions Fail?](https://aclanthology.org/2024.findings-eacl.134/), EACL Findings 2024。关于扩展可能带来收益，也可能引入噪声并损害强检索器排序的实证分析。
