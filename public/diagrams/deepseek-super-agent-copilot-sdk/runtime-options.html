@@ -1,0 +1,59 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent orchestration runtime landscape</title><style>body{margin:0;padding:24px;background:#F9F6EF}.frame{max-width:1120px;margin:auto}svg{display:block;width:100%;height:auto}</style></head><body><main class="frame"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 650" role="img" aria-labelledby="title desc">
+<title id="title">Agent orchestration runtime choices above Copilot SDK</title>
+<desc id="desc">Three layers: durable workflow engines for business process reliability, LangGraph for agent orchestration, and Copilot SDK as coding harness. Pi is an alternative harness, Deep Agents provides patterns on LangGraph, and Temporal or Restate can be an outer workflow engine when required.</desc>
+<defs>
+ <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6Z" fill="#65584D"/></marker>
+ <style>
+ .paper{fill:#F9F6EF}.zone{fill:#F1EDE4;stroke:#CFC5B8;stroke-width:1}
+ .card{fill:#FFFEFA;stroke:#CFC5B8;stroke-width:1}
+ .focal{fill:#F5E7D4;stroke:#8B5A2B;stroke-width:1.5}
+ .ink{fill:#221C17;font-family:'IBM Plex Mono',monospace}
+ .muted{fill:#65584D;font-family:'IBM Plex Mono',monospace}
+ .ey{font-size:11px;letter-spacing:1.2px}.head{font-size:17px;font-weight:600}.body{font-size:12px}.small{font-size:10px}
+ .line{stroke:#65584D;stroke-width:1.5;fill:none;marker-end:url(#arr)}
+ .dash{stroke:#8B5A2B;stroke-width:1.4;stroke-dasharray:5 4;fill:none;marker-end:url(#arr)}
+ </style>
+</defs>
+<rect class="paper" width="1120" height="650"/>
+<text x="44" y="42" class="muted ey">RUNTIME LANDSCAPE · NOVEMBER 2026</text>
+<text x="44" y="76" class="ink" style="font:600 24px 'IBM Plex Mono',monospace">Separate orchestration from agent execution</text>
+<text x="44" y="103" class="muted body">One owner per state boundary. Do not nest two competing model/tool loops.</text>
+
+<!-- top layer -->
+<rect class="zone" x="42" y="135" width="1036" height="130" rx="12"/>
+<text x="64" y="161" class="muted ey">DURABLE WORKFLOW · OPTIONAL OUTER LAYER</text>
+<rect class="card" x="66" y="181" width="285" height="62" rx="9"/>
+<text x="88" y="207" class="ink head">Temporal</text><text x="88" y="227" class="muted small">timers · retries · signals · replay</text>
+<rect class="card" x="373" y="181" width="285" height="62" rx="9"/>
+<text x="395" y="207" class="ink head">Restate</text><text x="395" y="227" class="muted small">durable RPC · keyed state · event log</text>
+<rect class="card" x="680" y="181" width="365" height="62" rx="9"/>
+<text x="702" y="207" class="ink head">Inngest</text><text x="702" y="227" class="muted small">event functions · durable steps · waits</text>
+
+<!-- middle -->
+<rect class="zone" x="42" y="288" width="1036" height="160" rx="12"/>
+<text x="64" y="314" class="muted ey">AGENT ORCHESTRATION · TASK STATE / CHECKPOINT / INTERRUPT</text>
+<rect class="focal" x="66" y="336" width="430" height="86" rx="10"/>
+<text x="90" y="365" class="ink head">LangGraph</text><text x="90" y="389" class="muted body">explicit graph · thread checkpoint · resume</text><text x="90" y="407" class="muted small">best-fit control plane above Copilot SDK</text>
+<rect class="card" x="518" y="336" width="254" height="86" rx="10"/>
+<text x="540" y="365" class="ink head">Deep Agents</text><text x="540" y="389" class="muted body">planning · filesystem · subagents</text><text x="540" y="407" class="muted small">high-level harness built on LangGraph</text>
+<rect class="card" x="794" y="336" width="251" height="86" rx="10"/>
+<text x="816" y="365" class="ink head">Host runtime</text><text x="816" y="389" class="muted body">Ticket · Trigger · Mandate</text><text x="816" y="407" class="muted small">custom dispatcher / task store</text>
+
+<!-- bottom -->
+<rect class="zone" x="42" y="471" width="1036" height="137" rx="12"/>
+<text x="64" y="497" class="muted ey">AGENT HARNESS · MODEL / TOOL LOOP</text>
+<rect class="focal" x="66" y="520" width="430" height="66" rx="10"/>
+<text x="90" y="548" class="ink head">GitHub Copilot SDK</text><text x="90" y="570" class="muted body">coding tools · sessions · hooks · subagents</text>
+<rect class="card" x="518" y="520" width="254" height="66" rx="10"/>
+<text x="540" y="548" class="ink head">Pi Classic</text><text x="540" y="570" class="muted body">minimal, extensible coding harness</text>
+<rect class="card" x="794" y="520" width="251" height="66" rx="10"/>
+<text x="816" y="548" class="ink head">Other specialist agents</text><text x="816" y="570" class="muted body">isolated workers / APIs</text>
+
+<!-- relationships -->
+<path class="line" d="M281 336 V265"/>
+<path class="line" d="M281 520 V448"/>
+<path class="dash" d="M645 336 V315 H496"/>
+<path class="dash" d="M645 422 V456 H281 V520"/>
+<path class="dash" d="M920 336 V315 H496"/>
+<text x="64" y="634" class="muted small">Recommended default: LangGraph owns task-level state; Copilot SDK owns the coding turn; add Temporal/Restate only for business-process durability.</text>
+</svg></main></body></html>
