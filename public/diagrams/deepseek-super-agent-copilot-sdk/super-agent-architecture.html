@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Super-agent architecture hosted by Copilot SDK</title>
+<style>body{margin:0;padding:24px;background:#F9F6EF;color:#221C17;font-family:system-ui,sans-serif}.frame{max-width:1200px;margin:auto}svg{display:block;width:100%;height:auto}p{font:13px system-ui;color:#65584D}</style></head>
+<body><main class="frame">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
+<title id="title">Super-agent architecture hosted by a Copilot SDK application</title>
+<desc id="desc">External events pass through an admission gate to a persistent router, which assigns tickets to isolated Copilot worker sessions. A task store maintains state and a watchdog recovers stalled work.</desc>
+<defs>
+  <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6 Z" fill="#65584D"/></marker>
+  <marker id="accentArrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6 Z" fill="#8B5A2B"/></marker>
+  <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#221C17" flood-opacity=".10"/></filter>
+  <style>
+    .bg{fill:#F9F6EF}.zone{fill:#F1EDE4;stroke:#CFC5B8;stroke-width:1}
+    .card{fill:#FFFEFA;stroke:#CFC5B8;stroke-width:1;filter:url(#shadow)}
+    .focus{fill:#F5E7D4;stroke:#8B5A2B;stroke-width:1.4;filter:url(#shadow)}
+    .t{font:600 16px 'IBM Plex Mono',monospace;fill:#221C17}
+    .s{font:12px 'IBM Plex Mono',monospace;fill:#65584D}
+    .ey{font:11px 'IBM Plex Mono',monospace;fill:#75695F;letter-spacing:1.4px}
+    .line{fill:none;stroke:#65584D;stroke-width:1.6;marker-end:url(#arrow)}
+    .async{fill:none;stroke:#8B5A2B;stroke-width:1.5;stroke-dasharray:5 4;marker-end:url(#accentArrow)}
+  </style>
+</defs>
+<rect class="bg" width="1200" height="700"/>
+<text x="48" y="44" class="ey">COPILOT SDK · HOST-OWNED SUPER-AGENT RUNTIME</text>
+<text x="48" y="76" class="t" font-size="22">Persistent routing, isolated execution, durable task state</text>
+
+<rect class="zone" x="40" y="112" width="250" height="500" rx="12"/>
+<text x="60" y="140" class="ey">EVENT SOURCES</text>
+<rect class="card" x="62" y="170" width="206" height="72" rx="10"/>
+<text x="82" y="199" class="t">GitHub / CI</text><text x="82" y="220" class="s">PR · review · workflow</text>
+<rect class="card" x="62" y="270" width="206" height="72" rx="10"/>
+<text x="82" y="299" class="t">Chat / Tickets</text><text x="82" y="320" class="s">mentions · requests</text>
+<rect class="card" x="62" y="370" width="206" height="72" rx="10"/>
+<text x="82" y="399" class="t">Internal systems</text><text x="82" y="420" class="s">webhooks · schedules</text>
+<rect class="focus" x="62" y="488" width="206" height="82" rx="10"/>
+<text x="82" y="518" class="t">Event Gateway</text><text x="82" y="540" class="s">verify · normalize · dedupe</text>
+
+<rect class="zone" x="330" y="112" width="340" height="500" rx="12"/>
+<text x="350" y="140" class="ey">ORCHESTRATION · HOST APPLICATION</text>
+<rect class="focus" x="365" y="178" width="270" height="88" rx="10"/>
+<text x="390" y="211" class="t">Admission Policy</text><text x="390" y="235" class="s">identity · allow-list · risk gate</text>
+<rect class="focus" x="365" y="324" width="270" height="100" rx="10"/>
+<text x="390" y="361" class="t">Router Session</text><text x="390" y="385" class="s">persistent Copilot session</text><text x="390" y="405" class="s">dispatch · status · user interface</text>
+<rect class="card" x="365" y="488" width="270" height="82" rx="10"/>
+<text x="390" y="518" class="t">Event Dispatcher</text><text x="390" y="540" class="s">Thread subscriptions · wake-up</text>
+
+<rect class="zone" x="710" y="112" width="260" height="500" rx="12"/>
+<text x="730" y="140" class="ey">EXECUTION · COPILOT SDK</text>
+<rect class="card" x="738" y="180" width="204" height="100" rx="10"/>
+<text x="760" y="213" class="t">Worker A</text><text x="760" y="237" class="s">Ticket-101 · own session</text><text x="760" y="257" class="s">isolated workspace</text>
+<rect class="card" x="738" y="322" width="204" height="100" rx="10"/>
+<text x="760" y="355" class="t">Worker B</text><text x="760" y="379" class="s">Ticket-102 · own session</text><text x="760" y="399" class="s">isolated workspace</text>
+<rect class="card" x="738" y="464" width="204" height="100" rx="10"/>
+<text x="760" y="497" class="t">Worker N</text><text x="760" y="521" class="s">Ticket-N · own session</text><text x="760" y="541" class="s">isolated workspace</text>
+
+<rect class="zone" x="1010" y="112" width="150" height="500" rx="12"/>
+<text x="1030" y="140" class="ey">DURABILITY</text>
+<rect class="focus" x="1028" y="190" width="114" height="112" rx="10"/>
+<text x="1042" y="224" class="t" font-size="13">Task</text><text x="1042" y="245" class="t" font-size="13">Store</text><text x="1042" y="274" class="s">SQLite / PG</text>
+<rect class="card" x="1028" y="354" width="114" height="100" rx="10"/>
+<text x="1042" y="390" class="t" font-size="13">Watchdog</text><text x="1042" y="418" class="s">health</text><text x="1042" y="436" class="s">recovery</text>
+<rect class="card" x="1028" y="494" width="114" height="76" rx="10"/>
+<text x="1042" y="525" class="t" font-size="13">Audit</text><text x="1042" y="547" class="s">Mandates</text>
+
+<path class="line" d="M165 242 V488"/>
+<path class="line" d="M165 342 V488"/>
+<path class="line" d="M165 442 V488"/>
+<path class="line" d="M268 529 H365"/>
+<path class="line" d="M500 266 V324"/>
+<path class="line" d="M500 424 V488"/>
+<path class="line" d="M635 529 H690 V230 H738"/>
+<path class="line" d="M690 529 V372 H738"/>
+<path class="line" d="M690 529 V514 H738"/>
+<path class="async" d="M738 230 H700 V372 H738"/>
+<path class="async" d="M840 180 V150 H590 V178"/>
+<path class="async" d="M840 422 V600 H590 V570"/>
+<path class="line" d="M942 230 H1028"/>
+<path class="line" d="M942 372 H990 V246 H1028"/>
+<path class="line" d="M1085 302 V354"/>
+<path class="line" d="M1085 454 V494"/>
+<text x="48" y="652" class="s">Solid: command / state flow · Dashed: asynchronous event or completion callback</text>
+<text x="48" y="674" class="s">SDK sessions execute work; the host owns identity, authorization, task state and recovery.</text>
+</svg></main></body></html>
