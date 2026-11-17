@@ -191,6 +191,8 @@ Mandate 应在 Worker 启动前由宿主应用创建并持久化，至少包含�
 
 Copilot SDK 本身已经是一个 Agent Harness。再在它外面套一层同样拥有模型循环和工具系统的 Harness，容易形成双重调度、双重上下文和权限边界不一致。更合理的组合是：一个 Orchestration Runtime 管理任务和状态机，Copilot SDK 作为执行代码任务的专用 Worker。
 
+![Agent Orchestration Runtime 的分层与选型](../../public/diagrams/deepseek-super-agent-copilot-sdk/runtime-options.svg)
+
 ![Copilot SDK 与 Orchestration Runtime 的分层关系](../../public/diagrams/deepseek-super-agent-copilot-sdk/runtime-options.svg)
 
 ### Pi：优秀的轻量 Harness，不是现成的 Super-agent 控制面
