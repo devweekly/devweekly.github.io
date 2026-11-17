@@ -353,9 +353,7 @@ Anthropic 已经为 Claude in Chrome 引入多层防护：
 2. **Action Authorization**：即使模型理解了页面，也不代表它有权执行页面上的任何动作。
 3. **Business Confirmation**：删除、发布、付款、修改权限等有业务后果的操作，需要明确的授权和结果验证。
 
-![浏览器 Agent 的安全控制流程](/diagrams/browser-agent-action-safety-flow.svg)
-
-在企业环境里，建议把只读操作、可逆写操作和不可逆业务操作分成不同的权限等级。浏览器登录态只说明用户可以访问某个系统，不应该自动授予 Agent 执行所有业务动作的权力。
+上图展示了浏览器 Agent 的动作检查链。在企业环境里，建议把只读操作、可逆写操作和不可逆业务操作分成不同的权限等级。浏览器登录态只说明用户可以访问某个系统，不应该自动授予 Agent 执行所有业务动作的权力。
 
 安全参考：
 - [Use Claude in Chrome safely](https://support.claude.com/en/articles/12902428-use-claude-in-chrome-safely)
