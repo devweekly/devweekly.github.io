@@ -405,6 +405,69 @@ DuckDB 的执行能力可以很强，Quack 也增加了服务访问方式，但�
 
 因此，Snowflake 的技术价值不在于它独占了某项数据库理论，而在于它把已经成熟的数据库技术重新组织成适合云环境的大规模分析服务。Time Travel、列存储和快照在其他数据库与湖仓系统中都能找到对应实现；真正需要比较的是这些能力由谁管理、版本如何提交、计算如何扩展、权限在哪里执行，以及系统故障时由谁负责恢复。
 
+
+## 10. 进一步阅读：Lakehouse 的内部实现与架构设计
+
+如果希望真正理解 Lakehouse，而不是停留在“对象存储 + Parquet + Spark”的概念图，建议把它拆成几个层次来看：文件格式负责数据如何编码，表格式负责一张表由哪些文件组成以及如何提交版本，Catalog 负责定位和协调表元数据，计算引擎负责执行查询，平台层再处理摄取、治理、权限、调度和运维。下面这些资料按这个思路筛选，优先选择能看到内部结构、协议和读写过程的内容。
+
+### 10.1 值得读的书
+
+**[Apache Iceberg: The Definitive Guide](https://www.oreilly.com/library/view/apache-iceberg-the/9781098148614/)** — Tomer Shiran、Jason Hughes、Alex Merced，O’Reilly，2024。
+
+这是理解开放 Lakehouse 表格式最直接的一本书。重点看第 2 章的 Iceberg 架构：Data Files、Delete Files、Manifest、Manifest List、Metadata File 和 Catalog；第 3 章读写查询生命周期；第 4 章性能优化，包括 Compaction、Hidden Partitioning、Partition Evolution、Copy-on-Write 与 Merge-on-Read。它不是泛泛介绍湖仓概念，而是把表格式的元数据树和实际 SQL 操作联系起来。适合先建立 Iceberg 的完整内部模型。[目录与章节](https://www.oreilly.com/library/view/apache-iceberg-the/9781098148614/ch02.html)
+
+**[Engineering Lakehouses with Open Table Formats](https://www.oreilly.com/library/view/engineering-lakehouses-with/9781836207238/)** — Dipankar Mazumdar、Vinoth Govindarajan，Packt，2025。
+
+如果要比较 Iceberg、Hudi 和 Delta，而不是只研究一种格式，这本更合适。它先讨论 Lakehouse 事务和并发控制，再分别深入三种格式的元数据、提交协议、读写路径、行级更新、Catalog 集成和维护机制，后面还涉及互操作、性能调优、治理和安全。尤其值得看第 2 至第 6 章，以及关于三种格式取舍的章节。配套代码也公开在 [GitHub](https://github.com/PacktPublishing/Engineering-Lakehouses-with-Open-Table-Formats)。[详细目录](https://subscription.packtpub.com/book/data/9781836207238/pref/preflvl1sec03/what-this-book-covers)
+
+**[Architecting an Apache Iceberg Lakehouse](https://www.manning.com/books/architecting-an-apache-iceberg-lakehouse)** — Alex Merced，Manning，2026。
+
+这本书更偏 Solution Architecture：如何从存储、摄取、Catalog、联邦查询和消费层组合出一套可运行的平台，并把 Spark、Flink、Dremio、Polaris 等组件放到合理的位置。它覆盖批处理和流式摄取、治理、安全、性能与生产运维。适合已经理解 Iceberg 基础、开始做平台选型和架构设计的人；若只想研究协议细节，前一本更深入。[章节目录](https://www.oreilly.com/library/view/architecting-an-apache/9781633435100/Text/chapter-1.html)
+
+**[Practical Lakehouse Architecture](https://www.oreilly.com/library/view/practical-lakehouse-architecture/9781098153007/)** — Gaurav Ashok Thalpati，O’Reilly，2024。
+
+这本覆盖面较广，重点是数据平台的分层设计、存储与计算、数据治理、安全、BI 和 AI/ML 消费，以及从传统数据仓库迁移到 Lakehouse 时的设计决策。它更适合作为架构全景的补充，不应代替 Iceberg、Delta 或 Hudi 的协议和实现文档。[内容概览](https://www.oreilly.com/library/view/practical-lakehouse-architecture/9781098153007/)
+
+### 10.2 必须掌握的规范与实现文档
+
+**[Apache Iceberg Specification](https://iceberg.apache.org/spec/)** 是最重要的一手资料。建议重点读 Table Metadata、Snapshots、Manifest Lists、Manifests、Data Files、Delete Files、Catalog 和 Commit Requirements。读规范时不要只记名词，要沿着一次 INSERT 或 DELETE 追踪：新数据文件如何生成，Manifest 如何记录文件及其统计信息，Snapshot 如何引用 Manifest，最后 Catalog 如何原子切换当前 Metadata 指针。规范也解释了为什么 Iceberg 不依赖目录名作为分区语义，以及为什么可以演进 Partition Spec 而不必重写所有历史文件。
+
+**[Delta Transaction Log Protocol](https://github.com/delta-io/delta/blob/master/PROTOCOL.md)** 是 Delta Lake 的协议定义。建议重点看 Actions、Add/Remove File、Metadata、Protocol Versions、Checkpoints、Deletion Vectors 和 Reader/Writer Features。配合 [Delta Lake 的事务日志协议与实现说明](https://delta.io/blog/2023-07-07-delta-lake-transaction-log-protocol/)，可以区分协议规范、参考实现和兼容性测试；这比只看 Spark SQL 的使用教程更能解释不同引擎如何互操作。
+
+**[Apache Hudi Concepts](https://hudi.apache.org/docs/concepts/) 与 [Timeline](https://hudi.apache.org/docs/timeline/)** 是理解 Hudi 的入口。重点看 Timeline、Instant、File Group、File Slice、Base File、Log File，以及 Copy-on-Write / Merge-on-Read。Hudi 的核心思路不只是维护一份文件清单，而是通过时间线记录写入和表服务等动作，并围绕 File Group 管理数据文件与增量变更。要理解 CDC、增量读取和高频更新场景，Hudi 这部分尤其值得研究。
+
+### 10.3 深入理解内部结构的文章与教程
+
+**[Exploring the Architecture of Apache Iceberg, Delta Lake, and Apache Hudi](https://hudi.apache.org/blog/2023/09/22/Exploring-the-Architecture-of-Apache-Iceberg-Delta-Lake-and-Apache-Hudi/)** — 对三种主流开放表格式做横向架构分析，覆盖元数据组织、提交、并发操作和行级变更。适合先读一遍建立比较框架，再分别回到各自规范核对实现细节。
+
+**[Apache Iceberg Masterclass](https://iceberglakehouse.com/posts/)** — 一组连续的实战文章，不是只做概念介绍。建议按顺序读元数据结构、元数据性能、Partition Evolution、Hidden Partitioning、写入过程、Catalog、存储退化、维护操作和 Metadata Tables；后续还有 Python / MPP 引擎、流式写入与迁移。它把很多生产问题串在一起，例如小文件、Manifest 增长、快照清理和查询规划成本。
+
+**[Apache Iceberg Metadata Tables: Querying the Internals](https://www.dremio.com/blog/apache-iceberg-metadata-tables-querying-the-internals/)** — 很实用的一篇。Iceberg 的内部元数据并非只能通过读 JSON 或 Avro 文件理解；可以通过 Metadata Tables 查询 snapshots、history、files、manifests 和 partitions。建议实际运行 SQL，观察一次写入、Compaction 和 Snapshot Expiration 前后的变化。这样能把规范中的抽象对象与生产表的真实状态对应起来。
+
+**[Architecture of a Delta Lake Table](https://delta-io.github.io/delta-rs/1.2.1/how-delta-lake-works/architecture-of-delta-table/)** — 用一个很小的 Delta 表展示 Parquet 数据文件与 `_delta_log` 的关系，并逐步检查事务日志内容。适合动手验证 Add、Remove、Metadata 和版本演进，而不是只阅读概念图。
+
+**[Delta Lake’s Transaction Log Protocol and Its Implementations](https://delta.io/blog/2023-07-07-delta-lake-transaction-log-protocol/)** — 重点不是如何调用 Delta API，而是协议如何约束不同实现。对于多计算引擎共享同一张表的架构，这一点比某个引擎的 SQL 语法更重要。
+
+### 10.4 计算引擎与平台架构还需要补哪些知识
+
+表格式只解决 Lakehouse 的一部分问题。生产架构还必须理解计算引擎如何读取文件、Catalog 如何协调元数据，以及平台如何运行数据管道。
+
+- **Spark**：重点看 DataFrame / SQL 执行计划、Catalyst Optimizer、AQE、Shuffle、文件扫描和 DataSource V2。Spark 是常见的批量 ETL 与表写入引擎，但不应把 Spark 本身等同于 Lakehouse。
+- **Flink**：重点看 Checkpoint、State Backend、Exactly-once Sink、两阶段提交和 Iceberg / Hudi Sink。它解决持续摄取与流式计算问题，核心关注点是流处理状态和外部表提交如何协调。
+- **Trino**：重点看 Coordinator / Worker、Connector、Split、Predicate Pushdown、动态过滤和 Catalog。Trino 更像跨数据源的分布式 SQL 查询层，不是表格式，也不是存储系统。
+- **Catalog**：重点比较 Hive Metastore、AWS Glue、Project Nessie、Polaris，以及 Iceberg REST Catalog。Catalog 不只是表名注册中心；在具体实现中，它还可能承担元数据定位、提交协调、权限和多引擎访问边界。
+- **对象存储**：需要理解 S3 的对象读写、条件写入、列表一致性、Multipart Upload、版本控制和生命周期策略。Lakehouse 的事务提交依赖底层存储与 Catalog 的能力，不能把对象存储简单当成一块远程磁盘。
+- **文件与表维护**：重点看小文件合并、排序与聚类、Manifest 重写、Snapshot 过期、孤儿文件清理、Delete File / Deletion Vector 增长。这些不是偶尔执行的 housekeeping，而是长期运行后能否维持查询性能和成本的关键。
+
+### 10.5 建议的阅读与动手顺序
+
+如果目标是理解内部实现，先读《Apache Iceberg: The Definitive Guide》第 2 至第 4 章，再对照 Iceberg Specification 检查 Metadata、Manifest 和 Snapshot 的定义。接着用 Spark 或 PyIceberg 建一张小表，分别执行 INSERT、UPDATE、DELETE、Schema Evolution 和 Time Travel，观察对象存储中产生了哪些文件，以及 Metadata Tables 中哪些记录发生变化。
+
+然后读 Delta Protocol，重复同一组实验，比较 `_delta_log` 的版本记录、Checkpoint 和文件 Add/Remove。再看 Hudi Timeline 与 File Group，理解它为什么在 CDC 和高频更新场景中采用不同的数据组织策略。最后读架构类书籍，补齐 Catalog、流批摄取、计算引擎、治理与运维的全局视角。
+
+读完这组资料，应该能够回答几个比“Lakehouse 是什么”更有价值的问题：一次写入究竟何时对读者可见？两个写入者同时提交时由谁检测冲突？查询引擎如何从表快照定位到需要扫描的 Parquet 文件？小文件和元数据如何随时间增长？多个计算引擎如何共享同一张表而不破坏一致性？这些才是判断一套 Lakehouse 架构能否长期运行的关键。
+
+
 ## 参考资料
 
 ### Snowflake
