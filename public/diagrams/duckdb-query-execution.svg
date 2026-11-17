@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="760" viewBox="0 0 1440 760" role="img" aria-labelledby="duckdb-query-execution-title duckdb-query-execution-desc"><title id="duckdb-query-execution-title">DuckDB 查询执行路径</title><desc id="duckdb-query-execution-desc">DuckDB 从 SQL API 经 Parser、Binder、Optimizer、Physical Planner 和向量化执行器访问原生存储或 Parquet，并由事务管理器处理本地事务。</desc><defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#65584D"/></marker>
+<marker id="arrow-accent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#8B5A2B"/></marker>
+<marker id="arrow-left" viewBox="0 0 10 10" refX="2" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 0 L0 5 L10 10z" fill="#65584D"/></marker>
+</defs><rect width="100%" height="100%" fill="#F9F6EF"/><style>
+text{font-family:'Geist','Noto Sans SC','Microsoft YaHei',system-ui,sans-serif;fill:#221C17}
+.eyebrow{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;letter-spacing:1.6px;fill:#75695F}
+.title{font-family:'Instrument Serif','Noto Serif SC',serif;font-size:31px;font-weight:400;fill:#221C17}
+.label{font-size:17px;font-weight:600}
+.sub{font-family:'Geist Mono','Noto Sans SC',monospace;font-size:12px;fill:#65584D}
+.tiny{font-family:'Geist Mono','Noto Sans SC',monospace;font-size:10px;fill:#75695F}
+.node{fill:#FFFEFA;stroke:#CFC5B8;stroke-width:1.2}
+.focus{fill:#F5E7D4;stroke:#8B5A2B;stroke-width:1.5}
+.zone{fill:#F1EDE4;stroke:#CFC5B8;stroke-width:1}
+.line{fill:none;stroke:#65584D;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#arrow)}
+.accent-line{fill:none;stroke:#8B5A2B;stroke-width:1.8;stroke-linecap:round;marker-end:url(#arrow-accent)}
+.dash{fill:none;stroke:#75695F;stroke-width:1.2;stroke-dasharray:5 4}
+.actor{fill:#FFFEFA;stroke:#CFC5B8;stroke-width:1.2}
+.activation{fill:#F1EDE4;stroke:#75695F;stroke-width:0.8}
+.msg-label{font-family:'Geist Mono','Noto Sans SC',monospace;font-size:11px;fill:#65584D}
+</style>
+<text x="56" y="54" class="eyebrow">ARCHITECTURE · QUERY ENGINE</text><text x="56" y="96" class="title">SQL 如何变成向量化执行管线</text>
+<rect x="56" y="132" width="1328" height="390" rx="12" class="zone"/><text x="80" y="160" class="eyebrow">DUCKDB PROCESS · QUERY ENGINE</text>
+<path d="M230 310 H274" class="line"/><path d="M454 310 H498" class="line"/><path d="M678 310 H722" class="line"/><path d="M902 310 H946" class="line"/><path d="M1126 310 H1170" class="line"/>
+<rect x="78" y="240" width="152" height="140" rx="10" class="node"/><text x="154" y="280" text-anchor="middle" class="label">SQL API</text><text x="154" y="308" text-anchor="middle" class="sub">Python · CLI</text><text x="154" y="332" text-anchor="middle" class="sub">C / Node / R</text>
+<rect x="278" y="240" width="176" height="140" rx="10" class="node"/><text x="366" y="280" text-anchor="middle" class="label">Parser + Binder</text><text x="366" y="308" text-anchor="middle" class="sub">AST · Names · Types</text><text x="366" y="332" text-anchor="middle" class="sub">Resolve functions</text>
+<rect x="502" y="240" width="176" height="140" rx="10" class="focus"/><text x="590" y="280" text-anchor="middle" class="label">Logical Optimizer</text><text x="590" y="308" text-anchor="middle" class="sub">Filter pushdown</text><text x="590" y="332" text-anchor="middle" class="sub">Join reorder</text>
+<rect x="726" y="240" width="176" height="140" rx="10" class="node"/><text x="814" y="280" text-anchor="middle" class="label">Physical Planner</text><text x="814" y="308" text-anchor="middle" class="sub">Physical operators</text><text x="814" y="332" text-anchor="middle" class="sub">Pipelines</text>
+<rect x="950" y="240" width="176" height="140" rx="10" class="node"/><text x="1038" y="280" text-anchor="middle" class="label">Pipeline Executor</text><text x="1038" y="308" text-anchor="middle" class="sub">DataChunk</text><text x="1038" y="332" text-anchor="middle" class="sub">Vectorized operators</text>
+<rect x="1174" y="240" width="184" height="140" rx="10" class="node"/><text x="1266" y="280" text-anchor="middle" class="label">Scan / Result</text><text x="1266" y="308" text-anchor="middle" class="sub">Native storage</text><text x="1266" y="332" text-anchor="middle" class="sub">Parquet / extensions</text>
+<rect x="210" y="574" width="1020" height="118" rx="12" class="zone"/><text x="236" y="602" class="eyebrow">TRANSACTION AND STORAGE PATH</text>
+<rect x="280" y="622" width="330" height="48" rx="8" class="node"/><text x="445" y="651" text-anchor="middle" class="label">MVCC · Transaction Manager</text>
+<rect x="830" y="622" width="330" height="48" rx="8" class="node"/><text x="995" y="651" text-anchor="middle" class="label">Database File / WAL</text>
+<path d="M610 646 H830" class="line"/>
+<path d="M1266 380 V478 H995 V622" class="dash"/>
+<text x="720" y="548" text-anchor="middle" class="tiny">查询算子批量传递 Vector；原生表事务由 DuckDB 内核管理，外部湖表遵循各自协议</text>
+<text x="720" y="730" text-anchor="middle" class="tiny">列式存储是磁盘布局；向量化执行是内存中的算子接口，两者配合但不是同一机制</text></svg>
