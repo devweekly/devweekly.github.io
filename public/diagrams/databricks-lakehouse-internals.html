@@ -1,0 +1,27 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Databricks Lakehouse 内部架构</title><link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500&display=swap" rel="stylesheet"><style>*{box-sizing:border-box}body{margin:0;background:#F9F6EF;color:#221C17;font-family:'Geist','Noto Sans SC',system-ui,sans-serif}.frame{max-width:1500px;margin:0 auto;padding:32px 28px}.eyebrow{font:500 11px 'Geist Mono',monospace;letter-spacing:1.5px;color:#75695F;margin:0 0 8px}h1{font:400 30px 'Instrument Serif','Noto Serif SC',serif;margin:0 0 20px}.diagram-container{width:100%;overflow-x:auto}svg{display:block;width:100%;min-width:1440px;height:auto}.caption{margin-top:12px;font:12px 'Geist Mono',monospace;color:#75695F}</style></head><body><main class="frame"><p class="eyebrow">Architecture · DATABASE INTERNALS</p><h1>Databricks Lakehouse 内部架构</h1><div class="diagram-container"><svg xmlns="http://www.w3.org/2000/svg" width="1440" height="760" viewBox="0 0 1440 760" role="img" aria-labelledby="databricks-lakehouse-internals-title databricks-lakehouse-internals-desc"><title id="databricks-lakehouse-internals-title">Databricks Lakehouse 内部架构</title><desc id="databricks-lakehouse-internals-desc">Databricks Workspace、Unity Catalog、Spark SQL、Photon 和对象存储中的 Delta 日志与 Parquet 文件之间的职责关系。</desc><defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#65584D"/></marker></defs><rect width="100%" height="100%" fill="#F9F6EF"/><style>
+text{font-family:'Geist','Noto Sans SC','Microsoft YaHei',system-ui,sans-serif;fill:#221C17}
+.eyebrow{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;letter-spacing:1.6px;fill:#75695F}
+.title{font-family:'Instrument Serif','Noto Serif SC',serif;font-size:31px;font-weight:400;fill:#221C17}
+.label{font-size:17px;font-weight:600}.sub{font-family:'Geist Mono','Noto Sans SC',monospace;font-size:12px;fill:#65584D}
+.tiny{font-family:'Geist Mono','Noto Sans SC',monospace;font-size:10px;fill:#75695F}
+.node{fill:#FFFEFA;stroke:#CFC5B8;stroke-width:1.2}.focus{fill:#F5E7D4;stroke:#8B5A2B;stroke-width:1.5}
+.zone{fill:#F1EDE4;stroke:#CFC5B8;stroke-width:1}.line{fill:none;stroke:#65584D;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#arrow)}
+.dash{fill:none;stroke:#75695F;stroke-width:1.2;stroke-dasharray:5 4;marker-end:url(#arrow)}
+</style>
+<text x="56" y="54" class="eyebrow">ARCHITECTURE · LAKEHOUSE PLATFORM</text><text x="56" y="96" class="title">Catalog 管理表，计算引擎读写开放文件</text>
+<rect x="56" y="132" width="1328" height="150" rx="12" class="zone"/><text x="80" y="160" class="eyebrow">WORKSPACE & GOVERNANCE</text>
+<rect x="112" y="190" width="340" height="68" rx="10" class="node"/><text x="282" y="218" text-anchor="middle" class="label">SQL / Notebook / Jobs</text><text x="282" y="240" text-anchor="middle" class="sub">Users · Applications · Schedules</text>
+<rect x="970" y="190" width="340" height="68" rx="10" class="focus"/><text x="1140" y="218" text-anchor="middle" class="label">Unity Catalog</text><text x="1140" y="240" text-anchor="middle" class="sub">Discovery · Permissions · Lineage</text>
+<rect x="56" y="320" width="1328" height="166" rx="12" class="zone"/><text x="80" y="348" class="eyebrow">COMPUTE PLANE</text>
+<rect x="390" y="378" width="660" height="80" rx="10" class="node"/><text x="720" y="408" text-anchor="middle" class="label">Spark SQL / Driver</text><text x="720" y="432" text-anchor="middle" class="sub">Catalyst plan · task scheduling · distributed execution</text>
+<rect x="1110" y="378" width="220" height="80" rx="10" class="node"/><text x="1220" y="408" text-anchor="middle" class="label">Photon</text><text x="1220" y="432" text-anchor="middle" class="sub">Native C++ operators</text>
+<rect x="56" y="524" width="1328" height="170" rx="12" class="zone"/><text x="80" y="552" class="eyebrow">CUSTOMER CLOUD OBJECT STORAGE</text>
+<rect x="230" y="590" width="390" height="76" rx="10" class="node"/><text x="425" y="620" text-anchor="middle" class="label">Delta transaction log</text><text x="425" y="644" text-anchor="middle" class="sub">_delta_log · Actions · Checkpoints</text>
+<rect x="820" y="590" width="390" height="76" rx="10" class="focus"/><text x="1015" y="620" text-anchor="middle" class="label">Parquet data files</text><text x="1015" y="644" text-anchor="middle" class="sub">Add / Remove · Columnar data</text>
+<path d="M452 224 H720 V378" class="line"/>
+<path d="M970 224 H850 V330 H720 V378" class="line"/>
+<path d="M720 458 V520 H425 V590" class="line"/>
+<path d="M720 458 V520 H1015 V590" class="line"/>
+<path d="M1050 418 H1110" class="line"/>
+<path d="M1140 258 V304 H1310 V418 H1330" class="dash"/>
+<text x="720" y="730" text-anchor="middle" class="tiny">Delta Log 定义表快照；Unity Catalog 提供治理，特定 Catalog-managed 表可由 Catalog 参与提交协调</text></svg></div><p class="caption">Conceptual architecture based on publicly documented behavior; undisclosed implementation details are intentionally omitted.</p></main></body></html>
