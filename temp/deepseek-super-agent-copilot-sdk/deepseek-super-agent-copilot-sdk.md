@@ -177,6 +177,134 @@ DeepSeek 则在回答另一个问题：**当 Agent 长期在线并不断收到�
 
 Mandate 应在 Worker 启动前由宿主应用创建并持久化，至少包含来源身份、任务目标、允许的仓库/目录、工具范围、可用预算、有效期、策略版本和允许的副作用。工具调用前由 Hook 或工具服务端再次验证 Mandate。不能只在 system prompt 中写一句「不要越权」。
 
+## 现成 Orchestration Runtime：Pi、LangGraph / Deep Agents 与工作流引擎
+
+前面的建议是「在 Copilot SDK 之上增加 Orchestration Runtime」，但这不等于必须自己从零实现。已经有可复用的开源运行时，只是它们解决的问题层次不同。尤其要避免把 Agent Framework 当成完整的 Super-agent 平台：能够创建 subagent、并行调用工具，不代表已经具备跨进程恢复、事件订阅、任务授权和可靠的后台执行。
+
+### 先区分三层
+
+| 层次 | 负责的问题 | 典型能力 |
+|---|---|---|
+| Agent Harness | 一次 Agent 执行如何思考和调用工具 | model/tool loop、工具、上下文压缩、扩展、subagent |
+| Agent Orchestration Runtime | 多个 Agent 任务如何持续协作 | 状态机、任务分解、checkpoint、interrupt、恢复、并行和事件关联 |
+| Durable Workflow Runtime | 跨进程、跨服务、跨数天的业务流程如何可靠执行 | 持久化事件历史、定时器、消息、重试、超时、幂等和补偿 |
+
+Copilot SDK 本身已经是一个 Agent Harness。再在它外面套一层同样拥有模型循环和工具系统的 Harness，容易形成双重调度、双重上下文和权限边界不一致。更合理的组合是：一个 Orchestration Runtime 管理任务和状态机，Copilot SDK 作为执行代码任务的专用 Worker。
+
+![Copilot SDK 与 Orchestration Runtime 的分层关系](../../public/diagrams/deepseek-super-agent-copilot-sdk/runtime-options.svg)
+
+### Pi：优秀的轻量 Harness，不是现成的 Super-agent 控制面
+
+这里讨论的是 Mario Zechner 发起的 pi.dev / pi-mono coding agent，不是其他同名产品。项目代码和文档目前位于 [earendil-works/pi](https://github.com/earendil-works/pi) 与 [pi.dev](https://pi.dev/)；旧的 `@mariozechner/*` 包已迁移到 `@earendil-works/*` 命名空间。
+
+Pi 的设计刻意保持小而可组合。底层 `pi-agent-core` 提供 Agent loop；`pi-coding-agent` 在其上增加会话、工具、上下文压缩和交互界面。默认工具集包含 read、bash、edit、write，扩展可以注册自定义工具，并订阅会话、轮次、工具调用和 compaction 等事件。它还支持 JSONL RPC、嵌入式 TypeScript API、会话树和分支。
+
+Pi 的价值在于 Harness 本身足够薄，扩展点明确，开发者可以控制 Agent 的行为，而不必先接受一个庞大的框架。它的代价也来自同一个选择：规划、subagent、任务队列、长期调度和分布式恢复并不是经典 Pi 的内建核心能力。可以通过 extension 或外部 package 添加这些能力，但需要自己定义状态模型和生命周期。
+
+| DeepSeek Super-agent 所需能力 | Pi Classic 的情况 |
+|---|---|
+| Agent loop / coding tools | 原生提供，轻量且可扩展 |
+| 扩展与工具策略 | Extension 可注册工具、拦截事件；安全边界仍需宿主实现 |
+| Subagent / planning | 不作为默认核心能力，通常通过扩展或外部编排实现 |
+| Session / context continuity | 会话树、分支、摘要和 compaction；偏对话上下文管理 |
+| Task / Thread / Run 身份 | 没有完整的业务任务、事件 Thread 和执行 Run 模型 |
+| Durable checkpoint / worker recovery | 不能等同于分布式工作流恢复；需外部状态与调度器 |
+| Webhook / event trigger / background queue | 由宿主应用或工作流引擎实现 |
+| Approval / audit / watchdog | 扩展可以参与，但持久审批、授权记录和故障恢复仍需外部系统 |
+
+Pi 仓库还包含 `pi-durable`，尝试把 Conversation、Task、Document 等持久化对象分开，并提供任务归属、会话父子关系和可回退分支。这个方向与 Super-agent 很接近，但该包的 README 明确标注为 Experimental，API 可能变化。它值得跟踪和做概念验证，不宜在尚未稳定时作为生产系统的唯一控制面。
+
+**放在 Copilot SDK 上方是否合适？** 通常不合适。Pi 和 Copilot 都有自己的 Agent loop、工具协议和会话模型。若 Pi 负责规划、Copilot 负责编码，必须明确 Pi 只提交结构化任务，由 Copilot 完成一个封闭的执行单元；不要让两个 Harness 同时拥有同一工作目录的 shell/edit 权限。Pi 更适合做一个可替换的 coding harness，或作为 RPC/独立进程中的专用 Worker，而不是默认的 Orchestration Runtime。
+
+Pi 软件采用 MIT License。真正需要关注的不是许可证，而是 pi-durable 的 API 稳定性，以及把系统控制面绑定到一个仍在演进的持久化模型所带来的迁移成本。
+
+参考：[Pi repository](https://github.com/earendil-works/pi)、[Pi documentation](https://pi.dev/)、[Pi Durable README](https://github.com/earendil-works/pi/tree/main/packages/durable)。
+
+### LangGraph：最接近 Agent Orchestration Runtime 的现成选择
+
+[LangGraph](https://github.com/langchain-ai/langgraph) 是这几个项目里最直接对应 Orchestration Runtime 的方案。它不是简单的 multi-agent helper，而是一个显式状态图运行时：节点执行工作，边决定下一步，状态在节点之间传递，并通过 checkpointer 保存执行进度。
+
+它的关键原语包括：
+
+- **Graph / State**：把任务流程表达为有状态图，而不是让一个 Supervisor Prompt 自由决定所有控制流。
+- **Checkpoint / Thread**：每个 thread 保存状态快照，运行中可以恢复、检查和回放。
+- **Interrupt / Resume**：流程可以暂停等待人工审批或外部输入，再从保存点继续。
+- **Subgraph / Parallelism**：把专用工作流组合成节点或子图，独立管理上下文和执行边界。
+- **Store**：在 thread 状态之外保存跨会话数据，适合用户级或项目级长期信息。
+- **Durable execution**：在持久化 checkpointer 配合下，进程中断后可以从最近的 checkpoint 继续。
+
+它与 DeepSeek 的相似点是都把任务状态从对话文本中分离出来；不同点是 LangGraph 把流程表达为显式图和 checkpoint，而 DeepSeek 的重点是常驻 Router、外部事件 Thread、Ticket 订阅和 Worker 路由。LangGraph 可以实现其中相当一部分机制，但不会自动替你定义 DeepSeek 的 Trigger、Mandate、事件准入策略和业务订阅模型。
+
+需要注意，checkpoint 并不意味着 exactly-once。恢复时，最近 checkpoint 之后的节点可能再次执行。对创建 PR、发布评论、发起付款或修改外部系统等副作用操作，必须使用业务幂等键，并把副作用封装成可单独恢复和审计的步骤。
+
+**放在 Copilot SDK 上方是否合适？** 合适，前提是让 LangGraph 管理任务级流程，而 Copilot SDK 管理代码执行回合。可以把一次 Copilot session invocation 包装成 LangGraph node / task：调用前保存 Ticket、thread_id、run_id 与 copilot_session_id 的映射；调用后收集结果和 SDK events，再 checkpoint。不要把 Copilot 当成普通 ChatModel 塞进 Deep Agents 的模型循环里，也不要让两套工具循环同时操作相同仓库。
+
+### Deep Agents：提供高层 Agent 模式，不等于另一套独立 Runtime
+
+[Deep Agents](https://github.com/langchain-ai/deepagents) 建立在 LangGraph 之上。它更像一个有主见的 Agent Harness：通过 middleware 组合 planning、filesystem、subagent、summarization、memory 和 tool-call repair 等能力。常见模式是主 Agent 生成任务计划，再通过 task 工具把子任务交给隔离上下文的 subagent。
+
+这与 DeepSeek 的 Router/Worker 看起来相似，但语义不同：
+
+- Deep Agents 的 subagent 主要是一次 Agent 任务中的委派单元，负责一个相对独立的子问题。
+- DeepSeek Worker 是应用层 Ticket 驱动的长期执行实体，可以等待外部事件、继续工作、跨进程恢复，并受独立 Mandate 约束。
+- Deep Agents 的 planning/todo 帮助模型组织工作；它不是业务系统的任务账本。
+- Deep Agents 的 filesystem 和 virtual filesystem 帮助 Agent 管理工作材料；它不自动提供生产级仓库沙箱和凭据隔离。
+
+Deep Agents 值得借鉴的是规划、文件系统抽象、subagent 上下文隔离和可组合 middleware。若已经使用 Copilot SDK，不建议再完整引入 Deep Agents 的 model/tool loop。可以把其任务拆分和 middleware 设计转化为 Copilot 的 Worker 配置，或将 Copilot Worker 封装为 LangGraph 节点。
+
+### LangGraph / Deep Agents 生产能力边界
+
+LangGraph 开源库与 LangSmith Agent Server 需要分开看。仅使用本地 LangGraph 库时，开发者需要配置持久化 checkpointer、服务 API、后台 worker、事件入口、任务队列和部署方式。LangSmith Agent Server 则在此基础上提供部署运行、持久化、后台 runs、队列、cron、completion webhook 等服务能力；也可以选择自托管，具体能力和部署限制应以所选版本和部署形态为准。
+
+| 能力 | LangGraph 库 | Deep Agents | Agent Server / LangSmith |
+|---|---|---|---|
+| 有状态流程 / checkpoint | 核心能力 | 基于 LangGraph | 持久化运行支持 |
+| Planning / todo | 自己建图或节点 | 内置高层模式 | 不负责替代业务规划 |
+| Subagent | 可用子图/节点构建 | task delegation middleware | 支持后台任务运行形态 |
+| 人工审批 | interrupt / resume | interrupt_on 等配置 | 提供运行时承载；审批 UI/API 仍要集成 |
+| 跨 Thread Store | Store 抽象 | 可配置 memory | 提供部署和托管配套 |
+| 队列、后台执行 | 自己实现或集成 | 依赖底层服务 | 提供服务端运行能力 |
+| Webhook / cron | 应用层实现 | 非核心职责 | 可配置触发与完成回调 |
+| 观测和评估 | 可接入 OpenTelemetry 等 | 沿用生态 | LangSmith tracing、run/thread 视图和评估 |
+
+MIT 开源组件与 LangSmith 托管服务不是同一个许可和依赖边界。若目标是自托管，先评估 Agent Server 对 PostgreSQL、队列、容器/沙箱、升级和运维的要求；若目标是供应商可替换，则应把 LangSmith 的 API 和 trace schema 隔离在 adapter 后面。
+
+参考：[Deep Agents docs](https://docs.langchain.com/deepagents)、[Deep Agents repository](https://github.com/langchain-ai/deepagents)、[LangGraph persistence](https://docs.langchain.com/oss/python/langgraph/persistence)、[LangGraph durable execution](https://docs.langchain.com/oss/python/langgraph/durable-execution)、[Agent Server deployment](https://docs.langchain.com/langsmith/deployment)。
+
+### Temporal、Restate、Inngest：当问题已经超出 Agent 编排时
+
+如果任务不仅包含 Agent，还要跨多个外部系统、等待数小时或数天、处理超时、重试、补偿和可靠消息，那么需要考虑 Durable Workflow Runtime，而不是继续往 Agent Framework 上堆功能。
+
+- **[Temporal](https://temporal.io/)**：以持久化 Workflow Event History 和确定性重放为核心。适合跨服务、长时间、强恢复要求的流程。把一次 Copilot 执行作为 Activity 或粗粒度工作单元即可，不要把每次 token/tool call 都做成 Workflow step。代价是需要运行 Temporal Server/Cloud、Worker 和相应的运维体系。
+- **[Restate](https://restate.dev/)**：以持久化调用、事件日志和按 key 管理的 Virtual Object 为特色，适合把业务实体（例如 PR、Ticket、用户任务）建模为有状态服务。它的调用和状态模型值得与 Temporal 比较，尤其是 TypeScript 服务团队。自托管 Server 的许可与 SDK 许可不同，需在采用前核对当前条款。
+- **[Inngest](https://www.inngest.com/)**：以事件触发的函数和 Durable Steps 为主，开发体验偏 TypeScript/serverless，适合 webhook、延迟执行、等待事件和定时工作。若流程涉及复杂补偿、跨系统一致性和严格控制，仍需评估其保证边界与部署/许可模型。
+
+这些系统不应该和 LangGraph 做简单的功能打分。LangGraph 更贴近 Agent 的状态图和人工中断；Temporal/Restate 更贴近业务流程的持久化执行。两者可以组合，但每增加一层都要明确它拥有哪个状态的最终解释权。
+
+AutoGen 不建议作为新系统的默认选择。Microsoft 的官方文档已将 AutoGen 标为归档项目，并将 Microsoft Agent Framework 作为后续方向。它的消息驱动多 Agent Runtime 在架构上有参考价值，但新项目应优先评估其继任项目，而不是采用已归档代码。
+
+### 对比结论
+
+| 方案 | 最强项 | 与 Super-agent 的差距 | 放在 Copilot SDK 上方的建议 |
+|---|---|---|---|
+| Pi Classic | 小型 Harness、扩展机制、可控的 Agent loop | 没有完整任务调度、事件订阅和 durable workflow | 不作为主 Orchestrator；可做独立 Worker |
+| Pi Durable | Conversation / Task / Document 的持久化建模 | 仍标为 Experimental，生产语义需验证 | 持续跟踪，不作为唯一控制面 |
+| LangGraph | 显式状态图、checkpoint、interrupt、resume、Store | 需要自行建 Trigger/Thread/Ticket/Mandate 和事件路由 | **最值得优先 PoC** |
+| Deep Agents | planning、subagent、filesystem、middleware | 高层 Harness，不是独立长期任务平台 | 选用设计模式，不要套第二层 Agent loop |
+| Temporal | 长时间、跨服务的可靠工作流 | 不理解 Agent 语义，不提供 Agent 上下文管理 | 复杂业务流程需要时作为外层 Workflow |
+| Restate | 持久 RPC、事件日志、按实体串行状态 | 需自行建 Agent 任务模型和调度语义 | TypeScript 服务优先纳入评估 |
+| Inngest | 事件驱动函数、延迟/等待、快速集成 | 复杂业务流程治理和 Agent 语义仍需补足 | webhook-heavy 场景可做轻量选择 |
+
+## Copilot SDK 的推荐组合
+
+对于以 Copilot SDK 为编码执行引擎的系统，我建议分成两条边界清晰的路径：
+
+**一般 Agent 产品：Copilot SDK + LangGraph + PostgreSQL。** LangGraph 负责任务级状态图、checkpoint、人工中断和恢复；Copilot SDK 负责具体编码任务的推理与工具执行。先用 LangGraph 库和 PostgreSQL checkpointer 做一个纵向 PoC，只有需要后台队列、cron、webhook 和横向扩展时再引入 Agent Server。
+
+**企业级、跨系统、长周期流程：Copilot SDK + LangGraph + Temporal。** Temporal 管理业务流程的等待、重试、定时器和跨服务恢复；LangGraph 管理一个 Agent 工作流内部的状态和 interrupt；Copilot SDK 负责编码执行。只有当 LangGraph 的 checkpoint/queue 模型不足以满足业务流程要求时才增加 Temporal，否则两套 durable state machine 会增加重复状态和运维复杂度。
+
+Pi 适合在某些 Worker 场景替代 Copilot SDK，或者作为轻量本地 Harness；Deep Agents 的 planning 和 subagent 模式可以吸收，但不建议把完整 Deep Agents Harness 与 Copilot SDK 嵌套运行。
+
 ## 价值、代价与适用条件
 
 | 维度 | 价值 | 代价或风险 |
