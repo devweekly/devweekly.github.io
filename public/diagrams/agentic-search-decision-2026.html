@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agentic Search 检索决策树</title>
+<style>
+:root{color-scheme:light;--paper:#f5f5f5;--paper2:#ececec;--ink:#2d3142;--muted:#4f5d75;--soft:#5a6580;--rule:#d9dadd;--accent:#bf4520;--tint:rgba(191,69,32,.08);--sans:Inter,"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans)}main{max-width:1120px;margin:0 auto;padding:34px 28px 28px}svg{display:block;width:100%;height:auto} .eyebrow{font:600 12px var(--sans);letter-spacing:2px;fill:var(--muted)}.heading{font:700 28px var(--sans);fill:var(--ink)}.sub{font:400 14px var(--sans);fill:var(--muted)}.node{fill:#fff;stroke:var(--rule);stroke-width:1.5}.focus{fill:var(--tint);stroke:var(--accent);stroke-width:1.8}.decision{fill:#fff;stroke:var(--muted);stroke-width:1.5}.terminal{fill:var(--ink);stroke:var(--ink)}.terminalText{fill:#fff;font:600 15px var(--sans)}.label{fill:var(--ink);font:600 15px var(--sans)}.detail{fill:var(--muted);font:400 12px var(--sans)}.edge{fill:none;stroke:var(--muted);stroke-width:1.5}.edgeAccent{fill:none;stroke:var(--accent);stroke-width:2}.edgeLabel{fill:var(--muted);font:600 11px var(--sans)}.number{fill:var(--accent);font:700 11px var(--sans);letter-spacing:1px}.note{fill:var(--paper2);stroke:var(--rule);stroke-width:1}.noteText{fill:var(--muted);font:400 12px var(--sans)}
+</style>
+</head>
+<body><main>
+<svg viewBox="0 0 1060 1450" role="img" aria-labelledby="t d" xmlns="http://www.w3.org/2000/svg">
+<title id="t">Agentic Search 与 Embedding 的检索决策树</title>
+<desc id="d">先让大模型理解问题并分解多个词法与结构化查询，执行搜索并评估证据覆盖；只有在查询扩展和迭代搜索仍存在可测量的语义召回缺口时才试点 Embedding。规模、延迟和多来源治理是独立的索引平台决策。</desc>
+<defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0L6 3L0 6" fill="none" stroke="#4f5d75" stroke-width="1.2"/></marker><marker id="arrA" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0L6 3L0 6" fill="none" stroke="#bf4520" stroke-width="1.2"/></marker></defs>
+<text x="40" y="35" class="eyebrow">RETRIEVAL ARCHITECTURE · DECISION GUIDE</text>
+<text x="40" y="76" class="heading">先让 Agent 搜，再证明索引有必要</text>
+<text x="40" y="104" class="sub">LLM Query Decomposition 是默认的第一步；Embedding 是补充检索信号，不是语义理解的唯一入口。</text>
+
+<!-- main path -->
+<rect x="365" y="140" width="330" height="64" rx="28" class="terminal"/>
+<text x="530" y="179" text-anchor="middle" class="terminalText">用户提出知识问题</text>
+<path d="M530 204V240" class="edge" marker-end="url(#arr)"/>
+<rect x="300" y="242" width="460" height="100" rx="7" class="focus"/>
+<text x="326" y="268" class="number">01 · QUERY UNDERSTANDING</text>
+<text x="530" y="296" text-anchor="middle" class="label">LLM 理解意图、拆分维度、生成查询变体</text>
+<text x="530" y="320" text-anchor="middle" class="detail">原始问题 + 同义词 / 中英文术语 / 实体 / 约束 / 子问题</text>
+<path d="M530 342V378" class="edgeAccent" marker-end="url(#arrA)"/>
+<rect x="300" y="380" width="460" height="100" rx="7" class="node"/>
+<text x="326" y="406" class="number">02 · AGENTIC SEARCH</text>
+<text x="530" y="434" text-anchor="middle" class="label">执行多路检索，并读取命中内容</text>
+<text x="530" y="458" text-anchor="middle" class="detail">grep / rg · glob / find · BM25 · SQL / API · LSP / 元数据</text>
+<path d="M530 480V518" class="edge" marker-end="url(#arr)"/>
+<polygon points="530,520 700,592 530,664 360,592" class="decision"/>
+<text x="530" y="580" text-anchor="middle" class="label">证据覆盖是否足够？</text>
+<text x="530" y="603" text-anchor="middle" class="detail">关键文档、来源和事实是否命中</text>
+<text x="530" y="624" text-anchor="middle" class="detail">任务成功率 / Recall / P95 / Token</text>
+
+<!-- yes -->
+<path d="M700 592H850V700" class="edgeAccent" marker-end="url(#arrA)"/>
+<text x="724" y="578" class="edgeLabel">是</text>
+<rect x="745" y="702" width="250" height="74" rx="7" class="focus"/>
+<text x="870" y="733" text-anchor="middle" class="label">保持 Agentic Search</text>
+<text x="870" y="755" text-anchor="middle" class="detail">无需为了架构完整引入向量库</text>
+
+<!-- no -->
+<path d="M360 592H210V700" class="edge" marker-end="url(#arr)"/>
+<text x="235" y="578" class="edgeLabel">否</text>
+<rect x="55" y="702" width="310" height="94" rx="7" class="node"/>
+<text x="210" y="732" text-anchor="middle" class="label">先诊断失败原因</text>
+<text x="210" y="756" text-anchor="middle" class="detail">解析缺失？目录 / ACL？查询策略？</text>
+<text x="210" y="776" text-anchor="middle" class="detail">源数据不存在？结构化接口更合适？</text>
+<path d="M210 796V835" class="edge" marker-end="url(#arr)"/>
+<polygon points="210,837 365,900 210,963 55,900" class="decision"/>
+<text x="210" y="894" text-anchor="middle" class="label">查询扩展后仍有</text>
+<text x="210" y="917" text-anchor="middle" class="label">语义召回缺口？</text>
+<text x="210" y="939" text-anchor="middle" class="detail">不是单纯工具或数据问题</text>
+
+<!-- no branch -->
+<path d="M55 900H28V1050H160" class="edge" marker-end="url(#arr)"/>
+<text x="38" y="885" class="edgeLabel">否</text>
+<rect x="160" y="1014" width="320" height="76" rx="7" class="node"/>
+<text x="320" y="1045" text-anchor="middle" class="label">优化 Query Plan / 解析 / 连接器</text>
+<text x="320" y="1068" text-anchor="middle" class="detail">继续使用词法、结构化和 Agent 迭代检索</text>
+
+<!-- yes branch -->
+<path d="M365 900H530V1014" class="edgeAccent" marker-end="url(#arrA)"/>
+<text x="385" y="884" class="edgeLabel">是</text>
+<rect x="530" y="1014" width="450" height="76" rx="7" class="focus"/>
+<text x="755" y="1045" text-anchor="middle" class="label">用真实问题集做 Embedding 对照试验</text>
+<text x="755" y="1068" text-anchor="middle" class="detail">比较 lexical / dense / hybrid 的 Recall 与 Task Success</text>
+
+<!-- separate platform decision -->
+<path d="M755 1090V1130" class="edge" marker-end="url(#arr)"/>
+<polygon points="755,1132 930,1198 755,1264 580,1198" class="decision"/>
+<text x="755" y="1187" text-anchor="middle" class="label">是否还需要平台级能力？</text>
+<text x="755" y="1210" text-anchor="middle" class="detail">跨来源 · 高并发 · P95 SLA · ACL</text>
+<text x="755" y="1231" text-anchor="middle" class="detail">索引生命周期 · 监控 · 运维</text>
+<path d="M930 1198H1015V1320H850" class="edge" marker-end="url(#arr)"/>
+<text x="944" y="1183" class="edgeLabel">是</text>
+<rect x="650" y="1322" width="350" height="78" rx="7" class="node"/>
+<text x="825" y="1353" text-anchor="middle" class="label">评估 OpenSearch 等独立检索平台</text>
+<text x="825" y="1376" text-anchor="middle" class="detail">BM25 / Vector / Hybrid 按证据组合</text>
+<path d="M580 1198H500V1320H420" class="edge" marker-end="url(#arr)"/>
+<text x="514" y="1183" class="edgeLabel">否</text>
+<rect x="80" y="1322" width="340" height="78" rx="7" class="node"/>
+<text x="250" y="1353" text-anchor="middle" class="label">使用现有数据库或轻量向量索引</text>
+<text x="250" y="1376" text-anchor="middle" class="detail">Embedding 不自动意味着要部署 OpenSearch</text>
+</svg>
+</main></body></html>
