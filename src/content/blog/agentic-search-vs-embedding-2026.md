@@ -209,6 +209,97 @@ Embedding 应该在以下情况中通过对照实验争取自己的位置：
 
 **先让 LLM 尽可能把问题变成可执行的检索计划；如果词法与结构化检索在真实语料上仍有稳定的语义召回缺口，再用 Embedding 补足。**
 
+### 3.5 一线 AI-native 项目的共同经验：先把文件系统用好
+
+把 Anthropic、OpenAI、Manus、Pi 和 LangChain 的公开材料放在一起看，会发现它们并没有形成“所有 Agent 都应该使用 RAG”的共识。相反，多个 coding agent 和通用 agent 把少量文件系统与 Shell 原语作为默认能力，再按需扩展专用检索。
+
+| 项目 / 团队 | 公开实践 | 对检索架构的启示 |
+| --- | --- | --- |
+| Anthropic / Claude Code | 在百万行级 monorepo、遗留系统和多仓库环境中，通过文件遍历、grep、引用追踪和本地实时内容导航；大规模部署建议分层 CLAUDE.md、排除生成文件、子目录作用域、LSP 和 MCP 结构化搜索 | 对代码先优化导航与符号级工具；仓库大不等于必须建立向量索引 |
+| OpenAI / Codex CLI | Codex Prompting Guide 明确优先使用 rg / rg --files，优先专用 read/search 工具，能并行的文件搜索和读取应并行；同时允许按任务接入 semantic search 等自定义工具 | 先把基础检索工具和并行调用做好；语义搜索是可选能力，不是 Shell 搜索的替代品 |
+| Manus | 将文件系统作为外部上下文和可恢复记忆；大型工具结果写入文件，消息中保留引用；用 Bash 和文件工具按需取回 | 搜索之外，上下文卸载和可恢复性同样重要 |
+| Pi | 默认只给模型 read、write、edit、bash 四个核心工具；保持 minimal harness，不内置 sub-agent 和 plan mode，能力通过 Skills、Extensions 和 Packages 扩展 | 通用 Shell 能覆盖大量文件发现与处理任务；不必把每种搜索动作都做成复杂专用工具 |
+| LangChain / Deep Agents | 内置 ls、glob、grep、分页 read_file；大结果卸载到文件并只返回路径和预览；对自定义 RAG 工具建议 retrieve、offload、delegate | 即使采用 RAG，也要控制结果进入主 Agent 上下文的数量 |
+
+这些不是同一类证据。Anthropic、OpenAI、Manus 和 LangChain 的官方文章 / 文档反映的是产品团队公开的工程方法；Pi 的 GitHub 仓库可以直接验证其默认工具集；它们都不是一组严格控制变量的 grep-versus-embedding 性能基准。它们足以说明一线 Agent 团队如何设计默认检索方式，但不能据此宣称 grep 在任何语料规模上都优于向量检索。
+
+Anthropic 的大代码库实践并没有停留在 grep。它建议用 LSP 提供 symbol-level navigation：在大量同名函数、跨语言调用和复杂引用关系中，LSP 可以直接返回定义和引用，避免 Agent 用 grep 扫出成百上千条匹配后再逐个打开文件。Anthropic 还提到企业团队通过 MCP 暴露结构化搜索。这说明优化路径通常是：
+
+\`\`\`text
+文件 / 目录发现
+    -> 精确文本搜索
+    -> 作用域与排除规则
+    -> LSP / AST / 结构化搜索
+    -> 必要时再增加全文或语义索引
+\`\`\`
+
+参考：[Anthropic: Claude Code at scale](https://claude.com/resources/articles/how-claude-code-works-in-large-codebases-best-practices-and-where-to-start)；[OpenAI: Codex Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide)；[Manus: Context Engineering for AI Agents](https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus)；[Pi coding-agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent)；[LangChain: Context Engineering Starts with Retrieval](https://www.langchain.com/blog/context-engineering-starts-with-retrieval)。
+
+### 3.6 grep / glob / find 能优化到什么程度？它的性能天花板在哪里？
+
+需要把“搜索执行性能”和“检索质量”分开。ripgrep 已经是非常高效的本地文本扫描工具。对代码仓库这类文件系统语料，继续优化往往不应该从换 Embedding 模型开始，而应该先把搜索路径、文件集合、输出规模和工具调用方式做好。
+
+**第一层：把文件扫描范围控制好。**
+
+- 用 rg --files、fd 或 glob 先得到候选文件集合，再针对候选目录搜索；不要每次都从仓库根目录递归扫描。
+- 尊重 .gitignore，显式排除 node_modules、dist、build、生成代码、二进制文件、依赖包、历史归档和无关日志。
+- 按文件类型过滤；按目录、时间、大小或来源先过滤，再执行正文搜索。
+- 已知符号、文件名或路径时，直接精确查找，不要把简单任务交给宽泛正则。
+- 对 monorepo 使用目录地图和分层说明，让 Agent 先确定 package / service，再在局部目录搜索。
+
+**第二层：减少每次搜索的固定开销。**
+
+- 多个独立关键词或子问题可以并行执行，避免 Agent 一次只跑一个 grep、等待结果后再跑下一个。
+- 用 rg -l 先取文件列表，用行号和少量上下文只取必要内容；避免第一轮就把所有匹配行和大段上下文塞进模型。
+- 使用 count、max-count、文件数量上限、分页和排序策略，控制高频词造成的结果洪泛。
+- 把完整搜索结果写到临时文件或 Artifact，主上下文只保留摘要、路径和少量预览；需要时再按需读取。
+- 对重复任务缓存文件清单、文件元数据、解析结果和确定性查询结果；文件变更后按路径或内容哈希失效缓存。
+- 如果工具调用开销明显高于搜索本身，可以把多次查询封装为一个批处理工具，或让 Agent 在一次 Bash 调用中执行多个独立查询。
+
+**第三层：用更强的结构化工具解决 grep 本来就不擅长的问题。**
+
+- 代码符号、调用关系和类型：LSP、AST、Tree-sitter、语言索引。
+- 反复执行的大量词法查询：SQLite FTS5、Tantivy 或其他倒排索引。
+- 文档标题、来源、日期、版本、业务域和权限：SQL / 元数据索引。
+- 多来源、并发、服务级 SLA：集中式全文检索服务。
+- 语义表达差异：Embedding / Dense Retrieval。
+- 多跳实体关系：知识图谱或关系查询。
+
+一个有价值的工程反例是 Atlarix 的团队：遇到文件监听器占用大量文件描述符、索引刷新反复读取仓库等问题后，团队重新评估索引的实际收益，最终删除检索索引，退回 ripgrep 驱动的 grep / glob。团队明确承认，词法检索无法发现用户没有说出的概念（例如搜 authentication 不一定能找到名为 verifyCredentials 的实现），但在代码这种共享标识符很多的语料中，实时、无索引维护的收益更大。索引不一定是单向升级，维护成本可能超过它带来的检索收益。
+
+参考：[How We Deleted Our Retrieval Index and 5,246 Lines With It](https://www.atlarix.dev/blogs/how-we-deleted-our-retrieval-index)。
+
+**纯 grep 的性能天花板不是单一的文件数量阈值。**
+
+| 维度 | 优化后的 grep / Agentic Search 能力 | 无法靠继续加速 grep 消除的边界 |
+| --- | --- | --- |
+| 扫描速度 | 本地 SSD、ripgrep、文件类型过滤、ignore 规则、目录预筛选，单次搜索可做到毫秒至秒级，取决于语料和命中量 | 超大远程文件系统、跨区域数据源和大量小文件的网络 I/O 不会因更快的正则引擎而消失 |
+| 结果数量 | 文件名模式、路径范围、精确词、正则、计数、上下文窗口和分页能有效控制输出 | 命中很多不等于相关；grep 不天然知道哪些结果最能回答问题 |
+| 查询覆盖 | LLM Query Expansion、同义词、缩写、中英文、概念分解和迭代补查可以显著提高覆盖 | LLM 没有生成的语料特有表达，词法检索仍然无法命中；更多查询也会增加噪声和成本 |
+| 相关性排序 | 可按命中次数、路径、文件权重、时间、BM25 或规则排序 | 词频和路径规则难以表达“没有相同词语但语义上回答了问题”的内容 |
+| 结构理解 | LSP、AST、符号索引可解决代码定义、引用、类型和调用关系 | 通用文本 grep 不理解实体关系、因果链、文档版本依赖或跨来源业务关系 |
+| 数据类型 | 配合 OCR、PDF / Office 解析器可搜索提取后的文本 | 图片、扫描件、复杂表格、图表和音视频需要专门解析或多模态检索 |
+| 企业治理 | 文件权限、目录边界和来源过滤可用于受控工作区 | 跨系统 ACL、用户级 Entitlement、审计、索引隔离和高并发服务治理需要独立设计 |
+| 运行成本 | 无 Embedding 生成、向量存储和索引同步成本 | 每次动态规划、多轮工具调用和重复扫描会产生运行时延迟与模型 Token 成本 |
+
+因此，grep 的真正天花板不是“文件太多，扫描太慢”这一条。扫描速度通常可以通过工具和工程手段优化；更难突破的是**查询表达覆盖、语义相关性排序、跨文档结构关系、多模态解析、跨系统权限与服务 SLA**。当问题落在这些边界上，应该引入能解决该问题的组件，而不是笼统地把整个检索系统替换成 RAG。
+
+### 3.7 AWS 的企业案例：Embedding 不是万能药，Agentic Retrieval 也不是免费升级
+
+AWS 的实际案例把金融、制造和多语言企业文档中的真实约束暴露出来。
+
+**Amazon Finance：先 Query Expansion，再并行向量检索。** Amazon FinTech 团队处理数千份历史监管问询材料，文档包括 PDF、PPT、Word 和 CSV，并包含大量领域术语。其方案采用 Bedrock Knowledge Bases、OpenSearch Serverless 和层级 Chunking；查询阶段并不是把用户原句直接向量化一次，而是先用 Claude 3.5 Haiku 生成最多五个查询变体，再并行调用 Retrieve API。AWS 报告，这种并行处理把检索延迟从顺序执行约 10 秒降到 2 秒以内。即使已经使用 Embedding，Query Expansion 和并行执行仍然是重要优化手段；向量索引没有替代查询规划。
+
+**IskayPet：Managed Hybrid Search + 权限过滤。** IskayPet 的知识分散在数百份 SharePoint 文档中，覆盖四种语言、三个国家和多个业务域。它采用 Bedrock Managed Knowledge Bases，利用内置 BM25 + Semantic Hybrid Search、Reranking 和文档级权限过滤；查询时检索 25 个 passages，去重后最多把 15 个放入 Prompt。上线约两个月后，AWS 报告其操作问题的查找时间从 3–5 分钟降到约 7 秒，并预计承载每月约 100,000 次查询。关键不是“向量越多越好”，而是混合召回、权限约束、候选数量控制和增量同步共同组成生产检索能力。
+
+**Novo Nordisk：四百万文档规模下，向量检索仍然不够。** AWS 2026 年 11 月发布的案例描述了一个约四百万份受控制造文档的知识库。系统采用 Neptune 知识图谱 + OpenSearch Hybrid Search：向量搜索用于语义召回，BM25 捕获文档编号、设备代码和精确术语；再通过图谱补充流程层级、文档引用和实体关系，并用 Reranker 提高候选段落精度。它还会在检索前澄清站点、产品代际和设备范围，避免把相似但不适用的文件当成答案。规模只是背景，真正推动架构升级的是文档版本、生效范围、实体关系和受控内容的可追溯性。
+
+**AWS Bedrock Agentic Retrieval：Embedding 之上仍然需要检索规划。** AWS 在 MuSiQue 多跳问题集上的测试显示，相较单次检索，AgenticRetrieve 对 2-hop、3-hop、4-hop 问题的 Recall 增益分别为 22.8、31.9、37.3 个百分点；代价是多次模型调用、额外延迟和更高费用。AWS 因此建议短、明确的问题使用普通 Retrieve，把 AgenticRetrieve 留给多部分、比较型、探索型或跨知识库问题。它不是所有请求的默认路径。
+
+这些案例可以归纳为一个更成熟的企业架构：**Query Understanding / Expansion 负责理解和拆解问题；BM25 负责精确术语；Embedding 负责语义召回；Metadata / ACL 负责范围和权限；Graph 负责关系；Reranker 负责精排；Agent 负责根据证据缺口决定是否继续搜索。** 不同组件各司其职，任何一个都不能代替其他层。
+
+参考：[Amazon Finance regulatory inquiries](https://aws.amazon.com/blogs/machine-learning/how-amazon-finance-streamlines-regulatory-inquiries-by-using-generative-ai-on-aws/)；[IskayPet Managed Knowledge Bases](https://aws.amazon.com/blogs/machine-learning/how-iskaypet-unified-corporate-knowledge-with-amazon-bedrock-managed-knowledge-bases/)；[Novo Nordisk GraphRAG](https://aws.amazon.com/blogs/machine-learning/novo-nordisk-modernizes-manufacturing-process-documents-with-amazon-bedrock-agentcore/)；[AWS Agentic Retrieval](https://aws.amazon.com/blogs/machine-learning/agentic-retrieval-for-amazon-bedrock-managed-knowledge-base/)。
+
 ## 4. 不要把 Embedding、向量数据库和 OpenSearch 当成一个决策
 
 这三个东西解决的问题不同。
@@ -435,3 +526,16 @@ Answer with file paths / line references
 6. GitHub Copilot, [Researching with GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/research-with-copilot-cli)。关于使用 grep、glob 和 view 对代码仓库进行探索式研究。
 7. Zhang et al., [Exploring the Best Practices of Query Expansion with Large Language Models](https://aclanthology.org/2024.findings-emnlp.103/), EMNLP Findings 2024。关于多样化查询扩展、融合策略及其效果。
 8. Weller et al., [When do Generative Query and Document Expansions Fail?](https://aclanthology.org/2024.findings-eacl.134/), EACL Findings 2024。关于扩展可能带来收益，也可能引入噪声并损害强检索器排序的实证分析。
+
+
+9. Anthropic, [How Claude Code works in large codebases](https://claude.com/resources/articles/how-claude-code-works-in-large-codebases-best-practices-and-where-to-start), 2026-05-14。关于百万行级代码库、分层上下文、排除规则、LSP 和结构化搜索。
+10. OpenAI, [Codex Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide)。关于优先使用 rg / rg --files、专用文件工具和并行工具调用。
+11. Manus, [Context Engineering for AI Agents: Lessons from Building Manus](https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus), 2025-07-18。关于文件系统外部上下文、工具结果卸载、KV-cache 和上下文管理。
+12. Pi, [Pi coding-agent source](https://github.com/earendil-works/pi/tree/main/packages/coding-agent)。关于 minimal coding harness 和 read / write / edit / bash 默认工具。
+13. LangChain, [Context Engineering Starts with Retrieval](https://www.langchain.com/blog/context-engineering-starts-with-retrieval), 2026-10-23。关于 Deep Agents 的 glob / grep / 分页读取、大结果卸载和 subagent 委派。
+14. LangChain, [How agents can use filesystems for context engineering](https://www.langchain.com/blog/how-agents-can-use-filesystems-for-context-engineering), 2025-11-21。关于文件系统作为上下文工作区，以及代码和技术文档中语义检索的局限。
+15. Atlarix, [How We Deleted Our Retrieval Index and 5,246 Lines With It](https://www.atlarix.dev/blogs/how-we-deleted-our-retrieval-index)。关于索引维护成本、文件监听器开销和退回 grep / glob 的工程复盘。
+16. AWS, [How Amazon Finance streamlines regulatory inquiries](https://aws.amazon.com/blogs/machine-learning/how-amazon-finance-streamlines-regulatory-inquiries-by-using-generative-ai-on-aws/), 2026-05-12。关于最多五个 Query Expansion 变体、并行 Retrieve 和检索延迟优化。
+17. AWS, [How IskayPet unified corporate knowledge with Amazon Bedrock Managed Knowledge Bases](https://aws.amazon.com/blogs/machine-learning/how-iskaypet-unified-corporate-knowledge-with-amazon-bedrock-managed-knowledge-bases/), 2026-10-22。关于多语言 SharePoint、Hybrid Search、文档 ACL、候选数量控制和生产结果。
+18. AWS, [Novo Nordisk modernizes manufacturing process documents with Amazon Bedrock AgentCore](https://aws.amazon.com/blogs/machine-learning/novo-nordisk-modernizes-manufacturing-process-documents-with-amazon-bedrock-agentcore/), 2026-11-16。关于四百万份受控文档、GraphRAG、Hybrid Search、实体范围澄清和版本关系。
+19. AWS, [Agentic retrieval for Amazon Bedrock Managed Knowledge Base](https://aws.amazon.com/blogs/machine-learning/agentic-retrieval-for-amazon-bedrock-managed-knowledge-base/), 2026-07-23。关于 MuSiQue 多跳检索的 Recall 增益，以及 Agentic Retrieval 的延迟与成本权衡。
