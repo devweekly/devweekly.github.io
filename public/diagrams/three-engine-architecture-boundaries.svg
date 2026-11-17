@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="760" viewBox="0 0 1440 760" role="img" aria-labelledby="three-engine-architecture-boundaries-title three-engine-architecture-boundaries-desc"><title id="three-engine-architecture-boundaries-title">三种分析系统的架构边界</title><desc id="three-engine-architecture-boundaries-desc">Snowflake、Databricks 和 DuckDB 的计算、元数据与持久化边界对照。</desc><defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#65584D"/></marker>
+<marker id="arrow-accent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#8B5A2B"/></marker>
+<marker id="arrow-left" viewBox="0 0 10 10" refX="2" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 0 L0 5 L10 10z" fill="#65584D"/></marker>
+</defs><rect width="100%" height="100%" fill="#F9F6EF"/><style>
+text{font-family:'Geist','Noto Sans SC','Microsoft YaHei',system-ui,sans-serif;fill:#221C17}
+.eyebrow{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;letter-spacing:1.6px;fill:#75695F}
+.title{font-family:'Instrument Serif','Noto Serif SC',serif;font-size:31px;font-weight:400;fill:#221C17}
+.label{font-size:17px;font-weight:600}
+.sub{font-family:'Geist Mono','Noto Sans SC',monospace;font-size:12px;fill:#65584D}
+.tiny{font-family:'Geist Mono','Noto Sans SC',monospace;font-size:10px;fill:#75695F}
+.node{fill:#FFFEFA;stroke:#CFC5B8;stroke-width:1.2}
+.focus{fill:#F5E7D4;stroke:#8B5A2B;stroke-width:1.5}
+.zone{fill:#F1EDE4;stroke:#CFC5B8;stroke-width:1}
+.line{fill:none;stroke:#65584D;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#arrow)}
+.accent-line{fill:none;stroke:#8B5A2B;stroke-width:1.8;stroke-linecap:round;marker-end:url(#arrow-accent)}
+.dash{fill:none;stroke:#75695F;stroke-width:1.2;stroke-dasharray:5 4}
+.actor{fill:#FFFEFA;stroke:#CFC5B8;stroke-width:1.2}
+.activation{fill:#F1EDE4;stroke:#75695F;stroke-width:0.8}
+.msg-label{font-family:'Geist Mono','Noto Sans SC',monospace;font-size:11px;fill:#65584D}
+</style>
+<text x="56" y="54" class="eyebrow">SYSTEM ARCHITECTURE · COMPARISON</text><text x="56" y="96" class="title">同样执行 SQL，系统边界并不相同</text>
+<rect x="56" y="132" width="1328" height="170" rx="12" class="zone"/><text x="80" y="160" class="eyebrow">SNOWFLAKE · MANAGED ANALYTICS PLATFORM</text>
+<path d="M390 226 H510" class="line"/><path d="M830 226 H950" class="line"/>
+<rect x="92" y="188" width="298" height="82" rx="10" class="node"/><text x="241" y="220" text-anchor="middle" class="label">Cloud Services</text><text x="241" y="244" text-anchor="middle" class="sub">Metadata · Auth · Optimizer</text>
+<rect x="514" y="188" width="312" height="82" rx="10" class="focus"/><text x="670" y="220" text-anchor="middle" class="label">Virtual Warehouse</text><text x="670" y="244" text-anchor="middle" class="sub">MPP execution cluster</text>
+<rect x="954" y="188" width="350" height="82" rx="10" class="node"/><text x="1129" y="220" text-anchor="middle" class="label">Snowflake-managed storage</text><text x="1129" y="244" text-anchor="middle" class="sub">Columnar micro-partitions</text>
+<rect x="56" y="326" width="1328" height="170" rx="12" class="zone"/><text x="80" y="354" class="eyebrow">DATABRICKS · OPEN TABLE FORMAT + MANAGED COMPUTE</text>
+<path d="M390 420 H510" class="line"/><path d="M830 420 H950" class="line"/>
+<rect x="92" y="382" width="298" height="82" rx="10" class="node"/><text x="241" y="414" text-anchor="middle" class="label">Unity Catalog</text><text x="241" y="438" text-anchor="middle" class="sub">Governance · Discovery · Access</text>
+<rect x="514" y="382" width="312" height="82" rx="10" class="node"/><text x="670" y="414" text-anchor="middle" class="label">Spark / Photon</text><text x="670" y="438" text-anchor="middle" class="sub">Distributed execution</text>
+<rect x="954" y="382" width="350" height="82" rx="10" class="node"/><text x="1129" y="414" text-anchor="middle" class="label">Cloud object storage</text><text x="1129" y="438" text-anchor="middle" class="sub">Parquet + Delta transaction log</text>
+<rect x="56" y="520" width="1328" height="170" rx="12" class="zone"/><text x="80" y="548" class="eyebrow">DUCKDB · EMBEDDED / SINGLE-NODE DATABASE ENGINE</text>
+<path d="M390 614 H510" class="line"/><path d="M830 614 H950" class="line"/>
+<rect x="92" y="576" width="298" height="82" rx="10" class="node"/><text x="241" y="608" text-anchor="middle" class="label">Host application</text><text x="241" y="632" text-anchor="middle" class="sub">Python · R · Node · C/C++</text>
+<rect x="514" y="576" width="312" height="82" rx="10" class="focus"/><text x="670" y="608" text-anchor="middle" class="label">DuckDB engine</text><text x="670" y="632" text-anchor="middle" class="sub">Parser · Optimizer · Vectorized executor</text>
+<rect x="954" y="576" width="350" height="82" rx="10" class="node"/><text x="1129" y="608" text-anchor="middle" class="label">Local DB / external files</text><text x="1129" y="632" text-anchor="middle" class="sub">DuckDB storage · Parquet · lake formats</text>
+<text x="720" y="730" text-anchor="middle" class="tiny">图中是逻辑职责边界；实际部署、Catalog 提交模式和外部表支持取决于具体版本与配置</text></svg>
