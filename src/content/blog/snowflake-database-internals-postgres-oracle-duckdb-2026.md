@@ -280,7 +280,11 @@ Iceberg 因此具备快照、Schema 演进、并发提交控制和 Time Travel �
 
 ### 7.2 Delta Lake 也有事务日志和历史版本
 
-Delta Lake 通过事务日志管理数据文件集合及表版本，支持 ACID 事务、Schema 演进和历史版本查询。它与 Iceberg 的元数据组织方式不同，但都在解决同一类问题：对象存储上的一堆文件，如何被多个计算引擎可靠地当成一张表来读写。
+Delta Lake 使用带版本的 Parquet 文件保存数据，并通过事务日志记录每次提交对文件集合的增加和移除。它与 Iceberg 的元数据组织方式不同，但都在解决同一类问题：对象存储上的一组文件，如何被多个计算引擎可靠地当成一张表来读写。[Delta Lake FAQ](https://docs.delta.io/delta-faq/)
+
+Delta 的写入流程更具体地体现了乐观并发控制：先读取当前表版本和相关文件，写出新的数据文件，再检查自读取快照以来是否有其他事务提交了冲突变更；没有冲突才发布新版本，有冲突则失败并由调用方决定重试。Delta 文档把它概括为 Read、Write、Validate and Commit 三个阶段。[Delta Lake：Concurrency Control](https://docs.delta.io/concurrency-control/)
+
+这里还有一个经常被忽略的前提：Delta 的 ACID 保证依赖底层存储提供原子可见性、互斥创建和一致的目录列表等能力。不同对象存储的保证并不完全相同，Delta 通过 LogStore 等机制适配；例如官方文档对 S3 多集群并发写入就列出了额外配置要求。因此，“用了 Delta”不代表可以忽略底层存储和提交协调器的正确配置。[Delta Lake：Storage Configuration](https://docs.delta.io/delta-storage/)
 
 因此，下面这些能力并不是 Snowflake 独有的：
 
@@ -332,7 +336,9 @@ Oracle 的实现不同于 PostgreSQL。事务修改记录时会持有相应的�
 
 这里不能得出“Iceberg 没有 ACID”或“数据湖事务不可靠”的结论。Iceberg 可以提供强表级原子提交和明确的快照隔离语义；Delta Lake 也提供 ACID 表事务。真正的差别是事务实现的层次和目标：湖仓格式主要保证一张表的文件集合不会以半提交状态暴露给读者；传统 RDBMS 还要在同一个事务管理体系内处理行级锁、并发更新、约束、回滚和故障恢复。
 
-这也带来一个实际边界：不能因为 Iceberg 表支持事务，就默认它等同于 PostgreSQL 的 OLTP 表。跨多张 Iceberg 表的一致性事务、复杂外键约束、热点行更新和低延迟点写入，都需要单独核实具体引擎与 Catalog 是否支持，不能从“ACID”三个字直接推导出来。数据湖上的表格式是分析数据的事务层，不是自动替代完整数据库事务管理器。
+这也带来一个实际边界：不能因为 Iceberg 或 Delta 表支持事务，就默认它等同于 PostgreSQL 的 OLTP 表。默认的文件系统管理型 Delta 表以单表事务为边界；Delta 4.0.1 及以上还提供 Catalog-managed Tables，由 Catalog 协调提交并支持跨表事务，但这类表必须通过管理它的 Catalog 访问，不能再假设任意引擎都能直接按文件路径读写。[Delta Lake：Catalog-managed Tables](https://docs.delta.io/delta-catalog-managed-tables/)
+
+Iceberg 多表事务、复杂外键约束、热点行更新和低延迟点写入，也都需要单独核实具体引擎与 Catalog 是否支持，不能从“ACID”三个字直接推导出来。数据湖上的表格式是分析数据的事务层，不是自动替代完整数据库事务管理器。
 
 ## 8. DuckDB 和 Snowflake 差异大吗？
 
@@ -424,6 +430,9 @@ DuckDB 的执行能力可以很强，Quack 也增加了服务访问方式，但�
 ### Data Lake、Iceberg 与 DuckDB
 - [Apache Parquet File Format](https://parquet.apache.org/docs/file-format/)
 - [Apache Iceberg Table Specification](https://iceberg.apache.org/spec/) — Snapshot、Manifest、原子元数据提交与乐观并发控制
+- [Delta Lake Concurrency Control](https://docs.delta.io/concurrency-control/)
+- [Delta Lake Storage Configuration](https://docs.delta.io/delta-storage/)
+- [Delta Lake Catalog-managed Tables](https://docs.delta.io/delta-catalog-managed-tables/)
 - [DuckDB Internals](https://duckdb.org/docs/current/internals/overview)
 - [DuckDB Concurrency](https://duckdb.org/docs/2.0/connect/concurrency.html)
 - [DuckDB 2.0 Release](https://duckdb.org/2026/10/21/announcing-duckdb-200.html)
