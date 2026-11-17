@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1260" viewBox="0 0 1000 1260" role="img" aria-labelledby="title desc">
+<title id="title">Agentic Search 检索技术选型</title>
+<desc id="desc">先按数据类型选择 SQL、文件搜索或全文检索，再用 Agent 规划查询和检查证据。只有词法检索与查询扩展仍有语义召回缺口时才试点 Embedding。是否部署独立搜索平台另行判断。</desc>
+<style>
+text{font-family:Inter,"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;fill:#202733}
+.h1{font-size:30px;font-weight:700}.lead{font-size:15px;fill:#596579}.label{font-size:18px;font-weight:650}.body{font-size:14px;fill:#596579}.small{font-size:12px;fill:#687386}.tag{font-size:12px;font-weight:700;letter-spacing:1px;fill:#596579}
+.node{fill:#fff;stroke:#cbd2dc;stroke-width:1.6}.primary{fill:#f2f5f9;stroke:#8a9bb1;stroke-width:1.8}.accent{fill:#fff7ed;stroke:#d97732;stroke-width:1.8}.good{fill:#f0f6f2;stroke:#7b9b86;stroke-width:1.8}.dark{fill:#263445;stroke:#263445}.darktext{fill:#fff;font-size:17px;font-weight:650}
+.line{fill:none;stroke:#778397;stroke-width:1.8}.lineA{fill:none;stroke:#c46a2e;stroke-width:2}.yesno{font-size:13px;font-weight:700;fill:#596579}
+</style>
+<rect width="1000" height="1260" fill="#fff"/>
+<text x="64" y="66" class="tag">RETRIEVAL · PRACTICAL DECISION</text>
+<text x="64" y="112" class="h1">先选对检索方式，再决定要不要加索引</text>
+<text x="64" y="145" class="lead">Agentic Search 是运行时的搜索与取证方式，不等于 RAG，也不要求默认使用 Embedding。</text>
+
+<rect x="330" y="185" width="340" height="66" rx="8" class="dark"/>
+<text x="500" y="225" text-anchor="middle" class="darktext">用户提出问题</text>
+<path d="M500 251V286" class="line"/>
+<path d="M500 286l-8 -10m8 10l8 -10" class="line"/>
+<rect x="230" y="290" width="540" height="94" rx="8" class="primary"/>
+<text x="500" y="323" text-anchor="middle" class="label">先判断数据类型和任务</text>
+<text x="500" y="351" text-anchor="middle" class="body">结构化数据 → SQL / API　·　代码 → LSP / grep　·　文档 → 全文检索 / 文件读取</text>
+<text x="500" y="372" text-anchor="middle" class="small">扫描件或图片先做 OCR / 内容解析；这一步本身不是 RAG</text>
+<path d="M500 384V425" class="line"/>
+<rect x="230" y="428" width="540" height="92" rx="8" class="node"/>
+<text x="500" y="462" text-anchor="middle" class="label">Agent 理解问题、拆分查询并执行搜索</text>
+<text x="500" y="491" text-anchor="middle" class="body">Query Expansion · grep / BM25 · SQL / API · LSP · 元数据过滤</text>
+<path d="M500 520V560" class="line"/>
+<polygon points="500,562 665,630 500,698 335,630" class="node"/>
+<text x="500" y="624" text-anchor="middle" class="label">是否找到回答问题所需的证据？</text>
+<text x="500" y="649" text-anchor="middle" class="small">检查相关文档、关键事实、版本和权限</text>
+
+<path d="M665 630H825V735" class="line"/>
+<text x="720" y="615" class="yesno">是</text>
+<rect x="690" y="738" width="270" height="78" rx="8" class="good"/>
+<text x="825" y="770" text-anchor="middle" class="label">使用现有检索方式</text>
+<text x="825" y="795" text-anchor="middle" class="body">整理证据并回答，不必加向量检索</text>
+
+<path d="M335 630H175V735" class="line"/>
+<text x="258" y="615" class="yesno">否</text>
+<rect x="40" y="738" width="270" height="88" rx="8" class="node"/>
+<text x="175" y="772" text-anchor="middle" class="label">先定位失败原因</text>
+<text x="175" y="798" text-anchor="middle" class="body">解析、目录、ACL、数据源或查询策略？</text>
+<path d="M175 826V866" class="line"/>
+<polygon points="175,868 325,930 175,992 25,930" class="node"/>
+<text x="175" y="923" text-anchor="middle" class="label">修复后仍有语义漏召回？</text>
+<text x="175" y="947" text-anchor="middle" class="small">相关内容存在，但词法查询找不到</text>
+
+<path d="M25 930H12V1050H150" class="line"/>
+<text x="30" y="914" class="yesno">否</text>
+<rect x="150" y="1018" width="300" height="76" rx="8" class="node"/>
+<text x="300" y="1049" text-anchor="middle" class="label">优化数据接入和查询策略</text>
+<text x="300" y="1074" text-anchor="middle" class="body">继续使用 SQL、全文或 Agent 搜索</text>
+
+<path d="M325 930H500V1018" class="lineA"/>
+<text x="345" y="914" class="yesno">是</text>
+<rect x="500" y="1018" width="450" height="76" rx="8" class="accent"/>
+<text x="725" y="1049" text-anchor="middle" class="label">用真实问题集比较 Lexical / Dense / Hybrid</text>
+<text x="725" y="1074" text-anchor="middle" class="body">只有 Recall 和任务成功率确有改善，才保留 Embedding</text>
+
+<rect x="64" y="1130" width="872" height="84" rx="8" class="primary"/>
+<text x="92" y="1164" class="label">独立搜索平台：单独做基础设施判断</text>
+<text x="92" y="1192" class="body">跨系统接入 · 并发与 P95 SLA · ACL 隔离 · 索引更新 · 监控运维</text>
+<text x="906" y="1180" text-anchor="end" class="small">满足平台需求时评估 OpenSearch；不代表所有数据都要向量化</text>
+</svg>
