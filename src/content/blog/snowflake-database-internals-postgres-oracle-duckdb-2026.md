@@ -228,7 +228,15 @@ Time Travel 是用户可以主动查询、克隆和恢复历史数据的窗口�
 
 两者也会影响存储费用。历史版本在 Time Travel 和 Fail-safe 生命周期中仍然占用存储空间。频繁更新大表、删除大量数据或长期保留历史版本，都可能增加存储成本。Zero-copy Clone 初始共享底层数据，但克隆表后续发生修改时会产生新的存储数据。[Snowflake：Storage Costs](https://docs.snowflake.com/en/user-guide/data-cdp-storage-costs)
 
-### 6.5 三种机制的差异
+### 6.5 Snowflake 有 ACID 事务，但不等于传统 OLTP 并发模型
+
+Snowflake 官方说明其事务具备 ACID 属性，但标准表当前只支持 READ COMMITTED 隔离级别。它与 PostgreSQL、Oracle 一样能保证事务内语句的提交与回滚边界，却不意味着它提供了相同的行级锁定和并发更新模型。Snowflake 的 `SELECT ... FOR UPDATE` 只支持 Hybrid Table；标准 Snowflake Table 不应被当作依赖行锁协调高频热点记录的 OLTP 表。[Snowflake Transactions](https://docs.snowflake.com/en/sql-reference/transactions) · [FOR UPDATE](https://docs.snowflake.com/en/sql-reference/constructs/for-update)
+
+另一个容易踩坑的地方是 DDL 的事务语义。Snowflake 的 DDL 语句各自作为独立事务执行；如果在显式事务中执行 DDL，活动事务会先被隐式提交，DDL 随后单独执行。因此，不能照搬 PostgreSQL 中“把一组 DDL 和 DML 放进一个事务，失败后整体回滚”的脚本假设。部署工具、迁移脚本和回滚方案需要按 Snowflake 的事务规则设计。
+
+这也解释了 Snowflake 与 PostgreSQL / Oracle 的定位差异：Snowflake 标准表有事务能力，但它的主要优化目标仍然是分析型查询和批量数据处理。对于需要频繁锁定单行、多个事务竞争更新同一业务记录、强约束在线写入的场景，仍应优先使用传统 OLTP 数据库。
+
+### 6.6 三种机制的差异
 
 | 机制 | 主要目的 | 历史版本从哪里来 | 用户能否任意查询历史 |
 | --- | --- | --- | --- |
