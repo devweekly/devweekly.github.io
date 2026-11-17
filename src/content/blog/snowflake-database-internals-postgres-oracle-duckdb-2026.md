@@ -103,7 +103,21 @@ PostgreSQL 的普通表采用 Heap 组织。表由固定大小的数据页组成
 
 这并不是说列存储对所有操作都更快。更新一行中的一个字段，可能涉及相应列段、压缩块和索引或元数据的重写；需要一次读取很多列的点查也未必有优势。因此，传统 OLTP 数据库通常以行存储作为默认布局，分析型数据库则倾向于列存储。
 
-### 3.3 Oracle 不是只能使用行存储
+### 3.3 把列式存储展开看：一批行如何变成多个列数据流
+
+下面把一张 6 行、4 列的交易表展开。逻辑层仍然是二维表；写入 Snowflake 标准表后，系统会把数据组织进 Micro-partition。每个微分区包含一组完整行，但在微分区内部，DATE、REGION、STATUS、AMOUNT 等列分别组织和压缩。
+
+![列式存储的内部结构](/diagrams/columnar-storage-internals.svg)
+
+完整图示：[HTML 交互查看](/diagrams/columnar-storage-internals.html)
+
+从物理布局看，关键变化不是“把表转成一条很长的列”，而是每个微分区中存在多个独立的列数据流。每个列流可以选择适合自身分布的编码与压缩方式。例如，REGION 只有 US、JP 两种值，可以用字典保存 `US → 0`、`JP → 1`，数据区只保存 `[0, 0, 1, 0, 1, 1]`；日期可能利用相邻值的规律做差分编码；数值列也可以选择适合其分布的压缩方式。这些是解释列存储的通用示例，Snowflake 没有公开其每种列、每个微分区实际选择的编码算法和完整二进制布局。
+
+微分区旁边还有一组列级元数据，例如最小值、最大值、不同值数量等。查询 `WHERE trade_date >= ...` 时，优化器先用这些统计信息判断哪些微分区可能匹配；确定需要读取某个微分区后，再只取查询引用的列。也就是说，先做横向的微分区裁剪，再做纵向的列裁剪。对于只读取日期和金额的聚合查询，客户名称、备注等列可以完全不读。
+
+Snowflake 官方确认了微分区中的列独立存储和独立压缩，以及按分区统计信息进行裁剪；但没有公开内部文件格式的完整规范。因此，图中编码和压缩块是用于理解的概念模型，不应被视为 Snowflake 文件格式的逆向还原。[Snowflake：Understanding Table Structures](https://docs.snowflake.com/en/user-guide/tables-micro-partitions) · [Micro-partitions & Data Clustering](https://docs.snowflake.com/en/user-guide/tables-clustering-micropartitions)
+
+### 3.4 Oracle 不是只能使用行存储
 
 Oracle Database 的普通持久表数据块仍然以行式组织为主，但 Oracle Database In-Memory 可以在内存中维护一份列式副本。数据库缓冲区缓存保留行式数据，In-Memory Area 则保存列式数据；优化器可以根据查询类型选择合适的表示。[Oracle：In-Memory Column Store Architecture](https://docs.oracle.com/en/database/oracle/oracle-database/26/inmem/in-memory-column-store-architecture.html)
 
@@ -286,6 +300,39 @@ Delta Lake 通过事务日志管理数据文件集合及表版本，支持 ACID 
 Snowflake 支持 Apache Iceberg Table。它让 Snowflake 查询引擎能够访问由 Iceberg 元数据管理、存放在外部云存储中的数据。这样企业可以保留开放数据格式，让其他兼容引擎也能访问数据，而不必把所有数据都转换成 Snowflake 原生表。
 
 但这也意味着 Iceberg Table 与 Snowflake 原生表的存储和生命周期管理并不完全相同。原生表的内部数据布局、微分区和历史版本由 Snowflake 管理；Iceberg 表的数据文件和元数据位于外部存储，表状态由 Iceberg 规范和相应 Catalog 管理。使用时应明确谁拥有 Catalog、谁负责提交、哪些引擎可以写入，以及权限与维护任务在哪里执行。[Snowflake：Iceberg Tables](https://docs.snowflake.com/en/user-guide/tables-iceberg)
+
+### 7.4 湖仓表的 Transaction 与 PostgreSQL / Oracle 有什么本质区别？
+
+先把“数据湖里的普通表”说清楚。如果它只是一个目录，下面放着若干 Parquet 文件，那么它并没有自动获得数据库事务能力。Parquet 定义的是文件内部如何存储列数据，不定义多个文件如何作为一张表一起提交。一个写入任务可能先写出三个新文件，再更新某个目录或清单；如果没有表格式、Catalog 或外部协调协议，读者可能看到新旧文件混杂的状态，两个写入者也可能互相覆盖或留下重复数据。对象存储的单个对象写入成功，不等于一组对象具备原子提交能力。
+
+Iceberg 和 Delta Lake 正是补上这一层。它们不把每一行都变成一个带锁的数据库记录，而是把表当前包含哪些数据文件、删除文件和 Schema 信息，组织成一个有版本的快照或事务日志。写入者先在对象存储中生成新的数据文件，再构建新的元数据；最后通过 Catalog 的原子 compare-and-swap，或事务日志的原子提交机制，发布一个新的表版本。提交前写出的文件还不是当前表快照的一部分；提交成功后，新读者看到新快照，已经开始读取的读者仍可以沿用之前固定的快照。
+
+![湖仓表格式与传统数据库事务流程](/diagrams/lakehouse-vs-rdbms-transaction-flow.svg)
+
+完整图示：[HTML 交互查看](/diagrams/lakehouse-vs-rdbms-transaction-flow.html)
+
+Iceberg 规范明确描述了这种乐观并发提交：写入者基于当前元数据版本构建新版本，提交时原子替换元数据指针；如果基础版本已经变化，写入者需要重新验证、重试，或者报告冲突。Snapshot 由 Manifest 和数据文件组成，读者通过当时读取的元数据定位一组一致的数据文件。[Apache Iceberg Specification：Snapshots and Optimistic Concurrency](https://iceberg.apache.org/spec/)
+
+Delta Lake 的组织方式不同：它以事务日志记录每个版本对数据文件集合的添加和移除，读者根据日志构建某一版本的表状态。它与 Iceberg 都提供表级提交边界，但不能把两者的日志结构、冲突检测和隔离保证当成完全相同的实现。具体行为还取决于使用的 Catalog、存储系统、引擎版本和并发写入配置。
+
+PostgreSQL 和 Oracle 的事务边界则更深入到数据库存储引擎内部。PostgreSQL 更新一行时会产生新的 Tuple 版本，并通过 WAL 记录需要恢复的变更；事务提交时写入 Commit Record，之后由 MVCC Snapshot 决定其他事务是否能看到新版本。旧版本在不再被有效快照需要时才可由 VACUUM 回收。WAL 主要负责崩溃恢复与持久性，MVCC 负责版本可见性，两者不是同一个机制。[PostgreSQL：WAL](https://www.postgresql.org/docs/current/wal-intro.html) · [PostgreSQL：MVCC](https://www.postgresql.org/docs/current/mvcc-intro.html)
+
+Oracle 的实现不同于 PostgreSQL。修改数据块时，Oracle 生成 Undo 信息以支持回滚和一致性读，同时生成 Redo 记录用于崩溃恢复。事务提交时分配 SCN，并将包含提交信息的 Redo 写入 Online Redo Log；读操作依据查询开始时的 SCN，必要时使用 Undo 重建一致性读所需的旧版本。[Oracle：Transactions and SCNs](https://docs.oracle.com/en/database/oracle/oracle-database/21/cncpt/transactions.html) · [Oracle：Data Concurrency and Consistency](https://docs.oracle.com/en/database/oracle/oracle-database/21/cncpt/data-concurrency-and-consistency.html)
+
+因此，湖仓表格式与传统数据库的差异可以归纳为三个方面：
+
+| 比较点 | Iceberg / Delta Lake | PostgreSQL / Oracle |
+| --- | --- | --- |
+| 事务提交对象 | 一组数据文件对应的表快照 / 日志版本 | 事务修改的记录、索引和数据库内部状态 |
+| 并发协调 | 以乐观提交、元数据版本冲突检测为核心；具体隔离语义依实现和配置 | 数据库事务管理器协调锁、版本可见性和提交顺序 |
+| 历史版本 | 保留旧 Snapshot / Log 版本，按策略清理文件 | PostgreSQL 保留 Tuple 版本；Oracle 使用 Undo 重建旧版本 |
+| 持久性与恢复 | 数据文件先写入，提交元数据版本；失败文件可能成为待清理的孤儿文件 | WAL 或 Redo 保障崩溃恢复；Undo 参与回滚和一致性读 |
+| 更新粒度 | 通常通过新增文件、删除文件标记或文件重写表达变更 | 面向行 / 数据块进行记录级修改与并发控制 |
+| 典型适用负载 | 分析、批量写入、流式摄取、多引擎共享数据 | 高频小事务、记录级更新、约束检查和在线业务 |
+
+这里不能得出“Iceberg 没有 ACID”或“数据湖事务不可靠”的结论。Iceberg 可以提供强表级原子提交和明确的快照隔离语义；Delta Lake 也提供 ACID 表事务。真正的差别是事务实现的层次和目标：湖仓格式主要保证一张表的文件集合不会以半提交状态暴露给读者；传统 RDBMS 还要在同一个事务管理体系内处理行级锁、并发更新、约束、回滚和故障恢复。
+
+这也带来一个实际边界：不能因为 Iceberg 表支持事务，就默认它等同于 PostgreSQL 的 OLTP 表。跨多张 Iceberg 表的一致性事务、复杂外键约束、热点行更新和低延迟点写入，都需要单独核实具体引擎与 Catalog 是否支持，不能从“ACID”三个字直接推导出来。数据湖上的表格式是分析数据的事务层，不是自动替代完整数据库事务管理器。
 
 ## 8. DuckDB 和 Snowflake 差异大吗？
 
