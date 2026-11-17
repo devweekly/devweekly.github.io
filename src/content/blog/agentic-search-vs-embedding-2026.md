@@ -31,6 +31,26 @@ Anthropic、OpenAI、Manus、Pi 和 LangChain 的公开实践都能看到这种�
 
 这篇文章讨论的不是“RAG 要不要用”，而是一个更具体的架构问题：**先把 Agentic Search 做到什么程度，才算合理地证明它不够用？接下来应该增加全文索引、Embedding、Chunking，还是一套独立搜索平台？**
 
+
+## 术语先说清楚
+
+这几个词经常一起出现，但不是一回事。尤其要注意：**Agentic Search 不等于 RAG，也不要求一定使用 Embedding。**
+
+| 术语 | 这里指什么 | 是否必须使用向量检索 |
+| --- | --- | --- |
+| Agentic Search（Agent 主导的搜索） | 本文用它描述一种运行时搜索方式：Agent 理解问题、规划查询、调用搜索工具、读取结果，再根据证据决定是否继续查。它是工程模式，不是某个固定产品或唯一标准协议 | 否。可以只用 grep、全文检索、SQL、API 或 LSP |
+| RAG（Retrieval-Augmented Generation，检索增强生成） | 先从外部数据源检索相关内容，再把结果交给模型生成答案的系统模式 | 否。检索可以是 SQL、BM25、文件搜索、向量检索或它们的组合 |
+| Embedding（嵌入向量） | 把文本或其他内容编码成数值向量，使系统可以按向量距离或相似度查找内容 | 是，使用 Embedding 做相似度检索时需要向量索引；但不代表整个系统必须是 RAG |
+| Dense Retrieval（稠密检索） | 用查询和文档的稠密向量表示进行检索。通常先计算 Embedding，再用向量近邻搜索找候选内容 | 通常需要 Embedding 和向量索引 |
+| Sparse Retrieval（稀疏检索） | 以词项为基础建立稀疏表示或倒排索引，典型方法是 BM25 | 否 |
+| BM25 | 一种成熟的词法相关性排序算法，会考虑查询词是否出现、出现频率和文档长度等因素 | 否 |
+| Hybrid Search（混合检索） | 将 BM25 等词法检索与 Dense Retrieval 等语义检索结合，再融合候选结果 | 只有其中的 Dense 部分使用 Embedding |
+| Chunking（分块） | 把长文档拆成较小的检索或处理单元，并保留标题、页码、版本等上下文信息 | 否。分块可用于全文索引、摘要、批处理或向量检索，不是 Embedding 的专属步骤 |
+| Reranking（重排序） | 对初步召回的候选内容再次评分和排序，优先呈现更相关的结果 | 否。可以对 BM25、向量或混合检索结果重排 |
+| OpenSearch | 可承载倒排索引、BM25、向量索引、混合检索和过滤等能力的搜索平台 | 否。可以只用它的全文检索能力 |
+
+“Agentic Search”在业界文章中的用法并不完全统一。本文采用的是上表这个操作性定义。Anthropic 的 Just-in-time Context 讨论了 Agent 在需要时通过工具取回外部上下文；这能解释本文所说的运行时搜索思路，但不能据此说 Anthropic 给出了一个必须包含某种检索引擎的标准定义。RAG 也只是“检索后再生成”的系统模式，检索端并没有规定必须使用向量数据库。
+
 ## 1. Agentic Search 为什么经常已经够用
 
 假设用户提出一个开发任务：
@@ -179,13 +199,24 @@ Agent 可以拆成现金管理、流动性风险、资产变现、赎回压力�
 
 参考：[Exploring the Best Practices of Query Expansion with Large Language Models (EMNLP Findings 2024)](https://aclanthology.org/2024.findings-emnlp.103/)；[When do Generative Query and Document Expansions Fail? (EACL Findings 2024)](https://aclanthology.org/2024.findings-eacl.134/)。
 
+
+举一个更具体的例子。假设用户问：
+
+> 如果一家托管服务商进入破产程序，客户资产如何避免被当作服务商自己的资产处理？
+
+资料里可能没有“托管服务商破产”这几个字。相关内容分散在不同章节，标题和正文使用的却是“客户资产隔离”“独立托管账户”“破产隔离安排”“资产返还机制”等表述。直接搜索原句，可能一个结果也没有。
+
+Agent 可以先把问题拆成这些概念和检索表达，分别做词法查询；如果文档仍然没有共同词项，Dense Retrieval 才可能把“托管服务商进入破产程序”和描述资产隔离安排的段落召回到一起。另一个例子是用户问“员工离职后，怎样确保他不能继续访问内部系统”，制度文件可能写的是“身份生命周期管理”“账号停用”“权限回收”或 “de-provisioning”。这里先扩展这些明确的业务术语通常就能解决；只有当表达差异更隐晦、查询扩展仍漏掉相关内容时，Embedding 才显示出额外价值。
+
+这就是语义召回缺口：不是“原句没搜到”，而是**相关证据确实存在，查询扩展和词法检索仍然找不到，而向量检索能稳定补回这些证据**。是否存在这个缺口，要用真实语料和标注过的问题验证。
+
 ## 5. AWS 的案例说明了什么
 
 AWS 的企业案例很有参考价值，因为它们展示的不是单纯的向量相似度，而是查询扩展、混合检索、权限过滤、候选控制和多跳检索如何组合。
 
 **Amazon Finance：先扩展查询，再并行检索。** Amazon FinTech 团队处理数千份历史监管问询材料，来源包括 PDF、PPT、Word 和 CSV。方案采用 Bedrock Knowledge Bases 和 OpenSearch Serverless，并使用层级 Chunking。查询阶段先让 Claude 3.5 Haiku 生成最多五个查询变体，再并行调用 Retrieve API。AWS 文章报告，这样把原本顺序执行约 10 秒的检索过程缩短到 2 秒以内。
 
-这个案例说明，即使采用 Embedding，原始问题也不应该被当作唯一查询；查询规划和并行执行仍然影响检索效果与延迟。
+这个案例的做法很直接：用户只问一次，系统先让模型改写出几种检索表达，再并行查询，而不是只拿用户原句查一次。原因是同一件监管事项在历史材料里可能有不同写法；多组查询能增加命中机会，并行执行则减少等待时间。Embedding 并没有替代这一步查询规划。
 
 **IskayPet：多语言企业知识库需要的不只是向量。** IskayPet 的知识分散在数百份 SharePoint 文档中，涉及四种语言、三个国家和多个业务域。方案使用 Bedrock Managed Knowledge Bases 的 BM25 + Semantic Hybrid Search、Reranking 和文档级权限过滤。查询先取 25 个 passages，去重后最多将 15 个放入 Prompt。AWS 报告，操作问题的查找时间从 3–5 分钟降到约 7 秒，并预计支持每月约 100,000 次查询。
 
@@ -197,7 +228,17 @@ AWS 的企业案例很有参考价值，因为它们展示的不是单纯的向�
 
 **AWS Agentic Retrieval：向量检索之上仍然需要 Agent。** AWS 在 MuSiQue 多跳问题集上的测试显示，相较单次检索，AgenticRetrieve 对 2-hop、3-hop 和 4-hop 问题的 Recall 分别提升 22.8、31.9 和 37.3 个百分点。代价是更多模型调用、更高延迟和费用。AWS 因此建议把普通 Retrieve 用于短而明确的问题，把 Agentic Retrieval 留给多部分、比较型、探索型或跨知识库问题。
 
-这些案例没有证明“所有企业都应该上 GraphRAG”或“所有检索都应该 Agentic”。它们展示的是不同组件各自解决的问题：BM25 找精确词项，Embedding 补语义召回，Metadata 和 ACL 控制范围，Graph 表达关系，Reranker 调整候选顺序，Agent 根据证据缺口决定是否继续检索。
+这些案例可以直接转化成选型判断：
+
+- 用户问的是文档编号、设备代码、法规条款号，或者必须命中某个固定术语时，先用 BM25 / 倒排索引；这类查询不需要为了“智能”而加 Embedding。
+- 用户描述的是一个现象、目的或业务问题，而资料用另一套词汇表达；在查询扩展仍漏召回时，增加 Embedding。若精确词和语义表达都重要，就比较 Hybrid Search。
+- 结果必须限定在某个国家、站点、产品、日期、版本或用户权限范围内时，用 Metadata Filter、ACL 和 Entitlement 做硬过滤，不能让向量相似度决定权限。
+- 问题需要沿着“设备—工艺—操作规程—变更记录”或“客户—账户—产品—交易”等关系追踪时，才考虑图查询或知识图谱；单纯找相似段落不需要 GraphRAG。
+- 初次召回已经找对大致材料，但候选顺序不理想、前几条不够相关时，再评估 Reranker。它改善排序，不负责找回完全没召回的内容。
+- 一个问题需要先找制度，再根据制度里的实体、引用或条件继续查另一批材料时，才值得让 Agent 做多轮 / 多跳检索。简单、明确的问题不必每次都启动 Agentic Retrieval。
+- 数据分散在多个系统，且需要统一接入、并发控制、稳定 P95、索引更新、监控和权限过滤时，才评估独立搜索平台。单纯想用 Embedding，不构成部署 OpenSearch 的理由。
+
+AWS 的案例也没有证明所有企业都应该上 GraphRAG 或 Agentic Retrieval。它们更有用的地方，是展示在具体业务约束下，哪些能力被组合起来，以及为什么需要这些能力。
 
 参考：[Amazon Finance regulatory inquiries](https://aws.amazon.com/blogs/machine-learning/how-amazon-finance-streamlines-regulatory-inquiries-by-using-generative-ai-on-aws/)；[IskayPet Managed Knowledge Bases](https://aws.amazon.com/blogs/machine-learning/how-iskaypet-unified-corporate-knowledge-with-amazon-bedrock-managed-knowledge-bases/)；[Novo Nordisk manufacturing documents](https://aws.amazon.com/blogs/machine-learning/novo-nordisk-modernizes-manufacturing-process-documents-with-amazon-bedrock-agentcore/)；[AWS Agentic Retrieval](https://aws.amazon.com/blogs/machine-learning/agentic-retrieval-for-amazon-bedrock-managed-knowledge-base/)。
 
@@ -227,6 +268,20 @@ AWS 的企业案例很有参考价值，因为它们展示的不是单纯的向�
 | 初筛后需要更准确排序 | Reranker | 不代表必须建设复杂 RAG Pipeline |
 
 金融问题经常同时需要精确匹配和语义发现。例如“找到集中度风险政策，并确认规则 INV-042 对单一发行人的限制”。“集中度风险”可能需要语义发现；规则编号和具体限制则需要精确检索。此时 Hybrid Search 有意义，但仍要用真实问题集验证融合策略是否改善结果。
+
+
+### 非结构化数据是否必须先做 RAG、Embedding 和 Chunking？
+
+不是。**“非结构化”描述的是数据没有固定的行列模型，不代表它不能被直接管理或搜索。** PDF、Word、邮件、网页、扫描件、图片和录音都属于常见的非结构化或半结构化内容，但处理方式取决于你要完成的任务。
+
+- 如果只是归档、权限管理和原文查看，文件可以直接放在对象存储或文档管理系统里，配上来源、所有者、版本和 ACL 元数据，不需要 RAG。
+- 如果要按文件名、标题、编号或正文关键词查找，先做文本抽取并建立全文索引即可；不需要 Embedding。
+- 如果 PDF 是扫描件，机器读不到文字，先做 OCR。OCR 是内容提取，不是 RAG，也不是 Embedding。
+- 如果要问长报告中的某个事实，可以先解析文档，再按页、标题或段落定位和读取原文。是否要 Chunking，取决于文档长度、检索粒度和上下文窗口。
+- 如果用户经常用与原文不同的表达寻找内容，而且词法检索和查询扩展确实漏召回，才增加 Embedding。
+- 如果问题还要求把检索结果组织成带引用的答案，才需要把检索与生成组合成 RAG 应用。
+
+所以，常见的文档处理链路可能是“文件存储 → 文本抽取 / OCR → 元数据和全文索引”，也可能是“解析 → 结构化存储 → SQL/API”，只有一部分场景需要继续做 Chunking、Embedding 和 RAG。即使采用 RAG，也不意味着所有字段都要向量化；文档版本、日期、业务域和权限通常应该作为元数据单独处理。
 
 ## 7. 用真实问题决定是否升级
 
@@ -279,13 +334,32 @@ AWS 的企业案例很有参考价值，因为它们展示的不是单纯的向�
 
 因此，企业更需要一个检索路由层：Agent 根据任务选择 SQL、文件搜索、BM25、Embedding 或图查询；检索服务负责授权、过滤、排序和证据定位；LLM 负责理解问题、安排搜索并综合证据。它不应该是一个试图用向量库包办所有数据访问的系统。
 
+
+### 按问题选工具：什么时候用什么
+
+| 你的实际情况 | 首选方案 | 什么时候再升级 |
+| --- | --- | --- |
+| 数据有明确字段，例如持仓、价格、交易状态、客户或账户属性 | SQL / 业务 API | 只有需要搜索相关制度或解释材料时，才增加文档检索 |
+| 找函数名、错误码、政策编号、合同条款号、产品代码 | grep / rg 或 BM25 | 查询量、数据源和 SLA 超出本地工具能力时，再建全文索引 |
+| 代码库需要找定义、引用、调用链 | LSP / AST / Tree-sitter | 不要用 Embedding 代替符号导航 |
+| 文档数量不大，目录清楚，查询不频繁 | 文件搜索 + Agent 按需读取 | 先看搜索覆盖率和工具调用成本，不要先建索引 |
+| 文档很多，反复做精确全文查询，需要过滤、排序和并发 | BM25 / 倒排索引 | 多来源、稳定 SLA、权限隔离和运维需求出现时，评估 OpenSearch |
+| 用户说法与文档用词不同，查询扩展仍找不到相关证据 | Embedding / Dense Retrieval | 用真实问题集对比 lexical、dense 和 hybrid |
+| 精确编号与自然语言语义都重要 | Hybrid Search | 用 Recall@K、nDCG 和任务成功率验证融合收益 |
+| 初筛结果相关，但排序不够好 | Reranker | 只有候选质量改善能覆盖额外延迟和成本时才保留 |
+| 需要沿实体关系跨多个文档或系统追踪 | 图查询 / 知识图谱，必要时结合检索 | 关系查询确实比元数据过滤和普通检索更合适时再建设 |
+| 扫描 PDF、图片、图表或录音中没有可搜索文本 | OCR / 文档解析 / 多模态提取 | 提取后再按任务决定全文检索、结构化查询或向量检索 |
+| 问题需要连续查多个来源、根据中间证据决定下一步 | Agentic Search / Agentic Retrieval | 简单问题仍走单次检索，避免把多轮 Agent 变成默认开销 |
+
+这张表的顺序很重要：先看数据是什么、问题要找什么，再选检索方式；不要先选一个 RAG 技术栈，再把所有数据塞进去。
+
 ## 9. 决策顺序
 
 下图把前面的判断收敛成一条实际选型路径：先理解问题，再利用 Agentic Search；搜索失败时先诊断原因，确认是语义召回缺口后再引入 Embedding。OpenSearch 则单独根据平台需求评估。
 
-<iframe src="/diagrams/agentic-search-decision-2026.html" title="Agentic Search 与 Embedding 的检索决策树" width="100%" height="1120" loading="lazy" style="border:0;max-width:100%;"></iframe>
+<img src="/diagrams/agentic-search-decision-2026.svg" alt="Agentic Search、Embedding 与独立搜索平台的决策流程图" width="100%" loading="lazy" />
 
-<small>图：Agentic Search、Embedding 与独立搜索平台的决策顺序。<a href="/diagrams/agentic-search-decision-2026.html">单独打开图表</a>。</small>
+<small>图：先检查数据和查询问题，再决定是否需要 Embedding；搜索平台是独立的基础设施决策。</small>
 
 最后可以归结为三条：
 
