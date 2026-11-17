@@ -151,7 +151,7 @@ Cortex Search 的价值在于可以从 Snowflake 中的 SQL 查询定义检索�
 
 **Instacart：PostgreSQL 全文检索与 pgvector 组合。** Instacart 在 2025 年公开介绍了其搜索基础设施现代化过程。团队原本已经通过 PostgreSQL 提供全文检索，因此评估 pgvector 时，考虑的是把 embedding 检索纳入已有 Postgres 搜索体系，减少数据重复和额外维护，并利用 PostgreSQL 中实时商品可用性信息做过滤。其方案把 pgvector 的向量召回与 PostgreSQL 的全文检索排名结合起来。这是“关系数据和搜索数据靠得很近”时，使用 pgvector 的一个有代表性的工程案例。它证明了该路线在 Instacart 特定规模和工作负载下可行，不代表所有十亿级目录搜索都适合单个 PostgreSQL 集群。
 
-**Atlassian：把搜索能力提升为独立平台。** OpenSearch 在 2026 年公布的案例称，Atlassian 运行了 300 多个集群、超过 20 亿文档，并将 OpenSearch 用于支持 AI 搜索相关工作负载。案例提到，原有基于 PostgreSQL 的搜索在不断增长的 AI 需求下遇到扩展压力，随后转向基于 Kubernetes 的 OpenSearch 平台。这个案例可以说明：当搜索已经成为跨产品、跨团队的基础能力，独立搜索平台的价值会超过把所有检索继续留在业务数据库里的便利。公开案例没有提供足够细节来还原 Atlassian 所有内部数据路径，因此不应推断其所有 PostgreSQL 工作负载都被迁移。
+**Atlassian：把搜索能力提升为独立平台。** OpenSearch 在 2026 年公布的案例称，Atlassian 运行了 300 多个集群、超过 200 亿文档，并将 OpenSearch 用于支持 AI 搜索相关工作负载。案例提到，原有基于 PostgreSQL 的搜索在不断增长的 AI 需求下遇到扩展压力，随后转向基于 Kubernetes 的 OpenSearch 平台。这个案例可以说明：当搜索已经成为跨产品、跨团队的基础能力，独立搜索平台的价值会超过把所有检索继续留在业务数据库里的便利。公开案例没有提供足够细节来还原 Atlassian 所有内部数据路径，因此不应推断其所有 PostgreSQL 工作负载都被迁移。
 
 **LINE：OpenSearch 从日志平台扩展到 AI 检索基础设施。** OpenSearch 项目在 2025 年发布的案例材料描述了 LINE 的大规模 OpenSearch 平台，覆盖日志、监控、数据管道和实时搜索，并规划向向量检索、Hybrid Search 和 Agent 工作负载扩展。该案例反映的是平台化搜索路线：组织愿意投入专门的集群自动化和运维能力，以统一承载多类搜索与可观测性需求。具体规模和成果来自项目方发布的案例材料，属于厂商生态案例，不宜直接当作独立性能基准。
 
