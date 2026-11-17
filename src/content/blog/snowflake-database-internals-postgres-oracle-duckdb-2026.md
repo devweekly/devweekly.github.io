@@ -430,6 +430,7 @@ DuckDB 的执行能力可以很强，Quack 也增加了服务访问方式，但�
 ### Data Lake、Iceberg 与 DuckDB
 - [Apache Parquet File Format](https://parquet.apache.org/docs/file-format/)
 - [Apache Iceberg Table Specification](https://iceberg.apache.org/spec/) — Snapshot、Manifest、原子元数据提交与乐观并发控制
+- [Delta Lake FAQ](https://docs.delta.io/delta-faq/)
 - [Delta Lake Concurrency Control](https://docs.delta.io/concurrency-control/)
 - [Delta Lake Storage Configuration](https://docs.delta.io/delta-storage/)
 - [Delta Lake Catalog-managed Tables](https://docs.delta.io/delta-catalog-managed-tables/)
