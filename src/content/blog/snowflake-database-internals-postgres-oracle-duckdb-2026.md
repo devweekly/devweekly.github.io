@@ -244,7 +244,7 @@ Time Travel 是用户可以主动查询、克隆和恢复历史数据的窗口�
 
 ### 6.5 Snowflake 有 ACID 事务，但不等于传统 OLTP 并发模型
 
-Snowflake 官方说明其事务具备 ACID 属性，但标准表当前只支持 READ COMMITTED 隔离级别。它与 PostgreSQL、Oracle 一样能保证事务内语句的提交与回滚边界，却不意味着它提供了相同的行级锁定和并发更新模型。Snowflake 的 `SELECT ... FOR UPDATE` 只支持 Hybrid Table；标准 Snowflake Table 不应被当作依赖行锁协调高频热点记录的 OLTP 表。[Snowflake Transactions](https://docs.snowflake.com/en/sql-reference/transactions) · [FOR UPDATE](https://docs.snowflake.com/en/sql-reference/constructs/for-update)
+Snowflake 官方说明其事务具备 ACID 属性，但标准表当前只支持 READ COMMITTED 隔离级别。它与 PostgreSQL、Oracle 一样能保证事务内语句的提交与回滚边界，却不意味着它提供了相同的行级锁定和并发更新模型。标准表在修改资源时会获取资源锁；`UPDATE`、`DELETE` 和 `MERGE` 通常不能在同一张表上并行执行，`INSERT` / `COPY` 则经常可以并行。`SELECT ... FOR UPDATE` 只支持 Hybrid Table，Hybrid Table 才提供行级锁。因此，标准 Snowflake Table 不应被当作依赖行锁协调高频热点记录的 OLTP 表。[Snowflake Transactions](https://docs.snowflake.com/en/sql-reference/transactions) · [FOR UPDATE](https://docs.snowflake.com/en/sql-reference/constructs/for-update)
 
 另一个容易踩坑的地方是 DDL 的事务语义。Snowflake 的 DDL 语句各自作为独立事务执行；如果在显式事务中执行 DDL，活动事务会先被隐式提交，DDL 随后单独执行。因此，不能照搬 PostgreSQL 中“把一组 DDL 和 DML 放进一个事务，失败后整体回滚”的脚本假设。部署工具、迁移脚本和回滚方案需要按 Snowflake 的事务规则设计。
 
