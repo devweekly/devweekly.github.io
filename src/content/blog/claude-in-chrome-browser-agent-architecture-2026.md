@@ -82,7 +82,9 @@ VS Code 的浏览器会话有两个重要模式：
 
 这意味着 Copilot 并不是不能操作登录后的 Web 应用，而是默认不把用户已经打开的页面交给 Agent。用户必须显式共享页面。隔离默认值有利于隐私和并行任务，也意味着真实工作系统的自动化多一步授权。
 
-官方文档：[Use browser tools with agents](https://code.visualstudio.com/docs/agents/run/browser-tools)。
+这里还要把 VS Code 和 Copilot 分开看。VS Code 现在允许用户在 Copilot、Claude 和 Codex Agent Harness 之间选择；内置浏览器是 VS Code 提供的宿主工具，不应简单归类为 Copilot 独有能力。更准确的比较对象是「Claude in Chrome 扩展」与「VS Code 的集成浏览器及其会话授权模型」。这也意味着同一个 Claude 模型在不同 Harness 下，可能使用不同的浏览器工具和 Session 管理方式。
+
+官方文档：[Use browser tools with agents](https://code.visualstudio.com/docs/agents/run/browser-tools)；[Build with AI in VS Code](https://code.visualstudio.com/docs/agents/overview)。
 
 ### 2.2 Claude Code 的 Chrome 集成更接近真实浏览器协作
 
