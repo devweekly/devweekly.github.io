@@ -18,7 +18,7 @@ tags:
 
 # Snowflake、Databricks 与 DuckDB 的内部架构：存储、事务和查询执行
 
-Snowflake、Databricks 和 DuckDB 都能执行分析型 SQL，但它们代表三种不同的系统设计：托管式云数据平台、开放表格式上的分布式计算平台，以及嵌入式数据库引擎。初学者最容易记住的几个词是列式存储、Micro-partition、Time Travel、存算分离和 Virtual Warehouse。但这些词单独拿出来并不新鲜：Parquet 早就支持列式文件布局，PostgreSQL 和 Oracle 都有多版本并发控制，Iceberg 和 Delta Lake 也能提供快照与时间旅行，DuckDB 同样拥有列式执行和向量化查询。
+Snowflake、Databricks 和 DuckDB 都能执行分析型 SQL，但它们代表三种不同的系统设计：托管式云数据平台、开放表格式上的分布式计算平台，以及嵌入式数据库引擎。常见的技术关键词包括列式存储、Micro-partition、Time Travel、存算分离和 Virtual Warehouse。但这些词单独拿出来并不新鲜：Parquet 早就支持列式文件布局，PostgreSQL 和 Oracle 都有多版本并发控制，Iceberg 和 Delta Lake 也能提供快照与时间旅行，DuckDB 同样拥有列式执行和向量化查询。
 
 它们的差异不只在 SQL 功能，而在数据由谁保存、表版本由谁提交、查询计划在哪里运行，以及系统如何扩展。
 
@@ -37,9 +37,14 @@ PostgreSQL、Oracle 和 Snowflake 都是关系数据库系统，支持 SQL、事
 | PostgreSQL | 通用关系数据库 | Heap 行存储、B-tree 等索引、WAL、MVCC | OLTP、应用数据库，也可承担中小规模分析 |
 | Oracle Database | 企业级通用关系数据库 | 默认行式数据块、Undo/Redo、丰富的事务与恢复能力；可选 In-Memory 列存 | OLTP、复杂企业事务、混合业务与分析 |
 | Snowflake | 云原生分析数据平台 | 内部压缩列式格式、自动微分区、对象存储、独立 MPP Warehouse | 大规模扫描、数据整合、数仓、BI |
+| Databricks | Lakehouse 与数据/AI 平台 | 对象存储上的 Parquet + Delta/Iceberg，Spark/Photon 计算，Unity Catalog 治理 | 数据工程、湖仓分析、流批处理、AI/ML |
 | DuckDB | 嵌入式分析数据库引擎 | 单机优先、列式存储与向量化执行，可直接查询 Parquet 等文件 | 本地分析、数据处理、嵌入式分析、单机 ETL |
 
 这里先限定范围：本文讨论 Snowflake 的标准 Snowflake Table，不把 Hybrid Table 当作其标准表的存储实现来分析。Hybrid Table 有不同的行式存储和事务特征，适合另一类工作负载。Snowflake 的 Iceberg Table 也会单独讨论，因为它使用开放湖仓表格式，不能与 Snowflake 原生表的内部存储格式混为一谈。
+
+![Snowflake、Databricks 与 DuckDB 的架构边界](/diagrams/three-engine-architecture-boundaries.svg)
+
+完整图示：[HTML 交互查看](/diagrams/three-engine-architecture-boundaries.html)
 
 ## 2. 行存储与列存储：差异来自访问模式
 
@@ -123,7 +128,7 @@ Snowflake 曾公开披露其使用 FoundationDB 作为元数据存储。2018 年
 
 这个公开资料很有价值，因为它说明一个分析数据库并不意味着所有内部组件都采用分析型存储。Snowflake 的大规模事实数据适合列存储和对象存储；元数据却需要高频小事务。需要注意，这篇文章描述的是 2018 年公开的实现情况，不能据此推断今天所有内部服务仍然采用完全相同的组件和拓扑。
 
-### 3.4 Micro-partition：数据布局与裁剪：不是传统分区表的另一个名字
+### 3.4 Micro-partition：数据布局与裁剪
 
 Snowflake 的标准表会自动拆分为 Micro-partitions（微分区）。官方文档给出的典型大小是每个微分区 50–500 MB 未压缩数据；实际存储大小会因为压缩而更小。一个微分区包含一组完整行，但微分区内部的列是独立组织和压缩的。[Snowflake：Micro-partitions & Data Clustering](https://docs.snowflake.com/en/user-guide/tables-clustering-micropartitions)
 
@@ -133,7 +138,7 @@ Snowflake 的标准表会自动拆分为 Micro-partitions（微分区）。官�
 
 完整图示：[HTML 交互查看](/diagrams/snowflake-micro-partition-pruning.html)
 
-### 3.4 微分区元数据为什么重要
+### 3.5 微分区元数据为什么重要
 
 Snowflake 不只保存数据，还会为微分区记录列级统计信息，例如每列的最小值、最大值、不同值数量以及其他用于优化的数据。查询优化器可以先判断哪些微分区有可能满足过滤条件，再决定是否读取其中的数据。
 
@@ -151,7 +156,7 @@ GROUP BY instrument;
 
 它与传统数据库分区的区别在于，用户通常不需要先设计按月、按年或按地区的物理分区，也不需要自己维护大量分区 DDL。Snowflake 根据数据写入顺序自动创建微分区，并收集统计信息。用户仍然可以通过 Clustering Key 等机制改善数据聚集程度，但这属于进一步的物理优化，不是创建普通表的前置条件。
 
-### 3.5 自动分区不代表任何查询都能高效裁剪
+### 3.6 自动分区不代表任何查询都能高效裁剪
 
 微分区的统计信息只有在数据布局有利于过滤时才有价值。如果一张表按时间顺序持续写入，那么每个微分区的日期范围可能比较集中，按日期查询就容易排除大量微分区。如果数据持续以随机顺序写入，许多微分区的日期范围可能高度重叠。此时即使只查询某一个月，也可能需要读取很多微分区。
 
@@ -159,16 +164,13 @@ GROUP BY instrument;
 
 这也解释了为什么 Snowflake 提供 Clustering Information、Automatic Clustering 和 Query Profile 等能力。遇到慢查询时，不能只看 Warehouse 是否足够大，还应观察扫描了多少微分区、实际读取多少字节、过滤后剩余多少行，以及 Join 是否产生了数据膨胀。
 
-### 3.6 查询从 SQL 到 Warehouse
+### 3.7 查询从 SQL 到 Warehouse
 
-把前面的三层架构和微分区结合起来，一条查询大致经过以下过程：
+![Snowflake 查询生命周期](/diagrams/snowflake-query-lifecycle.svg)
 
-1. Cloud Services 完成认证、权限检查、SQL 解析和逻辑优化。
-2. 优化器读取表定义、微分区统计信息和相关元数据，生成执行计划。
-3. 查询被派发到指定 Virtual Warehouse。
-4. Warehouse 中的多个计算节点并行读取需要的微分区和列数据；本地缓存可能减少对象存储访问。
-5. 各节点执行过滤、Join、聚合等操作，并在需要时交换中间结果。
-6. 结果汇总并返回客户端，同时记录查询 ID、执行统计和资源消耗。
+完整图示：[HTML 交互查看](/diagrams/snowflake-query-lifecycle.html)
+
+Cloud Services 先完成身份与权限检查，解析 SQL，并结合表定义和微分区统计信息生成执行计划。计划随后被派发给指定的 Virtual Warehouse。Warehouse 节点并行读取需要的微分区和列数据，执行过滤、Join 与聚合；缓存未命中时才需要从对象存储读取数据。结果汇总后返回客户端，查询状态和执行统计由服务层记录。
 
 这里有两个常见误解。
 
@@ -176,7 +178,7 @@ GROUP BY instrument;
 
 第二个误解是“存算分离意味着计算可以无限横向扩展”。Warehouse 可以调整规模，也可以增加集群以处理并发，但查询仍受到数据分布、网络交换、Join 策略、内存、单查询并行度和服务配额的约束。增加 Warehouse 规模不保证所有 SQL 按比例加速。
 
-### 3.7 元数据事务与查询状态
+### 3.8 元数据事务与查询状态
 
 Snowflake 对元数据的处理有一个容易被忽略的特点：它需要数据库级事务能力，但访问模式与事实数据完全不同。表、用户、权限、会话、事务状态和查询状态属于小规模、高频读写，适合低延迟事务存储；分析数据则以压缩列式微分区保存在对象存储中。Snowflake 公开的 FoundationDB 工程文章说明，FoundationDB 曾承担其元数据存储职责。2026 年的 Execution Anchor 文章进一步介绍了查询状态提交的协调问题：同一查询的持久状态需要有明确的提交者，避免 Global Services 实例切换或并发时出现重复提交。公开文章展示的是部分设计，不是 Snowflake 全部内部拓扑。
 
@@ -572,9 +574,9 @@ DuckDB 把数据库核心做得轻量、可嵌入、易于组合。它不需要�
 
 ### 9.6 手把手教程、实验和代码练习
 
-前面的书籍和规范适合建立架构模型，但如果目标是理解系统内部行为，最好为每个系统安排一组可重复的实验。下面按“能实际操作什么”来选资料，而不是按课程数量堆链接。
+下面的资料按可操作程度排列。Snowflake 主要通过查询行为和 Profile 做黑盒分析；Databricks 可以直接检查 Delta 日志和 Spark 计划；DuckDB 则能继续追到源码。
 
-##### Snowflake：通过 Query Profile 观察闭源引擎
+#### Snowflake：通过 Query Profile 观察闭源引擎
 
 Snowflake 不开放原生数据库引擎源码，因此不存在像 DuckDB 或 BusTub 那样从头实现其存储引擎的官方课程。可行的方法是创建小规模、可控的数据集，改变数据分布和 SQL 写法，再从 Query Profile、查询历史和系统视图观察内部行为。
 
@@ -588,7 +590,7 @@ Snowflake 不开放原生数据库引擎源码，因此不存在像 DuckDB 或 B
 
 需要注意：Snowflake 的 Query Profile 是执行行为的可观察窗口，不是完整的内部实现说明。它能验证扫描、算子和资源消耗，却不能让用户直接看到微分区文件格式、Cloud Services 内部代码或 FoundationDB 的事务实现。
 
-##### Databricks：从 Notebook 一直追到 Delta Transaction Log
+#### Databricks：从 Notebook 一直追到 Delta Transaction Log
 
 Databricks 的实践重点是把 Spark 的执行计划和 Delta 的表事务分开观察。不要只完成一个 ETL Notebook 就认为理解了 Lakehouse。
 
@@ -608,7 +610,7 @@ Databricks 的实践重点是把 Spark 的执行计划和 Delta 的表事务分�
 
 如果要深入 Photon，公开资料主要是产品说明、技术演讲和执行行为分析；Databricks 并未开放 Photon 源码。应把它作为可观察的执行引擎研究，而不是期待通过 Spark 开源代码完整还原 Photon。
 
-##### DuckDB：从 SQL 使用者变成源码阅读者
+#### DuckDB：从 SQL 使用者变成源码阅读者
 
 DuckDB 最适合做从入门到内部实现的连续练习：先用 SQL 和 Python 建立执行直觉，再通过 EXPLAIN、Profiling 和源码追踪理解 Parser、Optimizer、执行算子与存储层。
 
@@ -627,7 +629,7 @@ DuckDB 最适合做从入门到内部实现的连续练习：先用 SQL 和 Pyth
 4. 读源码时从 SQL Parser、Binder、Logical Planner、Optimizer、Physical Planner 逐步进入执行算子，再追踪 Parquet Scan 和原生存储 Scan。每次只跟踪一条 SQL，记录计划节点与源码模块的对应关系。
 5. 用事务实验观察并发读写、冲突和回滚；再比较 DuckDB 原生数据库与外部 Delta/Iceberg 表的事务责任边界。
 
-##### 真正学习数据库内核：CMU BusTub 实现课程
+#### 真正学习数据库内核：CMU BusTub 实现课程
 
 如果希望不止理解三个产品，而是能判断其设计为什么这样实现，建议额外完成一门数据库内核实现课程。产品文档通常解释“系统提供什么”，但不会逐步训练如何实现 Buffer Pool、索引、执行算子和并发控制。
 
