@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650" role="img" aria-labelledby="title desc">
+<title id="title">Agent Harness 内的 Auto Router 架构</title>
+<desc id="desc">请求进入 Agent Harness，由 Router 读取任务、上下文、工具和预算，结合模型能力注册表选择模型；执行结果进入 Trace 与 Evaluation，反馈用于更新路由策略。</desc>
+<defs>
+ <marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#626B80"/></marker>
+ <marker id="b" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#8B603F"/></marker>
+</defs>
+<rect width="1200" height="650" fill="#EBEDF7"/>
+<text x="44" y="48" font-family="Geist,'Noto Sans SC',sans-serif" font-size="12" letter-spacing="1.8" fill="#747D91">AGENT RUNTIME · CONTROL &amp; EXECUTION</text>
+<text x="44" y="82" font-family="Geist,'Noto Sans SC',sans-serif" font-size="25" font-weight="650" fill="#32394D">Auto Router belongs in the Harness</text>
+<rect x="255" y="105" width="900" height="390" rx="16" fill="#32394D" fill-opacity=".025" stroke="#32394D" stroke-opacity=".16" stroke-dasharray="5 5"/>
+<rect x="274" y="97" width="142" height="18" rx="4" fill="#EBEDF7"/>
+<text x="345" y="110" text-anchor="middle" font-family="Geist,'Noto Sans SC',sans-serif" font-size="9" letter-spacing="1.2" fill="#747D91">AGENT HARNESS</text>
+<g fill="none" stroke="#626B80" stroke-width="1.6" marker-end="url(#a)" stroke-linecap="round" stroke-linejoin="round">
+ <path d="M220 190 H285"/>
+ <path d="M505 190 H570"/>
+ <path d="M780 190 H845"/>
+ <path d="M950 240 V285"/>
+ <path d="M950 360 V385"/>
+ <path d="M950 460 V485"/>
+ <path d="M845 535 H735 V430 H620"/>
+ <path d="M400 390 H215 V315"/>
+</g>
+<g fill="none" stroke="#8B603F" stroke-width="1.7" stroke-dasharray="5 4" marker-end="url(#b)" stroke-linecap="round" stroke-linejoin="round">
+ <path d="M125 360 V285 H670 V245"/>
+</g>
+<g font-family="Geist,'Noto Sans SC',sans-serif">
+ <rect x="40" y="145" width="180" height="90" rx="11" fill="#FFFFFF" stroke="#D5D9E4"/>
+ <rect x="55" y="158" width="60" height="17" rx="8" fill="#E7EBF4"/>
+ <text x="85" y="170" text-anchor="middle" font-size="8" font-weight="650" letter-spacing=".6" fill="#626B80">INPUT</text>
+ <text x="55" y="199" font-size="15" font-weight="650" fill="#32394D">User Request</text>
+ <text x="55" y="218" font-size="10" fill="#626B80">目标 · 约束 · 输入材料</text>
+
+ <rect x="285" y="145" width="220" height="90" rx="11" fill="#FFFFFF" stroke="#D5D9E4"/>
+ <rect x="300" y="158" width="73" height="17" rx="8" fill="#E6EFE9"/>
+ <text x="336.5" y="170" text-anchor="middle" font-size="8" font-weight="650" letter-spacing=".6" fill="#626B80">CONTEXT</text>
+ <text x="300" y="199" font-size="15" font-weight="650" fill="#32394D">Agent Harness</text>
+ <text x="300" y="218" font-size="10" fill="#626B80">Task · State · Tools · Policy</text>
+
+ <rect x="570" y="135" width="210" height="110" rx="11" fill="#F7EEE8" stroke="#8B603F" stroke-width="1.6"/>
+ <rect x="585" y="149" width="76" height="17" rx="8" fill="#EAD8CA"/>
+ <text x="623" y="161" text-anchor="middle" font-size="8" font-weight="650" letter-spacing=".6" fill="#76543D">DECISION</text>
+ <text x="585" y="193" font-size="16" font-weight="700" fill="#32394D">Model Router</text>
+ <text x="585" y="213" font-size="10" fill="#626B80">Rules · Classifier · Confidence</text>
+ <text x="585" y="229" font-size="10" fill="#626B80">Budget · Risk · Escalation</text>
+
+ <rect x="845" y="145" width="270" height="95" rx="11" fill="#FFFFFF" stroke="#D5D9E4"/>
+ <text x="865" y="174" font-size="14" font-weight="650" fill="#32394D">Execution Policy</text>
+ <text x="865" y="195" font-size="10" fill="#626B80">Allowlist · Context limit · Deadline</text>
+ <text x="865" y="213" font-size="10" fill="#626B80">Quality threshold · Max escalation</text>
+
+ <rect x="845" y="285" width="270" height="75" rx="10" fill="#FFFFFF" stroke="#D5D9E4"/>
+ <text x="865" y="315" font-size="14" font-weight="650" fill="#32394D">Fast · Haiku-class</text>
+ <text x="865" y="337" font-size="10" fill="#626B80">Extraction · Classification · Routine work</text>
+
+ <rect x="845" y="385" width="270" height="75" rx="10" fill="#FFFFFF" stroke="#D5D9E4"/>
+ <text x="865" y="415" font-size="14" font-weight="650" fill="#32394D">Balanced · Sonnet-class</text>
+ <text x="865" y="437" font-size="10" fill="#626B80">Implementation · Analysis · Tool use</text>
+
+ <rect x="845" y="485" width="270" height="75" rx="10" fill="#F7EEE8" stroke="#8B603F" stroke-width="1.3"/>
+ <text x="865" y="515" font-size="14" font-weight="650" fill="#32394D">Frontier · Opus-class</text>
+ <text x="865" y="537" font-size="10" fill="#626B80">Novel reasoning · High-impact decisions</text>
+
+ <rect x="400" y="350" width="220" height="95" rx="11" fill="#FFFFFF" stroke="#D5D9E4"/>
+ <text x="420" y="382" font-size="14" font-weight="650" fill="#32394D">Execute &amp; Verify</text>
+ <text x="420" y="404" font-size="10" fill="#626B80">Tool result · Tests · Quality checks</text>
+ <text x="420" y="422" font-size="10" fill="#626B80">Accept or escalate</text>
+
+ <rect x="40" y="360" width="180" height="90" rx="11" fill="#FFFFFF" stroke="#D5D9E4"/>
+ <text x="58" y="393" font-size="14" font-weight="650" fill="#32394D">Trace &amp; Eval</text>
+ <text x="58" y="415" font-size="10" fill="#626B80">Model · Cost · Latency</text>
+ <text x="58" y="432" font-size="10" fill="#626B80">Outcome · Feedback</text>
+ <text x="255" y="588" font-size="10" fill="#747D91">Solid: runtime decision and execution flow</text>
+ <line x1="255" y1="604" x2="295" y2="604" stroke="#626B80" stroke-width="1.5"/>
+ <text x="310" y="608" font-size="10" fill="#747D91">Dashed: evaluation feedback updates routing policy</text>
+</g>
+</svg>
