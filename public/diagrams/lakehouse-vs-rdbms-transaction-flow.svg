@@ -57,7 +57,7 @@ text{font-family:'Geist','Noto Sans SC',system-ui,sans-serif;fill:#221C17}
 <path d="M1094 420 H1116" class="line"/>
 <rect x="1120" y="364" width="236" height="112" rx="8" class="softgreen"/>
 <text x="1238" y="393" text-anchor="middle" class="label">读者固定 Snapshot</text><text x="1238" y="418" text-anchor="middle" class="sub">只读已提交文件集合</text><text x="1238" y="440" text-anchor="middle" class="micro">旧快照可继续被读取</text>
-<text x="282" y="495" class="tiny">原子边界是“表当前指向哪个快照 / 日志版本”，不是逐行锁定并原地更新 Parquet。</text>
+<text x="282" y="495" class="tiny">原子边界是表快照 / 日志版本；并发冲突在提交时校验，不靠逐行锁。</text>
 
 <!-- lane 3 RDBMS -->
 <rect x="56" y="536" width="1328" height="252" rx="12" class="zone"/>
@@ -71,7 +71,7 @@ text{font-family:'Geist','Noto Sans SC',system-ui,sans-serif;fill:#221C17}
 <text x="392" y="599" text-anchor="middle" class="label">修改记录</text>
 <text x="300" y="630" class="tiny">PostgreSQL</text><text x="300" y="650" class="micro">新 Tuple 版本</text><text x="300" y="669" class="micro">行锁 / MVCC</text>
 <line x1="300" y1="684" x2="484" y2="684" class="divider"/>
-<text x="300" y="707" class="tiny">Oracle</text><text x="300" y="726" class="micro">数据块修改 + Undo</text>
+<text x="300" y="707" class="tiny">Oracle</text><text x="300" y="726" class="micro">数据块修改 + 行锁</text>
 <path d="M502 657 H554" class="line"/>
 <rect x="558" y="570" width="244" height="174" rx="8" class="node"/>
 <text x="680" y="599" text-anchor="middle" class="label">持久化恢复日志</text>
