@@ -352,19 +352,22 @@ Copilot SDK 已经提供了两类可以直接利用的能力。
 推荐设计：
 
 ```ts
+const HAIKU_MODEL_ID = process.env.ROUTER_HAIKU_MODEL!;
+const SONNET_MODEL_ID = process.env.ROUTER_SONNET_MODEL!;
+
 const session = await client.createSession({
-  model: "claude-sonnet-5-5",
+  model: SONNET_MODEL_ID,
   customAgents: [
     {
       name: "research",
       description: "Document lookup and factual retrieval",
-      model: "claude-haiku-5-5",
+      model: HAIKU_MODEL_ID,
       prompt: "Research using available tools and return sourced findings."
     },
     {
       name: "architect",
       description: "Complex architecture and design decisions",
-      model: "claude-sonnet-5-5",
+      model: SONNET_MODEL_ID,
       prompt: "Analyze constraints, alternatives and trade-offs."
     }
   ]
