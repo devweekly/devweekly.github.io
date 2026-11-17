@@ -301,7 +301,7 @@ Snowflake 支持 Apache Iceberg Table。它让 Snowflake 查询引擎能够访�
 
 但这也意味着 Iceberg Table 与 Snowflake 原生表的存储和生命周期管理并不完全相同。原生表的内部数据布局、微分区和历史版本由 Snowflake 管理；Iceberg 表的数据文件和元数据位于外部存储，表状态由 Iceberg 规范和相应 Catalog 管理。使用时应明确谁拥有 Catalog、谁负责提交、哪些引擎可以写入，以及权限与维护任务在哪里执行。[Snowflake：Iceberg Tables](https://docs.snowflake.com/en/user-guide/tables-iceberg)
 
-### 7.4 湖仓表的 Transaction 与 PostgreSQL / Oracle 有什么本质区别？
+### 7.4 湖仓表的事务与 PostgreSQL / Oracle 有什么本质区别？
 
 先把“数据湖里的普通表”说清楚。如果它只是一个目录，下面放着若干 Parquet 文件，那么它并没有自动获得数据库事务能力。Parquet 定义的是文件内部如何存储列数据，不定义多个文件如何作为一张表一起提交。一个写入任务可能先写出三个新文件，再更新某个目录或清单；如果没有表格式、Catalog 或外部协调协议，读者可能看到新旧文件混杂的状态，两个写入者也可能互相覆盖或留下重复数据。对象存储的单个对象写入成功，不等于一组对象具备原子提交能力。
 
@@ -315,9 +315,9 @@ Iceberg 规范明确描述了这种乐观并发提交：写入者基于当前元
 
 Delta Lake 的组织方式不同：它以事务日志记录每个版本对数据文件集合的添加和移除，读者根据日志构建某一版本的表状态。它与 Iceberg 都提供表级提交边界，但不能把两者的日志结构、冲突检测和隔离保证当成完全相同的实现。具体行为还取决于使用的 Catalog、存储系统、引擎版本和并发写入配置。
 
-PostgreSQL 和 Oracle 的事务边界则更深入到数据库存储引擎内部。PostgreSQL 更新一行时会产生新的 Tuple 版本，并通过 WAL 记录需要恢复的变更；事务提交时写入 Commit Record，之后由 MVCC Snapshot 决定其他事务是否能看到新版本。旧版本在不再被有效快照需要时才可由 VACUUM 回收。WAL 主要负责崩溃恢复与持久性，MVCC 负责版本可见性，两者不是同一个机制。[PostgreSQL：WAL](https://www.postgresql.org/docs/current/wal-intro.html) · [PostgreSQL：MVCC](https://www.postgresql.org/docs/current/mvcc-intro.html)
+PostgreSQL 和 Oracle 的事务边界则更深入到数据库存储引擎内部。PostgreSQL 更新一行时会产生新的 Tuple 版本，并通过行锁协调冲突写入；WAL 记录需要恢复的变更。事务提交时写入 Commit Record，之后由 MVCC Snapshot 决定其他事务是否能看到新版本。默认同步提交配置下，提交确认前会等待相关 WAL 持久化；调整 `synchronous_commit` 可以改变这个延迟与持久性边界。旧版本在不再被有效快照需要时才可由 VACUUM 回收。WAL 主要负责崩溃恢复与持久性，MVCC 负责版本可见性，两者不是同一个机制。[PostgreSQL：WAL](https://www.postgresql.org/docs/current/wal-intro.html) · [PostgreSQL：MVCC](https://www.postgresql.org/docs/current/mvcc-intro.html)
 
-Oracle 的实现不同于 PostgreSQL。修改数据块时，Oracle 生成 Undo 信息以支持回滚和一致性读，同时生成 Redo 记录用于崩溃恢复。事务提交时分配 SCN，并将包含提交信息的 Redo 写入 Online Redo Log；读操作依据查询开始时的 SCN，必要时使用 Undo 重建一致性读所需的旧版本。[Oracle：Transactions and SCNs](https://docs.oracle.com/en/database/oracle/oracle-database/21/cncpt/transactions.html) · [Oracle：Data Concurrency and Consistency](https://docs.oracle.com/en/database/oracle/oracle-database/21/cncpt/data-concurrency-and-consistency.html)
+Oracle 的实现不同于 PostgreSQL。事务修改记录时会持有相应的行锁；修改数据块时，Oracle 生成 Undo 信息以支持回滚和一致性读，同时生成 Redo 记录用于崩溃恢复。事务提交时分配 SCN，并将包含提交信息的 Redo 写入 Online Redo Log；读操作依据查询开始时的 SCN，必要时使用 Undo 重建一致性读所需的旧版本。[Oracle：Transactions and SCNs](https://docs.oracle.com/en/database/oracle/oracle-database/21/cncpt/transactions.html) · [Oracle：Data Concurrency and Consistency](https://docs.oracle.com/en/database/oracle/oracle-database/21/cncpt/data-concurrency-and-consistency.html)
 
 因此，湖仓表格式与传统数据库的差异可以归纳为三个方面：
 
@@ -414,6 +414,7 @@ DuckDB 的执行能力可以很强，Quack 也增加了服务访问方式，但�
 ### PostgreSQL 与 Oracle
 - [PostgreSQL MVCC Introduction](https://www.postgresql.org/docs/current/mvcc-intro.html)
 - [PostgreSQL Write-Ahead Logging](https://www.postgresql.org/docs/current/wal-intro.html)
+- [PostgreSQL synchronous_commit](https://www.postgresql.org/docs/current/runtime-config-wal.html#GUC-SYNCHRONOUS-COMMIT)
 - [PostgreSQL Database Page Layout](https://www.postgresql.org/docs/current/storage-page-layout.html)
 - [Oracle Transactions and System Change Numbers](https://docs.oracle.com/en/database/oracle/oracle-database/21/cncpt/transactions.html)
 - [Oracle Data Concurrency and Consistency](https://docs.oracle.com/en/database/oracle/oracle-database/21/cncpt/data-concurrency-and-consistency.html)
