@@ -338,9 +338,7 @@ Spark 相关文档中仍保留 **Snowpark Submit** 这条批处理路径。它�
 
 ## 9. 容易混淆的第三个名字：Snowpark Connect for Apache Spark
 
-Snowpark Connect for Apache Spark 是另一个产品边界。它不是 Snowpark Python 的别名，也不意味着 Snowflake Warehouse 内部运行着与外部部署完全相同的 Spark Executor 集群。它通过 Spark Connect 协议提供客户端兼容层，常规执行路径由 Snowflake 引擎承接；如果采用 Snowpark Submit，则会用 SPCS compute pool 承载 cluster-mode 作业，这是一条单独的部署方式。
-
-它实现 Spark Connect 协议，让 PySpark/Spark Connect 客户端提交 Spark DataFrame 计划，由 Snowflake 端承接并把受支持的操作映射到 Snowflake 执行引擎。对已有 PySpark 代码而言，这提供了一条复用部分 DataFrame 逻辑的路径；但执行引擎已经不是 Apache Spark，因此兼容性和语义差异必须认真评估。
+Snowpark Connect for Apache Spark 是 Spark Connect 协议实现：PySpark/Spark Connect 客户端提交 DataFrame 计划，Snowflake 端承接后把受支持的操作映射到 Snowflake SQL。常规执行路径不需要外部 Spark Executor 集群；若采用 Snowpark Submit，可以把 cluster-mode 作业运行在 SPCS compute pool，这条批处理部署路径另需配置 compute pool。Snowpark Connect 因而提供部分代码复用，但执行引擎仍不是 Apache Spark，兼容性和语义差异必须评估。
 
 当前 Snowflake 文档列出的 Spark 版本支持范围是 Apache Spark 3.5；Spark 3.4 及更早版本、Spark 4.0 及更新版本不在该兼容范围内。不能因为本地 PySpark 已经升级到 4.x，就假设 Snowpark Connect 也能直接运行。
 
