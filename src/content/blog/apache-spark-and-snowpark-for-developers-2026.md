@@ -326,7 +326,7 @@ Snowpark Container Services（SPCS）是 Snowflake 管理的容器计算平台�
 
 Spark 相关文档中仍保留 **Snowpark Submit** 这条批处理路径。它以 Python CLI 提交 Python 脚本或 Scala/Java JAR，使用 SPCS compute pool 承载 Spark driver，并与 Warehouse 配合执行工作负载。因此，这条路径确实会要求配置 compute pool；但它不是所有 Snowpark Connect 工作负载的前置条件。Snowflake 对新的批处理工作负载推荐优先评估 Code Bundles，因为 Code Bundles 直接运行在 Warehouse compute 上，不需要另建 SPCS compute pool。
 
-“Bring your own container”描述的是 SPCS 的通用能力：开发者可以提交自己的 OCI 镜像和应用运行环境。**如果目标只是把受支持的 PySpark DataFrame 作业放到 Snowflake 执行，不应该先假定需要自己制作 Spark 容器镜像。** 先看 Snowpark Connect 的 Warehouse 路径；只有应用确实需要自定义容器运行时，或者选用 Snowpark Submit 的 SPCS 路径时，才需要处理 compute pool 和容器相关配置。
+“Bring your own container”描述的是 SPCS 的通用能力：开发者可以提交自己的 OCI 镜像和应用运行环境。**如果目标只是把受支持的 PySpark DataFrame 作业放到 Snowflake 执行，不需要先制作 Spark 容器镜像。** 优先看 Snowpark Connect 的 Warehouse 路径；如果选用 Snowpark Submit，则需要配置 SPCS compute pool，但用户提交的是 Python 脚本或 JAR，由 Snowpark Submit 负责部署作业运行环境，并不等于必须自行构建和维护 Spark Docker 镜像。只有在使用 SPCS 部署自定义服务或运行时，确实需要控制镜像内容时，才需要自己构建 OCI 镜像。
 
 ### 仍然可以把 Spark 留在 Snowflake 外面
 
@@ -335,6 +335,8 @@ Spark 相关文档中仍保留 **Snowpark Submit** 这条批处理路径。它�
 因此，“Spark 能否在 Snowflake 上运行”的答案是肯定的，但要先确定你说的是哪种形态：Spark Connector 是外部 Spark 访问 Snowflake；Snowpark Connect 是 Spark Connect 客户端连接 Snowflake 引擎；Code Bundles 是当前推荐的 Warehouse 批处理提交方式；Snowpark Submit 则利用 SPCS compute pool 提交 cluster-mode 作业。它们的资源模型、运维要求和兼容边界不同，不能都简称为“把 Spark 部署到 Snowflake”。
 
 官方文档：[Snowpark Connect for Apache Spark](https://docs.snowflake.com/en/developer-guide/snowpark-connect/snowpark-connect-apache-spark) · [Submit Spark jobs on Snowflake via Code Bundles](https://docs.snowflake.com/en/developer-guide/snowpark-connect/snowpark-connect-submit-code-bundle) · [Using Snowpark Submit](https://docs.snowflake.com/en/developer-guide/snowpark-connect/snowpark-connect-using-submit) · [Snowpark Container Services](https://docs.snowflake.com/en/developer-guide/snowpark-container-services/overview)
+
+## 9. 容易混淆的第三个名字：Snowpark Connect for Apache Spark
 
 Snowpark Connect for Apache Spark 是另一个产品边界。它不是 Snowpark Python 的别名，也不意味着 Snowflake Warehouse 内部运行着与外部部署完全相同的 Spark Executor 集群。它通过 Spark Connect 协议提供客户端兼容层，常规执行路径由 Snowflake 引擎承接；如果采用 Snowpark Submit，则会用 SPCS compute pool 承载 cluster-mode 作业，这是一条单独的部署方式。
 
