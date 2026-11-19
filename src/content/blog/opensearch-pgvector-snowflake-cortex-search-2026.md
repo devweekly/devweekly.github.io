@@ -109,9 +109,21 @@ Cortex Search 还有一个必须进入架构评审的权限边界：Search Servi
 
 OpenSearch 的文本检索和向量检索在一个专门的搜索引擎里协同工作。它的执行路径围绕分布式索引设计：协调节点把查询分发给相关 Shard，各 Shard 在自己的 Segment 上检索，再由协调节点合并结果。向量 ANN 索引也会与 Shard/Segment 的生命周期、内存和查询并发发生关系。这种设计能水平扩展，但集群和索引设计会成为长期运维工作。
 
+![OpenSearch 查询从协调节点分发到多个 Shard，在本地执行 BM25 与 ANN 召回，再合并并进入 Search Pipeline](/diagrams/opensearch-hybrid-query-internals.svg)
+
+*交互查看：[HTML 版本](/diagrams/opensearch-hybrid-query-internals.html)。*
+
 pgvector 的向量索引则属于 PostgreSQL 的索引访问路径。SQL 仍由 PostgreSQL Planner 和 Executor 负责，事务、MVCC、WAL、备份恢复和权限模型仍然是数据库的机制。HNSW 或 IVFFlat 只是新增的向量索引访问方式，不会自动获得独立搜索引擎的分布式检索和相关性调优能力。它的价值在于减少系统边界，而不是把搜索功能做得最多。
 
+![PostgreSQL Planner 和 Executor 协调 GIN 全文索引、pgvector ANN、SQL 关系过滤及候选结果融合](/diagrams/pgvector-hybrid-query-internals.svg)
+
+*交互查看：[HTML 版本](/diagrams/pgvector-hybrid-query-internals.html)。*
+
 Cortex Search 把内部索引实现和服务容量管理交给 Snowflake。用户主要定义数据源查询、搜索列、属性列、模型和刷新目标，通过服务接口检索。其代价是底层算法和索引生命周期的可控程度低于自建 OpenSearch/pgvector；收益是不用自己运营相应的检索节点和索引构建流程。对架构师来说，关键不是追问它是否也用了某个特定 ANN 算法，而是确认当前服务能否满足自己的过滤、延迟、刷新、权限和成本要求。没有公开承诺或可验证依据的内部实现细节，不应靠猜测补齐。
+
+![Cortex Search 将源查询刷新与在线 Search Service 分离，索引构建使用 Warehouse，在线请求使用托管 Serving Compute](/diagrams/cortex-search-index-lifecycle.svg)
+
+*交互查看：[HTML 版本](/diagrams/cortex-search-index-lifecycle.html)。*
 
 ## 四、结构化数据和非结构化数据放在一起：真正考验的是数据链路
 
@@ -131,6 +143,10 @@ Cortex Search 把内部索引实现和服务容量管理交给 Snowflake。用�
 | 检索投影层 | 文档 chunk、embedding、关键词字段、必要的元数据副本 | OpenSearch、pgvector 或 Cortex Search | 低延迟召回和相关性排序 |
 
 内容处理层负责把 S3 中的原件变成可检索的数据：从对象存储读取文件，执行解析/OCR、表格与版面抽取、清洗、去重和 chunking，生成 embedding，并把 chunk 文本、向量和必要元数据写入目标检索系统。原件本身仍留在 S3，检索结果保存 S3 object key / URI、页码、段落位置等引用信息，供授权后的应用按需取回原文或片段。
+
+![文档从对象存储进入解析和切片流水线，再分别生成 OpenSearch、PostgreSQL 与 Snowflake 的检索投影](/diagrams/document-ingestion-indexing-flow.svg)
+
+*交互查看：[HTML 版本](/diagrams/document-ingestion-indexing-flow.html)。*
 
 检索引擎里保存的结构化字段，通常是为了过滤、排序和返回结果而复制的**检索投影**，并不是新的权威业务数据。它应该带有稳定的 source_id、document_id、entity_id、version、updated_at 等标识，可以回到 S3 中的原始内容和权威业务表。
 
@@ -155,6 +171,10 @@ Cortex Search 把内部索引实现和服务容量管理交给 Snowflake。用�
 6. **返回证据。** 返回 chunk 正文、页码、文档版本、来源链接和必要的结构化属性，供 Agent 生成带引用的回答。
 
 一个很重要的设计点：如果用户的问题本质上是“某个客户当前持有哪些产品、总敞口是多少”，这是结构化分析问题，应该走 SQL/业务查询；如果问题是“这些产品的风险披露文件中如何描述流动性风险”，才需要文档检索；如果问题同时包含两者，则由编排层分别执行，再按实体和时间范围关联结果。不要把 SQL 分析硬塞进向量搜索，也不要让文档搜索替代精确聚合。
+
+![检索请求先执行身份和授权判断，再查询后端、回源校验版本，最后返回带来源的证据](/diagrams/retrieval-request-sequence.svg)
+
+*交互查看：[HTML 版本](/diagrams/retrieval-request-sequence.html)。*
 
 ### 三种产品面对这种混合数据时，链路有什么不同？
 
@@ -276,6 +296,10 @@ Cortex Search 的价值在于可以从 Snowflake 中的 SQL 查询定义检索�
 
 **关键是统一接口，不是统一存储。** 统一接口应当统一请求上下文、身份、过滤条件、结果结构、来源标识、分数含义和审计字段；不应该为了接口一致，把三个后端的能力压缩成最低公分母。OpenSearch 可以返回多路召回与排序信息，pgvector 可以返回 SQL 过滤和相似度结果，Cortex Search 可以返回其服务结果及属性。适配层需要保留这些来源信息，便于后续 reranking、评估和审计。
 
+![企业混合检索参考架构：Retrieval API 在策略约束下路由三个后端，并从各自权威数据源构建独立投影](/diagrams/enterprise-retrieval-reference-architecture.svg)
+
+*交互查看：[HTML 版本](/diagrams/enterprise-retrieval-reference-architecture.html)。*
+
 ### 数据同步怎么做
 
 每个检索系统都应该有清晰的权威源。非结构化原件通常由 S3 等对象存储保存；文档处理流水线监听对象创建/更新事件或执行批量扫描，完成解析、chunking、embedding 和元数据关联，再分别写入检索目标。OpenSearch 通常消费 S3 事件、处理流水线、CDC、事件流或批量数据，建立可重建的搜索投影；pgvector 将处理后的 chunk 和 embedding 写入 PostgreSQL 表，若与业务数据共库，可在事务内更新记录状态，异步任务负责生成或重算向量；Cortex Search 则从 Snowflake 中已装载的文本与元数据源查询刷新托管索引。
@@ -289,6 +313,10 @@ Cortex Search 的价值在于可以从 Snowflake 中的 SQL 查询定义检索�
 应尽量把可执行的授权约束转化为检索时过滤条件，并在后端服务或可信策略层验证用户身份和授权范围。OpenSearch 可以通过文档级安全能力或应用侧强制过滤实现，但要验证查询路径和身份传播；PostgreSQL 可以使用 RLS、租户分区和事务权限，并结合 ANN 过滤行为评估召回；Cortex Search 需要特别处理 owner’s rights，不能把源表行级策略当作自动生效的检索用户权限。高敏感语料可以按安全域拆分 Search Service，查询前由策略服务确定可访问的服务和过滤范围。
 
 对于不可绕过的 Data Entitlement，LLM 不应决定过滤条件，也不能通过 Prompt 声明“只搜索用户有权访问的数据”来替代授权检查。策略决策应由确定性的授权组件执行，检索服务只接收已经验证的身份与约束。
+
+![OpenSearch、PostgreSQL 与 Cortex Search 的授权执行点和最终回源校验边界](/diagrams/search-authorization-boundaries.svg)
+
+*交互查看：[HTML 版本](/diagrams/search-authorization-boundaries.html)。*
 
 ## 八、成本与运维：不要只比较服务报价
 
