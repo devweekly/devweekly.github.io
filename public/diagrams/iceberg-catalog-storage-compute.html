@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Iceberg 的 Catalog、计算与存储分层</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#F9F6EF;color:#221C17;font-family:'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif;padding:40px 24px}
+.frame{max-width:1320px;margin:0 auto}
+.eyebrow{font:500 10px 'IBM Plex Mono','Noto Sans SC',monospace;letter-spacing:.16em;color:#65584D;text-transform:uppercase;margin:0 0 12px}
+h1{font:600 25px 'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif;margin:0 0 8px}
+.subtitle{font-size:14px;color:#65584D;line-height:1.6;margin:0 0 24px}
+.diagram-container{width:100%;overflow-x:auto}
+.diagram-container svg{display:block;width:100%;min-width:1280px;height:auto}
+.footer{font-size:12px;color:#75695F;margin:16px 0 0}
+@media print{.diagram-container{overflow-x:visible}.diagram-container svg{min-width:0}}
+</style>
+</head>
+<body>
+<main class="frame">
+<p class="eyebrow">DEV WEEKLY · DIAGRAM DESIGN</p>
+<h1>Iceberg 的 Catalog、计算与存储分层</h1>
+<p class="subtitle">Snowflake-managed 和 externally managed Iceberg 的表元数据权威及文件存储方式。</p>
+<div class="diagram-container"><svg xmlns="http://www.w3.org/2000/svg" id="iceberg-catalog-storage-compute-root" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="iceberg-catalog-storage-compute-title iceberg-catalog-storage-compute-desc">
+<title id="iceberg-catalog-storage-compute-title">Iceberg 的 Catalog、计算与存储分层</title>
+<desc id="iceberg-catalog-storage-compute-desc">对比 Snowflake-managed 与 externally managed Iceberg，展示计算引擎、Catalog、Iceberg 元数据和 Parquet 文件存储之间的关系。</desc>
+<defs>
+    <filter id="iceberg-catalog-storage-compute-root-shadow" x="-12%" y="-12%" width="124%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#221C17" flood-opacity="0.10"/>
+    </filter>
+    <marker id="iceberg-catalog-storage-compute-root-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#65584D"/>
+    </marker>
+    <marker id="iceberg-catalog-storage-compute-root-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#8B5A2B"/>
+    </marker>
+  </defs>
+<rect width="1280" height="760" fill="#F9F6EF"/>
+<text x="48" y="45" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="9" font-weight="500" text-anchor="start" fill="#65584D">APACHE ICEBERG · CATALOG / COMPUTE / STORAGE</text>
+<text x="48" y="82" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="26" font-weight="600" text-anchor="start" fill="#221C17">Iceberg 把表格式与计算引擎分开</text>
+<text x="48" y="108" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="13" font-weight="400" text-anchor="start" fill="#65584D">Catalog 决定谁维护表元数据；数据文件可以由另一方存储；查询由 Snowflake 或外部引擎执行。</text>
+<rect x="40" y="136" width="580" height="500" rx="14" fill="#F1EDE4" stroke="#CFC5B8"/>
+<rect x="660" y="136" width="580" height="500" rx="14" fill="#F1EDE4" stroke="#CFC5B8"/>
+<text x="64" y="174" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="9" font-weight="500" text-anchor="start" fill="#65584D">01 · SNOWFLAKE-MANAGED</text>
+<text x="64" y="198" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="15" font-weight="600" text-anchor="start" fill="#221C17">Snowflake 管 Catalog 与表生命周期</text>
+<text x="684" y="174" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="9" font-weight="500" text-anchor="start" fill="#65584D">02 · EXTERNALLY MANAGED</text>
+<text x="684" y="198" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="15" font-weight="600" text-anchor="start" fill="#221C17">外部 Catalog 是元数据权威</text>
+<!-- arrows first -->
+<path d="M 330 275 V 300" fill="none" stroke="#8B5A2B" stroke-width="1.6" marker-end="url(#iceberg-catalog-storage-compute-root-arrow)"/>
+<path d="M 330 381 V 406" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#iceberg-catalog-storage-compute-root-arrow)"/>
+<path d="M 330 487 V 512" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#iceberg-catalog-storage-compute-root-arrow)"/>
+<path d="M 950 250 V 265" fill="none" stroke="#8B5A2B" stroke-width="1.6" marker-end="url(#iceberg-catalog-storage-compute-root-arrow)"/>
+<path d="M 950 334 V 350" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#iceberg-catalog-storage-compute-root-arrow)"/>
+<path d="M 950 424 V 440" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#iceberg-catalog-storage-compute-root-arrow)"/>
+<path d="M 950 514 V 530" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#iceberg-catalog-storage-compute-root-arrow)"/>
+<!-- left lane cards -->
+<rect x="80" y="210" width="500" height="65" rx="12" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#node-shadow)"/><rect x="96" y="222" width="73" height="22" rx="11" fill="#DCE5F4"/><text x="108" y="237" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" text-anchor="start" fill="#221C17">COMPUTE</text><text x="96" y="266" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="600" text-anchor="start" fill="#221C17">Snowflake SQL / Snowpark / Snowpark Connect</text><text x="96" y="288" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="400" text-anchor="start" fill="#65584D">Snowflake SQL Engine 执行查询</text>
+<rect x="80" y="300" width="500" height="81" rx="12" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#node-shadow)"/><rect x="96" y="312" width="73" height="22" rx="11" fill="#F5E7D4"/><text x="108" y="327" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" text-anchor="start" fill="#221C17">CATALOG</text><text x="96" y="356" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="600" text-anchor="start" fill="#221C17">Snowflake Catalog</text><text x="96" y="378" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="400" text-anchor="start" fill="#65584D">Snowflake 负责表名、当前 Metadata Pointer 与生命周期</text>
+<rect x="80" y="406" width="500" height="81" rx="12" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#node-shadow)"/><rect x="96" y="418" width="136" height="22" rx="11" fill="#D8EEE8"/><text x="108" y="433" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" text-anchor="start" fill="#221C17">ICEBERG METADATA</text><text x="96" y="462" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="600" text-anchor="start" fill="#221C17">Snapshot · Manifest · Schema</text><text x="96" y="484" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="400" text-anchor="start" fill="#65584D">记录数据文件、分区与表状态</text>
+<rect x="80" y="512" width="500" height="80" rx="12" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#node-shadow)"/><rect x="96" y="524" width="94" height="22" rx="11" fill="#DCE5F4"/><text x="108" y="539" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" text-anchor="start" fill="#221C17">DATA FILES</text><text x="96" y="568" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="600" text-anchor="start" fill="#221C17">Parquet 文件</text><text x="96" y="590" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="400" text-anchor="start" fill="#65584D">Snowflake Storage，或客户对象存储 + External Volume</text>
+<!-- right lane cards -->
+<rect x="700" y="205" width="500" height="45" rx="12" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#node-shadow)"/><rect x="716" y="217" width="73" height="22" rx="11" fill="#DCE5F4"/><text x="728" y="232" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" text-anchor="start" fill="#221C17">COMPUTE</text><text x="716" y="261" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="13" font-weight="600" text-anchor="start" fill="#221C17">Snowflake SQL / Snowpark · Spark / Trino</text><text x="716" y="283" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="400" text-anchor="start" fill="#65584D">Snowflake 通过 Integration；Spark / Trino 直连 Catalog</text>
+<rect x="700" y="265" width="500" height="69" rx="12" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#node-shadow)"/><rect x="716" y="277" width="101" height="22" rx="11" fill="#F5E7D4"/><text x="728" y="292" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" text-anchor="start" fill="#221C17">INTEGRATION</text><text x="716" y="321" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="13" font-weight="600" text-anchor="start" fill="#221C17">Catalog Integration / Catalog-Linked Database</text><text x="716" y="343" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="400" text-anchor="start" fill="#65584D">Snowflake 发现并访问远程 Catalog 中的表</text>
+<rect x="700" y="350" width="500" height="74" rx="12" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#node-shadow)"/><rect x="716" y="362" width="73" height="22" rx="11" fill="#D8EEE8"/><text x="728" y="377" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" text-anchor="start" fill="#221C17">CATALOG</text><text x="716" y="406" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="13" font-weight="600" text-anchor="start" fill="#221C17">External Iceberg Catalog</text><text x="716" y="428" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="400" text-anchor="start" fill="#65584D">AWS Glue · Unity Catalog · Snowflake Open Catalog</text>
+<rect x="700" y="440" width="500" height="74" rx="12" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#node-shadow)"/><rect x="716" y="452" width="136" height="22" rx="11" fill="#DCE5F4"/><text x="728" y="467" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" text-anchor="start" fill="#221C17">ICEBERG METADATA</text><text x="716" y="496" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="13" font-weight="600" text-anchor="start" fill="#221C17">Snapshot · Manifest · Schema</text><text x="716" y="518" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="400" text-anchor="start" fill="#65584D">Catalog 指向当前表元数据位置</text>
+<rect x="700" y="530" width="500" height="80" rx="12" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#node-shadow)"/><rect x="716" y="542" width="94" height="22" rx="11" fill="#DCE5F4"/><text x="728" y="557" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" text-anchor="start" fill="#221C17">DATA FILES</text><text x="716" y="586" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="13" font-weight="600" text-anchor="start" fill="#221C17">Parquet 文件</text><text x="716" y="608" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="400" text-anchor="start" fill="#65584D">客户管理的云对象存储</text>
+<!-- footer callout -->
+<rect x="40" y="660" width="1200" height="64" rx="10" fill="#F5E7D4" stroke="#8B5A2B" stroke-width="1"/>
+<text x="64" y="686" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="600" text-anchor="start" fill="#8B5A2B">两个维度要分开决定</text>
+<text x="64" y="708" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="500" text-anchor="start" fill="#221C17">Catalog 的所有权与文件存储位置彼此独立。Snowflake-managed Iceberg 也可以把 Parquet 文件放在客户对象存储中。</text>
+</svg></div>
+<p class="footer">独立 SVG 用于正文嵌入；本页面保留完整尺寸，便于查看节点和连线。</p>
+</main>
+</body>
+</html>
