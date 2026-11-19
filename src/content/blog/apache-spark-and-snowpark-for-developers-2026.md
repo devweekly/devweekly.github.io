@@ -445,7 +445,7 @@ Materialized View 是另一种问题：它主要用于加速对单张基础表�
 
 对金融服务数据平台，工作负载选择还要考虑数据权威、访问策略和数据移动成本。Spark 集群访问 Snowflake 数据时，需要明确哪些数据会离开 Snowflake、是否通过临时 Stage 传输、如何审计以及是否涉及跨区域传输。使用 Snowpark 也不代表所有治理要求自动满足：需要检查 Role、Masking Policy、Row Access Policy、包依赖来源和外部网络访问配置。
 
-## 12. Iceberg 与 Snowpark 是什么关系？一个管理表格式，一个执行计算
+## 12. Iceberg 与 Snowpark 是什么关系？一个定义表格式，一个提供计算 API
 
 Apache Iceberg 与 Snowpark 不在同一层。**Iceberg 定义数据如何组织成一张开放表；Snowpark 提供用 Python/Java/Scala 表达数据处理逻辑的 API。** 两者可以一起使用：Snowpark 可以通过 Snowflake 访问 Iceberg 表，对表数据执行受支持的 SQL/DataFrame 转换；Spark 也可以通过 Iceberg API 访问同一张表。Iceberg 本身不负责运行查询，Snowpark 也不负责定义底层表文件的开放格式。
 
@@ -493,7 +493,7 @@ Snowpark Connect for Spark 也支持读取和写入 Snowflake-managed 与 extern
 
 如果数据要同时被 Snowflake、Spark、Trino、Databricks 或其他 Iceberg 兼容引擎访问，或者组织要求数据文件保留在自己的对象存储、Catalog 由现有 Lakehouse 平台掌控，那么 Iceberg 的价值就很明确。它减少了不同引擎之间对专有表存储格式的耦合，但并不会消除 Catalog、权限、数据文件维护、压缩合并、Snapshot 过期、云存储成本和跨区域数据传输等责任。
 
-Snowflake 对 Iceberg 的支持也不是所有 Snowflake 原生表能力的等价替代。不同表类型的 Feature Support 存在差异；例如外部管理表的克隆、复制、Streams 等能力受到限制，客户自管存储的保护和恢复责任也与 Snowflake Storage 不同。设计前应核对 [Iceberg 功能与限制](https://docs.snowflake.com/en/user-guide/tables-iceberg) 及 [Snowpark Connect Iceberg 支持矩阵](https://docs.snowflake.com/en/developer-guide/snowpark-connect/snowpark-connect-iceberg)。
+Snowflake 对 Iceberg 的支持也不是所有 Snowflake 原生表能力的等价替代。不同表类型的功能支持范围存在差异；例如外部管理表的克隆、复制、Streams 等能力受到限制，客户自管存储的保护和恢复责任也与 Snowflake Storage 不同。设计前应核对 [Iceberg 功能与限制](https://docs.snowflake.com/en/user-guide/tables-iceberg) 及 [Snowpark Connect Iceberg 支持矩阵](https://docs.snowflake.com/en/developer-guide/snowpark-connect/snowpark-connect-iceberg)。
 
 ## 13. 动手学习：先在本地跑 PySpark，再用 Snowpark 操作同一类数据
 
