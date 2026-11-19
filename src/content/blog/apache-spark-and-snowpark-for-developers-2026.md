@@ -260,7 +260,7 @@ Snowpark 的价值在于把 Python 的可组合性、IDE 类型提示和单元�
 | 比较维度 | Apache Spark / PySpark | Snowpark Python | Snowpark Connect for Spark |
 | --- | --- | --- | --- |
 | 产品性质 | 开源分布式计算引擎 | Snowflake 的开发 API | Spark Connect 兼容入口，后端由 Snowflake 执行 |
-| 计算位置 | Spark Driver 与 Executor 集群 | Snowflake Virtual Warehouse | 通常是 Snowflake Virtual Warehouse；批作业另有 SPCS 部署路径 |
+| 计算位置 | Spark Driver 与 Executor 集群 | Snowflake Virtual Warehouse | Warehouse 是常规执行路径；批作业可用 Code Bundles，Snowpark Submit 则使用 SPCS compute pool |
 | 数据位置 | 对象存储、HDFS、Iceberg/Delta 等表格式、数据库和消息系统 | 主要是 Snowflake 表、Stage 及受支持的外部数据源 | Snowflake 表和受支持的外部数据源，具体受兼容性约束 |
 | 执行抽象 | Partition、Task、Stage、Shuffle 和 DAG | Snowpark DataFrame 表达式转换为 SQL | Spark DataFrame 计划映射为 Snowflake SQL，不等于 Spark Task/Stage 执行 |
 | 查询优化 | Catalyst、物理计划、AQE | Snowflake SQL 优化器 | Snowflake SQL 优化器 |
