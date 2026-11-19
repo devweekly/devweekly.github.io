@@ -374,6 +374,8 @@ Snowpark 则把开发 API 和计算放在 Snowflake 侧。Snowpark Connect 又�
 
 不要把 Connector 的“Spark 可以访问 Snowflake”误读成“Snowflake 提供了 Spark 计算集群”。这会直接影响架构、网络、成本和运维责任。
 
+官方文档：[Snowflake Connector for Spark](https://docs.snowflake.com/en/user-guide/spark-connector-overview)
+
 ## 11. 如何选择：把计算放在数据旁边，还是把数据交给计算集群？
 
 选择时先问数据权威在哪里，以及计算是否必须离开数据所在平台。
