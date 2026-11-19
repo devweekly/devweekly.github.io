@@ -257,17 +257,23 @@ Snowpark 的价值在于把 Python 的可组合性、IDE 类型提示和单元�
 
 开发者很容易只看 API：两边都有 `filter`、`select`、`join`、`groupBy`，代码也都能用 Python 写。但架构比较应该看数据在哪里、谁负责执行、谁负责扩展、哪些资源由谁运维。
 
-| 比较维度 | Apache Spark / PySpark | Snowpark Python |
-| --- | --- | --- |
-| 产品性质 | 开源分布式计算引擎 | Snowflake 的开发 API 与代码执行环境 |
-| 计算位置 | Spark 集群的 Driver / Executors | Snowflake Virtual Warehouse 或对应 Snowflake 执行环境 |
-| 数据位置 | 对象存储、HDFS、表格式、数据库等多种来源 | 主要围绕 Snowflake 表、Stage 和受支持的数据源 |
-| 并行模型 | 分区、Task、Stage、Executor、Shuffle | Warehouse 的计算资源与 Snowflake 内部执行计划 |
-| 查询优化 | Catalyst、物理计划、AQE | Snowflake SQL 优化器和执行引擎 |
-| 资源管理 | 组织需要选择和运维集群/托管 Spark 服务 | Warehouse 尺寸、自动暂停/恢复、并发和资源策略 |
-| 代码自由度 | 可运行更广泛的分布式 Python/JVM 逻辑及扩展 | 以可转换为 Snowflake 操作的 DataFrame/SQL 为主；自定义代码受运行时边界约束 |
-| 典型使用场景 | 多源数据湖、复杂 ETL、流批处理、分布式算法 | Snowflake 内的数据转换、数据产品、特征工程和 Python 化的数据管道 |
-| 运维重点 | 集群容量、Executor、Shuffle、依赖、日志、版本与任务调度 | Warehouse 成本/并发、Query History、SQL 计划、权限和包依赖 |
+| 比较维度 | Apache Spark / PySpark | Snowpark Python | Snowpark Connect for Spark |
+| --- | --- | --- | --- |
+| 产品性质 | 开源分布式计算引擎 | Snowflake 的开发 API | Spark Connect 兼容入口，后端由 Snowflake 执行 |
+| 计算位置 | Spark Driver 与 Executor 集群 | Snowflake Virtual Warehouse | 通常是 Snowflake Virtual Warehouse；批作业另有 SPCS 部署路径 |
+| 数据位置 | 对象存储、HDFS、Iceberg/Delta 等表格式、数据库和消息系统 | 主要是 Snowflake 表、Stage 及受支持的外部数据源 | Snowflake 表和受支持的外部数据源，具体受兼容性约束 |
+| 执行抽象 | Partition、Task、Stage、Shuffle 和 DAG | Snowpark DataFrame 表达式转换为 SQL | Spark DataFrame 计划映射为 Snowflake SQL，不等于 Spark Task/Stage 执行 |
+| 查询优化 | Catalyst、物理计划、AQE | Snowflake SQL 优化器 | Snowflake SQL 优化器 |
+| API 与代码兼容性 | 原生 Spark API，包含 DataFrame、RDD 等接口 | 自己的 Snowpark API，方法风格相似但不等同于 PySpark | 支持一部分 Spark DataFrame API；不是完整 Spark API 兼容 |
+| 自定义计算 | 可扩展 RDD、UDF、分布式 Python/JVM 逻辑及第三方组件 | 通过 UDF、UDTF、Stored Procedure 等机制扩展，执行环境受 Snowflake 约束 | 需落在已支持的 Spark Connect/DataFrame API 和 Snowflake UDF 等能力范围内 |
+| 流处理与 ML | Structured Streaming、MLlib 等 Spark 生态能力 | 可结合 Snowpark ML 等 Snowflake 能力，但接口和运行模型不同 | 不等同于 Spark 全功能发行版；例如 Structured Streaming、RDD 和 pyspark.ml 不支持 |
+| 资源管理 | 选择和运维集群或托管 Spark 服务 | Warehouse 尺寸、并发、自动暂停/恢复和资源策略 | Warehouse 管理计算；使用 Snowpark Submit 时还涉及 SPCS compute pool |
+| 主要观测方式 | Spark UI、Event Log、Driver/Executor 日志 | Query History、Query Profile 和 Warehouse 使用情况 | Snowflake Query History、Query Profile 和 Query Tag |
+| 典型用途 | 多源数据湖、复杂 ETL、流处理和分布式算法 | Snowflake 内的数据转换、数据产品和特征工程 | 将受支持的 PySpark DataFrame 工作负载迁移到 Snowflake 执行 |
+
+理解这张表时，最应该关注的是执行责任。Spark DataFrame 描述的是一个分布式计算任务，Spark 引擎再把它拆成分区、Stage 和 Task，分发给 Executor；Snowpark DataFrame 描述的是一组关系型数据操作，Snowpark 把这些操作转换成 SQL，由 Snowflake 优化器决定扫描、Join、聚合和并行执行方式。两边都可能是惰性执行，也都提供链式 DataFrame API，但底层的计划、运行时和资源控制模型并不相同。
+
+这也回答了“Snowpark 是不是用 Spark 的语法和思想写了一个 Snowflake 内部计算框架”这个问题：**思想上有相似之处，语法风格也有重叠，但 Snowpark 不是 Spark 的 Snowflake 版本。** 它借用了 DataFrame 这种声明式、可组合的编程体验，让开发者用 Python/Java/Scala 表达过滤、投影、Join 和聚合；Snowpark 自己负责把这些表达式编译成 Snowflake 能执行的查询。它没有在背后启动 Spark Driver、Executor，也不使用 Catalyst 来生成 Spark 物理执行计划。原生 Snowpark API 与 PySpark API 是两套接口，方法名称相似不代表代码可以直接互换。真正提供 Spark DataFrame 兼容入口的是下一节介绍的 Snowpark Connect for Spark。
 
 Spark 的主要优势是计算环境和数据源的开放性。它可以在 Kubernetes、YARN 或 Standalone 集群运行，也有托管服务；你可以对分区、并行度、执行资源和数据读写路径做更多控制。代价是需要负责更多基础设施和作业运营。
 
@@ -275,9 +281,62 @@ Snowpark 的主要优势是计算靠近 Snowflake 中的数据。若数据本来
 
 两者也不是简单的性能高低关系。对一份已经在 Snowflake 中的表做筛选、Join 和聚合，Snowpark 避免了把数据搬出平台再计算；如果任务需要读取多个对象存储位置、执行复杂分布式算法，或者必须运行依赖特定 Python 库的分布式代码，Spark 的适用范围通常更广。真实性能仍取决于数据位置、数据规模、计算形态、并发、仓库/集群配置和数据布局，不能仅凭产品名称判断。
 
-## 8. 容易混淆的第三个名字：Snowpark Connect for Apache Spark
+## 8. Spark 能不能直接在 Snowflake 上运行？不一定要自建 Spark 集群
 
-Snowpark Connect for Apache Spark 是另一个产品边界。它不是 Snowpark Python 的别名，也不是在 Snowflake 里面启动一套普通 Spark Executor 集群。
+可以。Snowflake 现在提供 Snowpark Connect for Apache Spark，让现有 Spark Connect/PySpark 工作负载连接到 Snowflake，并由 Snowflake 计算引擎执行受支持的 DataFrame 操作。开发时可以使用 Snowflake Notebooks、VS Code 等工具；批处理可以通过 Snowflake 提供的提交机制运行。这里的关键不是把一套完整 Apache Spark 集群塞进 Warehouse，而是使用 Spark Connect 的客户端/服务端边界，把 Spark DataFrame 计划交给 Snowflake 端转换和执行。
+
+需要区分三条路径，它们解决的问题不同。
+
+| 路径 | 计算在哪里 | 是否需要自己运维 Spark 集群 | 适用情况 |
+| --- | --- | --- | --- |
+| 外部 Spark + Snowflake Connector | EMR、Databricks、Kubernetes 等外部 Spark 集群 | 需要管理或使用托管 Spark 集群 | Spark 是主要计算平台，只需要读写 Snowflake 数据 |
+| Snowpark Connect for Spark | Snowflake Virtual Warehouse | 不需要外部 Spark 集群 | 希望复用受支持的 Spark DataFrame 代码，让 Snowflake 执行 SQL 型计算 |
+| Snowpark Submit + Snowpark Container Services | Snowflake 管理的 SPCS compute pool/容器运行环境，并与 Warehouse 配合 | 不需要外部集群，但需要配置和管理 Snowflake compute pool | 需要 Snowpark Submit 的 cluster-mode 批作业运行方式或相关运行时能力 |
+
+### 交互式和常规批处理：不需要 Bring Your Own Container
+
+Snowpark Connect 使用 Spark Connect 协议，将客户端应用与服务端执行解耦。客户端不必持有 Spark Executor 集群；它提交 DataFrame 计划，Snowflake 端将支持的操作映射到 Snowflake SQL，由 Warehouse 执行。对于常规交互式开发，这意味着可以从本地 IDE 或 Snowflake Notebook 发起任务，不必先创建 EMR、Databricks 或自管 Spark 集群。
+
+批处理也有 Warehouse 原生路径。当前 Snowflake 文档推荐使用 **Code Bundles** 提交 Spark 批作业：把 Python 脚本或打包后的 JAR 放到 Snowflake Stage，然后使用 EXECUTE CODE BUNDLE SQL，或者调用 REST API 提交任务。任务直接使用指定的 Warehouse 计算，不需要创建 Snowpark Container Services compute pool。SQL 提交是同步执行；REST API 可以异步提交并通过 job ID 查询状态，适合由 Airflow、CI/CD 或其他外部调度器编排。
+
+一个精简的 Python 作业定义如下：
+
+~~~sql
+USE WAREHOUSE ETL_WH;
+USE DATABASE ANALYTICS;
+USE SCHEMA JOBS;
+
+EXECUTE CODE BUNDLE
+  FROM '@ANALYTICS.JOBS.APP_STAGE/spark_jobs'
+  ENTRYPOINT = 'job.py'
+  WITH SPECIFICATION $
+bundle:
+  type: spark
+  compute_type: warehouse
+  language: python
+  compute_options: {}
+$;
+~~~
+
+这里仍然是 Spark DataFrame 风格的 Python 应用，但运行位置是 Snowflake Warehouse。作业文件及其依赖从 Stage 提供；Warehouse 承担计算，作业状态和执行记录由 Snowflake 的 Code Bundle 执行历史等机制管理。实际部署还需要配置数据库、Schema、Stage、Warehouse 权限，以及 Python 依赖和外部访问集成。
+
+### 什么时候会用到 Snowpark Container Services？
+
+Snowpark Container Services（SPCS）是 Snowflake 管理的容器计算平台。它允许把应用及依赖打包成 OCI 镜像，在 Snowflake 的 compute pool 上运行。它适用于需要自定义操作系统依赖、运行时、第三方框架，或者需要持续运行服务、批处理作业和 GPU 计算的场景。
+
+Spark 相关文档中仍保留 **Snowpark Submit** 这条批处理路径。它以 Python CLI 提交 Python 脚本或 Scala/Java JAR，使用 SPCS compute pool 承载 Spark driver，并与 Warehouse 配合执行工作负载。因此，这条路径确实会要求配置 compute pool；但它不是所有 Snowpark Connect 工作负载的前置条件。Snowflake 对新的批处理工作负载推荐优先评估 Code Bundles，因为 Code Bundles 直接运行在 Warehouse compute 上，不需要另建 SPCS compute pool。
+
+“Bring your own container”描述的是 SPCS 的通用能力：开发者可以提交自己的 OCI 镜像和应用运行环境。**如果目标只是把受支持的 PySpark DataFrame 作业放到 Snowflake 执行，不应该先假定需要自己制作 Spark 容器镜像。** 先看 Snowpark Connect 的 Warehouse 路径；只有应用确实需要自定义容器运行时，或者选用 Snowpark Submit 的 SPCS 路径时，才需要处理 compute pool 和容器相关配置。
+
+### 仍然可以把 Spark 留在 Snowflake 外面
+
+如果组织已经把 Spark 作为统一计算平台，也可以继续运行外部 Spark 集群，并使用 Snowflake Connector for Spark 读写 Snowflake 表。Connector 支持双向数据传输，也可以把部分 Spark 逻辑下推到 Snowflake，但并非所有算子都能下推，例如 Spark UDF 就不能直接下推。此时 Spark 仍负责整体作业调度和可下推范围之外的计算，Snowflake 主要承担数据存储及部分 SQL 计算。
+
+因此，“Spark 能否在 Snowflake 上运行”的答案是肯定的，但要先确定你说的是哪种形态：Spark Connector 是外部 Spark 访问 Snowflake；Snowpark Connect 是 Spark Connect 客户端连接 Snowflake 引擎；Code Bundles 是当前推荐的 Warehouse 批处理提交方式；Snowpark Submit 则利用 SPCS compute pool 提交 cluster-mode 作业。它们的资源模型、运维要求和兼容边界不同，不能都简称为“把 Spark 部署到 Snowflake”。
+
+官方文档：[Snowpark Connect for Apache Spark](https://docs.snowflake.com/en/developer-guide/snowpark-connect/snowpark-connect-apache-spark) · [Submit Spark jobs on Snowflake via Code Bundles](https://docs.snowflake.com/en/developer-guide/snowpark-connect/snowpark-connect-submit-code-bundle) · [Using Snowpark Submit](https://docs.snowflake.com/en/developer-guide/snowpark-connect/snowpark-connect-using-submit) · [Snowpark Container Services](https://docs.snowflake.com/en/developer-guide/snowpark-container-services/overview)
+
+Snowpark Connect for Apache Spark 是另一个产品边界。它不是 Snowpark Python 的别名，也不意味着 Snowflake Warehouse 内部运行着与外部部署完全相同的 Spark Executor 集群。它通过 Spark Connect 协议提供客户端兼容层，常规执行路径由 Snowflake 引擎承接；如果采用 Snowpark Submit，则会用 SPCS compute pool 承载 cluster-mode 作业，这是一条单独的部署方式。
 
 它实现 Spark Connect 协议，让 PySpark/Spark Connect 客户端提交 Spark DataFrame 计划，由 Snowflake 端承接并把受支持的操作映射到 Snowflake 执行引擎。对已有 PySpark 代码而言，这提供了一条复用部分 DataFrame 逻辑的路径；但执行引擎已经不是 Apache Spark，因此兼容性和语义差异必须认真评估。
 
@@ -297,13 +356,13 @@ Snowpark Connect for Apache Spark 是另一个产品边界。它不是 Snowpark 
 
 这意味着 Snowpark Connect 的迁移策略应该是“逐项验证可复用的 PySpark 逻辑”，而不是“把 Spark 作业地址改一下”。先确认 API 覆盖、数据源和文件路径、UDF、临时视图、缓存、事务语义和监控方式，再用真实数据做结果一致性与成本性能对比。
 
-官方资料：[Snowpark Connect for Spark](https://docs.snowflake.com/en/developer-guide/snowpark-connect/snowpark-connect-overview) · [与 Apache Spark 的已知差异和限制](https://docs.snowflake.com/en/developer-guide/snowpark-connect/snowpark-connect-limitations)
+官方资料：[Snowpark Connect for Spark](https://docs.snowflake.com/en/developer-guide/snowpark-connect/snowpark-connect-apache-spark) · [与 Apache Spark 的已知差异和限制](https://docs.snowflake.com/en/developer-guide/snowpark-connect/snowpark-connect-limitations) · [DataFrame API 兼容性](https://docs.snowflake.com/en/developer-guide/snowpark-connect/snowpark-connect-dataframe-support)
 
-## 9. 另一个经常被误认为 Snowpark 的组件：Snowflake Connector for Spark
+## 10. 另一个经常被误认为 Snowpark 的组件：Snowflake Connector for Spark
 
 Snowflake Connector for Spark 与 Snowpark Connect 是不同的集成方式。
 
-Snowflake Connector for Spark 的典型用途，是让外部 Spark 作业读取或写入 Snowflake 数据。Spark 仍然是计算引擎，Spark 集群仍然承担计算；Connector 负责在 Spark 与 Snowflake 之间传输数据或下推部分操作。它适合 Spark 数据管道需要访问 Snowflake 表的场景。
+Snowflake Connector for Spark 的典型用途，是让外部 Spark 作业读取或写入 Snowflake 数据。Spark 仍然是计算引擎，Spark 集群仍然承担整体作业调度和主要计算；Connector 负责在 Spark 与 Snowflake 之间传输数据，并尝试把可转换的部分操作下推给 Snowflake。下推并不覆盖所有算子，例如 Spark UDF 不能直接下推。它适合组织已经运营外部 Spark 平台、又需要访问 Snowflake 表的场景。
 
 Snowpark 则把开发 API 和计算放在 Snowflake 侧。Snowpark Connect 又进一步提供 Spark Connect 兼容客户端，让一部分 PySpark DataFrame 工作负载在 Snowflake 执行。三者的边界可以概括为：
 
@@ -315,7 +374,7 @@ Snowpark 则把开发 API 和计算放在 Snowflake 侧。Snowpark Connect 又�
 
 不要把 Connector 的“Spark 可以访问 Snowflake”误读成“Snowflake 提供了 Spark 计算集群”。这会直接影响架构、网络、成本和运维责任。
 
-## 10. 如何选择：把计算放在数据旁边，还是把数据交给计算集群？
+## 11. 如何选择：把计算放在数据旁边，还是把数据交给计算集群？
 
 选择时先问数据权威在哪里，以及计算是否必须离开数据所在平台。
 
@@ -339,7 +398,7 @@ Snowpark 则把开发 API 和计算放在 Snowflake 侧。Snowpark Connect 又�
 
 对金融服务数据平台，还应增加数据授权、审计、数据驻留、PII 处理、血缘和恢复要求。把数据复制到外部 Spark 集群，可能扩大数据暴露边界；把转换放在 Snowflake 内，也不代表自动满足所有控制要求，仍需验证角色权限、网络策略、日志保留、包依赖来源和数据共享策略。
 
-## 11. 动手学习：先在本地跑 PySpark，再用 Snowpark 操作同一类数据
+## 12. 动手学习：先在本地跑 PySpark，再用 Snowpark 操作同一类数据
 
 学习 Spark 不必先搭建 Kubernetes 或云端集群。可以在本地安装 PySpark，用少量数据观察 DataFrame API、惰性执行和执行计划。下面的示例不依赖 Java 代码；Spark 的运行时仍然需要 JVM 环境，但开发者只需通过 Python API 交互。
 
@@ -396,7 +455,7 @@ Snowpark Python 的入门方式不同：需要 Snowflake 账号、角色、Wareh
 
 参考学习入口：[Spark Quick Start](https://spark.apache.org/docs/latest/quick-start.html) · [PySpark 官方文档](https://spark.apache.org/docs/latest/api/python/) · [Structured Streaming](https://spark.apache.org/docs/latest/streaming/index.html) · [Snowpark Python Developer Guide](https://docs.snowflake.com/en/developer-guide/snowpark/python/index) · [Snowpark Python 数据工程 Quickstart](https://quickstarts.snowflake.com/guide/data_engineering_with_snowpark_python/)
 
-## 12. 最后厘清三个概念
+## 13. 最后厘清三个概念
 
 Apache Spark 是分布式计算引擎。PySpark 是它的 Python API；DataFrame 是现代 Spark 开发最常用的结构化编程接口。理解 Spark 的关键，是理解数据分区、惰性计划、Driver/Executor、Task/Stage、Shuffle 和 SQL 优化器，而不是先学习 Java。
 
