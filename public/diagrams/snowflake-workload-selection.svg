@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="snowflake-workload-selection-root" width="1280" height="880" viewBox="0 0 1280 880" role="img" aria-labelledby="snowflake-workload-selection-title snowflake-workload-selection-desc">
+<title id="snowflake-workload-selection-title">Snowflake 与 Spark 工作负载选型</title>
+<desc id="snowflake-workload-selection-desc">从 SQL、Python 与机器学习、容器运行时、现有 PySpark 兼容性四个问题判断计算方式。</desc>
+<defs>
+    <filter id="snowflake-workload-selection-root-shadow" x="-12%" y="-12%" width="124%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#221C17" flood-opacity="0.10"/>
+    </filter>
+    <marker id="snowflake-workload-selection-root-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#65584D"/>
+    </marker>
+    <marker id="snowflake-workload-selection-root-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#8B5A2B"/>
+    </marker>
+  </defs>
+<rect width="1280" height="880" fill="#F9F6EF"/>
+<text x="48" y="45" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="9" font-weight="500" text-anchor="start" fill="#65584D">WORKLOAD ROUTING · DECISION FLOW</text>
+<text x="48" y="82" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="26" font-weight="600" text-anchor="start" fill="#221C17">按工作负载选择执行方式</text>
+<text x="48" y="108" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="13" font-weight="400" text-anchor="start" fill="#65584D">沿左侧顺序判断；满足条件时从右侧出口离开。</text>
+<!-- connectors behind nodes -->
+<path d="M 390 154 H 650" fill="none" stroke="#8B5A2B" stroke-width="1.6" marker-end="url(#snowflake-workload-selection-root-arrow)"/>
+<path d="M 260 202 V 262" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#snowflake-workload-selection-root-arrow)"/>
+<path d="M 390 324 H 650" fill="none" stroke="#8B5A2B" stroke-width="1.6" marker-end="url(#snowflake-workload-selection-root-arrow)"/>
+<path d="M 260 372 V 432" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#snowflake-workload-selection-root-arrow)"/>
+<path d="M 390 494 H 650" fill="none" stroke="#8B5A2B" stroke-width="1.6" marker-end="url(#snowflake-workload-selection-root-arrow)"/>
+<path d="M 260 542 V 602" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#snowflake-workload-selection-root-arrow)"/>
+<path d="M 390 664 H 650" fill="none" stroke="#8B5A2B" stroke-width="1.6" marker-end="url(#snowflake-workload-selection-root-arrow)"/>
+<path d="M 260 712 V 790 H 650" fill="none" stroke="#65584D" stroke-width="1.6" marker-end="url(#snowflake-workload-selection-root-arrow)"/>
+<!-- branch labels with opaque paper masks -->
+<rect x="494" y="136" width="42" height="24" rx="6" fill="#F9F6EF"/>
+<text x="515" y="153" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="600" text-anchor="middle" fill="#8B5A2B">是</text>
+<rect x="272" y="218" width="42" height="24" rx="6" fill="#F9F6EF"/>
+<text x="293" y="235" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="500" text-anchor="middle" fill="#65584D">否</text>
+<rect x="494" y="306" width="42" height="24" rx="6" fill="#F9F6EF"/>
+<text x="515" y="323" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="600" text-anchor="middle" fill="#8B5A2B">是</text>
+<rect x="272" y="390" width="42" height="24" rx="6" fill="#F9F6EF"/>
+<text x="293" y="407" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="500" text-anchor="middle" fill="#65584D">否</text>
+<rect x="494" y="476" width="42" height="24" rx="6" fill="#F9F6EF"/>
+<text x="515" y="493" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="600" text-anchor="middle" fill="#8B5A2B">是</text>
+<rect x="272" y="558" width="42" height="24" rx="6" fill="#F9F6EF"/>
+<text x="293" y="575" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="500" text-anchor="middle" fill="#65584D">否</text>
+<rect x="494" y="646" width="42" height="24" rx="6" fill="#F9F6EF"/>
+<text x="515" y="663" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="600" text-anchor="middle" fill="#8B5A2B">是</text>
+<rect x="272" y="748" width="42" height="24" rx="6" fill="#F9F6EF"/>
+<text x="293" y="765" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="500" text-anchor="middle" fill="#65584D">否</text>
+<!-- decision diamonds -->
+<polygon points="260,106 390,154 260,202 130,154" fill="#FFFEFA" stroke="#8B5A2B" stroke-width="1.5" filter="url(#snowflake-workload-selection-root-shadow)"/>
+<text x="260" y="149" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="600" text-anchor="middle" fill="#221C17">SQL / ELT 是否足够？</text>
+<polygon points="260,276 390,324 260,372 130,324" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.3" filter="url(#snowflake-workload-selection-root-shadow)"/>
+<text x="260" y="319" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="13" font-weight="600" text-anchor="middle" fill="#221C17">需要 Python API 或 ML？</text>
+<polygon points="260,446 390,494 260,542 130,494" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.3" filter="url(#snowflake-workload-selection-root-shadow)"/>
+<text x="260" y="489" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="600" text-anchor="middle" fill="#221C17">需要自定义运行时、GPU 或常驻服务？</text>
+<polygon points="260,616 390,664 260,712 130,664" fill="#FFFEFA" stroke="#CFC5B8" stroke-width="1.3" filter="url(#snowflake-workload-selection-root-shadow)"/>
+<text x="260" y="659" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="600" text-anchor="middle" fill="#221C17">已有 PySpark，且 API / 语义兼容？</text>
+<!-- outcome nodes -->
+<rect x="650" y="104" width="560" height="100" rx="12" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#node-shadow)"/><rect x="666" y="116" width="136" height="22" rx="11" fill="#D8EEE8"/><text x="678" y="131" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" text-anchor="start" fill="#221C17">NATIVE SQL / ELT</text><text x="666" y="160" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="15" font-weight="600" text-anchor="start" fill="#221C17">Snowflake SQL · Dynamic Tables · Streams &amp; Tasks</text><text x="666" y="182" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="400" text-anchor="start" fill="#65584D">SQL 表达清楚时直接用原生查询和管道能力。</text>
+<rect x="650" y="274" width="560" height="100" rx="12" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#node-shadow)"/><rect x="666" y="286" width="101" height="22" rx="11" fill="#DCE5F4"/><text x="678" y="301" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" text-anchor="start" fill="#221C17">PYTHON / ML</text><text x="666" y="330" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="15" font-weight="600" text-anchor="start" fill="#221C17">Snowpark Python · Snowflake ML</text><text x="666" y="352" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="400" text-anchor="start" fill="#65584D">数据转换用 Snowpark；训练、特征和模型生命周期评估 Snowflake ML。</text>
+<rect x="650" y="444" width="560" height="100" rx="12" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#node-shadow)"/><rect x="666" y="456" width="122" height="22" rx="11" fill="#F5E7D4"/><text x="678" y="471" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" text-anchor="start" fill="#221C17">CUSTOM RUNTIME</text><text x="666" y="500" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="15" font-weight="600" text-anchor="start" fill="#221C17">Snowpark Container Services</text><text x="666" y="522" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="400" text-anchor="start" fill="#65584D">需要自定义 OCI 容器、GPU、长任务或常驻服务时选择。</text>
+<rect x="650" y="614" width="560" height="100" rx="12" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#node-shadow)"/><rect x="666" y="626" width="171" height="22" rx="11" fill="#F5E7D4"/><text x="678" y="641" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" text-anchor="start" fill="#221C17">PYSPARK COMPATIBILITY</text><text x="666" y="670" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="15" font-weight="600" text-anchor="start" fill="#221C17">Snowpark Connect for Spark</text><text x="666" y="692" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="400" text-anchor="start" fill="#65584D">受支持的 Spark Connect / DataFrame 操作映射到 Snowflake 执行。</text>
+<rect x="650" y="740" width="560" height="100" rx="12" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#node-shadow)"/><rect x="666" y="752" width="122" height="22" rx="11" fill="#DCE5F4"/><text x="678" y="767" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" text-anchor="start" fill="#221C17">EXTERNAL SPARK</text><text x="666" y="796" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="15" font-weight="600" text-anchor="start" fill="#221C17">Apache Spark + Snowflake Connector</text><text x="666" y="818" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="400" text-anchor="start" fill="#65584D">需要 RDD、Structured Streaming、MLlib、多源计算或集群控制时保留外部 Spark。</text>
+<text x="48" y="844" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="12" font-weight="400" text-anchor="start" fill="#65584D">先用能直接表达工作负载的 Snowflake 原生能力；只有运行时或生态要求成立时，再引入 Spark 或容器计算。</text>
+</svg>
