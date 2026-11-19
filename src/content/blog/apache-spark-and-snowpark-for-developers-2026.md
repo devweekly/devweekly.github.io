@@ -309,13 +309,13 @@ USE SCHEMA JOBS;
 EXECUTE CODE BUNDLE
   FROM '@ANALYTICS.JOBS.APP_STAGE/spark_jobs'
   ENTRYPOINT = 'job.py'
-  WITH SPECIFICATION $
+  WITH SPECIFICATION $$
 bundle:
   type: spark
   compute_type: warehouse
   language: python
   compute_options: {}
-$;
+$$;
 ~~~
 
 这里仍然是 Spark DataFrame 风格的 Python 应用，但运行位置是 Snowflake Warehouse。作业文件及其依赖从 Stage 提供；Warehouse 承担计算，作业状态和执行记录由 Snowflake 的 Code Bundle 执行历史等机制管理。实际部署还需要配置数据库、Schema、Stage、Warehouse 权限，以及 Python 依赖和外部访问集成。
