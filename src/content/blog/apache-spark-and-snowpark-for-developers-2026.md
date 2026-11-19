@@ -388,6 +388,8 @@ Snowpark Python 适合希望把业务转换逻辑组织成可测试、可复用�
 
 Snowpark 并不意味着任意 Python 程序都能自然地在 Warehouse 中运行。第三方包、运行时、网络访问和资源都受到 Snowflake 托管执行环境的约束。能用 SQL 函数完成的转换，不必包一层 Python UDF；需要长期运行的服务、自定义 OS 依赖、特殊运行时或 GPU 时，应评估 Snowpark Container Services，而不是强行把代码塞进普通 Snowpark Python UDF。
 
+机器学习工作流则应单独看 **Snowflake ML**。它不只是 Snowpark Python 再加几种 ML 库，而是一套覆盖特征工程、训练、实验、模型注册、推理、观测和血缘的能力组合。训练运行在 Snowflake Container Runtime，支持分布式特征处理和 CPU/GPU 训练；Feature Store 管理特征数据；ML Jobs 编排训练任务；Model Registry 管理模型版本并提供推理入口。需要 GPU 模型服务时，Model Serving 可以把模型部署到 Snowpark Container Services。这里有两个容易混淆的运行时：Container Runtime 是 Snowflake ML 提供的预构建训练环境，Snowpark Container Services 则是运行自定义 OCI 容器、服务和 Job 的平台。若项目需要的是完整 ML lifecycle，应先评估 Snowflake ML；只有需要自行控制容器应用、运行时或服务拓扑时，再直接使用 SPCS。参考：[Snowflake ML 概览](https://docs.snowflake.com/en/developer-guide/snowflake-ml/overview)。
+
 参考：[Snowpark Python Developer Guide](https://docs.snowflake.com/en/developer-guide/snowpark/python/index) · [Python UDF](https://docs.snowflake.com/en/developer-guide/snowpark/python/creating-udfs) · [Python Stored Procedures](https://docs.snowflake.com/en/developer-guide/snowpark/python/creating-sprocs)
 
 ### 很多数据管道不需要 Snowpark：Dynamic Tables、Streams & Tasks 和 Materialized Views
@@ -436,7 +438,7 @@ Materialized View 是另一种问题：它主要用于加速对单张基础表�
 | 多表、持续刷新、可用 SELECT 描述的 ELT | Dynamic Tables | 需要 MERGE、存储过程或自定义调度时考虑 Streams & Tasks |
 | 变更驱动、过程逻辑、定制重试和调度 | Streams & Tasks | 只有声明式刷新需求时，才考虑 Dynamic Tables |
 | Snowflake 内的 Python 数据转换与 UDF | Snowpark Python | 需要自定义 OS、GPU 或常驻服务时转向 SPCS |
-| Snowflake 内部的模型训练/推理 | Snowpark ML 或相应 Snowflake ML 能力 | 需要特定框架、GPU 或自定义容器时评估 SPCS；需要开放多源分布式计算时评估 Spark |
+| Snowflake 内部的模型训练、特征工程和模型生命周期 | Snowflake ML | 它覆盖 Container Runtime、Feature Store、ML Jobs、Model Registry 和 ML Observability；自定义在线服务或特定 GPU 容器部署再评估 SPCS |
 | 多个对象存储和数据湖上的批处理或流处理 | Apache Spark / PySpark | 如果主要数据和关系型计算都已在 Snowflake，可评估迁移到 Snowflake 原生计算 |
 | 外部 Spark 作业访问 Snowflake 表 | Spark + Snowflake Connector | 不需要外部 Spark 执行能力时，回到 Snowpark/原生 SQL |
 | 已有 PySpark 代码希望在 Snowflake 执行 | Snowpark Connect for Spark | 只有在 API、数据源和执行语义兼容时才适合迁移 |
@@ -495,7 +497,6 @@ Snowflake 对 Iceberg 的支持也不是所有 Snowflake 原生表能力的等�
 
 ## 13. 动手学习：先在本地跑 PySpark，再用 Snowpark 操作同一类数据
 
-## 12. 动手学习：先在本地跑 PySpark，再用 Snowpark 操作同一类数据
 
 学习 Spark 不必先搭建 Kubernetes 或云端集群。可以在本地安装 PySpark，用少量数据观察 DataFrame API、惰性执行和执行计划。下面的示例不依赖 Java 代码；Spark 的运行时仍然需要 JVM 环境，但开发者只需通过 Python API 交互。
 
@@ -556,7 +557,7 @@ Snowpark Python 的入门方式不同：需要 Snowflake 账号、角色、Wareh
 
 Apache Spark 是分布式计算引擎；Snowpark 是在 Snowflake 上表达数据处理逻辑的开发 API；Snowpark Connect 则让受支持的 Spark Connect DataFrame 工作负载通过 Snowflake 引擎执行。它们回答的是“计算由谁执行、使用什么编程接口”。
 
-Snowflake SQL、Dynamic Tables、Streams & Tasks、Snowpipe、UDF/Stored Procedure 和 Snowpark Container Services 分别处理查询、数据管道、调度、摄取、自定义函数和容器化计算。选型时应先用最贴近任务的原生能力，不要把所有数据流程都改造成 Spark Job 或 Snowpark 程序。
+Snowflake SQL、Dynamic Tables、Streams & Tasks、Snowpipe、UDF/Stored Procedure、Snowflake ML 和 Snowpark Container Services 分别处理查询、数据管道、调度、数据摄取、自定义函数、机器学习生命周期和容器化计算。选型时应先用最贴近任务的原生能力，不要把所有数据流程都改造成 Spark Job 或 Snowpark 程序。
 
 Iceberg 是另一层：它定义数据文件、表元数据和 Snapshot 如何组成开放表。Snowflake、Snowpark、Spark 或 Trino 都可以成为访问它的计算方式，前提是目标引擎支持相应表类型和操作。要不要用 Iceberg，主要看是否需要跨引擎互操作、开放存储和外部 Catalog，而不是看团队使用了 Snowpark 还是 Spark。
 
