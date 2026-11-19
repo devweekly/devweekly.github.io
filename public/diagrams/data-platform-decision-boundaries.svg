@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" id="data-platform-decision-boundaries-root" width="1280" height="780" viewBox="0 0 1280 780" role="img" aria-labelledby="data-platform-decision-boundaries-title data-platform-decision-boundaries-desc">
+<title id="data-platform-decision-boundaries-title">数据平台中的三类架构决策</title>
+<desc id="data-platform-decision-boundaries-desc">分别展示表格式与 Catalog、计算引擎与 API、数据摄取与管道编排的选项。三个维度可以组合，不构成固定执行顺序。</desc>
+<defs>
+  <filter id="data-platform-decision-boundaries-shadow" x="-12%" y="-12%" width="124%" height="140%" color-interpolation-filters="sRGB">
+    <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#221C17" flood-opacity="0.10"/>
+  </filter>
+  <marker id="data-platform-decision-boundaries-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+    <polygon points="0 0, 8 3, 0 6" fill="#65584D"/>
+  </marker>
+  <marker id="data-platform-decision-boundaries-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+    <polygon points="0 0, 8 3, 0 6" fill="#8B5A2B"/>
+  </marker>
+  <marker id="data-platform-decision-boundaries-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+    <polygon points="0 0, 8 3, 0 6" fill="#8B5A2B"/>
+  </marker>
+</defs>
+<rect width="1280" height="780" fill="#F9F6EF"/>
+<text x="48" y="42" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="9" font-weight="500" letter-spacing="1.4" fill="#65584D">DATA PLATFORM · ARCHITECTURE BOUNDARIES</text>
+<text x="48" y="80" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="25" font-weight="600" fill="#221C17">把三类架构决策分开</text>
+<text x="48" y="106" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="13" fill="#65584D">表格式与 Catalog、计算引擎、摄取与编排各自解决不同问题，可以按工作负载组合。</text>
+
+<!-- responsibility zone 1 -->
+<rect x="40" y="136" width="1200" height="164" rx="12" fill="#F1EDE4" stroke="#CFC5B8" stroke-width="1"/>
+<text x="64" y="165" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="9" font-weight="500" letter-spacing="1.1" fill="#65584D">01 · DATA &amp; CATALOG</text>
+<text x="64" y="199" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="15" font-weight="600" fill="#221C17">数据如何组织，</text>
+<text x="64" y="221" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="15" font-weight="600" fill="#221C17">Catalog 由谁管理？</text>
+<text x="64" y="250" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">决定开放格式、元数据权威和</text>
+<text x="64" y="268" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">数据文件的存储责任。</text>
+
+<rect x="398" y="154" width="255" height="128" rx="11" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#data-platform-decision-boundaries-shadow)"/>
+<rect x="414" y="166" width="107" height="20" rx="10" fill="#D8EEE8"/>
+<text x="425" y="180" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" fill="#221C17">NATIVE TABLE</text>
+<text x="414" y="214" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="600" fill="#221C17">Snowflake Table</text>
+<text x="414" y="239" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">Snowflake 管理存储与</text>
+<text x="414" y="257" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">表元数据。</text>
+
+<rect x="665" y="154" width="255" height="128" rx="11" fill="#FFFEFA" stroke="#8B5A2B" stroke-width="1.3" filter="url(#data-platform-decision-boundaries-shadow)"/>
+<rect x="681" y="166" width="158" height="20" rx="10" fill="#F5E7D4"/>
+<text x="692" y="180" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" fill="#221C17">SNOWFLAKE-MANAGED</text>
+<text x="681" y="214" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="13" font-weight="600" fill="#221C17">Snowflake-managed Iceberg</text>
+<text x="681" y="239" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">Snowflake 管理 Catalog；</text>
+<text x="681" y="257" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">文件也可放在客户对象存储。</text>
+
+<rect x="932" y="154" width="284" height="128" rx="11" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#data-platform-decision-boundaries-shadow)"/>
+<rect x="948" y="166" width="139" height="20" rx="10" fill="#DCE5F4"/>
+<text x="959" y="180" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" fill="#221C17">EXTERNAL CATALOG</text>
+<text x="948" y="214" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="600" fill="#221C17">Externally managed Iceberg</text>
+<text x="948" y="239" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">外部 Catalog 和对象存储，</text>
+<text x="948" y="257" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">供多个兼容引擎共享。</text>
+
+<!-- responsibility zone 2 -->
+<rect x="40" y="316" width="1200" height="190" rx="12" fill="#F1EDE4" stroke="#CFC5B8" stroke-width="1"/>
+<text x="64" y="345" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="9" font-weight="500" letter-spacing="1.1" fill="#65584D">02 · COMPUTE &amp; API</text>
+<text x="64" y="380" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="15" font-weight="600" fill="#221C17">谁负责执行</text>
+<text x="64" y="402" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="15" font-weight="600" fill="#221C17">关系计算和代码？</text>
+<text x="64" y="432" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">看执行位置、API 兼容范围</text>
+<text x="64" y="450" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">以及集群由谁运维。</text>
+
+<rect x="398" y="338" width="255" height="126" rx="11" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#data-platform-decision-boundaries-shadow)"/>
+<rect x="414" y="350" width="129" height="20" rx="10" fill="#D8EEE8"/>
+<text x="425" y="364" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" fill="#221C17">SNOWFLAKE ENGINE</text>
+<text x="414" y="398" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="600" fill="#221C17">SQL / Snowpark Python</text>
+<text x="414" y="423" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">Warehouse 执行关系计算；</text>
+<text x="414" y="441" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">Snowpark 提供 Python API。</text>
+
+<rect x="665" y="338" width="255" height="126" rx="11" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#data-platform-decision-boundaries-shadow)"/>
+<rect x="681" y="350" width="134" height="20" rx="10" fill="#F5E7D4"/>
+<text x="692" y="364" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" fill="#221C17">SPARK CONNECT</text>
+<text x="681" y="398" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="600" fill="#221C17">Snowpark Connect</text>
+<text x="681" y="423" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">Spark Connect 客户端提交计划，</text>
+<text x="681" y="441" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">Snowflake 执行受支持的操作。</text>
+
+<rect x="932" y="338" width="284" height="126" rx="11" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#data-platform-decision-boundaries-shadow)"/>
+<rect x="948" y="350" width="113" height="20" rx="10" fill="#DCE5F4"/>
+<text x="959" y="364" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" fill="#221C17">EXTERNAL SPARK</text>
+<text x="948" y="398" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="600" fill="#221C17">Apache Spark</text>
+<text x="948" y="423" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">独立 Driver / Executor；Connector</text>
+<text x="948" y="441" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">负责 Snowflake 数据读写。</text>
+<text x="398" y="488" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="10.5" fill="#65584D">机器学习生命周期：Snowflake ML · 自定义容器、GPU 或常驻服务：Snowpark Container Services（SPCS）</text>
+
+<!-- responsibility zone 3 -->
+<rect x="40" y="522" width="1200" height="162" rx="12" fill="#F1EDE4" stroke="#CFC5B8" stroke-width="1"/>
+<text x="64" y="551" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="9" font-weight="500" letter-spacing="1.1" fill="#65584D">03 · INGESTION &amp; ORCHESTRATION</text>
+<text x="64" y="586" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="15" font-weight="600" fill="#221C17">数据如何进入，</text>
+<text x="64" y="608" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="15" font-weight="600" fill="#221C17">管道如何持续更新？</text>
+<text x="64" y="638" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">按延迟要求与过程控制需求</text>
+<text x="64" y="656" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">选择摄取和编排机制。</text>
+
+<rect x="398" y="542" width="255" height="126" rx="11" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#data-platform-decision-boundaries-shadow)"/>
+<rect x="414" y="554" width="91" height="20" rx="10" fill="#D8EEE8"/>
+<text x="425" y="568" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" fill="#221C17">FILE INGEST</text>
+<text x="414" y="602" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="600" fill="#221C17">COPY INTO / Snowpipe</text>
+<text x="414" y="627" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">批量文件装载或持续文件摄取。</text>
+
+<rect x="665" y="542" width="255" height="126" rx="11" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#data-platform-decision-boundaries-shadow)"/>
+<rect x="681" y="554" width="116" height="20" rx="10" fill="#F5E7D4"/>
+<text x="692" y="568" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" fill="#221C17">ROW STREAMING</text>
+<text x="681" y="602" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="14" font-weight="600" fill="#221C17">Snowpipe Streaming</text>
+<text x="681" y="627" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">生产者直接发送行数据，低延迟写入。</text>
+
+<rect x="932" y="542" width="284" height="126" rx="11" fill="#FFFEFA" stroke="#CFC5B8" filter="url(#data-platform-decision-boundaries-shadow)"/>
+<rect x="948" y="554" width="141" height="20" rx="10" fill="#DCE5F4"/>
+<text x="959" y="568" font-family="'IBM Plex Mono','Noto Sans SC',monospace" font-size="8" font-weight="500" fill="#221C17">PIPELINE CONTROL</text>
+<text x="948" y="602" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="13" font-weight="600" fill="#221C17">Dynamic Tables · Streams &amp; Tasks</text>
+<text x="948" y="627" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">声明式刷新，或过程化逻辑与调度。</text>
+
+<text x="48" y="719" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" fill="#65584D">补充：Materialized Views 面向单表查询加速，不是多阶段 ETL 的替代方案。</text>
+<text x="48" y="744" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif" font-size="11" font-weight="600" fill="#221C17">组合示例：外部 Iceberg + Spark / Trino；Snowflake-managed Iceberg + Snowpark + Dynamic Tables。</text>
+</svg>
