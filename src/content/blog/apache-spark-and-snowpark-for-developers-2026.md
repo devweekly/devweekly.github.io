@@ -2,7 +2,7 @@
 author: W
 featured: false
 draft: false
-description: 面向熟悉编程、SQL 和分布式系统但尚未接触 Spark 的开发者，从 DataFrame、惰性执行和分布式任务调度讲清 Apache Spark，再对比 Snowpark Python 与 Snowpark Connect for Apache Spark 的执行模型、适用场景和迁移边界。
+description: 面向熟悉编程、SQL 和分布式系统但尚未接触 Spark 的开发者，讲清 Apache Spark、Snowpark、Snowpark Connect 的执行模型，并从 Snowflake 原生数据工程能力、Spark 集成和 Apache Iceberg 表格式出发，建立可落地的架构选型方法。
 pubDatetime: 2026-11-19T00:00:00Z
 title: 从零理解 Apache Spark 与 Snowpark：给开发者的分布式数据计算入门
 tags:
@@ -376,29 +376,124 @@ Snowpark 则把开发 API 和计算放在 Snowflake 侧。Snowpark Connect 又�
 
 官方文档：[Snowflake Connector for Spark](https://docs.snowflake.com/en/user-guide/spark-connector-overview)
 
-## 11. 如何选择：把计算放在数据旁边，还是把数据交给计算集群？
+## 11. 在 Snowflake 内部，什么时候需要 Snowpark，什么时候应该用原生功能？
 
-选择时先问数据权威在哪里，以及计算是否必须离开数据所在平台。
+架构选型不应一开始就在 Snowpark 和 Spark 之间二选一。Snowflake 本身已经提供 SQL 计算、增量数据管道、任务编排、数据摄取、UDF 和容器运行时。对大多数只在 Snowflake 内部处理数据的场景，应先判断这些原生能力是否已经满足需求。
 
-如果数据已经在 Snowflake，任务主要是清洗、Join、聚合、构建分析表或特征表，且可以由 SQL/DataFrame 表达，那么优先评估 Snowpark Python 或原生 SQL。这样可以减少数据移动、外部集群和额外身份/网络边界。Snowpark 并不意味着所有 Python 包都能随意运行；复杂的自定义逻辑要先确认适合 UDF、Stored Procedure、Container Runtime 还是外部计算服务。
+### 先判断是否真的需要 Python API
 
-如果数据主要位于 S3、ADLS、GCS 或开放湖仓表，处理需要跨多个存储和系统，或者需要 Structured Streaming、复杂分布式算法、特殊 Python/JVM 库及对执行拓扑的控制，那么 Spark 更自然。此时需要把 Spark 集群管理、依赖打包、作业调度、监控、权限、成本和故障恢复作为平台职责设计，而不是只把 notebook 代码搬到生产。
+如果需求可以用 SQL 清楚表达，例如字段清洗、过滤、Join、聚合、窗口计算和表之间的数据转换，先用 Snowflake SQL。SQL 是这里最直接的接口，也便于查询优化器理解执行逻辑。引入 Python 不会自动提高性能或可维护性。
 
-如果组织已经有大量 PySpark 作业，数据又希望逐步迁移到 Snowflake，可以把 Snowpark Connect 作为候选迁移路径，但前提是代码使用的 API 在支持范围内，并且作业不依赖 Spark 专属执行语义。迁移不是简单的语法兼容问题，而是执行引擎和运营模型的改变。
+Snowpark Python 适合希望把业务转换逻辑组织成可测试、可复用的 Python 代码，同时让数据继续留在 Snowflake 的情况。例如，团队已有一套 Python 数据处理函数，需要在 Snowflake 表上组合 DataFrame 转换；需要写 Python UDF/UDTF 扩展 SQL 表达能力；或者需要把 Python 逻辑封装成 Stored Procedure，交给 Snowflake Task 或其他调用方执行。Snowpark 会把结构化 DataFrame 操作交给 Snowflake 引擎，UDF 和 Stored Procedure 也可以在服务端执行，从而避免将大批明细数据拉回客户端。
 
-### 一个简化的决策矩阵
+Snowpark 并不意味着任意 Python 程序都能自然地在 Warehouse 中运行。第三方包、运行时、网络访问和资源都受到 Snowflake 托管执行环境的约束。能用 SQL 函数完成的转换，不必包一层 Python UDF；需要长期运行的服务、自定义 OS 依赖、特殊运行时或 GPU 时，应评估 Snowpark Container Services，而不是强行把代码塞进普通 Snowpark Python UDF。
 
-| 需求 | 优先评估 |
-| --- | --- |
-| 数据在 Snowflake，主要是 SQL 型转换 | Snowflake SQL / Snowpark Python |
-| 数据在对象存储和开放表格式，跨源批量处理 | Apache Spark / PySpark |
-| Kafka 等流数据需要持续计算与状态处理 | Spark Structured Streaming，或按现有平台评估专用流处理引擎 |
-| 复杂 Python 算法，需要分布式执行和自定义依赖 | Spark；若数据在 Snowflake，进一步比较 Snowpark Container Runtime/Services |
-| 已有 PySpark DataFrame 代码，希望在 Snowflake 执行 | Snowpark Connect，先做 API 与语义验证 |
-| Spark 作业需要读取/写入 Snowflake | Spark + Snowflake Connector |
-| 只有几 GB 的本地文件，单机可以完成 | pandas、Polars 或 DuckDB，通常不需要 Spark |
+参考：[Snowpark Python Developer Guide](https://docs.snowflake.com/en/developer-guide/snowpark/python/index) · [Python UDF](https://docs.snowflake.com/en/developer-guide/snowpark/python/creating-udfs) · [Python Stored Procedures](https://docs.snowflake.com/en/developer-guide/snowpark/python/creating-sprocs)
 
-对金融服务数据平台，还应增加数据授权、审计、数据驻留、PII 处理、血缘和恢复要求。把数据复制到外部 Spark 集群，可能扩大数据暴露边界；把转换放在 Snowflake 内，也不代表自动满足所有控制要求，仍需验证角色权限、网络策略、日志保留、包依赖来源和数据共享策略。
+### 很多数据管道不需要 Snowpark：Dynamic Tables、Streams & Tasks 和 Materialized Views
+
+如果目标只是把几张 Snowflake 表持续转换成新的分析表，Dynamic Tables 往往比自己编写 Snowpark 作业和调度更简单。开发者声明一个 SELECT 和目标数据新鲜度（TARGET_LAG），Snowflake 负责依赖关系、刷新时机以及支持范围内的增量计算。它适合多表 Join、聚合、窗口计算和分层数据管道。业务逻辑本身是声明式 SQL 时，不需要先写 Python 程序来管理刷新过程。
+
+当管道需要过程控制时，选择就会变化。Streams 用来跟踪表的变更，Tasks 负责按计划或依赖关系运行 SQL、Stored Procedure 等逻辑。它们更适合需要 MERGE/复杂 upsert、分支判断、外部函数调用、定制重试、CRON 时间表或调用 Snowpark Stored Procedure 的场景。Dynamic Tables 与 Streams & Tasks 可以在一条管道里混合使用，不必强制所有步骤都采用同一种机制。
+
+Materialized View 是另一种问题：它主要用于加速对单张基础表的重复查询，优化器可以透明地使用物化结果。它不是用来构建多阶段 ETL 的通用替代方案。
+
+| 需求 | 优先考虑 | 原因与边界 |
+| --- | --- | --- |
+| 多表 SQL 转换、Join、聚合、分层数据管道 | Dynamic Tables | 声明 SELECT 和目标新鲜度，由 Snowflake 管理刷新；适合声明式数据流程 |
+| MERGE、复杂 upsert、过程逻辑、外部调用、定制重试或调度 | Streams & Tasks | 可以组合 SQL、Stored Procedure、Snowpark 逻辑，控制每一步如何执行 |
+| 单表上的重复查询需要加速 | Materialized Views | 侧重查询加速，而不是构建数据管道 |
+| 自定义 Python 转换、UDF/UDTF 或可复用 Python 管道 | Snowpark Python | 适合数据留在 Snowflake、逻辑适合 Snowflake 运行时的情况 |
+| 自定义容器、特殊系统依赖、GPU、长时间运行的服务或批处理 | Snowpark Container Services | 提供独立的容器运行环境和 compute pool，代价是需要管理镜像、资源池和服务生命周期 |
+
+有一个容易被忽略的限制：Dynamic Tables 不是能执行任意 Snowpark 代码的调度器。官方决策指南明确将 Snowpark 标为不支持的 Dynamic Table 管道表达方式；部分 SQL UDF/UDTF 则在指定条件下支持。需要运行 Snowpark 程序时，通常应通过 Streams & Tasks 调用 Stored Procedure，或采用其他适合的编排方式。Dynamic Tables 的输出表也是只读的，不能直接对其执行 INSERT、UPDATE、DELETE 或 TRUNCATE。
+
+参考：[Dynamic Tables 决策指南](https://docs.snowflake.com/en/user-guide/dynamic-tables/decision-guide) · [Dynamic Tables 概览](https://docs.snowflake.com/en/user-guide/dynamic-tables/overview)
+
+### 数据摄取也有原生路径，不要让 Spark 代替 Loader
+
+数据进入 Snowflake 的方式与后续如何计算是两个独立决策。已经落在 S3、Azure Blob 或 GCS 的批量文件，通常用 COPY INTO 装载；文件持续到达、希望自动连续装载时，用 Snowpipe；生产者直接发送行数据、需要更低摄取延迟且不想先生成文件时，评估 Snowpipe Streaming。简单的列重排、列过滤和类型转换可以在 COPY 装载过程中完成，无需先启动 Spark 清洗一遍。
+
+如果摄取阶段涉及复杂跨源关联、状态处理、事件时间窗口或必须运行的专用 Python/JVM 库，那是另一类计算任务，可以在外部用 Spark 或流处理平台完成，再将结果写入 Snowflake。关键是不要把文件摄取、转换和调度三个职责全部交给一个 Spark Job，也不要为了普通文件加载引入一个额外分布式计算集群。
+
+参考：[Snowflake 数据加载方式](https://docs.snowflake.com/en/user-guide/data-load-overview) · [Snowpipe Streaming 高性能架构](https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-high-performance-overview)
+
+### 什么时候选 Spark + Snowflake Connector？
+
+如果 Spark 本身就是组织的数据计算平台，并且它还要处理 Snowflake 之外的数据源，或者作业依赖 Spark Structured Streaming、RDD、Spark MLlib、特定 JVM/Python 库和集群级并行控制，那么保留 Spark 是合理的。Snowflake Connector for Spark 让 Spark 读取 Snowflake 表或查询结果，再将 DataFrame 写回 Snowflake；它支持部分查询下推，使一部分计算可以在 Snowflake 内完成，但并不是所有 Spark 操作都能下推，例如 Spark UDF。Spark 仍是外部计算引擎，集群资源、依赖、作业生命周期和 Spark UI 仍由 Spark 平台负责。
+
+因此，Spark + Connector 的优势不在于“比 Snowpark 更适合 Snowflake”，而在于你需要保留一个 Snowflake 之外的 Spark 计算环境。假如数据已经集中在 Snowflake，工作主要是 SQL 关系运算，Connector 反而会引入不必要的数据传输、两套计算资源和更多故障边界。此时应该先比较原生 SQL、Dynamic Tables、Snowpark Python 或 Snowpark Connect。
+
+如果已有 PySpark 代码，但希望实际执行转移到 Snowflake，而不是维持外部 Spark 集群，那么看 Snowpark Connect for Spark。它使用 Spark Connect 客户端协议并映射到 Snowflake 引擎，与传统 Connector 的“外部 Spark 读写 Snowflake”不是同一条路径。它的 API 和语义兼容范围也需要单独评估。
+
+参考：[Snowflake Connector for Spark](https://docs.snowflake.com/en/user-guide/spark-connector-overview) · [Snowpark Connect for Apache Spark](https://docs.snowflake.com/en/developer-guide/snowpark-connect/snowpark-connect-apache-spark)
+
+### 一个按工作负载选择的起点
+
+| 工作负载 | 首选评估 | 什么情况下换方案 |
+| --- | --- | --- |
+| Snowflake 内部的常规 SQL 清洗、Join、聚合 | Snowflake SQL | 需要组织成可复用 Python 代码时考虑 Snowpark |
+| 多表、持续刷新、可用 SELECT 描述的 ELT | Dynamic Tables | 需要 MERGE、存储过程或自定义调度时考虑 Streams & Tasks |
+| 变更驱动、过程逻辑、定制重试和调度 | Streams & Tasks | 只有声明式刷新需求时，才考虑 Dynamic Tables |
+| Snowflake 内的 Python 数据转换与 UDF | Snowpark Python | 需要自定义 OS、GPU 或常驻服务时转向 SPCS |
+| Snowflake 内部的模型训练/推理 | Snowpark ML 或相应 Snowflake ML 能力 | 需要特定框架、GPU 或自定义容器时评估 SPCS；需要开放多源分布式计算时评估 Spark |
+| 多个对象存储和数据湖上的批处理或流处理 | Apache Spark / PySpark | 如果主要数据和关系型计算都已在 Snowflake，可评估迁移到 Snowflake 原生计算 |
+| 外部 Spark 作业访问 Snowflake 表 | Spark + Snowflake Connector | 不需要外部 Spark 执行能力时，回到 Snowpark/原生 SQL |
+| 已有 PySpark 代码希望在 Snowflake 执行 | Snowpark Connect for Spark | 只有在 API、数据源和执行语义兼容时才适合迁移 |
+
+对金融服务数据平台，工作负载选择还要考虑数据权威、访问策略和数据移动成本。Spark 集群访问 Snowflake 数据时，需要明确哪些数据会离开 Snowflake、是否通过临时 Stage 传输、如何审计以及是否涉及跨区域传输。使用 Snowpark 也不代表所有治理要求自动满足：需要检查 Role、Masking Policy、Row Access Policy、包依赖来源和外部网络访问配置。
+
+## 12. Iceberg 与 Snowpark 是什么关系？一个管理表格式，一个执行计算
+
+Apache Iceberg 与 Snowpark 不在同一层。**Iceberg 定义数据如何组织成一张开放表；Snowpark 提供用 Python/Java/Scala 表达数据处理逻辑的 API。** 两者可以一起使用：Snowpark 可以通过 Snowflake 访问 Iceberg 表，对表数据执行受支持的 SQL/DataFrame 转换；Spark 也可以通过 Iceberg API 访问同一张表。Iceberg 本身不负责运行查询，Snowpark 也不负责定义底层表文件的开放格式。
+
+Iceberg 是开放表格式规范，通常以 Parquet 数据文件保存记录，以 manifest 和 metadata 文件描述文件、分区、Schema 和 Snapshot，再由 Catalog 维护表名到当前元数据位置的映射，并通过原子更新维护表状态。它提供 ACID 表操作、Schema Evolution、Hidden Partitioning 和 Snapshot 等能力。它解决的是“多个计算引擎如何围绕同一批文件理解并维护一张表”，而不是“由哪个引擎执行 Join”。
+
+### Snowflake 中的 Iceberg 有两种管理方式
+
+Snowflake 支持 Snowflake-managed Iceberg Tables，也支持通过外部 Iceberg Catalog 使用 externally managed Iceberg tables。两者的区别首先是 Catalog 的控制权，而不只是文件放在哪个云存储。
+
+**Snowflake-managed Iceberg** 由 Snowflake 维护 Iceberg Catalog 和表生命周期。数据文件可以存放在 Snowflake Storage，也可以存放在客户自己管理的对象存储，并通过 External Volume 连接。换言之，“Snowflake-managed”不必然等于“文件必须存储在 Snowflake 的内部存储”。这种模式更适合想保留 Iceberg 开放格式，同时又希望由 Snowflake 管理目录、元数据维护和主要表生命周期的场景。
+
+**Externally managed Iceberg** 则由外部 Catalog 管理表元数据，例如 AWS Glue、Databricks Unity Catalog 或 Snowflake Open Catalog。Snowflake 通过 Catalog Integration 连接外部 Catalog；对远程 Iceberg REST Catalog，可以使用 Catalog-Linked Database 自动发现和同步其中的 Namespace 与表。外部 Catalog 仍是表元数据的权威来源，Snowflake 不会自动接管这类表的所有生命周期维护。具体写入和功能支持取决于外部 Catalog、存储配置与 Iceberg 表类型。
+
+| 维度 | Snowflake-managed Iceberg | Externally managed Iceberg |
+| --- | --- | --- |
+| Catalog 权威 | Snowflake | 外部 Iceberg Catalog |
+| 数据文件位置 | Snowflake Storage 或客户自己的对象存储 | 外部云存储 |
+| 元数据维护 | Snowflake 管理表生命周期和维护操作 | 主要由外部 Catalog 和外部存储体系负责 |
+| Snowflake 访问方式 | 原生 Iceberg Table 对象 | Catalog Integration；常见情况下通过 Catalog-Linked Database 访问 |
+| 适用场景 | 希望 Snowflake 管理表，但保留 Iceberg 开放格式 | 已经有 Iceberg Lakehouse，希望 Snowflake 与现有 Spark/Trino/Databricks 等引擎共享表 |
+
+需要区分两个独立问题：**谁管理 Catalog，以及谁管理数据文件存储。** 对 Snowflake-managed Iceberg，Catalog 由 Snowflake 管理，但文件可以放在客户云存储；对外部 Catalog 表，元数据由外部系统管理，文件也在外部存储。不要把“managed/unmanaged”简单等同于“数据在 Snowflake 内/外”。
+
+官方资料：[Apache Iceberg tables in Snowflake](https://docs.snowflake.com/en/user-guide/tables-iceberg) · [Iceberg storage options](https://docs.snowflake.com/en/user-guide/tables-iceberg-storage) · [Catalog-linked Database](https://docs.snowflake.com/en/user-guide/tables-iceberg-catalog-linked-database)
+
+### Iceberg 与 Snowpark、Spark 如何组合？
+
+如果 Iceberg 表已经在 Snowflake 中以受支持的 Iceberg Table 对象暴露出来，Snowflake SQL 和 Snowpark 可以对它执行支持范围内的查询和转换。Snowpark 的 DataFrame 仍然由 Snowflake 引擎处理，底层数据文件和 Snapshot 则遵循 Iceberg 规范。
+
+Snowpark Connect for Spark 也支持读取和写入 Snowflake-managed 与 externally managed Iceberg tables。开发者可以通过标准 Spark DataFrame 和 Spark SQL API 访问它们，客户端仍使用 Spark 风格的代码，但执行引擎是 Snowflake。需要安装相应 Iceberg 扩展并核对 Snowpark Connect 版本与表类型的支持矩阵；不能因此假设全部 Iceberg Spark API、全部 Spark API 和所有 Iceberg Catalog 都能无差别使用。
+
+外部 Spark 集群也可以直接读取 Iceberg 表。这通常是开放 Lakehouse 的重要价值：数据文件不必为了不同计算引擎而重复复制。但如果外部引擎要访问受 Snowflake Row Access Policy 或 Masking Policy 保护的 Iceberg 数据，还要设计治理执行路径。Snowflake 当前提供 Snowflake Connector for Spark 和 Iceberg REST Catalog Scan Plan API 两种方式，把支持的行级和列级策略应用到外部查询；这不是 Iceberg 格式本身自动提供的安全能力。
+
+| 组合 | 谁执行计算 | Iceberg 的作用 |
+| --- | --- | --- |
+| Snowflake SQL + Iceberg | Snowflake SQL Engine | Snowflake 查询开放格式表 |
+| Snowpark Python + Iceberg | Snowflake SQL Engine | 用 Python DataFrame API 构建对 Iceberg 表的转换 |
+| Snowpark Connect + Iceberg | Snowflake SQL Engine | 复用受支持的 Spark DataFrame API 访问 Iceberg |
+| 外部 Spark + Iceberg | 外部 Spark 集群 | Spark 直接读写开放表格式 |
+| 外部 Spark + Snowflake Connector + Iceberg 治理 | Spark + Snowflake 访问路径 | 在跨引擎查询时应用 Snowflake 支持的数据保护策略 |
+
+### 什么时候值得选 Iceberg，而不是普通 Snowflake Table？
+
+如果数据只由 Snowflake 使用，而且没有把底层文件交给其他计算引擎的需求，普通 Snowflake Table 通常更直接，Snowflake 特有的表管理、查询和数据治理能力也更完整。不要为了“开放格式”而默认把每张表都改成 Iceberg。
+
+如果数据要同时被 Snowflake、Spark、Trino、Databricks 或其他 Iceberg 兼容引擎访问，或者组织要求数据文件保留在自己的对象存储、Catalog 由现有 Lakehouse 平台掌控，那么 Iceberg 的价值就很明确。它减少了不同引擎之间对专有表存储格式的耦合，但并不会消除 Catalog、权限、数据文件维护、压缩合并、Snapshot 过期、云存储成本和跨区域数据传输等责任。
+
+Snowflake 对 Iceberg 的支持也不是所有 Snowflake 原生表能力的等价替代。不同表类型的 Feature Support 存在差异；例如外部管理表的克隆、复制、Streams 等能力受到限制，客户自管存储的保护和恢复责任也与 Snowflake Storage 不同。设计前应核对 [Iceberg 功能与限制](https://docs.snowflake.com/en/user-guide/tables-iceberg) 及 [Snowpark Connect Iceberg 支持矩阵](https://docs.snowflake.com/en/developer-guide/snowpark-connect/snowpark-connect-iceberg)。
+
+## 13. 动手学习：先在本地跑 PySpark，再用 Snowpark 操作同一类数据
 
 ## 12. 动手学习：先在本地跑 PySpark，再用 Snowpark 操作同一类数据
 
@@ -457,12 +552,12 @@ Snowpark Python 的入门方式不同：需要 Snowflake 账号、角色、Wareh
 
 参考学习入口：[Spark Quick Start](https://spark.apache.org/docs/latest/quick-start.html) · [PySpark 官方文档](https://spark.apache.org/docs/latest/api/python/) · [Structured Streaming](https://spark.apache.org/docs/latest/streaming/index.html) · [Snowpark Python Developer Guide](https://docs.snowflake.com/en/developer-guide/snowpark/python/index) · [Snowpark Python 数据工程 Quickstart](https://quickstarts.snowflake.com/guide/data_engineering_with_snowpark_python/)
 
-## 13. 最后厘清三个概念
+## 14. 最后厘清几个不同层次
 
-Apache Spark 是分布式计算引擎。PySpark 是它的 Python API；DataFrame 是现代 Spark 开发最常用的结构化编程接口。理解 Spark 的关键，是理解数据分区、惰性计划、Driver/Executor、Task/Stage、Shuffle 和 SQL 优化器，而不是先学习 Java。
+Apache Spark 是分布式计算引擎；Snowpark 是在 Snowflake 上表达数据处理逻辑的开发 API；Snowpark Connect 则让受支持的 Spark Connect DataFrame 工作负载通过 Snowflake 引擎执行。它们回答的是“计算由谁执行、使用什么编程接口”。
 
-Snowpark Python 是 Snowflake 的 Python 开发 API。它让开发者用 DataFrame 风格编写数据转换，但主要由 Snowflake SQL 引擎执行，适合把计算留在 Snowflake 数据旁边。它不是一套通用 Spark 集群，也不提供相同的分区与 Executor 控制模型。
+Snowflake SQL、Dynamic Tables、Streams & Tasks、Snowpipe、UDF/Stored Procedure 和 Snowpark Container Services 分别处理查询、数据管道、调度、摄取、自定义函数和容器化计算。选型时应先用最贴近任务的原生能力，不要把所有数据流程都改造成 Spark Job 或 Snowpark 程序。
 
-Snowpark Connect for Apache Spark 则是面向 Spark Connect/PySpark 工作负载的兼容入口。它可以复用部分 Spark DataFrame 代码，但执行引擎、API 支持和部分语义都不同。把它视为迁移工具和兼容层更准确，不应把它理解成“完整 Apache Spark 被内置到 Snowflake”。
+Iceberg 是另一层：它定义数据文件、表元数据和 Snapshot 如何组成开放表。Snowflake、Snowpark、Spark 或 Trino 都可以成为访问它的计算方式，前提是目标引擎支持相应表类型和操作。要不要用 Iceberg，主要看是否需要跨引擎互操作、开放存储和外部 Catalog，而不是看团队使用了 Snowpark 还是 Spark。
 
-对开发者来说，最值得先掌握的是 Spark DataFrame 的声明式计算方式和执行计划。掌握之后再看 Snowpark，会很容易理解两者为何 API 相似、系统边界却不同。
+因此，一个完整的数据平台可以同时使用 Snowflake 原生表、Iceberg 表、Snowpark 和外部 Spark。真正需要做的架构决定，是分别确定表格式与 Catalog、计算引擎、数据摄取方式以及管道编排机制，再检查它们之间的权限、兼容性和运营边界。
