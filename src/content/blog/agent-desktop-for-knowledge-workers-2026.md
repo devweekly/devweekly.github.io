@@ -32,7 +32,7 @@ Anthropic 在 2026 年把 Claude Cowork 推向更广泛的企业用户。公开�
 
 Anthropic 在 2026 年 11 月还开始向 Enterprise 组织推出统一的 Claude 体验：对话从普通 Chat 开始，任务需要文件或代码执行时再进入 Cowork 的隔离云端环境，用户不必先理解产品模式差异。这个变化说明桌面 Agent 的入口正在从“选择工具”转向“描述工作”，但执行环境切换、连接器权限和本地文件桥接仍必须保持可见。参见 [统一 Claude Enterprise 体验的管理说明](https://support.claude.com/en/articles/17444462-set-up-and-manage-the-new-unified-claude-experience-for-your-enterprise-organization)。
 
-Anthropic 的另一项公开资料更值得架构师仔细阅读：[How we contain Claude across products](https://www.anthropic.com/research/how-we-contain-claude)。它比较了 Claude Code 与 Cowork 的安全边界。开发者通常能够判断 Shell 命令和代码修改是否合理，因此 Claude Code 可以把一部分权限判断交给用户；普通知识工作者未必能判断命令行行为是否危险，Cowork 因此采用更强的隔离边界。Anthropic 描述的 Cowork VM 将用户明确选择的工作区挂载到隔离环境，凭证留在宿主机，Agent 不应因为一次任务就获得整台电脑的访问权。
+Anthropic 的另一项公开资料更值得架构师仔细阅读：[How we contain Claude across products](https://www.anthropic.com/research/how-we-contain-claude)。它比较了 Claude Code 与 Cowork 的安全边界。开发者通常能够判断 Shell 命令和代码修改是否合理，因此 Claude Code 可以把一部分权限判断交给用户；普通知识工作者未必能判断命令行行为是否危险，Cowork 因此采用更强的隔离边界。Anthropic 的安全研究描述了 Cowork 的本地 VM 执行模式：用户明确选择的工作区被挂载到隔离环境，凭证留在宿主机，Agent 不会因此获得整台电脑的访问权。需要区分的是，当前 Cowork 的云端任务也可以运行在 Anthropic 管理的隔离环境中；桌面端通过受控桥接访问用户明确连接的本地文件夹。两种模式的执行位置不同，但共同原则是把 Agent 可见的文件范围限制在用户和组织授权的边界内。参见 [Cowork 使用与权限说明](https://support.claude.com/en/articles/13345190-get-started-with-claude-cowork)。
 
 这不是简单地“多弹几个确认框”。Anthropic 在[安全架构研究](https://www.anthropic.com/research/how-we-contain-claude)中披露，Claude Code 的 OS 沙箱将权限提示数量减少了 84%。这组数据来自厂商自己的使用与工程披露，不是独立对照实验，但它说明了一个实际问题：逐次询问用户并不天然等于有效监督。权限提示过多会形成审批疲劳，用户可能不再认真阅读。
 
@@ -84,7 +84,7 @@ Task 的正式状态应由 Runtime 或 Workflow 管理，不能仅依赖模型�
 
 用户选择一个项目、客户或研究主题作为工作区时，系统需要明确展示该工作区包含哪些文件、数据源和连接器。工作区不应该隐式继承整台设备的文件权限，也不能把一个任务的敏感上下文自动带入另一个客户或项目。
 
-本地文件访问、云端执行和连接器访问是三种不同的数据路径。它们有不同的安全边界、日志位置和网络控制方式。Claude Cowork 的 VM 设计说明了为什么“用户选中的文件夹”比“Agent 可以读取整台电脑”更合理。OpenAI 的虚拟计算机模式则说明，云端浏览器和本地桌面操作不应该混为一谈。产品必须明确告诉用户：当前任务在哪里执行、能访问哪些文件、哪些连接器已启用、输出会保存到哪里。
+本地文件访问、云端执行和连接器访问是三种不同的数据路径。它们有不同的安全边界、日志位置和网络控制方式。Claude Cowork 的本地 VM 与云端隔离执行说明了为什么“用户选中的文件夹”比“Agent 可以读取整台电脑”更合理；OpenAI 的虚拟计算机则属于 Agent 自己的云端执行环境，不能与 Work 在桌面端获得授权的本地应用访问混为一谈。产品必须明确告诉用户：当前任务在哪里执行、能访问哪些文件、哪些连接器已启用、输出会保存到哪里。
 
 ## 3. 非开发团队真正需要的工作体验
 
