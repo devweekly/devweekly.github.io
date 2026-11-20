@@ -57,7 +57,7 @@ OpenAI 的企业产品实践有一个值得注意的方向：除了单次 Agent 
 | 长任务 | Cowork 的多步骤任务、子任务和持续执行 | Agent、Deep Research、Workspace Agents |
 | 文件与应用 | 选择工作区、连接器、Office 应用集成 | 本地文件和桌面应用授权、企业连接器 |
 | 企业复用 | Skills、Plugins、组织级连接器控制 | Workspace Agents、GPTs、连接器和管理员控制 |
-| 安全设计公开重点 | Cowork VM、工作区挂载、网络与连接器边界 | 虚拟计算机、任务接管、工作区权限与企业控制 |
+| 安全设计公开重点 | 当前云端隔离执行与 Desktop Bridge；另有早期本地 VM 设计研究 | 云端虚拟计算机、Work Local 权限面和企业策略控制 |
 | 运营可见性 | OpenTelemetry、Compliance API、组织分析 | Compliance Logs Platform、Admin Audit、Agent 与连接器分析 |
 
 这张表比较的是公开产品方向，不是功能完整度或安全性排名。两家产品的功能和计划可用性变化很快，采购或落地前必须以当时的官方文档、租户配置和合同能力为准。
