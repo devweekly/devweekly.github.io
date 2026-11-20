@@ -303,6 +303,63 @@ Agent 的网络流量至少来自代码执行环境、云端浏览器、本机�
 [查看执行配置与能力边界图（HTML）](/diagrams/agent-desktop-execution-profiles.html)
 
 
+
+### 5.11 自建 Agent Desktop：不要从 Computer Use 开始
+
+如果不是直接采用 Claude 或 OpenAI 的完整产品，而是自己构建面向企业知识工作者的 Agent Desktop，没必要一开始就实现 Computer Use 和 Browser Use。把商业产品的功能清单当成自建系统的必选项，会显著扩大工程范围，也会把最难治理的权限面提前引入。
+
+更合理的顺序是：**先用结构化接口完成任务，再用浏览器自动化补齐没有 API 的 Web 系统，最后才考虑视觉驱动的桌面操作。** 三种方式解决的问题不同，安全边界和维护成本也不同。
+
+| 执行方式 | 典型实现 | 适用场景 | 主要成本与风险 | 建议优先级 |
+| --- | --- | --- | --- | --- |
+| API / MCP / Connector | REST、GraphQL、业务 SDK、MCP Server | 查询数据库、读取知识库、创建工单、更新业务记录 | 身份映射、资源级授权、参数校验、审计 | 第一优先 |
+| Browser Use | Chromium + Playwright，优先 DOM 和 Accessibility Tree | 没有可用 API 的 Web 应用、需要跨页面操作的流程 | 登录态管理、页面变化、下载上传、站点策略、反自动化机制 | 第二阶段 |
+| Computer Use | 截图、视觉定位、鼠标键盘、窗口控制 | 只能通过 GUI 使用的传统桌面应用或特殊插件 | 视觉误判、焦点和窗口状态、误操作、桌面数据暴露 | 最后考虑 |
+
+API/MCP 并不意味着把所有系统都包装成一个万能工具。每个 Connector 仍应有明确的身份、资源范围和动作语义。例如，查询 Snowflake、读取 Confluence 页面和创建 Jira 工单应是不同的工具能力，分别定义只读或写入权限、允许的资源范围和审计字段。MCP 只是工具交互协议，不是授权边界；真正的授权仍由 Connector Gateway 和目标系统共同执行。
+
+Browser Use 的主要价值是补齐没有结构化接口的 Web 系统，而不是取代 API。自建时通常不需要开发浏览器内核或视觉模型，可以使用受控 Chromium 实例和 Playwright。优先通过 DOM、Role、Label 和 Accessibility Tree 定位页面元素；只有页面确实无法提供可访问结构时，才考虑截图和视觉定位。浏览器应使用专用 Profile，独立管理 Cookie、下载目录、站点 Allowlist、上传能力和会话生命周期，不要默认复用用户日常浏览器的完整登录态。对金融或客户数据场景，浏览器会话本身应视为一组高权限凭证。
+
+Computer Use 则是另一种能力。它需要理解屏幕状态、选择窗口、定位控件并执行鼠标键盘动作。只有当目标应用没有可用 API、没有可行的浏览器自动化路径，而且 GUI 操作确实能带来业务价值时，才值得建设这条执行通道。典型例子是某些传统 Windows 金融终端、只能通过桌面插件访问的应用，或缺乏自动化接口的遗留系统。它不应成为普通文档阅读、代码分析或网页研究的默认执行方式。
+
+自建系统可以把三种能力放进同一套 Task Runtime，但不应放进同一个权限开关。一个简化的运行结构是：
+
+- **Agent Runtime**：理解用户目标，生成任务计划，并选择所需的工具能力；模型本身不直接获得操作系统权限。
+- **Policy & Approval Engine**：根据用户身份、任务类型、数据分类、目标资源和动作风险，决定是否允许执行或要求审批。
+- **API / MCP Runtime**：调用结构化业务接口，执行身份映射、资源级授权、参数校验和审计。
+- **Browser Runtime**：运行隔离的浏览器实例，管理专用 Profile、站点策略、下载上传和页面交互。
+- **Computer Use Runtime**：在明确授权后访问指定桌面会话，限制应用、窗口和可执行动作。
+- **File / Code Runtime**：为本地文件和代码任务提供独立的文件代理、工作区和沙箱。
+- **Task / Workspace / Artifact**：保存任务状态、输入输出、执行配置、审批记录和证据。
+
+关键在于，Agent 只提出工具调用请求，Runtime 才能真正访问外部系统。Policy Engine 对动作做出决定后，执行环境还要强制实施文件、网络、应用和身份边界。不要让模型通过任意 Shell、通用 HTTP 或端口转发绕开 Connector、Browser 或 Computer Use 的策略。
+
+实施上建议分三步：
+
+**第一阶段：File、Code 和 Connector Runtime。** 先支持本地或云端 Workspace、文档解析、文件读取、产物生成、受限代码执行，以及少量高价值业务 Connector。代码执行应在独立沙箱中进行，区分只读分析、工作区写入和测试构建；默认不允许任意网络访问。大多数研究、分析、架构和审核任务，在这一阶段就能覆盖。
+
+**第二阶段：Browser Runtime。** 只有当目标 Web 系统没有稳定 API，且人工操作确实构成主要瓶颈时才引入。使用 Playwright 和专用浏览器 Profile，优先 DOM / Accessibility 自动化；把站点范围、登录身份、文件上传下载和页面数据外传纳入 Policy Engine。浏览器会话应可创建、暂停、终止和审计，不能把用户个人浏览器当成无边界的自动化环境。
+
+**第三阶段：Computer Use Runtime。** 通过独立进程或隔离桌面会话承载截图、鼠标键盘和窗口控制。先限定应用和会话，再定义动作权限；高影响操作要求用户确认。不要把 Computer Use 作为 Browser Use 失败后的自动 fallback，也不要让它继承 Browser Runtime 或本机用户的全部权限。
+
+任务执行方式可以按以下规则选择：
+
+| 用户任务 | 首选执行方式 | 不应默认做的事 |
+| --- | --- | --- |
+| 查询数据库或知识库 | API / MCP / Connector | 打开浏览器登录后台查询 |
+| 阅读本地 PDF 或 Office 文件 | File Runtime | 启动桌面 GUI 逐页截图 |
+| 分析代码或审查 Pull Request | Read-only Workspace + 静态分析 | 直接在开发者宿主机运行未知代码 |
+| 运行测试或数据转换 | Code Sandbox | 自动开放整个文件系统和互联网 |
+| 查询没有 API 的网站 | Browser Runtime | 直接接管用户当前浏览器 |
+| 操作 Excel 等桌面应用 | Office API / Add-in；确有必要时 Computer Use | 一开始就实现通用鼠标键盘 Agent |
+| 操作传统桌面遗留系统 | Computer Use，限定应用和会话 | 将桌面会话暴露成任意远程控制能力 |
+
+需要特别定义失败处理。Connector 不可用时，应明确提示接口不可用或转交人工；Browser Runtime 遇到页面变化、登录过期或元素无法定位时，应停止并请求恢复会话或人工接管；Computer Use 遇到焦点不明、窗口变化或动作结果无法确认时，应暂停，不应继续猜测。**执行方式可以降级，但权限不能自动升级。** Browser Use 失败不能悄悄切换到 Computer Use，更不能借机获得用户桌面的完整访问权；切换执行通道必须重新经过策略判断和必要的用户审批。
+
+自建时也不值得从零开发所有底层能力：不需要训练视觉模型，不需要实现浏览器内核，也不需要把鼠标键盘封装成一个万能 API。应把工程投入放在任务状态管理、身份与权限映射、执行隔离、失败恢复、审批和证据链上。Playwright、Chromium、容器或 OS 沙箱可以承担底层执行；企业自己的 Runtime 负责把它们组合成可治理的任务能力。
+
+对大多数企业知识工作场景，先把 File / Code / Connector Runtime 做扎实，再根据真实任务缺口决定是否增加 Browser Use。Computer Use 应作为少数遗留应用的专用能力，而不是 Agent Desktop 的产品起点。
+
 ## 6. 多 Agent、Skills 和 Workflow：从任务需要出发，不从概念出发
 
 研究、审核和架构任务有时确实适合拆分。例如，研究任务可以让一个 Agent 检索来源，另一个 Agent 检查方法和数据，第三个 Agent 寻找反例。但多 Agent 会增加上下文传递、成本、延迟和错误归因难度。它不应该成为默认架构。
