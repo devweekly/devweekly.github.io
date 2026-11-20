@@ -26,21 +26,23 @@ Claude Cowork 与 OpenAI ChatGPT 的 Agent、Deep Research 和 Work 产品，已
 
 ### Claude：把开发者的 Agent 执行能力带到知识工作
 
-Anthropic 在 2026 年把 Claude Cowork 推向更广泛的企业用户。公开描述的典型任务包括研究冲刺、项目材料、协作演示文稿、数据整合和跨应用工作。其产品组合把文件工作区、Connectors、Skills、Plugins、子任务和较长时间运行的任务结合起来。Anthropic 在 2026 年 4 月的企业公告中提到，Cowork 的大量使用来自工程以外的团队，包含运营、市场、金融和法律职能；这些团队首先把周边研究、材料准备和协作任务交给 Agent，而不是直接交出核心业务决策。
+Anthropic 在 2026 年把 Claude Cowork 推向更广泛的企业用户。公开描述的典型任务包括研究冲刺、项目材料、协作演示文稿、数据整合和跨应用工作。其产品组合把文件工作区、Connectors、Skills、Plugins、子任务和较长时间运行的任务结合起来。Anthropic 在 [2026 年 4 月的企业公告](https://claude.com/resources/articles/cowork-for-enterprise)中提到，Cowork 的大量使用来自工程以外的团队，包含运营、市场、金融和法律职能；这些团队首先把周边研究、材料准备和协作任务交给 Agent，而不是直接交出核心业务决策。
 
 这对产品设计有两个启发。第一，用户不应该先学习 Agent Framework、MCP 或 Prompt Engineering 才能开始工作。用户描述任务和交付标准，系统再把任务映射到可用工具和工作流。第二，工作成果需要落在用户熟悉的文件和业务应用中，例如 Excel、PowerPoint、文档库、工单系统和知识库，而不是只留在聊天记录里。
 
+Anthropic 在 2026 年 11 月还开始向 Enterprise 组织推出统一的 Claude 体验：对话从普通 Chat 开始，任务需要文件或代码执行时再进入 Cowork 的隔离云端环境，用户不必先理解产品模式差异。这个变化说明桌面 Agent 的入口正在从“选择工具”转向“描述工作”，但执行环境切换、连接器权限和本地文件桥接仍必须保持可见。参见 [统一 Claude Enterprise 体验的管理说明](https://support.claude.com/en/articles/17444462-set-up-and-manage-the-new-unified-claude-experience-for-your-enterprise-organization)。
+
 Anthropic 的另一项公开资料更值得架构师仔细阅读：[How we contain Claude across products](https://www.anthropic.com/research/how-we-contain-claude)。它比较了 Claude Code 与 Cowork 的安全边界。开发者通常能够判断 Shell 命令和代码修改是否合理，因此 Claude Code 可以把一部分权限判断交给用户；普通知识工作者未必能判断命令行行为是否危险，Cowork 因此采用更强的隔离边界。Anthropic 描述的 Cowork VM 将用户明确选择的工作区挂载到隔离环境，凭证留在宿主机，Agent 不应因为一次任务就获得整台电脑的访问权。
 
-这不是简单地“多弹几个确认框”。Anthropic 还披露，Claude Code 的 OS 沙箱将权限提示数量减少了 84%。这组数据来自厂商自己的使用与工程披露，不是独立对照实验，但它说明了一个实际问题：逐次询问用户并不天然等于有效监督。权限提示过多会形成审批疲劳，用户可能不再认真阅读。
+这不是简单地“多弹几个确认框”。Anthropic 在[安全架构研究](https://www.anthropic.com/research/how-we-contain-claude)中披露，Claude Code 的 OS 沙箱将权限提示数量减少了 84%。这组数据来自厂商自己的使用与工程披露，不是独立对照实验，但它说明了一个实际问题：逐次询问用户并不天然等于有效监督。权限提示过多会形成审批疲劳，用户可能不再认真阅读。
 
 ### OpenAI：把研究、浏览器操作和桌面工作整合起来
 
-OpenAI 在 2025 年推出 ChatGPT agent，将研究和行动组合到一个任务中：Agent 可以使用自己的虚拟计算机浏览网站、运行代码、分析资料，并在连接器允许的范围内访问第三方数据。产品说明也强调用户可以中断任务并接管浏览器。此后，Deep Research 继续强化多来源研究与报告生成；企业连接器将 SharePoint、Google Drive、Slack 等系统的数据带入任务；2026 年 7 月发布的新 ChatGPT Desktop 则把 Chat、Work 和 Codex 放到统一桌面入口，Work 在获得用户许可后可以使用本地文件和桌面应用。
+OpenAI 在 [2025 年推出 ChatGPT agent](https://openai.com/index/introducing-chatgpt-agent/)，将研究和行动组合到一个任务中：Agent 可以使用自己的虚拟计算机浏览网站、运行代码、分析资料，并在连接器允许的范围内访问第三方数据。产品说明也强调用户可以中断任务并接管浏览器。此后，Deep Research 继续强化多来源研究与报告生成；企业连接器将 SharePoint、Google Drive、Slack 等系统的数据带入任务；OpenAI 在[2026 年 7 月的企业版本更新记录](https://help.openai.com/en/articles/10128477-chatgpt-enterprise-and-edu-release-notes)中宣布新的 ChatGPT Desktop 将 Chat、Work 和 Codex 放到统一桌面入口，Work 在获得用户许可后可以使用本地文件和桌面应用。
 
 OpenAI 的企业产品实践有一个值得注意的方向：除了单次 Agent 任务，Workspace Agents 开始支持组织创建可复用的工作流程，并在 ChatGPT 或 Slack 中运行。2026 年企业版本更新还增加了管理员分析视图、Agent 活动信息和审计日志能力。换句话说，产品正在从个人助手走向组织可以管理的工作资产。
 
-但产品能力与企业可治理性仍然要分开判断。OpenAI 的企业发布说明列出了 Workspace Agents、RBAC、连接器交互分析和 Global Admin Console 审计事件；这并不意味着每一个 Agent 在每个下游系统中的动作都已经被同一条审计链完整覆盖。实际部署仍需检查 Compliance Logs Platform、Agent 事件范围以及目标 SaaS 自身的审计日志，并将它们关联起来。
+但产品能力与企业可治理性仍然要分开判断。OpenAI 的[企业发布说明](https://help.openai.com/en/articles/10128477-chatgpt-enterprise-and-edu-release-notes)列出了 Workspace Agents、RBAC、连接器交互分析和 Global Admin Console 审计事件；这并不意味着每一个 Agent 在每个下游系统中的动作都已经被同一条审计链完整覆盖。实际部署仍需检查 Compliance Logs Platform、Agent 事件范围以及目标 SaaS 自身的审计日志，并将它们关联起来。
 
 官方资料：
 - [Introducing ChatGPT agent](https://openai.com/index/introducing-chatgpt-agent/)
@@ -132,7 +134,7 @@ Agent Desktop 最危险的设计之一，是把所有任务放在同一种权限
 
 “有人点了批准”并不等于有人真正检查过。Anthropic 关于 Claude Code 权限提示和 Cowork 隔离机制的讨论，已经说明逐项授权可能形成疲劳。学术研究也反复发现，人们可能过度依赖算法建议，尤其在时间压力、任务负担和界面锚定影响下。
 
-2025 年的《Bias in the Loop: How Humans Evaluate AI-Generated Suggestions》使用 2,784 名参与者研究 AI 建议质量、任务负担等因素对人类判断的影响；《Putting a human in the loop: Increasing uptake, but decreasing accuracy of automated decision-making》则通过实验指出，让人参与调整自动化建议可能提高接受程度，却不保证最终准确率提高。这些研究不是企业 Agent Desktop 的直接生产评估，但它们提醒我们：人工参与必须设计成真实的判断过程，而不是审批按钮。
+2025 年的[《Bias in the Loop: How Humans Evaluate AI-Generated Suggestions》](https://arxiv.org/abs/2509.08514)使用 2,784 名参与者研究 AI 建议质量、任务负担等因素对人类判断的影响；[《Putting a human in the loop: Increasing uptake, but decreasing accuracy of automated decision-making》](https://pmc.ncbi.nlm.nih.gov/articles/PMC10857587/)则通过实验指出，让人参与调整自动化建议可能提高接受程度，却不保证最终准确率提高。这些研究不是企业 Agent Desktop 的直接生产评估，但它们提醒我们：人工参与必须设计成真实的判断过程，而不是审批按钮。
 
 界面应帮助人发现值得检查的地方，例如显示关键证据、冲突数据、置信度不足的环节、异常变化和未满足的规则。对于高风险判断，可以先让审核人独立给出初步结论，再展示 Agent 的建议，降低锚定效应。审批数量、审批耗时和批准率不能单独作为效率指标；还应测量抽检发现的错误、人工修改比例、撤销率和重大问题逃逸率。
 
