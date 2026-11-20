@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="680" viewBox="0 0 1120 680" role="img" aria-labelledby="title desc"><title id="title">本机文件访问控制流程</title><desc id="desc">本机文件访问控制流程</desc><defs><marker id="arr" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto"><path d="M0 0L9 3L0 6" fill="#65584D"/></marker><marker id="arrA" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto"><path d="M0 0L9 3L0 6" fill="#8B5A2B"/></marker></defs><rect width="1120" height="680" fill="#F9F6EF"/><text x="56" y="58" class="title">本机文件访问控制</text><text x="56" y="84" class="subtitle">Authorize the resolved file object, not an untrusted path string.</text>
+<rect x="390" y="116" width="340" height="64" rx="10" class="card"/><text x="560" y="143" text-anchor="middle" class="label">用户选择工作区根目录</text><text x="560" y="164" text-anchor="middle" class="small">Store stable directory identity / handle</text>
+<path d="M560 180V220" class="line" marker-end="url(#arr)"/>
+<rect x="390" y="226" width="340" height="70" rx="10" class="card"/><text x="560" y="254" text-anchor="middle" class="label">规范化请求路径</text><text x="560" y="278" text-anchor="middle" class="body">Reject traversal · normalize components</text>
+<path d="M560 296V334" class="line" marker-end="url(#arr)"/>
+<rect x="390" y="340" width="340" height="76" rx="10" class="focus"/><text x="560" y="369" text-anchor="middle" class="label">解析 Symlink / 真实目标</text><text x="560" y="394" text-anchor="middle" class="body">Resolve before final authorization</text>
+<path d="M560 416V452" class="line" marker-end="url(#arr)"/>
+<path d="M560 454L688 514L560 574L432 514Z" fill="#FFFEFA" stroke="#8B5A2B" stroke-width="1.5"/><text x="560" y="508" text-anchor="middle" class="label">目标仍在授权根内？</text><text x="560" y="530" text-anchor="middle" class="small">Classification · mount · policy</text>
+<path d="M432 514H228V590" class="accent" marker-end="url(#arrA)"/><text x="322" y="500" class="small">No</text>
+<rect x="90" y="590" width="276" height="58" rx="9" class="rose"/><text x="228" y="625" text-anchor="middle" class="label">拒绝并记录策略事件</text>
+<path d="M688 514H880V590" class="line" marker-end="url(#arr)"/><text x="784" y="500" class="small">Yes</text>
+<rect x="744" y="590" width="276" height="58" rx="9" class="green"/><text x="882" y="615" text-anchor="middle" class="label">安全打开文件句柄</text><text x="882" y="636" text-anchor="middle" class="small">No-follow / dir-relative open</text>
+<text x="882" y="672" text-anchor="middle" class="small">Read · Create · Update · Delete as separate rights</text></svg>
