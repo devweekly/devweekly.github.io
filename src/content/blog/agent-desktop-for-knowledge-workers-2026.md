@@ -158,6 +158,112 @@ MCP 只是工具集成协议，不是授权系统。每个连接器仍需明确�
 
 建议采用统一的 Task ID / Trace ID，将模型调用、工具调用、数据访问、文件读写、审批和下游系统审计事件关联起来。OpenTelemetry 适合承载运行指标和调用轨迹；合规日志则需要按组织的留存、访问和法律保全要求管理。不要默认把完整敏感 Prompt 和数据内容无限期写入通用日志。应区分元数据、内容审计和业务系统自身的正式记录。
 
+### 5.4 沙箱解决的是执行隔离，不等于数据访问授权
+
+企业部署前必须先回答：Agent 的代码运行在哪里？它通过什么通道读取本机文件？浏览器和桌面应用由谁控制？数据最终发送到哪里？“有沙箱”不是足够具体的安全描述，因为执行隔离与数据访问授权解决的是不同问题。
+
+Anthropic 当前的 Cowork 安全说明将任务描述为运行在 Anthropic 云端的临时隔离环境；需要本地文件或桌面应用时，再通过 Claude Desktop 建立受控访问路径。Anthropic 另有一篇工程研究，介绍早期 Cowork 本地 VM 的设计：VM 使用独立 Linux kernel、filesystem 和 process table，只挂载用户选定的工作区，凭证留在宿主机。这篇研究适合理解 VM 隔离思路，但不能据此推断当前 Cowork 的任务都在本机 VM 内执行。
+
+OpenAI 的 Work 需要区分 Cloud Work、Local Work 和 Local computer access with Work Cloud。后一种模式由云端协调任务，本机执行需要访问设备资源的步骤；相关文件片段、Prompt、截图或应用上下文仍可能发送到 OpenAI 服务。OpenAI 明确说明该模式不提供严格的 Zero Data Retention（ZDR）。因此，“文件留在本机”不等于“任务数据只在本机处理”。
+
+| 执行模式 | Agent 代码运行位置 | 本机访问方式 | 设计时必须检查 |
+| --- | --- | --- | --- |
+| Cowork 当前云端任务 | Anthropic 云端临时隔离环境 | Desktop bridge 访问已连接文件夹和获批应用 | 数据处理位置、桥接权限、云端留存 |
+| Cowork 早期本地 VM 设计 | 本机 VM，独立 Guest OS | 选定工作区挂载到 VM | Host/Guest 边界、挂载模式、凭证隔离；这是工程研究披露的设计阶段 |
+| ChatGPT Work Cloud | OpenAI 管理的云端执行环境 | 上传文件、连接器和云端浏览器等授权路径 | 云端执行策略、连接器身份、数据留存 |
+| ChatGPT Work Local / Work Cloud 协同 | 本机执行部分步骤，云端协调任务 | 桌面端、本机文件与应用权限 | OS 权限、应用批准、浏览器路径、云端上下文和审计覆盖 |
+
+从企业架构角度，沙箱至少应区分三层：
+
+- **进程与运行时隔离**：限制 CPU、内存、进程、系统调用、临时目录和子进程能力。容器通常仍共享宿主机内核；VM 提供独立 Guest Kernel，隔离边界更强，但启动、资源和运维成本更高。
+- **文件与凭证隔离**：Agent 只能看到显式挂载的工作区或通过文件服务访问获批资源。企业 SSO 凭证、刷新令牌和长期密钥应留在 Host 或专用凭证代理中，不能写入 Agent 工作目录或环境变量。
+- **网络与工具隔离**：沙箱默认不继承企业 VPN、宿主机路由和浏览器登录态。访问内部系统必须走单独授权的 Connector、受控 Proxy 或本机 Bridge，并在目标系统再次执行用户权限检查。
+
+本机 Agent 如果使用容器而非 VM，不能把容器边界当成对抗恶意 Guest Kernel 或高权限宿主机攻击的完整隔离。应以最小权限运行，去掉不必要的 capabilities，限制系统调用、设备、挂载和网络；对高敏感任务优先考虑独立 VM 或托管执行环境。Local MCP Server、浏览器扩展和桌面自动化进程也不应因为由 Agent 调用就自动被视为沙箱内可信组件，它们各自形成新的信任边界。
+
+![Agent Desktop 的云端执行、本机桥接与沙箱信任边界](/diagrams/agent-desktop-execution-boundaries.svg)
+
+[查看执行边界图（HTML）](/diagrams/agent-desktop-execution-boundaries.html)
+
+### 5.5 本机文件访问：路径校验必须发生在真实文件对象上
+
+“只允许访问用户选中的目录”只是授权策略的起点。实际实现需要处理符号链接、路径穿越、大小写与 Unicode 规范化、硬链接、挂载点、竞态条件和文件替换。只在字符串层面检查 `startsWith(workspaceRoot)` 并不安全：授权目录中的 symlink 可以指向目录外部，攻击者也可能在校验和打开文件之间替换路径目标。
+
+建议将文件访问封装为独立的 File Access Service，而不是让 Agent Runtime 直接拼接本机路径。服务应执行以下流程：
+
+1. 用户显式选择工作区根目录，服务保存其稳定的目录句柄或文件身份，而不只保存字符串路径。
+2. 对请求路径做规范化，解析符号链接和真实目标，再检查目标是否仍处于授权根目录之内。**必须先解析 symlink，再做最终路径授权判断**；拒绝 `..` 穿越、越界链接和不允许的挂载点。
+3. 授权检查应绑定实际打开的文件对象。支持的平台优先使用目录句柄相对打开、禁止跟随 symlink 的系统调用或等价机制，避免检查后文件被替换的 TOCTOU 问题。
+4. 依据数据分类、文件类型和任务策略，分别授予只读、读写、禁止删除等能力。写入使用临时文件、原子替换和版本备份；删除、覆盖和批量改名是不同的动作，不能被一个笼统的“写权限”涵盖。
+5. 对超大文件、隐藏文件、凭证文件、浏览器 Profile、SSH Key、云配置、系统目录和企业敏感目录设置默认拒绝或单独审批。拒绝规则应由管理员集中配置，普通用户不能通过 Prompt 覆盖。
+
+Anthropic 的工程说明披露了 read-only、read-write 和 read-write-no-delete 等挂载模式，并特别指出 symlink 解析顺序对防止目录逃逸的重要性；企业还可以通过 MDM 限制允许挂载的路径。这里的文件句柄绑定、TOCTOU 防护、原子写入和敏感文件默认拒绝，是通用安全工程建议，不应误认为是所有商业产品都已公开实现的细节。
+
+文件授权最好落到具体能力，而不是只给一个布尔值：
+
+| 能力 | 默认策略 | 额外约束 |
+| --- | --- | --- |
+| List / Read | 工作区内允许 | 敏感文件分类、最大文件大小、内容审计 |
+| Create | 工作区内允许创建新文件 | 限制扩展名、路径和输出目录 |
+| Update | 默认生成新版本或草稿 | 展示 Diff、原子替换、可恢复 |
+| Rename / Move | 单独控制 | 检查源和目标路径，防止跨区移动 |
+| Delete | 默认禁止或逐次批准 | 回收站/备份、批量删除二次确认 |
+| Execute | 不等同于文件读写权限 | 单独沙箱、命令策略、网络隔离 |
+
+![本机文件访问的授权、路径解析和安全打开流程](/diagrams/agent-desktop-filesystem-access.svg)
+
+[查看文件访问控制图（HTML）](/diagrams/agent-desktop-filesystem-access.html)
+
+### 5.6 Computer Use 必须与文件 API 分开授权
+
+通过文件 API 读取一个目录，与让 Agent 看屏幕、点击应用、键入内容不是同一种权限。Computer Use 可能通过一个已授权的应用打开文件夹白名单之外的文件，也可能在当前用户已登录的应用中执行操作。因此，文件系统 Allowlist 不能被当作 Computer Use 的完整边界。
+
+macOS 上，Screen Recording 权限决定 Agent 能否读取屏幕内容，Accessibility 权限决定它能否点击、输入和导航；Windows 的交互模式和当前可见桌面会话又有不同约束。OpenAI 的 Work Local 文档还明确区分了内置浏览器、Chrome 扩展和通过 Computer Use 控制本机浏览器：Computer Use 使用已登录的浏览器会话时，不适用 Browser Use 的站点和能力策略，仍受原生应用策略、OS 权限和账户自身权限约束。Anthropic 也提醒，Computer Use 不受文件工具同样的沙箱保护，应用批准不代表操作风险已经消失。
+
+因此，桌面自动化应作为独立能力面管理：
+
+- 按应用建立 Allowlist / Denylist，默认阻断网银、交易终端、密码管理器、身份管理、医疗和个人敏感应用。
+- Screen Recording、Accessibility、麦克风、剪贴板和文件访问分别申请权限，不把一次应用批准扩展成所有权限。
+- 批准范围绑定具体应用、任务和会话；跨会话复用审批由管理员策略决定，并支持撤销。
+- 对浏览器区分云端 Browser、桌面内置 Browser、扩展控制现有标签页、Computer Use 操作原生浏览器。分别验证登录态、站点策略、上传下载限制、历史记录和审计覆盖。
+- 对发送、提交、删除、资金相关和权限管理等操作采用专门的业务授权。屏幕上出现了按钮，不代表 Agent 有权点击它。
+
+![Computer Use 的操作权限与浏览器访问边界](/diagrams/agent-desktop-computer-use-boundaries.svg)
+
+[查看 Computer Use 权限边界图（HTML）](/diagrams/agent-desktop-computer-use-boundaries.html)
+
+### 5.7 网络出口：VPN 可达不等于 Agent 获得授权
+
+Agent 的网络流量至少来自代码执行环境、云端浏览器、本机浏览器、原生桌面应用、Connector 和 Local MCP。它们不一定经过同一个 Proxy，也不一定受同一套 Browser Policy 控制。仅在容器中设置一个网络 Allowlist，无法覆盖本机浏览器已登录会话或原生应用发出的请求；企业 VPN 能够访问内网，也不代表 Agent 有权访问其中的每个服务。
+
+建议以 deny-by-default 为基线，为每种执行路径单独定义目的地、协议、身份和数据范围。代码执行环境通过受控 egress proxy 出网；本机 Bridge 只暴露窄接口，不提供任意 HTTP、Shell 或端口转发；Connector 使用目标系统 OAuth scope 和资源级权限；浏览器策略单独限制站点、上传下载和调试协议。DNS 解析结果、重定向、IP 段和代理绕行也要纳入验证，不能只按域名字符串做 Allowlist。
+
+对金融和审核任务，尤其要防止 Agent 将受保护数据从一个合法读取通道转移到另一个合法写入通道。网络层允许访问某个 SaaS，不代表允许把当前工作区中的客户数据上传给它。数据分类、目的地策略和动作策略必须共同判断。
+
+![Agent Desktop 不同执行路径的网络出口控制](/diagrams/agent-desktop-network-egress.svg)
+
+[查看网络出口控制图（HTML）](/diagrams/agent-desktop-network-egress.html)
+
+### 5.8 用数据外传场景检验纵深防御
+
+最值得测试的攻击链并不一定是沙箱逃逸。一个现实得多的场景是：Agent 读取了含有间接指令的外部 PDF，文档要求它把工作区中的客户资料发送到某个外部网站；Agent 本身没有突破文件权限，也没有逃出容器，只是把已获准读取的数据，通过另一个已获准使用的连接器写了出去。
+
+这类问题说明，权限检查不能只问“这个工具是否允许使用”，还要判断当前任务能否把这类数据发往这个目标。建议对每个数据源和目的地维护数据分类、用途限制与允许流向；工具调用时由 Policy Enforcement Point 检查主体、动作、资源、数据标签、目的地和任务上下文。模型只能提出动作，不能自行改变策略或豁免规则。
+
+高风险写入的审批应绑定目标资源、动作、完整参数摘要和数据来源。审批之后，只要目标、内容或参数发生变化，就重新计算策略并要求重新批准。日志记录策略决策、数据分类、目标系统和结果，但不要为了审计而把完整敏感文件内容复制进普通日志。
+
+![Prompt Injection 导致跨系统数据外传的威胁路径与防护点](/diagrams/agent-desktop-data-exfiltration-threat-model.svg)
+
+[查看数据外传威胁模型图（HTML）](/diagrams/agent-desktop-data-exfiltration-threat-model.html)
+
+### 5.9 审计、留存与应急响应不是同一个控制
+
+审计日志用于调查和问责，不能替代执行前的授权与阻断。应分别记录用户身份、Agent / workload identity、Task ID、模型和策略版本、文件操作元数据、工具调用、审批、网络目的地和下游结果，并关联设备 EDR、身份平台、代理和目标业务系统日志。对敏感内容采用受控的内容审计或证据快照，不要默认把完整 Prompt、文件内容和屏幕截图无限期写入通用日志。
+
+同样不能假定结束任务就删除了所有副本。对云端任务、本机执行记录、Prompt 和文件片段、截图、生成文件、连接器缓存、浏览器 Profile、合规日志分别制定留存和删除策略。OpenAI 的 Work Local 文档明确指出，Local computer access with Work Cloud 不提供严格 ZDR，且不同数据类别适用不同留存规则；Anthropic 的 Cowork 安全说明也指出，云端任务通过 Desktop 读取的本地文件内容仍在 Anthropic 服务端处理。若组织要求数据绝不离开终端，必须验证产品的数据流是否满足该要求，而不是根据“Local”这个产品名称判断。
+
+上线前至少验证以下失败场景：Agent 通过 symlink 访问工作区外文件；文件在授权检查后被替换；Computer Use 从获批应用跳转到未批准应用；浏览器策略没有覆盖原生浏览器自动化；任务取消后后台动作仍继续；审批后参数发生变化；连接器读取的敏感数据被发送到外部目的地；审计链缺少本机文件或云端协调事件。对每个场景都要验证系统是否阻断、是否告警、能否定位责任主体，以及能否恢复受影响的数据和业务状态。
+
 ## 6. 多 Agent、Skills 和 Workflow：从任务需要出发，不从概念出发
 
 研究、审核和架构任务有时确实适合拆分。例如，研究任务可以让一个 Agent 检索来源，另一个 Agent 检查方法和数据，第三个 Agent 寻找反例。但多 Agent 会增加上下文传递、成本、延迟和错误归因难度。它不应该成为默认架构。
@@ -210,6 +316,11 @@ Claude Cowork 展示了知识工作场景下的隔离执行和可复用工作能
 - Anthropic, [How we contain Claude across products](https://www.anthropic.com/research/how-we-contain-claude) — Claude Code 与 Cowork 的安全边界、沙箱和权限提示经验。
 - Anthropic, [Making Claude Cowork ready for enterprise](https://claude.com/resources/articles/cowork-for-enterprise) — 企业角色、连接器动作控制、OpenTelemetry 和组织采用情况。
 - Anthropic, [Use Claude Cowork safely](https://support.claude.com/en/articles/13364135-use-claude-cowork-safely) — 文件、浏览器、MCP 和跨应用数据访问风险。
+- Anthropic, [How we contain Claude across products](https://www.anthropic.com/research/how-we-contain-claude) — Cowork VM 设计演进、文件挂载模式和 symlink 防护经验。
+- Anthropic, [Use Claude Cowork safely](https://support.claude.com/en/articles/13364135-use-claude-cowork-safely) — 当前云端隔离执行、本机文件桥接、Computer Use 风险和安全措施。
+- OpenAI, [ChatGPT Work local security](https://learn.chatgpt.com/docs/enterprise/chatgpt-work-local-security) — 本机应用权限、浏览器路径、网络策略、数据留存与审计限制。
+- OpenAI, [ChatGPT Work overview](https://learn.chatgpt.com/docs/enterprise/chatgpt-work-overview) — Work Local、Work Cloud 和本机协同执行的边界。
+- OpenAI, [ChatGPT Work cloud security](https://learn.chatgpt.com/docs/enterprise/chatgpt-work-cloud-security) — 云端执行、连接器权限和数据留存。
 - OpenAI, [Introducing ChatGPT agent](https://openai.com/index/introducing-chatgpt-agent/) — 研究与行动结合、虚拟计算机和用户接管。
 - OpenAI, [ChatGPT Enterprise and Edu release notes](https://help.openai.com/en/articles/10128477-chatgpt-enterprise-and-edu-release-notes) — Work、Workspace Agents、管理员分析和审计能力演进。
 
