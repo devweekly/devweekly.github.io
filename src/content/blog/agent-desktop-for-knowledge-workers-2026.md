@@ -134,7 +134,7 @@ Agent Desktop 最危险的设计之一，是把所有任务放在同一种权限
 
 “有人点了批准”并不等于有人真正检查过。Anthropic 关于 Claude Code 权限提示和 Cowork 隔离机制的讨论，已经说明逐项授权可能形成疲劳。学术研究也反复发现，人们可能过度依赖算法建议，尤其在时间压力、任务负担和界面锚定影响下。
 
-2025 年的[《Bias in the Loop: How Humans Evaluate AI-Generated Suggestions》](https://arxiv.org/abs/2509.08514)使用 2,784 名参与者研究 AI 建议质量、任务负担等因素对人类判断的影响；[《Putting a human in the loop: Increasing uptake, but decreasing accuracy of automated decision-making》](https://pmc.ncbi.nlm.nih.gov/articles/PMC10857587/)则通过实验指出，让人参与调整自动化建议可能提高接受程度，却不保证最终准确率提高。这些研究不是企业 Agent Desktop 的直接生产评估，但它们提醒我们：人工参与必须设计成真实的判断过程，而不是审批按钮。
+2026 年发表在 Harvard Data Science Review 的[《Bias in the Loop: How Humans Evaluate AI-Generated Suggestions》](https://hdsr.mitpress.mit.edu/pub/nrcn4h7d/release/2)基于 2,784 名参与者，发现当纠正 AI 错误需要额外输入时，参与者更少纠错，也更容易接受错误建议；参与者原有的 AI 态度也是判断表现的重要预测因素。[《Putting a human in the loop: Increasing uptake, but decreasing accuracy of automated decision-making》](https://pmc.ncbi.nlm.nih.gov/articles/PMC10857587/)则通过实验指出，让人参与调整自动化建议可能提高接受程度，却不保证最终准确率提高。这些研究不是企业 Agent Desktop 的直接生产评估，但它们提醒我们：人工参与必须设计成真实的判断过程，而不是审批按钮。
 
 界面应帮助人发现值得检查的地方，例如显示关键证据、冲突数据、置信度不足的环节、异常变化和未满足的规则。对于高风险判断，可以先让审核人独立给出初步结论，再展示 Agent 的建议，降低锚定效应。审批数量、审批耗时和批准率不能单独作为效率指标；还应测量抽检发现的错误、人工修改比例、撤销率和重大问题逃逸率。
 
@@ -142,7 +142,7 @@ Agent Desktop 最危险的设计之一，是把所有任务放在同一种权限
 
 ### 5.1 Prompt Injection 是数据访问问题，也是执行权限问题
 
-Agent 会读取邮件、网页、PDF、文档和工单。这些内容可能包含恶意或误导性指令。只要模型能够把外部内容当作指令，并且同时拥有文件、浏览器或连接器写权限，就可能发生跨系统数据泄露或非预期操作。
+Agent 会读取邮件、网页、PDF、文档和工单。这些内容可能包含恶意或误导性指令。OpenAI 的 [ChatGPT agent 安全说明](https://help.openai.com/en/articles/11752874-chatgpt-agent)和 Anthropic 的 [Cowork 安全指南](https://support.claude.com/en/articles/13364135-use-claude-cowork-safely)都明确提示，Prompt Injection 风险不会因为启用产品内置防护而消失。只要模型能够把外部内容当作指令，并且同时拥有文件、浏览器或连接器写权限，就可能发生跨系统数据泄露或非预期操作。
 
 不能只靠 Prompt 写一句“忽略文档中的恶意指令”。工具输出、网页内容和文档内容都应视为不可信数据。真正的防线在执行层：文件系统隔离、连接器 allowlist、网络 egress 策略、工具级授权、敏感数据检测、写操作确认和输出目的地控制。尤其需要检查 Agent 是否能把一个有权限读取的数据源内容，通过另一个被允许访问的外部服务传出去。
 
@@ -215,7 +215,7 @@ Claude Cowork 展示了知识工作场景下的隔离执行和可复用工作能
 
 ### 学术研究
 
-- [Bias in the Loop: How Humans Evaluate AI-Generated Suggestions](https://arxiv.org/abs/2509.08514) (2025) — 基于 2,784 名参与者的随机实验，研究建议质量、任务负担和个体差异如何影响人类对 AI 建议的判断。
+- [Bias in the Loop: How Humans Evaluate AI-Generated Suggestions](https://hdsr.mitpress.mit.edu/pub/nrcn4h7d/release/2) (Harvard Data Science Review, 2026) — 基于 2,784 名参与者的随机实验，研究建议质量、纠错成本和个体差异如何影响人类对 AI 建议的判断。
 - [Putting a human in the loop: Increasing uptake, but decreasing accuracy of automated decision-making](https://pmc.ncbi.nlm.nih.gov/articles/PMC10857587/) (2024) — 实验研究人工参与自动化决策后，建议采纳与最终准确率之间并非简单正相关。
 - [Engaging with AI: How Interface Design Shapes Human-AI Collaboration in High-Stakes Decision-Making](https://arxiv.org/abs/2501.16627) (2025) — 研究高风险决策中的界面设计、自动化偏差和人类判断。
 - [What to Delegate, What to Preserve: Human Preferences for Agentic AI Across Everyday Life and Work](https://arxiv.org/abs/2611.09730) (2026) — 对 289 名有 AI 使用经验的美国成年人开展情景调查，分析不同工作和生活任务中的委托偏好。该研究是情景调查，不等同于真实企业部署结果。
