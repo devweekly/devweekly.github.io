@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="960" viewBox="0 0 1600 960" role="img" aria-labelledby="title desc">
+<title id="title">Agent Desktop Policy Control Plane and Runtime Enforcement</title>
+<desc id="desc">Enterprise security policy is administered centrally, enriched with identity and task context, evaluated by a policy decision point, and enforced at every runtime and data access boundary. Decisions and execution outcomes are audited.</desc>
+<defs>
+  <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0 0 L12 6 L0 12 z" fill="#526477"/></marker>
+  <style>
+    .bg{fill:#f7f9fc}.title{font:700 30px Arial,sans-serif;fill:#182433}.sub{font:16px Arial,sans-serif;fill:#526477}
+    .h{font:700 19px Arial,sans-serif;fill:#172b4d}.t{font:15px Arial,sans-serif;fill:#334155}.small{font:13px Arial,sans-serif;fill:#526477}
+    .box{fill:#fff;stroke:#8ba0b5;stroke-width:2;rx:14}.control{fill:#eaf2ff;stroke:#5578ad;stroke-width:2;rx:14}
+    .decision{fill:#fff4df;stroke:#c58b2c;stroke-width:2;rx:14}.enforce{fill:#e8f5ee;stroke:#4e9270;stroke-width:2;rx:12}
+    .audit{fill:#f1edfa;stroke:#8670ad;stroke-width:2;rx:14}.line{stroke:#526477;stroke-width:2.5;fill:none;marker-end:url(#arrow)}
+    .dash{stroke:#8192a5;stroke-width:2;stroke-dasharray:8 7;fill:none}
+  </style>
+</defs>
+<rect class="bg" width="1600" height="960"/>
+<text class="title" x="70" y="62">Agent Desktop：安全策略控制平面与运行时强制执行</text>
+<text class="sub" x="70" y="94">模型只提出动作；策略服务作出授权决定；每条执行路径都必须在动作发生前落实约束。</text>
+
+<rect class="control" x="70" y="145" width="330" height="145"/>
+<text class="h" x="95" y="180">Policy Administration Point</text>
+<text class="t" x="95" y="212">管理员 / Security Owner</text>
+<text class="small" x="95" y="240">策略定义、版本、发布、例外审批</text>
+<text class="small" x="95" y="264">基线、数据分类、风险等级、有效期</text>
+
+<rect class="control" x="475" y="145" width="330" height="145"/>
+<text class="h" x="500" y="180">Policy Information Point</text>
+<text class="t" x="500" y="212">Identity / Device / Data / Task</text>
+<text class="small" x="500" y="240">用户、Agent、设备合规状态</text>
+<text class="small" x="500" y="264">资源标签、目的地、任务上下文</text>
+
+<rect class="decision" x="900" y="145" width="330" height="145"/>
+<text class="h" x="925" y="180">Policy Decision Point</text>
+<text class="t" x="925" y="212">上下文策略评估</text>
+<text class="small" x="925" y="240">Allow / Deny / Approval / Step-up</text>
+<text class="small" x="925" y="264">Constraints / Policy Version / Reason</text>
+
+<rect class="audit" x="1320" y="145" width="220" height="145"/>
+<text class="h" x="1345" y="180">Policy Audit</text>
+<text class="small" x="1345" y="212">Decision ID</text>
+<text class="small" x="1345" y="236">Policy Version</text>
+<text class="small" x="1345" y="260">Result / Evidence</text>
+
+<path class="line" d="M400 218 H465"/>
+<path class="line" d="M805 218 H890"/>
+<path class="line" d="M1230 218 H1310"/>
+<path class="dash" d="M235 290 V350 H1060 V300"/>
+<text class="small" x="530" y="340">发布策略与可信上下文供 PDP 决策</text>
+
+<rect class="box" x="70" y="390" width="270" height="105"/>
+<text class="h" x="95" y="428">Agent Runtime</text>
+<text class="small" x="95" y="458">Plan / Task / Proposed Action</text>
+<text class="small" x="95" y="480">不持有广泛执行权限</text>
+
+<rect class="decision" x="420" y="390" width="300" height="105"/>
+<text class="h" x="445" y="428">Approval / Step-up</text>
+<text class="small" x="445" y="458">绑定资源、动作和参数摘要</text>
+<text class="small" x="445" y="480">变化后重新决策</text>
+
+<path class="line" d="M340 442 H410"/>
+<path class="line" d="M720 442 H790"/>
+<path class="line" d="M1060 290 V370 H570 V380"/>
+<text class="small" x="760" y="424">需要时等待用户 / 双人审批</text>
+
+<rect class="enforce" x="790" y="390" width="750" height="105"/>
+<text class="h" x="820" y="428">Policy Enforcement Points（PEP）</text>
+<text class="small" x="820" y="458">验证决策 ID、主体、Task、资源、动作、参数、目的地与有效期</text>
+<text class="small" x="820" y="480">策略未匹配 / 已撤销 / 过期：拒绝执行</text>
+
+<path class="line" d="M720 442 H780"/>
+<path class="line" d="M1165 495 V555"/>
+
+<rect class="enforce" x="70" y="575" width="335" height="145"/>
+<text class="h" x="95" y="612">File / Code Runtime</text>
+<text class="small" x="95" y="644">文件句柄、目录范围、沙箱</text>
+<text class="small" x="95" y="670">命令、进程、挂载和资源限制</text>
+<text class="small" x="95" y="696">恶意文件解析隔离</text>
+
+<rect class="enforce" x="435" y="575" width="335" height="145"/>
+<text class="h" x="460" y="612">Connector Runtime</text>
+<text class="small" x="460" y="644">Workload Identity / OAuth Scope</text>
+<text class="small" x="460" y="670">资源级授权、参数校验、DLP</text>
+<text class="small" x="460" y="696">下游系统再次验证权限</text>
+
+<rect class="enforce" x="800" y="575" width="335" height="145"/>
+<text class="h" x="825" y="612">Browser / Computer Use</text>
+<text class="small" x="825" y="644">专用 Profile / 会话 / 应用 Allowlist</text>
+<text class="small" x="825" y="670">上传下载、窗口和动作约束</text>
+<text class="small" x="825" y="696">不复用无边界的用户桌面权限</text>
+
+<rect class="enforce" x="1165" y="575" width="375" height="145"/>
+<text class="h" x="1190" y="612">Network / Artifact Export</text>
+<text class="small" x="1190" y="644">Egress Proxy / SSRF / Destination Policy</text>
+<text class="small" x="1190" y="670">数据标签、用途和跨境限制</text>
+<text class="small" x="1190" y="696">导出、发送和发布再次检查</text>
+
+<path class="dash" d="M945 495 V540 H235 V565"/>
+<path class="dash" d="M945 540 H605 V565"/>
+<path class="dash" d="M945 540 H970 V565"/>
+<path class="dash" d="M945 540 H1350 V565"/>
+<text class="small" x="70" y="775">所有 PEP 共用同一策略契约，但在各自执行边界独立验证和强制执行。</text>
+
+<rect class="audit" x="70" y="815" width="1470" height="90"/>
+<text class="h" x="100" y="852">Security Operations & Audit</text>
+<text class="t" x="100" y="880">Task Trace · Policy Decision · Tool / Data Access · EDR / Network Events · Kill Switch · Token Revocation · Quarantine · Incident Response</text>
+<path class="dash" d="M235 720 V805 H235"/>
+<path class="dash" d="M605 720 V805 H605"/>
+<path class="dash" d="M970 720 V805 H970"/>
+<path class="dash" d="M1350 720 V805 H1350"/>
+</svg>
