@@ -1683,14 +1683,29 @@ impl AgentRuntime {
 
         for step in 0..self.max_tool_calls_per_turn {
             let provider = &self.provider;
-            let request_messages = self.messages_with_agent_catalog();
+            let unbounded_messages = self.messages_with_agent_catalog();
+            let (request_messages, estimated_request_tokens, omitted_messages) =
+                self.context_manager.fit_messages(&unbounded_messages);
+            if let Some(report) = self.context_report.as_mut() {
+                report.estimated_input_tokens = estimated_request_tokens;
+            }
+            if omitted_messages > 0 {
+                self.audit("context.history_trimmed", None, json!({
+                    "omitted_messages": omitted_messages,
+                    "estimated_request_tokens": estimated_request_tokens,
+                    "input_budget_tokens": self.context_manager.max_input_tokens()
+                        .saturating_sub(self.context_manager.reserved_output_tokens())
+                }));
+            }
+            let output_token_limit = self.context_manager.reserved_output_tokens();
             let hooks = &self.hooks;
             let session_id = self.session.session_id.clone();
             let mut streamed_bytes = 0usize;
             let stream_result = tokio::select! {
                 biased;
                 _ = cancellation.cancelled() => None,
-                result = provider.complete_streaming_with_usage(&request_messages, |delta| {
+                result = provider.complete_streaming_with_usage_and_limit(
+                    &request_messages, Some(output_token_limit), |delta| {
                     streamed_bytes = streamed_bytes.saturating_add(delta.len());
                     let event = RuntimeEvent {
                         session_id: session_id.clone(),
@@ -1701,7 +1716,8 @@ impl AgentRuntime {
                     for hook in hooks {
                         hook.on_event(&event);
                     }
-                }) => Some(result),
+                }
+                ) => Some(result),
             };
             let completion = match stream_result {
                 None => {
