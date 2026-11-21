@@ -2956,9 +2956,10 @@ mod tests {
     use super::{
         AgentProfile, AgentProfileStore, BackgroundTaskRecord, BackgroundTaskStatus,
         BackgroundTaskStore, CancellationHandle, ChatMessage, CompletionUsage, SessionRecord,
-        UsageTotals, UserQuestion, MAX_AGENT_PROFILE_STEPS, SESSION_SCHEMA_VERSION,
+        UsageTotals, UserQuestion, TranscriptEntry, MAX_AGENT_PROFILE_STEPS, SESSION_SCHEMA_VERSION,
         SessionStore, is_custom_agent_read_tool, new_session_id, now_ms,
     };
+    use std::fs;
 
     #[test]
     fn forgetting_transcript_sources_redacts_session_files_without_changing_latest_pointer() {
