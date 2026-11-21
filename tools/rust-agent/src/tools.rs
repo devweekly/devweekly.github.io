@@ -20,6 +20,7 @@ const MAX_READ_FILE_BYTES: u64 = 1024 * 1024;
 const MAX_DIRECTORY_ENTRIES: usize = 2_000;
 const MAX_SEARCH_FILES: usize = 10_000;
 const MAX_SEARCH_FILE_BYTES: u64 = 1024 * 1024;
+const MAX_SEARCH_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_MATCH_LINE_BYTES: usize = 4 * 1024;
 const MAX_TOOL_OUTPUT_BYTES: usize = 256 * 1024;
 
@@ -196,10 +197,16 @@ impl ToolExecutor {
         let search_root = self.resolve_existing(relative)?;
         let files = self.collect_search_files(&search_root, glob)?;
         let mut matches = Vec::new();
+        let mut scanned_bytes = 0u64;
         for path in &files {
-            if matches.len() >= max_results { break; }
+            if matches.len() >= max_results || scanned_bytes >= MAX_SEARCH_TOTAL_BYTES { break; }
             let remaining = max_results.saturating_sub(matches.len());
-            matches.extend(search_one_file(path, &self.workspace, &matcher, remaining));
+            let remaining_bytes = MAX_SEARCH_TOTAL_BYTES.saturating_sub(scanned_bytes);
+            let (file_matches, bytes_read) = search_one_file(
+                path, &self.workspace, &matcher, remaining, remaining_bytes
+            );
+            scanned_bytes = scanned_bytes.saturating_add(bytes_read);
+            matches.extend(file_matches);
         }
         matches.sort_by(|left, right| {
             left.path.cmp(&right.path).then(left.line_number.cmp(&right.line_number))
@@ -290,17 +297,27 @@ struct SearchMatch {
     line: String,
 }
 
-fn search_one_file(path: &Path, workspace: &Path, matcher: &Regex, limit: usize) -> Vec<SearchMatch> {
-    let Ok(metadata) = fs::metadata(path) else { return Vec::new(); };
-    if metadata.len() > MAX_SEARCH_FILE_BYTES || limit == 0 {
-        return Vec::new();
+fn search_one_file(
+    path: &Path,
+    workspace: &Path,
+    matcher: &Regex,
+    limit: usize,
+    remaining_bytes: u64,
+) -> (Vec<SearchMatch>, u64) {
+    let Ok(metadata) = fs::metadata(path) else { return (Vec::new(), 0); };
+    if metadata.len() > MAX_SEARCH_FILE_BYTES || limit == 0 || remaining_bytes == 0 {
+        return (Vec::new(), 0);
     }
-    let Ok(file) = fs::File::open(path) else { return Vec::new(); };
-    let mut content = String::new();
-    if file.take(MAX_SEARCH_FILE_BYTES).read_to_string(&mut content).is_err() {
-        // Binary, invalid UTF-8, and unreadable files are intentionally skipped.
-        return Vec::new();
-    }
+    let Ok(file) = fs::File::open(path) else { return (Vec::new(), 0); };
+    let read_limit = MAX_SEARCH_FILE_BYTES.min(remaining_bytes);
+    let mut bytes = Vec::new();
+    let Ok(bytes_read) = file.take(read_limit).read_to_end(&mut bytes) else {
+        return (Vec::new(), 0);
+    };
+    let content = match String::from_utf8(bytes) {
+        Ok(content) => content,
+        Err(_) => return (Vec::new(), bytes_read as u64),
+    };
     let relative = path.strip_prefix(workspace).unwrap_or(path).to_string_lossy().into_owned();
     let mut matches = Vec::new();
     for (index, line) in content.lines().enumerate() {
@@ -320,7 +337,7 @@ fn search_one_file(path: &Path, workspace: &Path, matcher: &Regex, limit: usize)
             if matches.len() >= limit { break; }
         }
     }
-    matches
+    (matches, bytes_read as u64)
 }
 
 fn validate_relative_path(input: &str) -> Result<&Path, AgentError> {
