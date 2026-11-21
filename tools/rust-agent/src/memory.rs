@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -733,6 +734,14 @@ impl MemoryStore {
         let transaction = connection.transaction()?;
         let before = load_memory(&transaction, id)?
             .ok_or_else(|| AgentError::InvalidAction(format!("memory record not found: {id}")))?;
+        if status == MemoryStatus::Consolidated {
+            validate_evidence_scope_in_transaction(
+                &transaction,
+                &before.source_refs,
+                before.scope,
+                before.scope_id.as_deref(),
+            )?;
+        }
         transaction.execute(
             "UPDATE memories SET status=?2, updated_at_ms=?3 WHERE id=?1",
             params![id, status.as_str(), to_i64(now_ms())?],
@@ -1823,7 +1832,17 @@ fn validate_evidence_scope_in_transaction(
     target_scope: MemoryScope,
     target_scope_id: Option<&str>,
 ) -> Result<(), AgentError> {
-    validate_evidence_in_transaction(transaction, refs)?;
+    validate_evidence_scope_recursive(transaction, refs, target_scope, target_scope_id, &mut HashSet::new())
+}
+
+fn validate_evidence_scope_recursive(
+    transaction: &Transaction<'_>,
+    refs: &[String],
+    target_scope: MemoryScope,
+    target_scope_id: Option<&str>,
+    visited: &mut HashSet<String>,
+) -> Result<(), AgentError> {
+    validate_evidence_refs(refs)?;
     for reference in refs {
         let (kind, id) = reference.split_once(':').expect("evidence reference format was validated");
         let allowed = match kind {
@@ -1835,7 +1854,9 @@ fn validate_evidence_scope_in_transaction(
                         "SELECT session_id,project_id,task_id,role FROM transcripts WHERE id=?1",
                         [transcript_id],
                         |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)),
-                    )?;
+                    ).optional()?.ok_or_else(|| AgentError::InvalidAction(format!(
+                        "memory evidence does not exist: {reference}"
+                    )))?;
                 let trusted_role = matches!(role.as_str(), "user" | "tool");
                 trusted_role && match target_scope {
                     MemoryScope::Global => role == "user" && task_id.is_none(),
@@ -1845,20 +1866,46 @@ fn validate_evidence_scope_in_transaction(
                 }
             }
             "memory" => {
-                let (source_scope, source_scope_id): (String, Option<String>) = transaction.query_row(
-                    "SELECT scope,scope_id FROM memories WHERE id=?1",
+                MemoryStore::validate_id(id)?;
+                let row: Option<(String, Option<String>, String, Option<i64>, String)> = transaction.query_row(
+                    "SELECT scope,scope_id,status,expires_at_ms,source_refs_json FROM memories WHERE id=?1",
                     [id],
-                    |row| Ok((row.get(0)?,row.get(1)?)),
-                )?;
-                let source_scope = MemoryScope::parse(&source_scope)?;
-                source_scope == MemoryScope::Global
-                    || (source_scope == target_scope && source_scope_id.as_deref() == target_scope_id)
+                    |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?)),
+                ).optional()?;
+                let Some((scope_name, scope_id, status, expires_at, source_refs_json)) = row else {
+                    return Err(AgentError::InvalidAction(format!("memory evidence does not exist: {reference}")));
+                };
+                let source_scope = MemoryScope::parse(&scope_name)?;
+                let valid_status = status == MemoryStatus::Consolidated.as_str()
+                    && expires_at.is_none_or(|expiry| expiry > to_i64(now_ms()).unwrap_or(i64::MAX));
+                let visible_scope = source_scope == MemoryScope::Global
+                    || (source_scope == target_scope && scope_id.as_deref() == target_scope_id);
+                if !valid_status || !visible_scope {
+                    false
+                } else {
+                    if !visited.insert(id.to_owned()) {
+                        return Err(AgentError::InvalidAction(format!(
+                            "memory evidence chain contains a cycle at {reference}"
+                        )));
+                    }
+                    let nested_refs: Vec<String> = serde_json::from_str(&source_refs_json)?;
+                    let nested = validate_evidence_scope_recursive(
+                        transaction,
+                        &nested_refs,
+                        source_scope,
+                        scope_id.as_deref(),
+                        visited,
+                    );
+                    visited.remove(id);
+                    nested?;
+                    true
+                }
             }
             _ => false,
         };
         if !allowed {
             return Err(AgentError::InvalidAction(format!(
-                "memory evidence {reference} does not belong to the target {:?} scope",
+                "memory evidence {reference} does not belong to the target {:?} scope or its source chain is not valid",
                 target_scope
             )));
         }
@@ -2191,6 +2238,49 @@ mod tests {
             pages: vec![], delete_pages: vec![],
         };
         assert!(store.apply_dreaming(output).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn memory_evidence_revalidates_the_entire_source_chain() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript("s1", None, None, "user", "The source fact").unwrap();
+        let source = store.propose(
+            input(MemoryScope::Global, None, "A fact derived from a transcript"),
+            80,
+            vec![format!("transcript:{transcript}")],
+        ).unwrap();
+        assert!(store.set_status(&source.id, MemoryStatus::Consolidated).is_ok());
+        store.set_status(&source.id, MemoryStatus::Disputed).unwrap();
+
+        let output = DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![DreamingNote {
+                action: "create".into(), id: None,
+                kind: Some(MemoryKind::LongTerm), scope: Some(MemoryScope::Global),
+                scope_id: None, content: "A fact derived from another memory".into(),
+                confidence: 90, importance: 80,
+                evidence: vec![format!("memory:{}", source.id)],
+            }],
+            pages: vec![],
+            delete_pages: vec![],
+        };
+        assert!(store.apply_dreaming(output).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn consolidating_a_proposal_requires_valid_source_evidence() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let proposed = store.propose(
+            input(MemoryScope::Global, None, "A claim with missing provenance"),
+            60,
+            vec!["transcript:999999".into()],
+        ).unwrap();
+        assert!(store.set_status(&proposed.id, MemoryStatus::Consolidated).is_err());
+        assert_eq!(store.get(&proposed.id).unwrap().status, MemoryStatus::Proposed);
         let _ = fs::remove_dir_all(root);
     }
 
