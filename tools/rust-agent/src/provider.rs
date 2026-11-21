@@ -124,16 +124,31 @@ impl OpenAiCompatibleProvider {
         self.complete_streaming_with_usage(messages, on_delta).await.map(|result| result.content)
     }
 
-    pub async fn complete_streaming_with_usage<F>(&self, messages: &[ChatMessage], mut on_delta: F) -> Result<CompletionResult, AgentError>
+    pub async fn complete_streaming_with_usage<F>(&self, messages: &[ChatMessage], on_delta: F) -> Result<CompletionResult, AgentError>
+    where F: FnMut(&str) {
+        self.complete_streaming_with_usage_and_limit(messages, None, on_delta).await
+    }
+
+    /// Streaming completion with an explicit output-token ceiling.
+    pub async fn complete_streaming_with_usage_and_limit<F>(
+        &self,
+        messages: &[ChatMessage],
+        max_tokens: Option<usize>,
+        mut on_delta: F,
+    ) -> Result<CompletionResult, AgentError>
     where F: FnMut(&str) {
         let started = Instant::now();
-        let (model, (content, usage)) = match self.complete_streaming_with_model(&self.model, messages, &mut on_delta).await {
+        let (model, (content, usage)) = match self.complete_streaming_with_model(
+            &self.model, messages, max_tokens, &mut on_delta
+        ).await {
             Ok(result) => (self.model.clone(), result),
             Err((error, false)) => {
                 let Some(fallback) = self.fallback_model.as_deref() else { return Err(error); };
                 if !is_retryable(&error) { return Err(error); }
                 warn!(primary_model = %self.model, fallback_model = fallback, "primary streaming model failed before output; trying fallback model");
-                (fallback.to_owned(), self.complete_streaming_with_model(fallback, messages, &mut on_delta).await.map_err(|(e, _)| e)?)
+                (fallback.to_owned(), self.complete_streaming_with_model(
+                    fallback, messages, max_tokens, &mut on_delta
+                ).await.map_err(|(e, _)| e)?)
             }
             Err((error, true)) => return Err(error),
         };
@@ -144,12 +159,16 @@ impl OpenAiCompatibleProvider {
         &self,
         model: &str,
         messages: &[ChatMessage],
+        max_tokens: Option<usize>,
         on_delta: &mut F,
     ) -> Result<(String, CompletionUsage), (AgentError, bool)>
     where
         F: FnMut(&str),
     {
-        let body = ChatCompletionRequest { model, messages, stream: true, stream_options: Some(StreamOptions { include_usage: true }) };
+        let body = ChatCompletionRequest {
+            model, messages, stream: true, max_tokens,
+            stream_options: Some(StreamOptions { include_usage: true }),
+        };
         let initial_response = self.client
             .post(&self.endpoint)
             .bearer_auth(&self.api_key)
@@ -163,7 +182,9 @@ impl OpenAiCompatibleProvider {
                 // Some OpenAI-compatible endpoints reject stream_options. Retry once without
                 // the optional usage extension so streaming remains compatible.
                 warn!(model = %model, "provider rejected stream_options; retrying stream without usage extension");
-                let compatible_body = ChatCompletionRequest { model, messages, stream: true, stream_options: None };
+                let compatible_body = ChatCompletionRequest {
+                    model, messages, stream: true, max_tokens, stream_options: None,
+                };
                 self.client
                     .post(&self.endpoint)
                     .bearer_auth(&self.api_key)
@@ -226,7 +247,9 @@ impl OpenAiCompatibleProvider {
         model: &str,
         messages: &[ChatMessage],
     ) -> Result<(String, CompletionUsage), AgentError> {
-        let body = ChatCompletionRequest { model, messages, stream: false, stream_options: None };
+        let body = ChatCompletionRequest {
+            model, messages, stream: false, max_tokens: None, stream_options: None,
+        };
         let response: Value = self.client
             .post(&self.endpoint)
             .bearer_auth(&self.api_key)
@@ -299,6 +322,8 @@ struct ChatCompletionRequest<'a> {
     messages: &'a [ChatMessage],
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     stream_options: Option<StreamOptions>,
 }
 #[derive(Serialize)]
@@ -308,6 +333,20 @@ struct StreamOptions { include_usage: bool }
 mod tests {
     use serde_json::json;
     use super::{extract_sse_delta, parse_model_ids};
+
+    #[test]
+    fn completion_request_serializes_reserved_output_limit() {
+        let request = super::ChatCompletionRequest {
+            model: "test-model",
+            messages: &[],
+            stream: true,
+            max_tokens: Some(4096),
+            stream_options: None,
+        };
+        let value = serde_json::to_value(request).unwrap();
+        assert_eq!(value["max_tokens"], 4096);
+        assert!(value.get("stream_options").is_none());
+    }
 
     #[test]
     fn usage_parser_reads_token_counts_and_tolerates_missing_fields() {
