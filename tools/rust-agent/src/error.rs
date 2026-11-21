@@ -8,6 +8,7 @@ pub enum AgentError {
     InvalidProviderResponse,
     InvalidProviderConfig(String),
     InvalidAction(String),
+    Cancelled,
 }
 
 impl fmt::Display for AgentError {
@@ -25,6 +26,7 @@ impl fmt::Display for AgentError {
             Self::InvalidAction(message) => {
                 write!(formatter, "model returned an unsupported action: {message}")
             }
+            Self::Cancelled => formatter.write_str("Agent turn cancelled by host"),
         }
     }
 }
@@ -37,7 +39,8 @@ impl Error for AgentError {
             Self::Json(error) => Some(error),
             Self::InvalidProviderResponse
             | Self::InvalidProviderConfig(_)
-            | Self::InvalidAction(_) => None,
+            | Self::InvalidAction(_)
+            | Self::Cancelled => None,
         }
     }
 }

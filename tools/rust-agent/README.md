@@ -44,6 +44,8 @@ cargo run -- --model <model-id> --workspace /path/to/workspace --session-id <ses
 
 A fork copies the current conversation into a new session and records its parent session ID. Session writes use a temporary file followed by rename to avoid leaving a partially written JSON document. Session IDs are validated before they are used as file names.
 
+Embedding hosts can create a `CancellationHandle`, pass it to `run_turn_with_cancellation`, and call `cancel()` from a UI cancel action. The CLI maps Ctrl-C to the same mechanism while a turn is running. Cancellation aborts in-flight model requests, including delegated subagent requests, persists a synthetic cancelled-turn marker for conversation continuity, and emits `turn.cancelled`. It does not roll back a local tool operation that has already completed; synchronous local tools and the CLI's blocking approval/question prompts are not preemptible.
+
 The runtime bounds the conversation history to the most recent 80 non-system messages by default. It removes complete older turns rather than cutting through the middle of a tool exchange. This is a sliding context window, not semantic summarization. The model can delegate a bounded investigation or review through `delegate_task`; the delegated Agent has its own short-lived context and can only read, list, and search workspace files. Its result is returned to the parent conversation.
 
 ## Runtime controls
@@ -57,7 +59,7 @@ The runtime bounds the conversation history to the most recent 80 non-system mes
 | Permission control | Deterministic Rust Policy Gate, default/plan modes, and per-write approval |
 | User interaction | Structured ask-user questions with single/multiple choice or free text |
 | Model discovery | OpenAI-compatible /models endpoint |
-| Runtime controls | Interactive model/mode switching, context inspection and manual window compaction |
+| Runtime controls | Interactive model/mode switching, context inspection, manual window compaction, and host-triggered turn cancellation |
 | Lifecycle hooks | Native `RuntimeHook` callbacks plus JSONL audit events; hooks can deny a tool call but cannot grant permissions |
 | Workspace tools | Rust read, list, search, and write operations |
 | MCP | Standalone Rust stdio server with tools, resources, and prompts |
@@ -89,7 +91,8 @@ No Shell, process execution, arbitrary network tool, or workspace-external file 
 
 ## Current limitations
 
-- Streaming requires the provider to implement OpenAI-compatible Chat Completions SSE. The primary Agent loop emits `model.output.delta` RuntimeHook events and buffers the complete response before parsing it. Delta events contain fragments of the structured action payload, not display-ready assistant text; hosts must wait for the completed turn before rendering final content or acting on a tool call. Delegated subagent requests still use the buffered completion path. If a primary model fails after emitting partial output, fallback is not attempted to avoid mixing two model responses. In-flight cancellation is not implemented yet.
+- Streaming requires the provider to implement OpenAI-compatible Chat Completions SSE. The primary Agent loop emits `model.output.delta` RuntimeHook events and buffers the complete response before parsing it. Delta events contain fragments of the structured action payload, not display-ready assistant text; hosts must wait for the completed turn before rendering final content or acting on a tool call. Delegated subagent requests still use the buffered completion path. If a primary model fails after emitting partial output, fallback is not attempted to avoid mixing two model responses.
+- Host-triggered cancellation and CLI Ctrl-C abort in-flight provider requests and record a cancelled-turn marker. Cancellation cannot undo a local tool operation that has already completed, and synchronous local tools plus blocking CLI approval/question prompts are not preemptible.
 - Model discovery requires the provider to expose the OpenAI-compatible GET /models endpoint.
 - Permission modes intentionally omit automatic edit approval: default always asks before writes, while plan blocks writes.
 - Context management uses a sliding window; semantic summarization is not implemented yet.

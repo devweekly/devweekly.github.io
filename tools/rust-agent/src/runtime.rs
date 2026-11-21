@@ -1,13 +1,17 @@
 use std::{
     fs::{self, OpenOptions},
     io::{self, Write},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc,
+    },
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use tokio::sync::Notify;
 use tracing::{info, warn};
 
 use crate::{
@@ -77,6 +81,54 @@ impl Default for RuntimeOptions {
 pub enum PermissionMode {
     Default,
     Plan,
+}
+
+#[derive(Clone)]
+pub struct CancellationHandle {
+    inner: Arc<CancellationInner>,
+}
+
+struct CancellationInner {
+    cancelled: AtomicBool,
+    notify: Notify,
+}
+
+impl CancellationHandle {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(CancellationInner {
+                cancelled: AtomicBool::new(false),
+                notify: Notify::new(),
+            }),
+        }
+    }
+
+    pub fn cancel(&self) {
+        self.inner.cancelled.store(true, Ordering::Release);
+        self.inner.notify.notify_waiters();
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.inner.cancelled.load(Ordering::Acquire)
+    }
+
+    async fn cancelled(&self) {
+        loop {
+            let notified = self.inner.notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if self.is_cancelled() {
+                return;
+            }
+            notified.await;
+        }
+    }
+}
+
+impl Default for CancellationHandle {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 pub struct RuntimeEvent {
@@ -311,6 +363,42 @@ impl AgentRuntime {
     }
 
     pub async fn run_turn(&mut self, input: &str) -> Result<String, AgentError> {
+        self.run_turn_with_cancellation(input, &CancellationHandle::new()).await
+    }
+
+    /// Runs one turn with a host-controlled cancellation handle.
+    /// Cancelling stops in-flight provider requests; already completed local tool
+    /// operations are not rolled back.
+    pub async fn run_turn_with_cancellation(
+        &mut self,
+        input: &str,
+        cancellation: &CancellationHandle,
+    ) -> Result<String, AgentError> {
+        if cancellation.is_cancelled() {
+            return Err(AgentError::Cancelled);
+        }
+
+        let result = self.run_turn_inner(input, cancellation).await;
+        if matches!(&result, Err(AgentError::Cancelled)) {
+            self.messages.push(ChatMessage {
+                role: "assistant".into(),
+                content: json!({
+                    "type": "final",
+                    "content": "This turn was cancelled. Do not assume an incomplete tool action was executed."
+                }).to_string(),
+            });
+            self.audit("turn.cancelled", None, json!({}));
+            self.emit_event("turn.cancelled", None, json!({}));
+            self.persist()?;
+        }
+        result
+    }
+
+    async fn run_turn_inner(
+        &mut self,
+        input: &str,
+        cancellation: &CancellationHandle,
+    ) -> Result<String, AgentError> {
         self.messages.push(ChatMessage {
             role: "user".into(),
             content: input.to_owned(),
@@ -323,17 +411,42 @@ impl AgentRuntime {
             let provider = &self.provider;
             let hooks = &self.hooks;
             let session_id = self.session.session_id.clone();
-            let raw = provider.complete_streaming(&self.messages, |delta| {
-                let event = RuntimeEvent {
-                    session_id: session_id.clone(),
-                    name: "model.output.delta".into(),
-                    tool: None,
-                    details: json!({"delta": delta, "length": delta.len()}),
-                };
-                for hook in hooks {
-                    hook.on_event(&event);
+            let mut streamed_bytes = 0usize;
+            let stream_result = tokio::select! {
+                biased;
+                _ = cancellation.cancelled() => None,
+                result = provider.complete_streaming(&self.messages, |delta| {
+                    streamed_bytes = streamed_bytes.saturating_add(delta.len());
+                    let event = RuntimeEvent {
+                        session_id: session_id.clone(),
+                        name: "model.output.delta".into(),
+                        tool: None,
+                        details: json!({"delta": delta, "length": delta.len()}),
+                    };
+                    for hook in hooks {
+                        hook.on_event(&event);
+                    }
+                }) => Some(result),
+            };
+            let raw = match stream_result {
+                None => {
+                    self.emit_event("model.output.aborted", None, json!({
+                        "step": step + 1,
+                        "partial_bytes": streamed_bytes,
+                        "partial_output_discarded": true
+                    }));
+                    return Err(AgentError::Cancelled);
                 }
-            }).await?;
+                Some(result) => result?,
+            };
+            if cancellation.is_cancelled() {
+                self.emit_event("model.output.aborted", None, json!({
+                    "step": step + 1,
+                    "partial_bytes": streamed_bytes,
+                    "partial_output_discarded": true
+                }));
+                return Err(AgentError::Cancelled);
+            }
             self.emit_event("model.output.complete", None, json!({"step": step + 1, "length": raw.len()}));
             self.messages.push(ChatMessage {
                 role: "assistant".into(),
@@ -357,6 +470,10 @@ impl AgentRuntime {
                     return Ok(content);
                 }
                 ModelTurn::AskUser { questions } => {
+                    if cancellation.is_cancelled() {
+                        self.push_tool_result(false, "Question interaction was cancelled before input.");
+                        return Err(AgentError::Cancelled);
+                    }
                     if questions.is_empty() {
                         self.push_tool_result(false, "ask_user requires at least one question");
                     } else {
@@ -370,6 +487,10 @@ impl AgentRuntime {
                     self.persist()?;
                 }
                 ModelTurn::ToolCall { tool, arguments } => {
+                    if cancellation.is_cancelled() {
+                        self.push_tool_result(false, "Tool dispatch was cancelled before execution.");
+                        return Err(AgentError::Cancelled);
+                    }
                     let action = ToolAction { name: tool, arguments };
                     let hook_denial = self.hooks.iter()
                         .find_map(|hook| hook.before_tool(&action).err());
@@ -377,8 +498,13 @@ impl AgentRuntime {
                         self.audit("hook.tool_denied", Some(&action.name), json!({"reason": reason}));
                         self.push_tool_result(false, &format!("Denied by runtime hook: {reason}"));
                     } else if action.name == "delegate_task" {
-                        match self.run_subagent(&action).await {
+                        match self.run_subagent(&action, cancellation).await {
                             Ok(output) => self.push_tool_result(true, &output),
+                            Err(AgentError::Cancelled) => {
+                                self.push_tool_result(false, "Delegated task was cancelled by the host.");
+                                self.persist()?;
+                                return Err(AgentError::Cancelled);
+                            },
                             Err(error) => self.push_tool_result(false, &error.to_string()),
                         }
                     } else {
@@ -415,8 +541,15 @@ impl AgentRuntime {
                     self.persist()?;
                 }
             }
+
+            if cancellation.is_cancelled() {
+                return Err(AgentError::Cancelled);
+            }
         }
 
+        if cancellation.is_cancelled() {
+            return Err(AgentError::Cancelled);
+        }
         self.audit("turn.limit_reached", None, json!({"limit": self.max_tool_calls_per_turn}));
         Ok(format!(
             "Stopped after reaching the per-turn tool-call limit ({}).",
@@ -424,7 +557,11 @@ impl AgentRuntime {
         ))
     }
 
-    async fn run_subagent(&self, action: &ToolAction) -> Result<String, AgentError> {
+    async fn run_subagent(
+        &self,
+        action: &ToolAction,
+        cancellation: &CancellationHandle,
+    ) -> Result<String, AgentError> {
         let name = action.arguments.get("name").and_then(Value::as_str).unwrap_or("subagent");
         let task = action.arguments.get("task").and_then(Value::as_str)
             .filter(|task| !task.trim().is_empty())
@@ -445,7 +582,26 @@ impl AgentRuntime {
         ];
 
         for step in 0..6 {
-            let raw = self.provider.complete(&messages).await?;
+            let completion = tokio::select! {
+                biased;
+                _ = cancellation.cancelled() => None,
+                result = self.provider.complete(&messages) => Some(result),
+            };
+            let raw = match completion {
+                None => {
+                    self.audit("subagent.cancelled", Some("delegate_task"), json!({
+                        "name": name, "step": step + 1
+                    }));
+                    return Err(AgentError::Cancelled);
+                }
+                Some(result) => result?,
+            };
+            if cancellation.is_cancelled() {
+                self.audit("subagent.cancelled", Some("delegate_task"), json!({
+                    "name": name, "step": step + 1
+                }));
+                return Err(AgentError::Cancelled);
+            }
             messages.push(ChatMessage { role: "assistant".into(), content: raw.clone() });
             let turn = match serde_json::from_str::<ModelTurn>(&raw) {
                 Ok(turn) => turn,
@@ -495,8 +651,19 @@ impl AgentRuntime {
                     });
                 }
             }
+
+            if cancellation.is_cancelled() {
+                self.audit("subagent.cancelled", Some("delegate_task"), json!({
+                    "name": name, "step": step + 1
+                }));
+                return Err(AgentError::Cancelled);
+            }
         }
 
+        if cancellation.is_cancelled() {
+            self.audit("subagent.cancelled", Some("delegate_task"), json!({"name": name}));
+            return Err(AgentError::Cancelled);
+        }
         self.audit("subagent.limit_reached", Some("delegate_task"), json!({"name": name}));
         Ok("Subagent stopped after reaching its six-step limit.".into())
     }
@@ -725,7 +892,7 @@ fn write_private_file(path: &Path, bytes: &[u8], append: bool) -> Result<(), Age
 
 #[cfg(test)]
 mod tests {
-    use super::{SessionStore, new_session_id, now_ms};
+    use super::{CancellationHandle, SessionStore, new_session_id, now_ms};
 
     #[test]
     fn subagents_are_restricted_to_read_only_tools() {
@@ -734,6 +901,28 @@ mod tests {
         assert!(super::is_subagent_read_tool("search_files"));
         assert!(!super::is_subagent_read_tool("write_file"));
         assert!(!super::is_subagent_read_tool("delegate_task"));
+    }
+
+    #[tokio::test]
+    async fn cancellation_handle_wakes_waiters_and_is_idempotent() {
+        let cancellation = CancellationHandle::new();
+        let waiter_handle = cancellation.clone();
+        let waiter = tokio::spawn(async move {
+            waiter_handle.cancelled().await;
+        });
+
+        cancellation.cancel();
+        cancellation.cancel();
+        waiter.await.expect("cancellation waiter should complete");
+        assert!(cancellation.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn cancellation_handle_returns_immediately_when_already_cancelled() {
+        let cancellation = CancellationHandle::new();
+        cancellation.cancel();
+        cancellation.cancelled().await;
+        assert!(cancellation.is_cancelled());
     }
 
     #[test]

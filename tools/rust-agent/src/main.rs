@@ -7,7 +7,7 @@ use std::{
 
 use rust_agent::{
     provider::OpenAiCompatibleProvider,
-    runtime::{AgentRuntime, PermissionMode, RuntimeOptions},
+    runtime::{AgentRuntime, CancellationHandle, PermissionMode, RuntimeOptions},
 };
 use tracing_subscriber::EnvFilter;
 
@@ -191,6 +191,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!(" /mode default|plan   Change write permission behavior");
             println!(" /context             Show retained context message count");
             println!(" /compact             Apply the configured sliding-window limit");
+            println!(" Ctrl-C               Cancel the current Agent turn");
             println!(" /exit                Exit");
             continue;
         }
@@ -254,9 +255,35 @@ async fn main() -> Result<(), Box<dyn Error>> {
             continue;
         }
 
-        match runtime.run_turn(input).await {
-            Ok(answer) => println!("agent> {answer}"),
-            Err(error) => eprintln!("error> {error}"),
+        let cancellation = CancellationHandle::new();
+        let mut turn = Box::pin(runtime.run_turn_with_cancellation(input, &cancellation));
+        tokio::select! {
+            result = &mut turn => match result {
+                Ok(answer) => println!("agent> {answer}"),
+                Err(error) => eprintln!("error> {error}"),
+            },
+            signal = tokio::signal::ctrl_c() => {
+                match signal {
+                    Ok(()) => {
+                        cancellation.cancel();
+                        eprintln!("\nCancelling current turn...");
+                        match turn.await {
+                            Ok(answer) => println!("agent> {answer}"),
+                            Err(rust_agent::error::AgentError::Cancelled) => {
+                                println!("agent> Turn cancelled.");
+                            }
+                            Err(error) => eprintln!("error> {error}"),
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!("Could not listen for Ctrl-C: {error}");
+                        match turn.await {
+                            Ok(answer) => println!("agent> {answer}"),
+                            Err(error) => eprintln!("error> {error}"),
+                        }
+                    }
+                }
+            }
         }
     }
 
