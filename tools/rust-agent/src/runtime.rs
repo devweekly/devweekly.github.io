@@ -981,6 +981,19 @@ impl AgentRuntime {
         self.memory_store.update(id, content, source, confidence)
     }
     pub fn forget_memory(&self, id: &str) -> Result<(), AgentError> { self.memory_store.forget(id) }
+
+    /// Explicitly prune unreferenced transcript rows older than the requested age.
+    /// A recent 1,000-row floor and all evidence-referenced rows are preserved.
+    pub fn prune_transcripts_before_days(&self, days: u64) -> Result<usize, AgentError> {
+        if days == 0 || days > 36_500 {
+            return Err(AgentError::InvalidAction(
+                "transcript retention age must be between 1 and 36500 days".into(),
+            ));
+        }
+        let age_ms = u128::from(days).saturating_mul(86_400_000);
+        let cutoff = now_ms().saturating_sub(age_ms);
+        self.memory_store.prune_transcripts(cutoff, 1_000)
+    }
     pub fn list_memories(&self) -> Result<Vec<MemoryRecord>, AgentError> { self.memory_store.list() }
     pub fn retrieve_memories(&self, query: &str, limit: usize) -> Result<Vec<MemoryRecord>, AgentError> {
         self.memory_store.retrieve(&MemoryQuery {
