@@ -61,7 +61,7 @@ impl TraceStore {
             schema_version: 1, timestamp_ms: now_ms(), trace_id: self.trace_id.clone(),
             sequence: self.sequence.fetch_add(1, Ordering::Relaxed),
             session_id: event.session_id.clone(), event: event.name.clone(),
-            tool: event.tool.clone(), details: event.details.clone(),
+            tool: event.tool.clone(), details: sanitize_details(&event.details),
         };
         let mut options = OpenOptions::new();
         options.create(true).append(true);
@@ -91,12 +91,53 @@ impl RuntimeHook for TraceHook {
     }
 }
 
+fn sanitize_details(value: &Value) -> Value {
+    const SAFE_STRING_KEYS: &[&str] = &[
+        "model", "agent_type", "agent_profile_id", "task_id", "parent_session_id",
+        "attachment_id", "content_type", "mode",
+    ];
+    match value {
+        Value::Object(object) => {
+            let mut sanitized = serde_json::Map::new();
+            for (key, item) in object {
+                if matches!(key.as_str(), "delta" | "content" | "output" | "arguments" | "prompt" | "input" | "error" | "path" | "filename") {
+                    continue;
+                }
+                match item {
+                    Value::String(text) if SAFE_STRING_KEYS.contains(&key.as_str()) => {
+                        sanitized.insert(key.clone(), Value::String(text.clone()));
+                    }
+                    Value::String(_) | Value::Array(_) | Value::Object(_) => {
+                        let nested = sanitize_details(item);
+                        if !nested.is_null() { sanitized.insert(key.clone(), nested); }
+                    }
+                    _ => { sanitized.insert(key.clone(), item.clone()); }
+                }
+            }
+            Value::Object(sanitized)
+        }
+        Value::Array(items) => Value::Array(items.iter().map(sanitize_details).collect()),
+        Value::String(_) => Value::Null,
+        other => other.clone(),
+    }
+}
+
 fn now_ms() -> u128 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn runtime_trace_redacts_freeform_payloads() {
+        let details = json!({"delta": "private model output", "path": "/private/file", "length": 42, "model": "model-x"});
+        let sanitized = sanitize_details(&details);
+        assert!(sanitized.get("delta").is_none());
+        assert!(sanitized.get("path").is_none());
+        assert_eq!(sanitized["length"], 42);
+        assert_eq!(sanitized["model"], "model-x");
+    }
 
     #[test]
     fn appends_correlated_jsonl_events_with_sequence_numbers() {

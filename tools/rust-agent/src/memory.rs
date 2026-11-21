@@ -49,7 +49,21 @@ pub struct MemoryStore { directory: PathBuf }
 
 impl MemoryStore {
     pub fn new(workspace: &Path) -> Result<Self, AgentError> {
-        let directory = workspace.join(".rust-agent").join("memory");
+        let state_directory = workspace.join(".rust-agent");
+        match fs::symlink_metadata(&state_directory) {
+            Ok(meta) if meta.file_type().is_symlink() || !meta.is_dir() =>
+                return Err(AgentError::InvalidAction("runtime state directory must be a real directory".into())),
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir(&state_directory)?;
+            }
+            Err(error) => return Err(error.into()),
+        }
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&state_directory, fs::Permissions::from_mode(0o700))?;
+        }
+        let directory = state_directory.join("memory");
         Self::ensure_directory(&directory)?;
         Ok(Self { directory })
     }
@@ -118,7 +132,12 @@ impl MemoryStore {
     }
 
     pub fn get(&self, id: &str) -> Result<MemoryRecord, AgentError> {
-        let bytes = fs::read(self.path_for(id)?)?;
+        let path = self.path_for(id)?;
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(AgentError::InvalidAction("memory entry must be a regular file".into()));
+        }
+        let bytes = fs::read(path)?;
         let record: MemoryRecord = serde_json::from_slice(&bytes)?;
         if record.schema_version != MEMORY_SCHEMA_VERSION || record.id != id {
             return Err(AgentError::InvalidAction("memory record schema or ID mismatch".into()));
