@@ -31,6 +31,8 @@ or
 {"type":"tool_call","tool":"search_files","arguments":{"path":"relative/path","query":"text","regex":false,"case_sensitive":true,"glob":"*.rs","max_results":200}}
 or
 {"type":"ask_user","questions":[{"question":"...","header":"...","options":[{"label":"...","description":"..."}],"multi_select":false}]}
+or
+{"type":"tool_call","tool":"delegate_task","arguments":{"name":"reviewer","task":"Inspect the authentication implementation for security and correctness issues."}}
 
 Tool rules:
 - Paths are relative to the configured workspace.
@@ -38,6 +40,7 @@ Tool rules:
 - search_files searches workspace files natively, respects hidden-file and Git ignore rules, and supports literal or regular-expression matching.
 - write_file changes a workspace file and always requires explicit user approval.
 - Use ask_user when a material requirement or decision is ambiguous. Ask concise questions and provide useful options when possible.
+- delegate_task runs a bounded read-only subagent. Use it for an independent investigation or review; it cannot write files or delegate again.
 - There is no shell, process execution, arbitrary network tool, or access outside the workspace.
 - Never claim a tool succeeded unless its result says it succeeded.
 - If a task cannot be completed with these tools, explain the limitation."#;
@@ -359,6 +362,11 @@ impl AgentRuntime {
                     if let Some(reason) = hook_denial {
                         self.audit("hook.tool_denied", Some(&action.name), json!({"reason": reason}));
                         self.push_tool_result(false, &format!("Denied by runtime hook: {reason}"));
+                    } else if action.name == "delegate_task" {
+                        match self.run_subagent(&action).await {
+                            Ok(output) => self.push_tool_result(true, &output),
+                            Err(error) => self.push_tool_result(false, &error.to_string()),
+                        }
                     } else {
                         match policy::evaluate(&action) {
                             PolicyDecision::Deny => {
@@ -400,6 +408,83 @@ impl AgentRuntime {
             "Stopped after reaching the per-turn tool-call limit ({}).",
             self.max_tool_calls_per_turn
         ))
+    }
+
+    async fn run_subagent(&self, action: &ToolAction) -> Result<String, AgentError> {
+        let name = action.arguments.get("name").and_then(Value::as_str).unwrap_or("subagent");
+        let task = action.arguments.get("task").and_then(Value::as_str)
+            .filter(|task| !task.trim().is_empty())
+            .ok_or_else(|| AgentError::InvalidAction("delegate_task requires a non-empty task".into()))?;
+        if task.len() > 10_000 || name.len() > 80 {
+            return Err(AgentError::InvalidAction("subagent name or task exceeds the configured limit".into()));
+        }
+
+        self.audit("subagent.start", Some("delegate_task"), json!({
+            "name": name,
+            "task_length": task.len(),
+            "max_turns": 6
+        }));
+
+        let mut messages = vec![
+            ChatMessage { role: "system".into(), content: SUBAGENT_SYSTEM_PROMPT.to_owned() },
+            ChatMessage { role: "user".into(), content: task.to_owned() },
+        ];
+
+        for step in 0..6 {
+            let raw = self.provider.complete(&messages).await?;
+            messages.push(ChatMessage { role: "assistant".into(), content: raw.clone() });
+            let turn = match serde_json::from_str::<ModelTurn>(&raw) {
+                Ok(turn) => turn,
+                Err(_) => {
+                    self.audit("subagent.invalid_model_output", Some("delegate_task"), json!({
+                        "name": name, "step": step + 1
+                    }));
+                    return Ok(raw.chars().take(12_000).collect());
+                }
+            };
+
+            match turn {
+                ModelTurn::Final { content } => {
+                    self.audit("subagent.complete", Some("delegate_task"), json!({
+                        "name": name, "tool_calls": step, "result_length": content.len()
+                    }));
+                    return Ok(content.chars().take(12_000).collect());
+                }
+                ModelTurn::AskUser { .. } => {
+                    messages.push(ChatMessage {
+                        role: "user".into(),
+                        content: "Subagents cannot ask the user questions. Continue with available evidence or report the missing information.".into(),
+                    });
+                }
+                ModelTurn::ToolCall { tool, arguments } => {
+                    let sub_action = ToolAction { name: tool, arguments };
+                    let hook_denial = self.hooks.iter()
+                        .find_map(|hook| hook.before_tool(&sub_action).err());
+                    let result = if let Some(reason) = hook_denial {
+                        crate::action::ToolResult { ok: false, output: format!("Denied by runtime hook: {reason}") }
+                    } else if !is_subagent_read_tool(&sub_action.name)
+                        || !matches!(policy::evaluate(&sub_action), PolicyDecision::Allow) {
+                        crate::action::ToolResult { ok: false, output: "Subagents are restricted to read-only workspace tools".into() }
+                    } else {
+                        match self.executor.execute(&sub_action) {
+                            Ok(result) => result,
+                            Err(error) => crate::action::ToolResult { ok: false, output: error.to_string() },
+                        }
+                    };
+                    self.audit("subagent.tool", Some(&sub_action.name), json!({
+                        "name": name, "ok": result.ok, "step": step + 1
+                    }));
+                    let output: String = result.output.chars().take(12_000).collect();
+                    messages.push(ChatMessage {
+                        role: "user".into(),
+                        content: format!("Tool result (ok={}): {}", result.ok, output),
+                    });
+                }
+            }
+        }
+
+        self.audit("subagent.limit_reached", Some("delegate_task"), json!({"name": name}));
+        Ok("Subagent stopped after reaching its six-step limit.".into())
     }
 
     fn compact_history(&mut self) -> usize {
@@ -565,6 +650,22 @@ impl AgentRuntime {
     }
 }
 
+fn is_subagent_read_tool(name: &str) -> bool {
+    matches!(name, "read_file" | "list_dir" | "search_files")
+}
+
+const SUBAGENT_SYSTEM_PROMPT: &str = r#"You are a delegated read-only subagent. Complete only the assigned task.
+Return exactly one JSON object:
+{"type":"final","content":"..."}
+or
+{"type":"tool_call","tool":"read_file","arguments":{"path":"relative/path"}}
+or
+{"type":"tool_call","tool":"list_dir","arguments":{"path":"relative/path"}}
+or
+{"type":"tool_call","tool":"search_files","arguments":{"path":"relative/path","query":"text","regex":false,"case_sensitive":true,"glob":"*","max_results":100}}
+You may use only read_file, list_dir, and search_files within the configured workspace.
+Do not write files, ask the user questions, or delegate further tasks. Cite relevant file paths and findings. Keep the result focused."#;
+
 fn system_message(custom: Option<&str>) -> ChatMessage {
     ChatMessage {
         role: "system".into(),
@@ -599,6 +700,15 @@ fn write_private_file(path: &Path, bytes: &[u8], append: bool) -> Result<(), Age
 #[cfg(test)]
 mod tests {
     use super::{SessionStore, new_session_id, now_ms};
+
+    #[test]
+    fn subagents_are_restricted_to_read_only_tools() {
+        assert!(super::is_subagent_read_tool("read_file"));
+        assert!(super::is_subagent_read_tool("list_dir"));
+        assert!(super::is_subagent_read_tool("search_files"));
+        assert!(!super::is_subagent_read_tool("write_file"));
+        assert!(!super::is_subagent_read_tool("delegate_task"));
+    }
 
     #[test]
     fn session_ids_are_safe_file_names() {

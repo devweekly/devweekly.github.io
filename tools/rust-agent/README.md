@@ -44,13 +44,14 @@ cargo run -- --model <model-id> --workspace /path/to/workspace --session-id <ses
 
 A fork copies the current conversation into a new session and records its parent session ID. Session writes use a temporary file followed by rename to avoid leaving a partially written JSON document. Session IDs are validated before they are used as file names.
 
-The runtime bounds the conversation history to the most recent 80 non-system messages by default. It removes complete older turns rather than cutting through the middle of a tool exchange. This is a sliding context window, not semantic summarization.
+The runtime bounds the conversation history to the most recent 80 non-system messages by default. It removes complete older turns rather than cutting through the middle of a tool exchange. This is a sliding context window, not semantic summarization. The model can delegate a bounded investigation or review through `delegate_task`; the delegated Agent has its own short-lived context and can only read, list, and search workspace files. Its result is returned to the parent conversation.
 
 ## Runtime controls
 
 | Capability | Native implementation |
 |---|---|
 | Agent loop | Rust runtime with a bounded tool-call loop |
+| Subagents | In-process delegated Agent with a six-step limit and read-only tool allow-list |
 | Session lifecycle | Create, resume, continue latest, fork |
 | Context management | Configurable sliding message window with whole-turn pruning |
 | Permission control | Deterministic Rust Policy Gate, default/plan modes, and per-write approval |
@@ -93,7 +94,7 @@ No Shell, process execution, arbitrary network tool, or workspace-external file 
 - Permission modes intentionally omit automatic edit approval: default always asks before writes, while plan blocks writes.
 - Context management uses a sliding window; semantic summarization is not implemented yet.
 - Runtime hooks are synchronous callbacks. Long-running hook work should be delegated by the embedding host rather than blocking the Agent loop.
-- Subagent orchestration, background task management, and task handoff are not implemented in the native runtime.
+- Delegated subagents currently run sequentially in the parent turn, are read-only, and are not independently resumable. Parallel agents and background task handoff are not implemented.
 - Fallback routing is deliberately limited to transient transport, rate-limit, and server failures. Authentication, invalid-request, and malformed-response failures are not retried.
 - Terminal approval is synchronous. A desktop host will need an approval channel, but must retain the Rust policy check.
 - Session storage is local JSON and is not designed for concurrent writers to the same session.
