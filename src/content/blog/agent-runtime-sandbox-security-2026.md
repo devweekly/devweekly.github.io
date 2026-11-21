@@ -26,7 +26,7 @@ Agent Runtime 一旦允许模型读文件、改文件、运行命令或调用 MC
 
 ## 目录与阅读路径
 
-本文先建立 Agent Runtime 的威胁模型和安全边界，再讨论工具与执行后端，最后分别落到桌面、云端、Kubernetes 和 GUI VM。需要快速做架构评审时，可直接查看第 9 章的部署选型和第 10 章的 Checklist。
+本文先建立 Agent Runtime 的威胁模型和安全边界，再讨论工具与执行后端，最后分别落到桌面、云端、Kubernetes 和 GUI VM。需要快速做架构评审时，可直接查看第 10 章的部署选型和第 11 章的 Checklist。
 
 ## 1. 威胁模型：Agent Runtime 的攻击面已经超出模型输入
 
@@ -94,6 +94,10 @@ Sandbox 是最后一道执行边界。它限制进程及其子进程能够访问
 ## 3. 一个适合 TypeScript Agent Runtime 的分层设计
 
 对于本地桌面 Agent，我倾向于把策略和执行机制分开：Runtime 自己掌握 Tool Registry、Policy Engine、审批和审计；底层通过成熟的 OS Sandbox 执行真实进程，不自己重写操作系统隔离机制。
+
+![Agent Runtime 端到端安全执行链路](/diagrams/agent-runtime-end-to-end.svg)
+
+[查看端到端执行架构图（HTML）](/diagrams/agent-runtime-end-to-end.html)
 
 建议的执行路径：
 
@@ -716,7 +720,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 **文件写入最好默认可恢复。** 草稿写入、正式覆盖和删除应分开处理。通过临时文件、原子替换、版本快照和 Diff 审查，降低模型误操作的影响。对正式业务系统则优先提供有明确语义的 API，而不是开放数据库连接或通用 HTTP 写入。
 
-## 8. 方案比较与选型
+## 9. 方案比较与选型
 
 | 方案 | 主要隔离方式 | 适合场景 | 不能替代什么 |
 | --- | --- | --- | --- |
@@ -728,7 +732,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 这里没有一个项目能够单独解决 Agent 的全部安全问题。选择时首先看执行对象：如果只需要读写文件，优先提供受限文件服务；如果需要有限的 Shell 语义，考虑虚拟 Shell；如果要执行真实命令或 MCP Server，就需要 OS Sandbox；如果需要完整、可复现的开发环境，再考虑容器或 VM。
 
-## 9. 架构落地建议：按风险选择隔离强度
+## 10. 架构落地建议：按风险选择隔离强度
 
 不需要把所有 Agent 都放进最重的 VM，也不应该让所有 Agent 共用一个普通 Node.js 进程。隔离强度应由数据敏感性、工具权限、租户信任、执行代码来源和可能的副作用决定。
 
@@ -748,9 +752,9 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 这才是可扩展的 Agent Runtime 安全架构：策略统一，身份可追溯，执行隔离按平台实现，数据流受控，失败可终止，安全效果通过真实副作用测试验证。
 
-## 10. 安全验证、上线 Checklist 与参考资料
+## 11. 安全验证、上线 Checklist 与参考资料
 
-### 10.1 安全验证：用真实副作用和状态变化测试，而不是只看模型回答
+### 11.1 安全验证：用真实副作用和状态变化测试，而不是只看模型回答
 
 安全评估不能只统计模型有没有说出危险的话，也不能只测 Prompt Injection Classifier 的准确率。一个 Agent 可能在文本层面拒绝了攻击，但另一个工具已经完成了数据外传；也可能模型接受了恶意指令，但执行边界成功阻止了真实副作用。
 
@@ -771,7 +775,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 每次安全回归都应同时执行正常用例和负向攻击用例。正常用例验证工具仍然可用；负向用例验证越权确实失败。只做负向测试会导致系统通过“全部拒绝”获得虚假的安全成绩。
 
-### 10.2 Agent Runtime Security Checklist
+### 11.2 Agent Runtime Security Checklist
 
 下面的清单适合作为架构评审、PoC 验收和生产上线 Gate。它不是合规认证，也不能替代针对具体数据、行业和司法辖区的威胁建模。建议把 P0 视为上线阻断项，P1 视为生产环境必须完成或有明确风险接受记录的项目。
 
@@ -887,7 +891,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 - [ ] **P1** 每个平台、每个 Sandbox Backend、每个镜像版本都运行正向与负向测试。
 - [ ] **P1** 定期演练 Agent 失陷、凭证泄露、Sandbox 逃逸、租户越权和紧急停止。
 
-### 10.3 业界实践、标准和研究资料
+### 11.3 业界实践、标准和研究资料
 
 下面的资料按用途整理。标准和官方工程文档用于建立控制基线；研究论文用于理解攻击路径、验证方法和现有防御的局限。论文中的实验结果不等于生产环境安全保证。
 
@@ -929,7 +933,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 | [Your Agent is More Brittle Than You Think: Uncovering Indirect Injection Vulnerabilities in Agentic LLMs](https://arxiv.org/abs/2604.03870), 2026 | 在动态多步工具环境中研究间接注入与多种防御策略，强调单轮静态测试的局限。 |
 | [The Hidden Dangers of Browsing AI Agents](https://arxiv.org/abs/2505.13076), 2025 | 浏览器 Agent 的端到端威胁模型，讨论 Prompt Injection、域名校验绕过、凭证外泄和 Planner / Executor 隔离。 |
 
-## 11. 结论：复用 OS Sandbox，自己实现策略控制面
+## 12. 结论：复用 OS Sandbox，自己实现策略控制面
 
 如果是 TypeScript / Node.js Agent Runtime，我会按以下方式落地：
 
