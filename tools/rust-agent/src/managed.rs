@@ -17,6 +17,7 @@ pub struct ManagedRuntime {
     context: ContextManager,
     hooks: Vec<Arc<dyn ManagedHook>>,
     project_id: Option<String>,
+    task_id: Option<String>,
     last_context_report: Option<ContextReport>,
 }
 
@@ -58,12 +59,13 @@ impl ManagedRuntime {
         options.hooks.push(Box::new(TraceHook::new(trace)));
         options.hooks.push(Box::new(ManagedHookBridge { hooks: hooks.clone() }));
         let runtime = AgentRuntime::new(provider, workspace, options)?;
-        Ok(Self { runtime, memory, context, hooks, project_id, last_context_report: None })
+        Ok(Self { runtime, memory, context, hooks, project_id, task_id: None, last_context_report: None })
     }
 
     pub fn runtime(&self) -> &AgentRuntime { &self.runtime }
     pub fn runtime_mut(&mut self) -> &mut AgentRuntime { &mut self.runtime }
     pub fn last_context_report(&self) -> Option<&ContextReport> { self.last_context_report.as_ref() }
+    pub fn set_task_scope(&mut self, task_id: Option<String>) { self.task_id = task_id; }
 
     /// Persisting memory is explicit. The runtime never silently promotes model output
     /// or tool results into durable user memory.
@@ -80,7 +82,7 @@ impl ManagedRuntime {
     pub fn retrieve_memories(&self, query: &str, limit: usize) -> Result<Vec<MemoryRecord>, AgentError> {
         self.memory.retrieve(&MemoryQuery {
             query: query.to_owned(), session_id: Some(self.runtime.session_id().to_owned()),
-            project_id: self.project_id.clone(), limit,
+            project_id: self.project_id.clone(), task_id: self.task_id.clone(), limit,
         })
     }
 

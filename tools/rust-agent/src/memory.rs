@@ -52,6 +52,7 @@ pub struct MemoryQuery {
     pub query: String,
     pub session_id: Option<String>,
     pub project_id: Option<String>,
+    pub task_id: Option<String>,
     pub limit: usize,
 }
 
@@ -200,7 +201,7 @@ impl MemoryStore {
                 MemoryScope::Global => true,
                 MemoryScope::Project => query.project_id.as_deref() == record.scope_id.as_deref(),
                 MemoryScope::Session => query.session_id.as_deref() == record.scope_id.as_deref(),
-                MemoryScope::Task => false,
+                MemoryScope::Task => query.task_id.as_deref() == record.scope_id.as_deref(),
             };
             if !in_scope { continue; }
             let record_terms = terms(&record.content);
@@ -260,8 +261,18 @@ mod tests {
             content: "Prefers Rust implementations and minimal dependencies".into(),
             source: "explicit user preference".into(), confidence: 95, expires_at_ms: None,
         }).unwrap();
-        let results = store.retrieve(&MemoryQuery { query: "Rust minimal dependencies".into(), session_id: None, project_id: None, limit: 5 }).unwrap();
+        let results = store.retrieve(&MemoryQuery { query: "Rust minimal dependencies".into(), session_id: None, project_id: None, task_id: None, limit: 5 }).unwrap();
         assert_eq!(results[0].id, record.id);
+        let task_memory = store.remember(MemoryInput {
+            kind: MemoryKind::Working, scope: MemoryScope::Task, scope_id: Some("task-7".into()),
+            content: "temporary task-specific decision".into(), source: "current task".into(),
+            confidence: 100, expires_at_ms: None,
+        }).unwrap();
+        let task_results = store.retrieve(&MemoryQuery {
+            query: "task-specific decision".into(), session_id: None, project_id: None,
+            task_id: Some("task-7".into()), limit: 5,
+        }).unwrap();
+        assert_eq!(task_results[0].id, task_memory.id);
         assert!(store.update(&record.id, "Prefers Rust with few dependencies", None, Some(90)).is_ok());
         assert!(store.forget(&record.id).is_ok());
         assert!(store.get(&record.id).is_err());
@@ -277,7 +288,7 @@ mod tests {
             content: "temporary context phrase".into(), source: "test".into(),
             confidence: 100, expires_at_ms: Some(now_ms().saturating_sub(Duration::from_secs(1).as_millis())),
         }).unwrap();
-        let results = store.retrieve(&MemoryQuery { query: "temporary context".into(), session_id: Some("s1".into()), project_id: None, limit: 5 }).unwrap();
+        let results = store.retrieve(&MemoryQuery { query: "temporary context".into(), session_id: Some("s1".into()), project_id: None, task_id: None, limit: 5 }).unwrap();
         assert!(results.is_empty());
         let _ = store.forget(&record.id);
         let _ = fs::remove_dir_all(root);
