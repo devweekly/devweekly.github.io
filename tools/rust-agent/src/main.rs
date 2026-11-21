@@ -204,7 +204,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Rust Agent ready. Workspace: {}", runtime.workspace().display());
     println!("Session: {}", runtime.session_id());
-    println!("Commands: /help, /attach <workspace-relative-path>, /new, /session, /resume <id>, /fork, /model <id>, /models, /agents, /agent <id>, /mode <default|plan>, /context, /compact, /usage, /dream, /dream-status, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
+    println!("Commands: /help, /attach <workspace-relative-path>, /new, /session, /resume <id>, /fork, /model <id>, /models, /agents, /agent <id>, /mode <default|plan>, /context, /compact, /usage, /dream, /dream-status, /prune-transcripts <days>, /forget-memory <id>, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
 
     loop {
         print!("you> ");
@@ -241,6 +241,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!(" /usage               Show cumulative model and tool usage");
             println!(" /dream               Consolidate pending memory now");
             println!(" /dream-status        Show pending transcripts, lease, retries and recent runs");
+            println!(" /prune-transcripts <days>  Prune unreferenced transcript rows older than N days");
+            println!(" /forget-memory <id>        Forget a memory and remove exclusive transcript sources");
             println!(" /dream               Consolidate transcripts into evidence-backed memory");
             println!(" /tasks               List background tasks");
             println!(" /task <id>           Show task status and result");
@@ -349,6 +351,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
             continue;
         }
 
+        if let Some(value) = input.strip_prefix("/prune-transcripts ") {
+            match value.trim().parse::<u64>() {
+                Ok(days) => match runtime.prune_transcripts_before_days(days) {
+                    Ok(deleted) => println!("Pruned {deleted} unreferenced transcript rows older than {days} days; referenced and recent rows were retained."),
+                    Err(error) => eprintln!("Transcript retention failed: {error}"),
+                },
+                Err(_) => eprintln!("Usage: /prune-transcripts <days>"),
+            }
+            continue;
+        }
+        if let Some(id) = input.strip_prefix("/forget-memory ") {
+            match runtime.forget_memory(id.trim()) {
+                Ok(()) => println!("Memory {} and its unshared transcript sources were forgotten.", id.trim()),
+                Err(error) => eprintln!("Could not forget memory: {error}"),
+            }
+            continue;
+        }
         if input == "/dream" {
             match runtime.dream_memories().await {
                 Ok(report) => println!(
