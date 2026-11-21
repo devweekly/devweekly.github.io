@@ -564,19 +564,36 @@ impl BackgroundTaskStore {
         let path = self.path_for(&record.task_id)?;
         let lock = lock_state_file(&path)?;
         ensure_regular_file_or_missing(&path)?;
-        if let Ok(bytes) = fs::read(&path) {
-            let current: BackgroundTaskRecord = serde_json::from_slice(&bytes)?;
-            if current.status == BackgroundTaskStatus::Cancelling
-                && !matches!(record.status, BackgroundTaskStatus::Cancelling | BackgroundTaskStatus::Cancelled)
-            {
-                return Err(AgentError::Cancelled);
+        match fs::read(&path) {
+            Ok(bytes) => {
+                let current: BackgroundTaskRecord = serde_json::from_slice(&bytes)?;
+                if current.status == BackgroundTaskStatus::Cancelling
+                    && !matches!(record.status, BackgroundTaskStatus::Cancelling | BackgroundTaskStatus::Cancelled)
+                {
+                    return Err(AgentError::Cancelled);
+                }
+                if current.status.is_terminal() {
+                    return Err(AgentError::InvalidAction(format!(
+                        "background task {} is already terminal ({})",
+                        record.task_id, current.status.as_str()
+                    )));
+                }
             }
-            if current.status.is_terminal() && record.status != current.status {
-                return Err(AgentError::InvalidAction(format!(
-                    "background task {} is already terminal ({})",
-                    record.task_id, current.status.as_str()
-                )));
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let count = fs::read_dir(&self.directory)?
+                    .filter_map(Result::ok)
+                    .filter(|entry| {
+                        entry.file_type().is_ok_and(|kind| kind.is_file())
+                            && entry.path().extension().and_then(|value| value.to_str()) == Some("json")
+                    })
+                    .count();
+                if count >= MAX_STORED_BACKGROUND_TASKS {
+                    return Err(AgentError::InvalidAction(format!(
+                        "background task store reached the {MAX_STORED_BACKGROUND_TASKS} record limit; prune terminal tasks"
+                    )));
+                }
             }
+            Err(error) => return Err(error.into()),
         }
         let temporary = path.with_extension(format!("json.tmp-{}-{}", std::process::id(), now_ms()));
         let bytes = serde_json::to_vec_pretty(record)?;
@@ -613,6 +630,13 @@ impl BackgroundTaskStore {
             {
                 continue;
             }
+            let metadata = entry.metadata()?;
+            if metadata.len() as usize > MAX_BACKGROUND_TASK_RECORD_BYTES {
+                return Err(AgentError::InvalidAction(format!(
+                    "background task record exceeds the 16 MiB limit: {}",
+                    entry.path().display()
+                )));
+            }
             let bytes = fs::read(entry.path())?;
             let record: BackgroundTaskRecord = serde_json::from_slice(&bytes)?;
             if record.schema_version != BACKGROUND_TASK_SCHEMA_VERSION {
@@ -636,9 +660,24 @@ impl BackgroundTaskStore {
     }
 
     fn prune_before(&self, cutoff_ms: u128, max_delete: usize) -> Result<usize, AgentError> {
-        let mut candidates = self.list()?.into_iter()
-            .filter(|record| record.status.is_terminal() && record.updated_at_ms < cutoff_ms)
-            .collect::<Vec<_>>();
+        if max_delete == 0 { return Ok(0); }
+        ensure_real_directory(&self.directory)?;
+        let mut candidates = Vec::new();
+        for entry in fs::read_dir(&self.directory)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_file()
+                || entry.path().extension().and_then(|value| value.to_str()) != Some("json")
+            {
+                continue;
+            }
+            let metadata = entry.metadata()?;
+            if metadata.len() as usize > MAX_BACKGROUND_TASK_RECORD_BYTES { continue; }
+            let bytes = fs::read(entry.path())?;
+            let record: BackgroundTaskRecord = serde_json::from_slice(&bytes)?;
+            if record.status.is_terminal() && record.updated_at_ms < cutoff_ms {
+                candidates.push(record);
+            }
+        }
         candidates.sort_by(|left, right| left.updated_at_ms.cmp(&right.updated_at_ms));
         let mut removed = 0usize;
         for record in candidates.into_iter().take(max_delete) {
@@ -1598,10 +1637,13 @@ impl AgentRuntime {
                 if current.status.is_terminal() {
                     return Ok(current);
                 }
+                if current.status == BackgroundTaskStatus::Queued {
+                    let _ = self.resume_background_tasks()?;
+                }
                 tokio::select! {
                     biased;
                     _ = cancellation.cancelled() => return Err(AgentError::Cancelled),
-                    _ = tokio::time::sleep(Duration::from_millis(250)) => {}
+                    _ = tokio::time::sleep(Duration::from_secs(1)) => {}
                 }
             }
         };
