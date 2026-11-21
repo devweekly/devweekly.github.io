@@ -388,7 +388,6 @@ impl AgentRuntime {
                 }).to_string(),
             });
             self.audit("turn.cancelled", None, json!({}));
-            self.emit_event("turn.cancelled", None, json!({}));
             self.persist()?;
         }
         result
