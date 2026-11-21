@@ -320,7 +320,21 @@ impl AgentRuntime {
         self.persist()?;
 
         for step in 0..self.max_tool_calls_per_turn {
-            let raw = self.provider.complete(&self.messages).await?;
+            let provider = &self.provider;
+            let hooks = &self.hooks;
+            let session_id = self.session.session_id.clone();
+            let raw = provider.complete_streaming(&self.messages, |delta| {
+                let event = RuntimeEvent {
+                    session_id: session_id.clone(),
+                    name: "model.output.delta".into(),
+                    tool: None,
+                    details: json!({"delta": delta, "length": delta.len()}),
+                };
+                for hook in hooks {
+                    hook.on_event(&event);
+                }
+            }).await?;
+            self.emit_event("model.output.complete", None, json!({"step": step + 1, "length": raw.len()}));
             self.messages.push(ChatMessage {
                 role: "assistant".into(),
                 content: raw.clone(),
@@ -606,6 +620,18 @@ impl AgentRuntime {
         self.session.updated_at_ms = now_ms();
         self.session.messages = self.messages.clone();
         self.store.save(&self.session)
+    }
+
+    fn emit_event(&self, name: &str, tool: Option<&str>, details: Value) {
+        let event = RuntimeEvent {
+            session_id: self.session.session_id.clone(),
+            name: name.to_owned(),
+            tool: tool.map(ToOwned::to_owned),
+            details,
+        };
+        for hook in &self.hooks {
+            hook.on_event(&event);
+        }
     }
 
     fn audit(&self, event: &str, tool: Option<&str>, details: Value) {

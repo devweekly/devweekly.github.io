@@ -21,11 +21,7 @@ pub struct OpenAiCompatibleProvider {
 }
 
 impl OpenAiCompatibleProvider {
-    pub fn new(
-        base_url: String,
-        model: String,
-        api_key: String,
-    ) -> Result<Self, AgentError> {
+    pub fn new(base_url: String, model: String, api_key: String) -> Result<Self, AgentError> {
         Self::new_with_fallback(base_url, model, None, api_key)
     }
 
@@ -107,19 +103,107 @@ impl OpenAiCompatibleProvider {
         }
     }
 
+    /// Streams content deltas from an OpenAI-compatible SSE Chat Completions endpoint.
+    /// The callback receives fragments of the model's structured response, not user-facing text.
+    /// Fallback is attempted only if the primary model fails before emitting any content.
+    pub async fn complete_streaming<F>(
+        &self,
+        messages: &[ChatMessage],
+        mut on_delta: F,
+    ) -> Result<String, AgentError>
+    where
+        F: FnMut(&str),
+    {
+        match self.complete_streaming_with_model(&self.model, messages, &mut on_delta).await {
+            Ok(content) => Ok(content),
+            Err((primary_error, false)) => {
+                let Some(fallback_model) = self.fallback_model.as_deref() else {
+                    return Err(primary_error);
+                };
+                if !is_retryable(&primary_error) {
+                    return Err(primary_error);
+                }
+                warn!(
+                    primary_model = %self.model,
+                    fallback_model,
+                    "primary streaming model failed before output; trying fallback model"
+                );
+                self.complete_streaming_with_model(fallback_model, messages, &mut on_delta)
+                    .await
+                    .map_err(|(error, _)| error)
+            }
+            Err((error, true)) => Err(error),
+        }
+    }
+
+    async fn complete_streaming_with_model<F>(
+        &self,
+        model: &str,
+        messages: &[ChatMessage],
+        on_delta: &mut F,
+    ) -> Result<String, (AgentError, bool)>
+    where
+        F: FnMut(&str),
+    {
+        let body = ChatCompletionRequest { model, messages, stream: true };
+        let response = self.client
+            .post(&self.endpoint)
+            .bearer_auth(&self.api_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|error| (AgentError::Http(error), false))?
+            .error_for_status()
+            .map_err(|error| (AgentError::Http(error), false))?;
+
+        let mut response = response;
+        let mut pending = Vec::<u8>::new();
+        let mut content = String::new();
+        let mut emitted = false;
+
+        loop {
+            let chunk = response.chunk().await
+                .map_err(|error| (AgentError::Http(error), emitted))?;
+            let Some(chunk) = chunk else { break };
+            pending.extend_from_slice(&chunk);
+
+            while let Some(newline) = pending.iter().position(|byte| *byte == b'\n') {
+                let mut line = pending.drain(..=newline).collect::<Vec<_>>();
+                line.pop();
+                if line.last() == Some(&b'\r') { line.pop(); }
+                if let Some(delta) = extract_sse_delta(&line) {
+                    if !delta.is_empty() {
+                        emitted = true;
+                        content.push_str(&delta);
+                        on_delta(&delta);
+                    }
+                }
+            }
+        }
+
+        if !pending.is_empty() {
+            if let Some(delta) = extract_sse_delta(&pending) {
+                if !delta.is_empty() {
+                    emitted = true;
+                    content.push_str(&delta);
+                    on_delta(&delta);
+                }
+            }
+        }
+
+        if content.is_empty() {
+            return Err((AgentError::InvalidProviderResponse, emitted));
+        }
+        Ok(content)
+    }
+
     async fn complete_with_model(
         &self,
         model: &str,
         messages: &[ChatMessage],
     ) -> Result<String, AgentError> {
-        let body = ChatCompletionRequest {
-            model,
-            messages,
-            stream: false,
-        };
-
-        let response: Value = self
-            .client
+        let body = ChatCompletionRequest { model, messages, stream: false };
+        let response: Value = self.client
             .post(&self.endpoint)
             .bearer_auth(&self.api_key)
             .json(&body)
@@ -134,6 +218,16 @@ impl OpenAiCompatibleProvider {
             .map(ToOwned::to_owned)
             .ok_or(AgentError::InvalidProviderResponse)
     }
+}
+
+fn extract_sse_delta(line: &[u8]) -> Option<String> {
+    let line = std::str::from_utf8(line).ok()?.trim();
+    let data = line.strip_prefix("data:")?.trim();
+    if data.is_empty() || data == "[DONE]" {
+        return None;
+    }
+    let event: Value = serde_json::from_str(data).ok()?;
+    event["choices"][0]["delta"]["content"].as_str().map(ToOwned::to_owned)
 }
 
 fn parse_model_ids(response: &Value) -> Vec<String> {
@@ -168,12 +262,10 @@ struct ChatCompletionRequest<'a> {
     stream: bool,
 }
 
-
 #[cfg(test)]
 mod tests {
     use serde_json::json;
-
-    use super::parse_model_ids;
+    use super::{extract_sse_delta, parse_model_ids};
 
     #[test]
     fn model_listing_extracts_sorts_and_deduplicates_ids() {
@@ -191,5 +283,17 @@ mod tests {
     #[test]
     fn model_listing_handles_missing_data() {
         assert!(parse_model_ids(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn sse_parser_extracts_content_delta() {
+        let line = br#"data: {"choices":[{"delta":{"content":"{\"type\":"}}]}"#;
+        assert_eq!(extract_sse_delta(line).as_deref(), Some("{\"type\":"));
+    }
+
+    #[test]
+    fn sse_parser_ignores_done_and_non_content_events() {
+        assert!(extract_sse_delta(b"data: [DONE]").is_none());
+        assert!(extract_sse_delta(br#"data: {"choices":[{"delta":{"role":"assistant"}}]}"#).is_none());
     }
 }
