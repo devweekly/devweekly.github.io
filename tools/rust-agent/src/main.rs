@@ -160,6 +160,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         system_prompt: None,
         hooks: Vec::new(),
         approval_handler: None,
+        context_manager: rust_agent::context::ContextManager::default(),
+        project_id: None,
     };
     let mut runtime = AgentRuntime::new(provider, workspace, options)?;
 

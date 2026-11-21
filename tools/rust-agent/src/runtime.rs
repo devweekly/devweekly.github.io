@@ -20,10 +20,13 @@ use tracing::{info, warn};
 use crate::{
     action::{ModelTurn, ToolAction, UserQuestion},
     attachments::{AttachmentMetadata, AttachmentStore},
+    context::{ContextManager, ContextReport},
     error::AgentError,
+    memory::{MemoryInput, MemoryQuery, MemoryRecord, MemoryStore},
     policy::{self, PolicyDecision},
     provider::{ChatMessage, CompletionUsage, OpenAiCompatibleProvider},
     tools::ToolExecutor,
+    trace::{TraceHook, TraceStore},
 };
 
 const SYSTEM_PROMPT: &str = r#"You are a local coding and research assistant. You can use only the tools listed below.
@@ -72,6 +75,8 @@ pub struct RuntimeOptions {
     pub system_prompt: Option<String>,
     pub hooks: Vec<Box<dyn RuntimeHook>>,
     pub approval_handler: Option<Arc<dyn ApprovalHandler>>,
+    pub context_manager: ContextManager,
+    pub project_id: Option<String>,
 }
 
 impl Default for RuntimeOptions {
@@ -86,6 +91,8 @@ impl Default for RuntimeOptions {
             system_prompt: None,
             hooks: Vec::new(),
             approval_handler: None,
+            context_manager: ContextManager::default(),
+            project_id: None,
         }
     }
 }
@@ -160,6 +167,8 @@ pub trait ApprovalHandler: Send + Sync {
 }
 
 pub trait RuntimeHook: Send + Sync {
+    fn before_turn(&self, _session_id: &str, _input: &str) -> Result<(), String> { Ok(()) }
+    fn after_turn(&self, _session_id: &str, _result: &Result<String, String>) {}
     fn on_event(&self, _event: &RuntimeEvent) {}
 
     // Hooks may add a denial, but can never override the Rust policy gate or user approval.
@@ -671,6 +680,11 @@ pub struct AgentRuntime {
     background_task_store: BackgroundTaskStore,
     background_task_controls: SharedTaskControls,
     agent_profile_store: AgentProfileStore,
+    memory_store: MemoryStore,
+    context_manager: ContextManager,
+    context_report: Option<ContextReport>,
+    project_id: Option<String>,
+    task_scope: Option<String>,
 }
 
 impl AgentRuntime {
@@ -685,7 +699,7 @@ impl AgentRuntime {
         let store = SessionStore::new(session_directory);
 
         let configured_system_prompt = options.system_prompt.clone().unwrap_or_else(|| SYSTEM_PROMPT.to_owned());
-        let hooks = std::mem::take(&mut options.hooks);
+        let mut hooks = std::mem::take(&mut options.hooks);
         let approval_handler = options.approval_handler;
         let session = if let Some(session_id) = options.session_id.as_deref() {
             store.load(session_id)?
@@ -716,6 +730,9 @@ impl AgentRuntime {
             workspace.join(".rust-agent").join("agents"),
         );
         let usage_file = workspace.join(".rust-agent").join("usage.jsonl");
+        let memory_store = MemoryStore::new(&workspace)?;
+        let trace_store = TraceStore::new(workspace.join(".rust-agent").join("traces.jsonl"), session.session_id.clone(), new_trace_id())?;
+        hooks.push(Box::new(TraceHook::new(trace_store)));
         let mut runtime = Self {
             provider,
             executor: ToolExecutor::new(workspace.clone()),
@@ -736,6 +753,11 @@ impl AgentRuntime {
             background_task_store,
             background_task_controls,
             agent_profile_store,
+            memory_store,
+            context_manager: options.context_manager,
+            context_report: None,
+            project_id: options.project_id,
+            task_scope: None,
         };
         runtime.persist()?;
         runtime.audit("session.start", None, json!({"resumed": options.session_id.is_some() || options.continue_session}));
@@ -745,8 +767,21 @@ impl AgentRuntime {
         Ok(runtime)
     }
 
-    pub fn workspace(&self) -> &Path {
-        &self.workspace
+    pub fn workspace(&self) -> &Path { &self.workspace }
+
+    pub fn context_report(&self) -> Option<&ContextReport> { self.context_report.as_ref() }
+    pub fn set_task_scope(&mut self, task_id: Option<String>) { self.task_scope = task_id; }
+    pub fn remember(&self, input: MemoryInput) -> Result<MemoryRecord, AgentError> { self.memory_store.remember(input) }
+    pub fn update_memory(&self, id: &str, content: &str, source: Option<&str>, confidence: Option<u8>) -> Result<MemoryRecord, AgentError> {
+        self.memory_store.update(id, content, source, confidence)
+    }
+    pub fn forget_memory(&self, id: &str) -> Result<(), AgentError> { self.memory_store.forget(id) }
+    pub fn list_memories(&self) -> Result<Vec<MemoryRecord>, AgentError> { self.memory_store.list() }
+    pub fn retrieve_memories(&self, query: &str, limit: usize) -> Result<Vec<MemoryRecord>, AgentError> {
+        self.memory_store.retrieve(&MemoryQuery {
+            query: query.to_owned(), session_id: Some(self.session.session_id.clone()),
+            project_id: self.project_id.clone(), task_id: self.task_scope.clone(), limit,
+        })
     }
 
     /// Accept bytes supplied by an embedding Host and associate the attachment with the next user turn.
@@ -1330,7 +1365,13 @@ impl AgentRuntime {
             return Err(AgentError::Cancelled);
         }
 
+        let session_id = self.session.session_id.clone();
+        for hook in &self.hooks {
+            hook.before_turn(&session_id, input).map_err(AgentError::InvalidAction)?;
+        }
+        self.emit_event("turn.start", None, json!({"input_length": input.len()}));
         let result = self.run_turn_inner(input, cancellation).await;
+        self.emit_event("turn.end", None, json!({"ok": result.is_ok()}));
         if matches!(&result, Err(AgentError::Cancelled)) {
             self.messages.push(ChatMessage {
                 role: "assistant".into(),
@@ -1342,6 +1383,8 @@ impl AgentRuntime {
             self.audit("turn.cancelled", None, json!({}));
             self.persist()?;
         }
+        let hook_result = result.as_ref().map(Clone::clone).map_err(ToString::to_string);
+        for hook in &self.hooks { hook.after_turn(&session_id, &hook_result); }
         result
     }
 
@@ -1350,7 +1393,17 @@ impl AgentRuntime {
         input: &str,
         cancellation: &CancellationHandle,
     ) -> Result<String, AgentError> {
-        let mut user_content = input.to_owned();
+        let memories = self.retrieve_memories(input, 12)?;
+        let memory_text = memories.iter().map(|record| record.content.clone()).collect::<Vec<_>>();
+        let (composed_input, context_report) = self.context_manager.compose(input, &memory_text);
+        self.context_report = Some(context_report.clone());
+        self.emit_event("context.assembled", None, json!({
+            "estimated_input_tokens": context_report.estimated_input_tokens,
+            "max_input_tokens": context_report.max_input_tokens,
+            "included_memories": context_report.included_memories,
+            "omitted_memories": context_report.omitted_memories
+        }));
+        let mut user_content = composed_input;
         if !self.pending_attachments.is_empty() {
             user_content.push_str("\n\nAttachments supplied with this turn (use read_attachment with the ID to inspect UTF-8 text files):");
             for attachment in self.pending_attachments.drain(..) {
@@ -2020,6 +2073,8 @@ fn system_message(custom: Option<&str>) -> ChatMessage {
         content: custom.unwrap_or(SYSTEM_PROMPT).to_owned(),
     }
 }
+
+fn new_trace_id() -> String { format!("trace-{:x}", now_ms()) }
 
 fn now_ms() -> u128 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis()

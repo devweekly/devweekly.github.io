@@ -145,36 +145,42 @@ The runtime appends model-call and tool-call events to `.rust-agent/usage.jsonl`
 Background tasks persist cumulative request, token, duration, and tool-call totals in each task record, including across restart recovery. The `/usage` command shows totals across the workspace usage log and stored background tasks; `/task <id>` shows the selected task's usage. Failed or cancelled requests that do not return a usage payload cannot be assigned reliable token counts.
 
 
-## Managed runtime: context, memory, hooks and traces
+## Context, memory and tracing
 
-The optional `ManagedRuntime` facade composes the native AgentRuntime with explicit context budgeting, durable memory, managed lifecycle hooks, and JSONL traces. It does not replace the existing Runtime API.
+Context management, persistent memory, lifecycle hooks and tracing are built into the single `AgentRuntime`. There is no second runtime or facade to construct.
 
-Memory is stored under `.rust-agent/memory/` as private JSON records. The API supports explicit remember, retrieve, update, list and forget operations. Records carry a kind (working/session/long-term/procedural), scope (global/project/session/task), provenance, confidence, timestamps and optional expiry. Retrieval is currently lightweight lexical matching; there is no embedding model or vector database. Memory writes are explicit host operations: model output and tool results are never automatically promoted to long-term memory. Retrieved memory is inserted as untrusted reference material, never as system instructions.
+`RuntimeOptions` configures the context budget and optional project scope. Every turn retrieves applicable memories, adds them as untrusted reference material, reports the estimated context budget, and then follows the same Agent loop and sliding history window.
 
-The ContextManager reserves an output budget and a separate memory budget. Token counts use a conservative UTF-8 byte heuristic (four bytes per token), not the provider's tokenizer. The current user request is preserved before optional memory; the existing AgentRuntime still applies its whole-turn sliding history window. This is a context assembly/budget layer, not semantic conversation summarization.
+Memory is stored under `.rust-agent/memory/`. The API supports explicit remember, retrieve, update, list and forget operations. Records carry kind, scope (global/project/session/task), provenance, confidence, timestamps and optional expiry. Retrieval uses lightweight lexical matching; no embedding model or vector database is required. Memory writes are explicit Host operations: model output and tool results are never silently promoted into durable memory.
 
-Managed hooks expose before-turn, runtime-event and after-turn callbacks. The bridge also receives the existing RuntimeHook event stream and tool-denial extension point. Hooks may observe or deny, but cannot grant permissions or bypass the deterministic Rust Policy Gate. Long-running callbacks should not block the runtime thread.
+The built-in `RuntimeHook` covers before-turn, before-tool, runtime events and after-turn callbacks. Hooks can observe or deny operations, but cannot grant permissions or bypass the deterministic Rust Policy Gate.
 
-Trace records are appended to `.rust-agent/traces.jsonl` with timestamp, trace ID, sequence, session ID, event name, tool name and metadata. Prompt bodies, model response bodies, file contents and tool arguments are deliberately excluded. The existing `audit_file` remains a separate audit sink. Trace writes are best-effort through the hook adapter; a trace write failure is logged and does not fail an Agent turn.
+Trace records are written to `.rust-agent/traces.jsonl` and include timestamp, trace ID, sequence, session ID, event, tool and sanitized metadata. Prompt bodies, model response bodies, file contents and tool arguments are excluded. Audit and Usage remain separate views over their respective event types.
 
-Example host setup:
+Example:
 
 ```rust
-use std::{path::PathBuf, sync::Arc};
 use rust_agent::{
     context::ContextManager,
-    managed::ManagedRuntime,
-    runtime::RuntimeOptions,
+    memory::{MemoryInput, MemoryKind, MemoryScope},
+    runtime::{AgentRuntime, RuntimeOptions},
 };
 
-let runtime = ManagedRuntime::new(
-    provider,
-    PathBuf::from("/workspace"),
-    RuntimeOptions::default(),
-    ContextManager::new(16_000, 2_000, 2_000),
-    Some("my-project".into()),
-    Vec::new(),
-)?;
+let mut options = RuntimeOptions::default();
+options.context_manager = ContextManager::new(16_000, 2_000, 2_000);
+options.project_id = Some("my-project".into());
+
+let mut runtime = AgentRuntime::new(provider, workspace, options)?;
+runtime.remember(MemoryInput {
+    kind: MemoryKind::LongTerm,
+    scope: MemoryScope::Global,
+    scope_id: None,
+    content: "Prefer minimal runtime dependencies".into(),
+    source: "explicit host input".into(),
+    confidence: 95,
+    expires_at_ms: None,
+})?;
+
 let answer = runtime.run_turn("Review the repository").await?;
 ```
 
