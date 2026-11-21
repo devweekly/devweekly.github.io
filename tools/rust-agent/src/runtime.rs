@@ -41,7 +41,6 @@ Tool rules:
 
 const SESSION_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Debug, Clone)]
 pub struct RuntimeOptions {
     pub session_dir: Option<PathBuf>,
     pub session_id: Option<String>,
@@ -50,6 +49,7 @@ pub struct RuntimeOptions {
     pub max_tool_calls_per_turn: usize,
     pub max_history_messages: usize,
     pub system_prompt: Option<String>,
+    pub hooks: Vec<Box<dyn RuntimeHook>>,
 }
 
 impl Default for RuntimeOptions {
@@ -62,7 +62,24 @@ impl Default for RuntimeOptions {
             max_tool_calls_per_turn: 8,
             max_history_messages: 80,
             system_prompt: None,
+            hooks: Vec::new(),
         }
+    }
+}
+
+pub struct RuntimeEvent {
+    pub session_id: String,
+    pub name: String,
+    pub tool: Option<String>,
+    pub details: Value,
+}
+
+pub trait RuntimeHook: Send + Sync {
+    fn on_event(&self, _event: &RuntimeEvent) {}
+
+    // Hooks may add a denial, but can never override the Rust policy gate or user approval.
+    fn before_tool(&self, _action: &ToolAction) -> Result<(), String> {
+        Ok(())
     }
 }
 
@@ -140,6 +157,7 @@ pub struct AgentRuntime {
     max_tool_calls_per_turn: usize,
     max_history_messages: usize,
     system_prompt: String,
+    hooks: Vec<Box<dyn RuntimeHook>>,
 }
 
 impl AgentRuntime {
@@ -154,6 +172,7 @@ impl AgentRuntime {
         let store = SessionStore::new(session_directory);
 
         let configured_system_prompt = options.system_prompt.clone().unwrap_or_else(|| SYSTEM_PROMPT.to_owned());
+        let hooks = std::mem::take(&mut options.hooks);
         let session = if let Some(session_id) = options.session_id.as_deref() {
             store.load(session_id)?
         } else if options.continue_session {
@@ -186,6 +205,7 @@ impl AgentRuntime {
             max_tool_calls_per_turn: options.max_tool_calls_per_turn.clamp(1, 64),
             max_history_messages: options.max_history_messages.clamp(4, 2_000),
             system_prompt: configured_system_prompt,
+            hooks,
         };
         runtime.persist()?;
         runtime.audit("session.start", None, json!({"resumed": options.session_id.is_some() || options.continue_session}));
@@ -285,25 +305,32 @@ impl AgentRuntime {
                 }
                 ModelTurn::ToolCall { tool, arguments } => {
                     let action = ToolAction { name: tool, arguments };
-                    match policy::evaluate(&action) {
-                        PolicyDecision::Deny => {
-                            warn!(tool = %action.name, "tool call denied by policy");
-                            self.audit("policy.deny", Some(&action.name), json!({}));
-                            self.push_tool_result(false, "Denied by local policy");
-                        }
-                        PolicyDecision::RequireApproval => {
-                            self.audit("policy.require_approval", Some(&action.name), json!({}));
-                            if self.request_approval(&action)? {
-                                self.audit("policy.approve", Some(&action.name), json!({}));
-                                self.execute_and_record(&action);
-                            } else {
-                                self.audit("policy.user_denied", Some(&action.name), json!({}));
-                                self.push_tool_result(false, "User declined the operation");
+                    let hook_denial = self.hooks.iter()
+                        .find_map(|hook| hook.before_tool(&action).err());
+                    if let Some(reason) = hook_denial {
+                        self.audit("hook.tool_denied", Some(&action.name), json!({"reason": reason}));
+                        self.push_tool_result(false, &format!("Denied by runtime hook: {reason}"));
+                    } else {
+                        match policy::evaluate(&action) {
+                            PolicyDecision::Deny => {
+                                warn!(tool = %action.name, "tool call denied by policy");
+                                self.audit("policy.deny", Some(&action.name), json!({}));
+                                self.push_tool_result(false, "Denied by local policy");
                             }
-                        }
-                        PolicyDecision::Allow => {
-                            self.audit("policy.allow", Some(&action.name), json!({}));
-                            self.execute_and_record(&action);
+                            PolicyDecision::RequireApproval => {
+                                self.audit("policy.require_approval", Some(&action.name), json!({}));
+                                if self.request_approval(&action)? {
+                                    self.audit("policy.approve", Some(&action.name), json!({}));
+                                    self.execute_and_record(&action);
+                                } else {
+                                    self.audit("policy.user_denied", Some(&action.name), json!({}));
+                                    self.push_tool_result(false, "User declined the operation");
+                                }
+                            }
+                            PolicyDecision::Allow => {
+                                self.audit("policy.allow", Some(&action.name), json!({}));
+                                self.execute_and_record(&action);
+                            }
                         }
                     }
                     self.persist()?;
@@ -381,9 +408,18 @@ impl AgentRuntime {
     }
 
     fn audit(&self, event: &str, tool: Option<&str>, details: Value) {
+        let event = RuntimeEvent {
+            session_id: self.session.session_id.clone(),
+            name: event.to_owned(),
+            tool: tool.map(ToOwned::to_owned),
+            details: details.clone(),
+        };
+        for hook in &self.hooks {
+            hook.on_event(&event);
+        }
         let Some(path) = &self.audit_file else { return };
         let result = (|| -> Result<(), AgentError> {
-            if let Some(parent) = path.parent() {
+            if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
                 fs::create_dir_all(parent)?;
             }
             let mut options = OpenOptions::new();

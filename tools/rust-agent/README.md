@@ -28,7 +28,7 @@ The Rust runtime owns the Agent loop, conversation history, session lifecycle, c
 ```bash
 cd tools/rust-agent
 export OPENAI_API_KEY="<key>"
-cargo run --release -- --model <model-id> --workspace /path/to/workspace
+cargo run --release -- --model <model-id> --workspace /path/to/workspace --fallback-model <fallback-model>
 ```
 
 No npm install or CodeBuddy login is required.
@@ -44,7 +44,7 @@ cargo run -- --model <model-id> --workspace /path/to/workspace --session-id <ses
 
 A fork copies the current conversation into a new session and records its parent session ID. Session writes use a temporary file followed by rename to avoid leaving a partially written JSON document. Session IDs are validated before they are used as file names.
 
-The runtime bounds the conversation history to the most recent 80 non-system messages by default. This is a sliding context window, not semantic summarization. It avoids unbounded prompt growth but does not yet provide CodeBuddy-style model-generated compaction summaries.
+The runtime bounds the conversation history to the most recent 80 non-system messages by default. It removes complete older turns rather than cutting through the middle of a tool exchange. This is a sliding context window, not semantic summarization.
 
 ## Runtime controls
 
@@ -52,9 +52,9 @@ The runtime bounds the conversation history to the most recent 80 non-system mes
 |---|---|
 | Agent loop | Rust runtime with a bounded tool-call loop |
 | Session lifecycle | Create, resume, continue latest, fork |
-| Context management | Configurable sliding message window |
+| Context management | Configurable sliding message window with whole-turn pruning |
 | Permission control | Deterministic Rust Policy Gate and per-write approval |
-| Lifecycle hooks | Native audit events for prompts, turns, tools, policy decisions, sessions, and context windowing |
+| Lifecycle hooks | Native `RuntimeHook` callbacks plus JSONL audit events; hooks can deny a tool call but cannot grant permissions |
 | Workspace tools | Rust read, list, search, and write operations |
 | MCP | Standalone Rust stdio server with tools, resources, and prompts |
 
@@ -87,9 +87,9 @@ No Shell, process execution, arbitrary network tool, or workspace-external file 
 
 - The provider currently uses non-streaming OpenAI-compatible Chat Completions.
 - Context management uses a sliding window; semantic summarization is not implemented yet.
-- Native lifecycle hooks currently write audit events. A public callback/plugin interface is not implemented.
+- Runtime hooks are synchronous callbacks. Long-running hook work should be delegated by the embedding host rather than blocking the Agent loop.
 - Subagent orchestration, background task management, and task handoff are not implemented in the native runtime.
-- Model fallback routing and per-turn model switching are not implemented yet.
+- Fallback routing is deliberately limited to transient transport, rate-limit, and server failures. Authentication, invalid-request, and malformed-response failures are not retried.
 - Terminal approval is synchronous. A desktop host will need an approval channel, but must retain the Rust policy check.
 - Session storage is local JSON and is not designed for concurrent writers to the same session.
 - The standalone MCP server supports tools, resources, and prompts over stdio.

@@ -157,6 +157,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         max_tool_calls_per_turn: args.max_tool_calls,
         max_history_messages: args.max_history_messages,
         system_prompt: None,
+        hooks: Vec::new(),
     };
     let mut runtime = AgentRuntime::new(provider, workspace, options)?;
 
