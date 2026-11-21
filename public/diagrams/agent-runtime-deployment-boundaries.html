@@ -1,0 +1,43 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent Runtime 四类部署环境的安全边界</title><style>*{box-sizing:border-box}body{margin:0;background:#F9F6EF;color:#241E18;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif}main{max-width:1480px;margin:20px auto;padding:16px}svg{display:block;width:100%;height:auto}</style></head><body><main><svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1040" viewBox="0 0 1440 1040" role="img" aria-labelledby="title desc">
+<title id="title">Agent Runtime 四类部署环境的安全边界</title><desc id="desc">桌面端、云端多租户、Kubernetes 和带 GUI 的 VM 的关键组件与隔离边界。</desc>
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L9 3L0 6" fill="#67594C"/></marker><style>
+text{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;fill:#241E18}.title{font-size:29px;font-weight:700}.sub{font-size:14px;fill:#67594C}.h{font-size:18px;font-weight:650}.b{font-size:13px;fill:#5F554B}.sm{font-size:11px;fill:#756A60}.panel{fill:#F0ECE4;stroke:#CFC5B8;stroke-width:1.4}.host{fill:#FFFEFA;stroke:#C9BFB2;stroke-width:1.2}.sandbox{fill:#EADFEB;stroke:#9B7D9A;stroke-width:1.5}.policy{fill:#E3EBDD;stroke:#8BA07C;stroke-width:1.5}.data{fill:#DCEBED;stroke:#789BA4;stroke-width:1.5}.warn{fill:#F4E6D2;stroke:#B58A50;stroke-width:1.5}.line{fill:none;stroke:#67594C;stroke-width:1.8;marker-end:url(#a)}
+</style></defs><rect width="1440" height="1040" fill="#F9F6EF"/>
+<text x="48" y="54" class="title">Agent Runtime：四种部署形态，四组不同的隔离重点</text><text x="48" y="82" class="sub">统一策略语义，不代表统一执行后端；每种环境都要验证真实边界。</text>
+<!-- Desktop -->
+<rect x="48" y="118" width="650" height="390" rx="14" class="panel"/><text x="76" y="154" class="h">1. 桌面端（Windows / macOS）</text>
+<rect x="78" y="180" width="590" height="286" rx="10" class="host"/><text x="100" y="208" class="b">用户会话 / Host</text>
+<rect x="106" y="232" width="164" height="70" rx="8" class="policy"/><text x="188" y="258" text-anchor="middle" class="h">Agent Host</text><text x="188" y="281" text-anchor="middle" class="sm">UI / SDK / Policy</text>
+<rect x="310" y="232" width="164" height="70" rx="8" class="sandbox"/><text x="392" y="258" text-anchor="middle" class="h">Sandbox Worker</text><text x="392" y="281" text-anchor="middle" class="sm">Shell / MCP / Script</text>
+<rect x="514" y="232" width="130" height="70" rx="8" class="data"/><text x="579" y="258" text-anchor="middle" class="h">GUI Broker</text><text x="579" y="281" text-anchor="middle" class="sm">Capture / Input</text>
+<path d="M270 267H310 M474 267H514" class="line"/>
+<rect x="106" y="336" width="250" height="94" rx="8" class="warn"/><text x="231" y="365" text-anchor="middle" class="h">OS Security Boundary</text><text x="231" y="390" text-anchor="middle" class="b">Seatbelt / AppContainer / ACL</text><text x="231" y="411" text-anchor="middle" class="sm">TCC / Job Object / 子进程约束</text>
+<rect x="384" y="336" width="260" height="94" rx="8" class="host"/><text x="514" y="365" text-anchor="middle" class="h">User Resources</text><text x="514" y="390" text-anchor="middle" class="b">选定目录 / 浏览器隔离 Profile</text><text x="514" y="411" text-anchor="middle" class="sm">凭证由 Broker 按需委托</text>
+<!-- Cloud -->
+<rect x="742" y="118" width="650" height="390" rx="14" class="panel"/><text x="770" y="154" class="h">2. 云端多租户 Runtime</text>
+<rect x="772" y="180" width="590" height="286" rx="10" class="host"/><text x="794" y="208" class="b">平台控制面</text>
+<rect x="800" y="232" width="164" height="70" rx="8" class="policy"/><text x="882" y="258" text-anchor="middle" class="h">Control Plane</text><text x="882" y="281" text-anchor="middle" class="sm">Identity / Policy / Queue</text>
+<rect x="1004" y="232" width="164" height="70" rx="8" class="sandbox"/><text x="1086" y="258" text-anchor="middle" class="h">Tenant Worker</text><text x="1086" y="281" text-anchor="middle" class="sm">Task-scoped Sandbox</text>
+<rect x="1208" y="232" width="130" height="70" rx="8" class="data"/><text x="1273" y="258" text-anchor="middle" class="h">Egress</text><text x="1273" y="281" text-anchor="middle" class="sm">Gateway</text>
+<path d="M964 267H1004 M1168 267H1208" class="line"/>
+<rect x="800" y="336" width="250" height="94" rx="8" class="warn"/><text x="925" y="365" text-anchor="middle" class="h">Tenant Isolation</text><text x="925" y="390" text-anchor="middle" class="b">Workspace / Memory / Cache</text><text x="925" y="411" text-anchor="middle" class="sm">Browser Profile / Artifact / Logs</text>
+<rect x="1078" y="336" width="260" height="94" rx="8" class="host"/><text x="1208" y="365" text-anchor="middle" class="h">Workload Identity</text><text x="1208" y="390" text-anchor="middle" class="b">短期凭证 / 最小权限</text><text x="1208" y="411" text-anchor="middle" class="sm">Worker 不持有控制面权限</text>
+<!-- K8s -->
+<rect x="48" y="544" width="650" height="420" rx="14" class="panel"/><text x="76" y="580" class="h">3. Kubernetes 执行集群</text>
+<rect x="78" y="606" width="590" height="324" rx="10" class="host"/><text x="100" y="634" class="b">Cluster / Node</text>
+<rect x="106" y="660" width="164" height="76" rx="8" class="policy"/><text x="188" y="688" text-anchor="middle" class="h">Admission</text><text x="188" y="712" text-anchor="middle" class="sm">PSA / Policy / RBAC</text>
+<rect x="310" y="660" width="164" height="76" rx="8" class="sandbox"/><text x="392" y="688" text-anchor="middle" class="h">Agent Pod</text><text x="392" y="712" text-anchor="middle" class="sm">Restricted SecurityContext</text>
+<rect x="514" y="660" width="130" height="76" rx="8" class="data"/><text x="579" y="688" text-anchor="middle" class="h">RuntimeClass</text><text x="579" y="712" text-anchor="middle" class="sm">gVisor / Kata</text>
+<path d="M270 698H310 M474 698H514" class="line"/>
+<rect x="106" y="770" width="250" height="116" rx="8" class="warn"/><text x="231" y="800" text-anchor="middle" class="h">NetworkPolicy / Egress</text><text x="231" y="825" text-anchor="middle" class="b">默认拒绝，显式开放</text><text x="231" y="850" text-anchor="middle" class="sm">阻断 Metadata / API / 内网横向访问</text>
+<rect x="384" y="770" width="260" height="116" rx="8" class="host"/><text x="514" y="800" text-anchor="middle" class="h">Node / Cluster Boundary</text><text x="514" y="825" text-anchor="middle" class="b">节点池隔离 / Secret 加密</text><text x="514" y="850" text-anchor="middle" class="sm">不可信任务不共享高信任节点</text>
+<!-- VM -->
+<rect x="742" y="544" width="650" height="420" rx="14" class="panel"/><text x="770" y="580" class="h">4. 带 GUI 的 VM / VDI</text>
+<rect x="772" y="606" width="590" height="324" rx="10" class="host"/><text x="794" y="634" class="b">Hypervisor / Host</text>
+<rect x="800" y="660" width="164" height="76" rx="8" class="policy"/><text x="882" y="688" text-anchor="middle" class="h">Host Control</text><text x="882" y="712" text-anchor="middle" class="sm">Provision / Destroy</text>
+<rect x="1004" y="660" width="164" height="76" rx="8" class="sandbox"/><text x="1086" y="688" text-anchor="middle" class="h">Guest OS</text><text x="1086" y="712" text-anchor="middle" class="sm">Agent / Browser / Apps</text>
+<rect x="1208" y="660" width="130" height="76" rx="8" class="data"/><text x="1273" y="688" text-anchor="middle" class="h">Display</text><text x="1273" y="712" text-anchor="middle" class="sm">Input Gateway</text>
+<path d="M964 698H1004 M1168 698H1208" class="line"/>
+<rect x="800" y="770" width="250" height="116" rx="8" class="warn"/><text x="925" y="800" text-anchor="middle" class="h">Host / Guest Boundary</text><text x="925" y="825" text-anchor="middle" class="b">禁用共享目录、剪贴板、USB</text><text x="925" y="850" text-anchor="middle" class="sm">Host Credential 不透传到 Guest</text>
+<rect x="1078" y="770" width="260" height="116" rx="8" class="host"/><text x="1208" y="800" text-anchor="middle" class="h">GUI Session Controls</text><text x="1208" y="825" text-anchor="middle" class="b">截图脱敏 / 操作审计 / 高危审批</text><text x="1208" y="850" text-anchor="middle" class="sm">临时 Profile，任务结束销毁</text>
+</svg></main></body></html>
