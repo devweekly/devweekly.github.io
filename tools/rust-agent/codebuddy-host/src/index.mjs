@@ -23,7 +23,7 @@ function parseArgs(argv) {
     if (key === "--workspace") result.workspace = resolve(value);
     else if (key === "--model") result.model = value;
     else if (key === "--max-turns") result.maxTurns = Number(value);
-    else throw new Error(\`Unknown argument: \${key}\`);
+    else throw new Error(`Unknown argument: ${key}`);
   }
   if (!Number.isInteger(result.maxTurns) || result.maxTurns < 1) {
     throw new Error("--max-turns must be a positive integer");
@@ -64,7 +64,7 @@ async function main() {
   const rl = createInterface({ input: stdin, output: stdout });
 
   console.log("Rust Agent + CodeBuddy");
-  console.log(\`Workspace: \${workspace}\`);
+  console.log(`Workspace: ${workspace}`);
   console.log("CodeBuddy manages the Agent session; Rust enforces local tool policy.");
   console.log("Type /exit to quit.");
 
@@ -103,7 +103,7 @@ async function main() {
           if (toolName.endsWith("__write_file")) {
             const path = typeof input.path === "string" ? input.path : "<invalid path>";
             const answer = (await rl.question(
-              \`Approve write_file to "\${path}" with \${String(input.content ?? "").length} characters? Type yes: \`
+              `Approve write_file to "${path}" with ${String(input.content ?? "").length} characters? Type yes: `
             )).trim().toLowerCase();
 
             if (answer === "yes") {
@@ -122,7 +122,7 @@ async function main() {
 
           return {
             behavior: "deny",
-            message: \`Tool is not permitted by the Rust Agent host: \${toolName}\`,
+            message: `Tool is not permitted by the Rust Agent host: ${toolName}`,
             toolUseID: permissionOptions.toolUseID
           };
         }
@@ -143,15 +143,15 @@ async function main() {
               stdout.write(block.text);
             }
           } else if (message?.type === "tool_use") {
-            stderr.write(\`[tool] \${message.name}\n\`);
+            stderr.write(`[tool] ${message.name}\n`);
           } else if (message?.type === "tool_result" && message.is_error) {
-            stderr.write(\`[tool error] \${JSON.stringify(message.content)}\n\`);
+            stderr.write(`[tool error] ${JSON.stringify(message.content)}\n`);
           }
         }
         if (printedAssistant) stdout.write("\n");
         hasSession = true;
       } catch (error) {
-        stderr.write(\`CodeBuddy request failed: \${error instanceof Error ? error.message : String(error)}\n\`);
+        stderr.write(`CodeBuddy request failed: ${error instanceof Error ? error.message : String(error)}\n`);
       }
     }
   } finally {
@@ -160,6 +160,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  stderr.write(\`\${error instanceof Error ? error.message : String(error)}\n\`);
+  stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
 });
