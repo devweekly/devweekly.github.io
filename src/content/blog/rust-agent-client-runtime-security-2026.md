@@ -205,6 +205,90 @@ Broker 也不应该把所有 Tool 都放在自身进程里执行。更稳妥的�
 
 这种收敛范围的安全工程方法，比声称一个通用 Sandbox 可以防住所有攻击更可信。
 
+ 
+### 5.6 Goose：成熟度较高的 Rust Agent Client 与可复用 Runtime
+
+[Goose](https://github.com/aaif-goose/goose) 是 Rust 实现，而且不只是一个 Rust CLI。它同时提供桌面应用、CLI、ACP Server，以及可嵌入其他应用的 Open Intelligence Kit（oi-kit）。oi-kit 将 Agent State Machine、Operations、Tools、Model Providers 和 Context Management 拆成可组合组件；应用可以自己决定 UI、策略和存储。Goose Desktop 本身也通过 ACP 与后端交互。当前 oi-kit 文档仍标注 Alpha，使用时应锁定与依赖版本匹配的文档和 API。
+
+Goose 的安全功能包括 Prompt Injection Detection、Tool Permission Controls、Sandbox Mode 和 Adversary Mode。Adversary Mode 在每次工具执行前，让独立 Reviewer 根据原始任务、近期对话和 Tool Call 判断 ALLOW / BLOCK。它的设计意图是防止主 Agent 被 Prompt Injection 操纵后执行偏离用户意图的操作。
+
+但需要注意一个关键实现细节：官方 Adversary Mode 文档说明，Reviewer 失败时采用 **fail-open**，工具调用仍会继续。因此它属于基于模型判断的第二道审查，不是不可绕过的安全执行边界。它也使用当前配置的模型 Provider，并非独立可信的本机策略引擎。若攻击者已经能修改 Goose 配置或禁用该模式，这一层也可能失效。
+
+Goose 自身的 Security Policy 对风险边界写得比较明确：Agent 可以在本机执行代码并代表用户操作系统，因此建议在权限受限的 VM 或容器中运行，审查 MCP Extensions，对重大操作要求人工确认，并把复杂任务拆成较小的隔离操作。这些建议说明 Goose 的 Rust 实现并没有试图用语言本身替代 OS 隔离。
+
+对架构设计而言，Goose 有两项特别值得借鉴的内容：
+
+- **oi-kit 的 Runtime 组件化**：将 Agent State Machine、工具调用、审批、上下文压缩和持久化状态从桌面 UI 中分离，适合构建自己的 Rust Agent Client。
+- **ACP 作为进程边界**：外部应用可以把 Goose 当作 Agent Backend，通过协议交换消息、工具活动和权限请求，而不是把 Agent Loop 嵌进自己的 UI 进程。
+
+如果目标是借鉴完整 Rust Client，Goose 应当进入第一梯队；如果目标是研究不可绕过的本机防护，则需要把它与 nono、Strands Box 或 OS Sandbox 组合起来评估。
+
+### 5.7 IronClaw：WASM Tool Sandbox 与凭证边界
+
+[IronClaw](https://github.com/nearai/ironclaw) 是 NEAR AI 的 Rust Agent OS，定位是安全优先的个人 Agent。它受到 OpenClaw 启发，但不是简单的 Rust 语法翻译：其公开架构包含 Agent Loop、Router、Scheduler、Worker、Orchestrator、Web Gateway、Routines Engine 和 Safety Layer。
+
+它最值得关注的是 Tool 执行边界：
+
+- 不可信 Tool 以 WebAssembly 模块运行，通过 Capability 明确授予 HTTP、Secret 和 Tool Invocation 等能力。
+- 默认不向 WASM Tool 暴露宿主机文件系统和任意网络访问。
+- HTTP 请求先经过 Endpoint Allowlist，再做 Secret Leak Scan；只有通过检查的请求才由 Host 注入凭证并执行。
+- 响应返回 WASM 前再次进行泄漏检查。
+- 对 Tool 设置内存、执行时间、请求频率等资源限制。
+- 同时提供 Docker Sandbox 和 Orchestrator / Worker 模式，用于更重的隔离任务。
+
+这套设计把“工具能做什么”和“工具能否看到凭证”分开了。模型生成的 WASM Tool 不直接持有 API Key，而是向宿主提出受限请求，由 Host 根据 Endpoint Policy 注入凭证。对于需要运行第三方 Tool、动态生成 Tool 或不完全信任 MCP Server 的场景，这比把所有 Tool 都作为本机子进程运行更容易建立权限边界。
+
+但 WASM 不是绝对安全边界。它依赖 WASM Runtime 的正确性，Host Function 暴露面、Capability 配置和模块验证仍然是可信计算基的一部分。IronClaw 也同时保留了 Docker 执行路径，说明不同工作负载需要不同隔离强度。
+
+### 5.8 ZeroClaw：把风险等级、Autonomy 和 Sandbox 分层
+
+[ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) 是 Rust 编写的本机 Agent Runtime，提供单一 Binary、CLI、常驻 Service、多种消息 Channel、模型 Provider 和工具集成。它不是单纯的 Sandbox，但它的 Security Model 对本机 Agent 的权限治理很有参考价值。
+
+ZeroClaw 把安全拆成多个层次：
+
+1. Channel Pairing 和 Allowlist：先决定谁可以向 Agent 发消息。
+2. Autonomy Level：ReadOnly、Supervised、Full 三档，决定默认自主程度。
+3. Workspace Boundary 和 Path Rules：限制文件和 Shell 可访问范围。
+4. Shell Command Policy：命令 Allowlist、Denylist 和参数模式检查。
+5. OS Sandbox：按平台选择 Landlock、Firejail、Seatbelt、Bubblewrap 或 Docker 等后端。
+6. Tool Receipts：对成功 Tool Call 和结果生成 HMAC-SHA256 证据。
+
+其 Supervised 模式把工具分为 Low、Medium、High：低风险操作自动执行，中风险要求操作员批准，高风险直接阻断。ReadOnly 模式只暴露无副作用工具。Full 模式提高自主程度，但并不自动取消 forbidden paths、always-ask 和 OS Sandbox 等其他约束。
+
+另外还有 OTP Gate、Emergency Stop、Prompt Injection Guard 和 Outbound Leak Detector。Tool Receipt 是一个有意思的设计：它证明成功的 Tool Result 确实经过 Runtime 生成，降低模型虚构工具调用或结果的可能性。不过，当前 Receipt 使用短生命周期内存 HMAC Key，不是长期可验证的审计日志，也不能替代授权和执行隔离。
+
+ZeroClaw 的文档也明确列出了平台差异：当前 OS Sandbox 自动选择在 Linux 和 macOS 有不同后端，Windows 没有同等的 OS Sandbox Backend；如果没有可用后端，Native Runtime 可能退回应用层策略。这一点对选型很重要：不能只看到“支持 Windows”就推断各平台拥有相同的隔离强度。
+
+### 5.9 Moltis：完整 Rust Agent Server 与桌面端
+
+[Moltis](https://github.com/moltis-org/moltis) 是 Rust 实现的持久化个人 Agent Server，提供 Web UI、CLI、MCP、消息 Channel、长期记忆、语音、浏览器和远程执行等能力。它还提供 Native Rust / GPUI Desktop Client，客户端可以连接本地 Daemon，也可以通过 HTTPS 或 SSH Tunnel 连接远端服务。
+
+它的安全设计覆盖面比较完整：
+
+- Tool 执行使用 Docker、Podman、Apple Container 或 WASM 等隔离方式。
+- 每 Session 隔离执行环境，避免不同任务共享全部运行权限。
+- 使用 Vault / Secret Store、XChaCha20-Poly1305、Argon2id 等机制保护凭证和静态数据。
+- 支持 Password、Passkey、API Key 认证和速率限制。
+- 对 HTTP 目标进行 DNS 解析和私网地址检查，防止 SSRF。
+- WebSocket Origin Validation 防止跨站连接滥用。
+- BeforeToolCall Hook 可以检查或阻止 Tool Invocation。
+- 发布产物支持 Sigstore Artifact Attestation、GPG 签名和 Checksum 验证。
+
+Moltis 的价值在于展示了一个 Rust Agent 产品如何把 Agent Loop、Gateway、Tool Runtime、Vault、Network Filter、Desktop Client 和发布安全组合起来，而不只是一个命令执行 Sandbox。
+
+需要进一步审查的地方是部署形态：例如 Docker 部署如果把宿主机 Docker Socket 挂入容器，控制该 Socket 的进程通常拥有很高的宿主机控制能力。不能因为 Tool Worker 被放进容器，就忽略 Orchestrator 对容器运行时本身的权限。对于多租户部署，应评估 Docker Socket、容器身份、镜像来源和每任务隔离方式。
+
+### 5.10 Strands Shell：值得单独研究的 Rust Shell Kernel
+
+[Strands Shell](https://github.com/strands-agents/shell) 是 Rust 编写的 Bourne-compatible Shell，通过 Python（PyO3）和 Node.js（napi-rs）提供绑定，也能作为 MCP Server 使用。它提供虚拟文件系统、URL Allowlist、SSRF 防护、按 URL 注入凭证、命令执行限制和资源上限。
+
+它的架构有一个重要区别：Shell Kernel 在宿主应用进程内运行，命令通过用户态实现执行，不依赖传统 Shell 的 fork / exec 路径。这样可以避免把真实宿主 Shell 的全部能力交给 Agent，也能把文件、网络和凭证访问集中在 Kernel 中检查。
+
+不过项目的 Security Model 明确说明：**Strands Shell 是 mediation layer，不是 OS Sandbox。** Kernel 与调用它的 Agent 代码处于同一进程；如果攻击者控制宿主进程，就可能绕过这层中介。它适合控制“Agent 不应该访问未授权资源”的常规场景；对于恶意代码、多租户或强对抗负载，仍应把它放进 Container 或 MicroVM。
+
+这也解释了 Strands Shell 和 Strands Box 的关系：Shell 提供受控的命令执行和资源中介；Box 再把 Agent 放进 OS Sandbox，并在 Sandbox 外运行 Shell、Python Interpreter、Egress Gateway、MCP Broker 和 Dogwood Policy Engine。两者不是同一层的替代品。
+
+
 ## 6. Rust 实现时的技术选型
 
 如果自己构建 Rust Security Broker，可以按职责选组件，不必引入一个庞大的 Agent Framework。
@@ -310,6 +394,12 @@ Rust 编译成单一二进制，并不代表依赖供应链消失。Cargo 依赖
 | [thClaws](https://github.com/thClaws/thClaws) | Rust Agent Harness / Client | 完整 Agent Loop、签名组织策略、Seatbelt/Landlock、审计 | UI 使用 React Bridge；不是所有代码都在 Rust 进程内 |
 | [OpenAI Fence](https://github.com/openai/fence) | 专用安全 Agent | 窄范围威胁模型、可审计发布和验收证据 | 目标是特定 Linux Runner，不是通用 Desktop Client |
 | [harness](https://github.com/AleCyriaco/harness) | Rust 桌面 Agent | egui、GUI 与后台 Daemon 分离、单二进制分发 | 更适合研究客户端结构，不应视为完整安全方案 |
+| [Goose / oi-kit](https://github.com/aaif-goose/goose) | Rust Agent Client + Runtime SDK | 桌面/CLI、ACP、可组合 Agent State Machine、审批操作 | Adversary Mode 是模型审查且 fail-open；不是 OS 安全边界 |
+| [IronClaw](https://github.com/nearai/ironclaw) | Rust Agent OS | WASM Tool Capability、Host-side Secret Injection、Leak Scan | 需要审查 WASM Runtime 和 Host Function 暴露面 |
+| [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) | Rust Agent Runtime | 风险档位、Autonomy、OS Sandbox、OTP Gate、HMAC Tool Receipt | OS Sandbox 后端存在平台差异，Windows 当前无同等后端 |
+| [Moltis](https://github.com/moltis-org/moltis) | Rust Agent Server + Desktop Client | Session Sandbox、Vault、SSRF 防护、Passkey、发布 Attestation | 重点审查 Container Runtime / Docker Socket 权限 |
+| [Strands Shell](https://github.com/strands-agents/shell) | Rust Shell Kernel / Tool Mediation | 用户态 Shell、VFS、URL Allowlist、凭证代理、Python/Node Bindings | 同进程中介层，不是对抗宿主进程失陷的 Sandbox |
+| [rust-agent-sandbox](https://github.com/maverickkhan/rust-agent-sandbox) | WASM Tool Sandbox 参考实现 | Wasmtime/WASI、JSON Schema、资源限制、MCP 子集 | 小型参考项目，适合学习和测试，不等同成熟产品 |
 
 如果目标是构建完整 Rust Agent Client，先看 thClaws 的 Agent Harness 和策略实现；如果目标是给现有 TS/JS Agent 加固，先研究 nono 和 Strands Box；如果需要一个内置治理能力的 Rust Runtime，再看 Symbiont。
 
@@ -347,6 +437,12 @@ Rust 对 Agent Client 安全有价值，但它的价值不在于让程序变得�
 - [thClaws — Native Rust Agent Harness](https://github.com/thClaws/thClaws)
 - [OpenAI Fence — Rust Security Agent](https://github.com/openai/fence)
 - [harness — Rust + egui Desktop Agent](https://github.com/AleCyriaco/harness)
+- [Goose / oi-kit — Rust Agent Runtime and SDK](https://github.com/aaif-goose/goose)
+- [IronClaw — Secure Personal Agent OS](https://github.com/nearai/ironclaw)
+- [ZeroClaw — Rust Personal Agent Runtime](https://github.com/zeroclaw-labs/zeroclaw)
+- [Moltis — Rust Personal Agent Server](https://github.com/moltis-org/moltis)
+- [Strands Shell — Rust Shell Kernel](https://github.com/strands-agents/shell)
+- [rust-agent-sandbox — Wasmtime/WASI Tool Sandbox Reference](https://github.com/maverickkhan/rust-agent-sandbox)
 
 ### 策略与平台安全
 
