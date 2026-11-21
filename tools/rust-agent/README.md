@@ -1,117 +1,95 @@
 # Rust Agent
 
-Rust Agent 将 CodeBuddy Agent SDK 与本机 Rust 工具执行层组合起来。CodeBuddy 负责模型交互、Agent Loop、上下文、多轮会话和子 Agent 编排；Rust 负责 Workspace 文件工具、最终 Policy Gate 和写操作执行。两者通过 MCP stdio 通信。
+Rust Agent 是独立的 Rust Agent Runtime。CodeBuddy SDK 仅作为功能参考和可选互操作 Host，不是运行依赖。默认运行路径不需要 Node.js、npm、CodeBuddy CLI 或 `@tencent-ai/agent-sdk`。
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-    USER["Terminal / Desktop UI"] --> HOST["CodeBuddy SDK Host"]
-    HOST --> SDK["CodeBuddy Agent / Session"]
-    SDK <--> MCP["Rust MCP Server (stdio)"]
-    MCP --> POLICY["Rust Policy Gate"]
+    USER["Terminal / Application Host"] --> RUNTIME["Native Rust Agent Runtime"]
+    RUNTIME --> PROVIDER["OpenAI-compatible Provider"]
+    RUNTIME --> POLICY["Deterministic Policy Gate"]
     POLICY --> TOOLS["Native Rust Workspace Tools"]
     TOOLS --> WS["Configured Workspace"]
-    HOST --> APPROVAL["Per-write user approval"]
-    APPROVAL --> MCP
-    HOST --> AUDIT["Lifecycle / Tool Audit JSONL"]
+    RUNTIME --> SESSION["Session Store"]
+    RUNTIME --> AUDIT["Lifecycle / Policy Audit JSONL"]
+    APPROVAL["User Approval"] --> RUNTIME
 ```
 
-CodeBuddy SDK 默认不加载用户或项目配置；Host 显式使用空的 `settingSources`。只有通过 `--setting-source` 明确指定后才加载 CodeBuddy 配置。工具白名单只开放 Rust MCP 工具，避免 CodeBuddy 自带文件或命令工具绕过 Rust 工具边界。
+The Rust runtime owns the Agent loop, conversation history, session lifecycle, context window, policy decisions, tool execution, and audit events. No CodeBuddy SDK or MCP client is required for the standalone runtime. The separate MCP server remains available when another Agent host needs to consume the Rust tools.
 
 ## Requirements
 
 - Rust toolchain matching the workspace `rust-toolchain.toml` (or a compatible stable toolchain).
-- Node.js 18.20 or later.
-- CodeBuddy CLI installed and authenticated, or another supported SDK authentication configuration.
-- npm.
+- An OpenAI-compatible API endpoint and API key.
 
 ## Build and run
 
 ```bash
 cd tools/rust-agent
-cargo build --release --bin rust-agent-mcp
-
-cd codebuddy-host
-npm install
-npm start -- --workspace /absolute/path/to/workspace
+export OPENAI_API_KEY="<key>"
+cargo run --release -- --model <model-id> --workspace /path/to/workspace
 ```
 
-## Session and model controls
+No npm install or CodeBuddy login is required.
+
+## Sessions and context
+
+Sessions are stored as JSON files under `.rust-agent/sessions/` in the configured workspace. The `latest` pointer supports `--continue`; use `--session-id` to resume a specific session. Use `/new`, `/session`, `/resume <id>`, and `/fork` in the interactive CLI.
 
 ```bash
-npm start -- --workspace /path/to/workspace --model <model-id> --fallback-model <model-id> --effort high --thinking adaptive
-npm start -- --workspace /path/to/workspace --session-id <session-id>
-npm start -- --workspace /path/to/workspace --continue
-npm start -- --workspace /path/to/workspace --session-id <session-id> --fork
+cargo run -- --model <model-id> --workspace /path/to/workspace --continue
+cargo run -- --model <model-id> --workspace /path/to/workspace --session-id <session-id>
 ```
 
-The host persists the latest SDK session ID in `.rust-agent/session.json` inside the workspace and resumes it on the next launch. Use `/new` to start a new conversation, `/session` to display the active ID, `/model <id>` to change the model for subsequent turns, and `/mode <default|plan|acceptEdits>` to change the SDK permission mode. The Rust write approval remains mandatory in every mode.
+A fork copies the current conversation into a new session and records its parent session ID. Session writes use a temporary file followed by rename to avoid leaving a partially written JSON document. Session IDs are validated before they are used as file names.
 
-The host records lifecycle, permission, tool, session, and turn-usage metadata in `.rust-agent/audit.jsonl`. Audit records intentionally omit file contents and prompt text. Set `--audit-file` to choose another location. Use `--no-persist` to disable SDK transcript persistence.
+The runtime bounds the conversation history to the most recent 80 non-system messages by default. This is a sliding context window, not semantic summarization. It avoids unbounded prompt growth but does not yet provide CodeBuddy-style model-generated compaction summaries.
 
-## SDK features exposed by the host
+## Runtime controls
 
-| CodeBuddy capability | Host integration |
+| Capability | Native implementation |
 |---|---|
-| Multi-turn and session recovery | Automatic latest-session pointer, `--session-id`, `--continue`, `--fork`, `/new` |
-| Model routing | `--model`, `--fallback-model`, `/model` |
-| Reasoning controls | `--effort`, `--thinking` |
-| Permission control | `--permission-mode`, per-tool `canUseTool`, Rust policy gate |
-| Lifecycle hooks | Session, prompt, tool, task, compaction, and permission events |
-| Usage and result events | Turn result metadata written to audit JSONL |
-| Custom Agents | Explicit `--agents-file`; Agent tools are restricted to Rust MCP tools |
-| MCP integration | Rust stdio server with four Workspace tools, a read-only policy resource, and reusable inspect/review/implement prompts |
-| Configuration isolation | No settings loaded unless explicitly selected |
+| Agent loop | Rust runtime with a bounded tool-call loop |
+| Session lifecycle | Create, resume, continue latest, fork |
+| Context management | Configurable sliding message window |
+| Permission control | Deterministic Rust Policy Gate and per-write approval |
+| Lifecycle hooks | Native audit events for prompts, turns, tools, policy decisions, sessions, and context windowing |
+| Workspace tools | Rust read, list, search, and write operations |
+| MCP | Standalone Rust stdio server with tools, resources, and prompts |
 
-Example custom Agent file:
+Options:
 
-```json
-{
-  "reviewer": {
-    "description": "Review code changes",
-    "prompt": "Review for correctness, security, and maintainability. Do not modify files.",
-    "tools": [
-      "mcp__rust_workspace__read_file",
-      "mcp__rust_workspace__list_dir",
-      "mcp__rust_workspace__search_files"
-    ]
-  }
-}
-```
+- `--max-tool-calls N`: maximum tool calls per turn (1–64).
+- `--max-history-messages N`: retained non-system messages (4–2000).
+- `--session-dir PATH`: override session storage.
+- `--audit-file PATH`: override the JSONL audit file.
 
-Pass it explicitly with `--agents-file ./agents.json`. Custom Agent definitions cannot expand the host's Rust tool allow-list.
+Audit events intentionally omit prompt text and file contents. Audit failures are logged but do not fail an otherwise successful Agent turn.
 
 ## Tools and policy
 
-| Tool | Rust policy | Host behavior |
+| Tool | Rust policy | Behavior |
 |---|---|---|
-| `read_file` | Allow | Allow |
-| `list_dir` | Allow | Allow |
-| `search_files` | Allow | Allow |
-| `write_file` | Require approval | Prompt for every call, then inject a host-held approval token |
-| Unknown tool | Deny | Deny |
+| `read_file` | Allow | Read a UTF-8 file inside the workspace |
+| `list_dir` | Allow | List a workspace directory |
+| `search_files` | Allow | Search workspace files natively |
+| `write_file` | Require approval | Ask for approval on every write |
+| Unknown tool | Deny | Reject |
 
 No Shell, process execution, arbitrary network tool, or workspace-external file tool is exposed. File operations remain subject to application-level path checks; this is not an OS sandbox and does not eliminate filesystem TOCTOU risks.
 
-## Standalone Rust CLI
+## Optional CodeBuddy adapter
 
-The original OpenAI-compatible Rust CLI remains available:
-
-```bash
-export OPENAI_API_KEY="<key>"
-cargo run -- --model <model-id> --workspace /path/to/workspace
-```
-
-The CodeBuddy path uses CodeBuddy's Agent Loop. The standalone Rust path uses the repository's own OpenAI-compatible Agent Loop.
+`codebuddy-host/` is retained as an optional compatibility example for users who explicitly want CodeBuddy to own model orchestration. It is not used by the native Rust CLI and is not part of the default dependency or build path. The native runtime is the preferred path when minimizing external runtime dependencies.
 
 ## Current limitations
 
-- The host uses CodeBuddy's `query()` API. It supports resumable sessions, but does not yet expose the V2 Session continuous-stream API required for reliable background-task completion events across turns.
-- SDK Hooks currently write structured audit metadata; they do not execute arbitrary user-provided hook scripts.
-- Custom Agents are supplied as an explicit JSON file. No project or global Agent configuration is loaded implicitly.
-- MCP transport is stdio and currently implements initialize, ping, tools/list/call, resources/list/read, and prompts/list/get. The exposed resource is a static policy description; it does not expose arbitrary workspace files.
-- Approval is interactive terminal approval. A GUI host will need an approval UI and a stronger host-to-tool approval channel.
-- Audit records omit prompt and file content by design. A future audit backend may add configurable redaction and retention.
-- Isolated Worker processes, OS sandboxing, and cancellation propagation into an already-running filesystem operation are not implemented.
-- CodeBuddy SDK MCP integration is documented as Preview; pin and validate the SDK/CLI pair in the deployment environment.
+- The provider currently uses non-streaming OpenAI-compatible Chat Completions.
+- Context management uses a sliding window; semantic summarization is not implemented yet.
+- Native lifecycle hooks currently write audit events. A public callback/plugin interface is not implemented.
+- Subagent orchestration, background task management, and task handoff are not implemented in the native runtime.
+- Model fallback routing and per-turn model switching are not implemented yet.
+- Terminal approval is synchronous. A desktop host will need an approval channel, but must retain the Rust policy check.
+- Session storage is local JSON and is not designed for concurrent writers to the same session.
+- The standalone MCP server supports tools, resources, and prompts over stdio.

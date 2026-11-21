@@ -5,7 +5,10 @@ use std::{
     path::PathBuf,
 };
 
-use rust_agent::{provider::OpenAiCompatibleProvider, runtime::AgentRuntime};
+use rust_agent::{
+    provider::OpenAiCompatibleProvider,
+    runtime::{AgentRuntime, RuntimeOptions},
+};
 use tracing_subscriber::EnvFilter;
 
 struct Args {
@@ -13,6 +16,12 @@ struct Args {
     base_url: String,
     model: String,
     api_key_env: String,
+    session_id: Option<String>,
+    continue_session: bool,
+    session_dir: Option<PathBuf>,
+    audit_file: Option<PathBuf>,
+    max_tool_calls: usize,
+    max_history_messages: usize,
 }
 
 impl Args {
@@ -23,6 +32,12 @@ impl Args {
             base_url: "https://api.openai.com/v1".into(),
             model: String::new(),
             api_key_env: "OPENAI_API_KEY".into(),
+            session_id: None,
+            continue_session: false,
+            session_dir: None,
+            audit_file: None,
+            max_tool_calls: 8,
+            max_history_messages: 80,
         };
 
         while let Some(argument) = args.next() {
@@ -50,12 +65,27 @@ impl Args {
                 "--base-url" => parsed.base_url = value,
                 "--model" => parsed.model = value,
                 "--api-key-env" => parsed.api_key_env = value,
+                "--session-id" => parsed.session_id = Some(value),
+                "--session-dir" => parsed.session_dir = Some(PathBuf::from(value)),
+                "--audit-file" => parsed.audit_file = Some(PathBuf::from(value)),
+                "--max-tool-calls" => parsed.max_tool_calls = value.parse()?,
+                "--max-history-messages" => parsed.max_history_messages = value.parse()?,
+                "--continue" => return Err("--continue does not accept a value; place it before other options".into()),
                 _ => return Err(format!("unknown argument: {name}").into()),
             }
         }
 
         if parsed.model.trim().is_empty() {
             return Err("missing required argument: --model".into());
+        }
+        if parsed.session_id.is_some() && parsed.continue_session {
+            return Err("--session-id and --continue are mutually exclusive".into());
+        }
+        if !(1..=64).contains(&parsed.max_tool_calls) {
+            return Err("--max-tool-calls must be between 1 and 64".into());
+        }
+        if !(4..=2_000).contains(&parsed.max_history_messages) {
+            return Err("--max-history-messages must be between 4 and 2000".into());
         }
 
         Ok(Some(parsed))
@@ -65,11 +95,19 @@ impl Args {
         println!(
             "Local-first Rust Agent\n\n\
              Usage: rust-agent --model <MODEL> [OPTIONS]\n\n\
-             Options:\n\
-             --workspace <PATH>       Workspace accessible to file tools [default: .]\n\
+             Provider:\n\
              --base-url <URL>         OpenAI-compatible API base URL [default: https://api.openai.com/v1]\n\
              --model <MODEL>          Model identifier (required)\n\
-             --api-key-env <NAME>     Environment variable containing the API key [default: OPENAI_API_KEY]\n\
+             --api-key-env <NAME>     Environment variable containing API key [default: OPENAI_API_KEY]\n\
+             Workspace:\n\
+             --workspace <PATH>       Workspace accessible to file tools [default: .]\n\
+             Session:\n\
+             --session-id <ID>        Resume an existing session\n\
+             --continue               Resume the most recently used session\n\
+             --session-dir <PATH>     Session storage directory [default: <workspace>/.rust-agent/sessions]\n\
+             --audit-file <PATH>      Append lifecycle and policy events as JSONL\n\
+             --max-tool-calls <N>     Maximum tool calls per turn [default: 8]\n\
+             --max-history-messages <N> Retained non-system messages [default: 80]\n\
              -h, --help               Print help\n\
              -V, --version            Print version"
         );
@@ -96,10 +134,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
     })?;
 
     let provider = OpenAiCompatibleProvider::new(args.base_url, args.model, api_key)?;
-    let mut runtime = AgentRuntime::new(provider, workspace);
+    let options = RuntimeOptions {
+        session_dir: args.session_dir,
+        session_id: args.session_id,
+        continue_session: args.continue_session,
+        audit_file: args.audit_file.or_else(|| Some(workspace.join(".rust-agent").join("audit.jsonl"))),
+        max_tool_calls_per_turn: args.max_tool_calls,
+        max_history_messages: args.max_history_messages,
+        system_prompt: None,
+    };
+    let mut runtime = AgentRuntime::new(provider, workspace, options)?;
 
     println!("Rust Agent ready. Workspace: {}", runtime.workspace().display());
-    println!("Enter a request; type /exit to quit.");
+    println!("Session: {}", runtime.session_id());
+    println!("Commands: /new, /session, /resume <id>, /fork, /exit");
 
     let stdin = io::stdin();
     loop {
@@ -116,6 +164,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         if input == "/exit" || input == "/quit" {
             break;
+        }
+        if input == "/new" {
+            runtime.start_new_session()?;
+            println!("Started session: {}", runtime.session_id());
+            continue;
+        }
+        if input == "/session" {
+            println!("Session: {}", runtime.session_id());
+            continue;
+        }
+        if input == "/fork" {
+            runtime.fork_session()?;
+            println!("Forked session: {}", runtime.session_id());
+            continue;
+        }
+        if let Some(session_id) = input.strip_prefix("/resume ") {
+            runtime.resume_session(session_id.trim())?;
+            println!("Resumed session: {}", runtime.session_id());
+            continue;
         }
 
         match runtime.run_turn(input).await {
