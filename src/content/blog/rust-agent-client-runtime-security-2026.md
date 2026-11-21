@@ -1,4 +1,3 @@
-
 ---
 author: SW
 pubDatetime: 2026-11-21T00:00:00Z
