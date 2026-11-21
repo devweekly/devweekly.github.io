@@ -182,7 +182,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Rust Agent ready. Workspace: {}", runtime.workspace().display());
     println!("Session: {}", runtime.session_id());
-    println!("Commands: /help, /new, /session, /resume <id>, /fork, /model <id>, /models, /agents, /agent <id>, /mode <default|plan>, /context, /compact, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
+    println!("Commands: /help, /new, /session, /resume <id>, /fork, /model <id>, /models, /agents, /agent <id>, /mode <default|plan>, /context, /compact, /usage, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
 
     loop {
         print!("you> ");
@@ -215,6 +215,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!(" /mode default|plan   Change write permission behavior");
             println!(" /context             Show retained context message count");
             println!(" /compact             Apply the configured sliding-window limit");
+            println!(" /usage               Show cumulative model and tool usage");
             println!(" /tasks               List background tasks");
             println!(" /task <id>           Show task status and result");
             println!(" /wait <id>           Wait for a background task (Ctrl-C stops waiting)");
@@ -315,6 +316,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
             continue;
         }
 
+        if input == "/usage" {
+            match runtime.usage_summary() {
+                Ok(usage) => {
+                    println!("Model requests: {}", usage.requests);
+                    println!("Prompt tokens: {}", usage.prompt_tokens);
+                    println!("Completion tokens: {}", usage.completion_tokens);
+                    println!("Total tokens: {}", usage.total_tokens);
+                    println!("Requests without provider usage data: {}", usage.requests_without_usage);
+                    println!("Cumulative model request time: {} ms", usage.duration_ms);
+                    println!("Tool calls: {}", usage.tool_calls);
+                }
+                Err(error) => eprintln!("Could not read usage statistics: {error}"),
+            }
+            continue;
+        }
         if input == "/tasks" {
             match runtime.list_background_tasks() {
                 Ok(tasks) if tasks.is_empty() => println!("No background tasks."),
@@ -352,6 +368,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         println!("Agent profile: {} ({})", profile.name, profile.id);
                         println!("Allowed tools: {}", profile.allowed_tools.join(", "));
                     }
+                    println!("Model requests: {}", task.usage.requests);
+                    println!("Tokens: {} (prompt {} / completion {})", task.usage.total_tokens, task.usage.prompt_tokens, task.usage.completion_tokens);
+                    println!("Tool calls: {}", task.usage.tool_calls);
                     if let Some(error) = task.error.as_deref() {
                         println!("Error: {error}");
                     }

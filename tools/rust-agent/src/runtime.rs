@@ -19,7 +19,7 @@ use crate::{
     action::{ModelTurn, ToolAction, UserQuestion},
     error::AgentError,
     policy::{self, PolicyDecision},
-    provider::{ChatMessage, OpenAiCompatibleProvider},
+    provider::{ChatMessage, CompletionUsage, OpenAiCompatibleProvider},
     tools::ToolExecutor,
 };
 
@@ -249,6 +249,27 @@ impl BackgroundTaskStatus {
     }
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UsageTotals {
+    pub requests: u64,
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
+    pub requests_without_usage: u64,
+    pub duration_ms: u64,
+    pub tool_calls: u64,
+}
+impl UsageTotals {
+    fn add_completion(&mut self, usage: &CompletionUsage, duration_ms: u64) {
+        self.requests = self.requests.saturating_add(1);
+        self.prompt_tokens = self.prompt_tokens.saturating_add(usage.prompt_tokens.unwrap_or(0));
+        self.completion_tokens = self.completion_tokens.saturating_add(usage.completion_tokens.unwrap_or(0));
+        self.total_tokens = self.total_tokens.saturating_add(usage.total_tokens.unwrap_or(0));
+        if usage.total_tokens.is_none() { self.requests_without_usage = self.requests_without_usage.saturating_add(1); }
+        self.duration_ms = self.duration_ms.saturating_add(duration_ms);
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackgroundTaskRecord {
     schema_version: u32,
@@ -265,6 +286,8 @@ pub struct BackgroundTaskRecord {
     pub delivered_at_ms: Option<u128>,
     #[serde(default)]
     pub agent_profile: Option<AgentProfile>,
+    #[serde(default)]
+    pub usage: UsageTotals,
     messages: Vec<ChatMessage>,
 }
 
@@ -619,6 +642,7 @@ pub struct AgentRuntime {
     session: SessionRecord,
     store: SessionStore,
     audit_file: Option<PathBuf>,
+    usage_file: PathBuf,
     max_tool_calls_per_turn: usize,
     max_history_messages: usize,
     permission_mode: PermissionMode,
@@ -670,6 +694,7 @@ impl AgentRuntime {
         let agent_profile_store = AgentProfileStore::new(
             workspace.join(".rust-agent").join("agents"),
         );
+        let usage_file = workspace.join(".rust-agent").join("usage.jsonl");
         let mut runtime = Self {
             provider,
             executor: ToolExecutor::new(workspace.clone()),
@@ -678,6 +703,7 @@ impl AgentRuntime {
             session,
             store,
             audit_file: options.audit_file,
+            usage_file,
             max_tool_calls_per_turn: options.max_tool_calls_per_turn.clamp(1, 64),
             max_history_messages: options.max_history_messages.clamp(4, 2_000),
             permission_mode: PermissionMode::Default,
@@ -781,6 +807,54 @@ impl AgentRuntime {
         }
     }
 
+    pub fn usage_summary(&self) -> Result<UsageTotals, AgentError> {
+        let mut totals = UsageTotals::default();
+        if self.usage_file.exists() {
+            for line in fs::read_to_string(&self.usage_file)?.lines() {
+                let Ok(event) = serde_json::from_str::<Value>(line) else { continue };
+                match event["event"].as_str() {
+                    Some("model.usage") => {
+                        totals.requests = totals.requests.saturating_add(1);
+                        totals.prompt_tokens = totals.prompt_tokens.saturating_add(event["prompt_tokens"].as_u64().unwrap_or(0));
+                        totals.completion_tokens = totals.completion_tokens.saturating_add(event["completion_tokens"].as_u64().unwrap_or(0));
+                        totals.total_tokens = totals.total_tokens.saturating_add(event["total_tokens"].as_u64().unwrap_or(0));
+                        if event["total_tokens"].is_null() { totals.requests_without_usage = totals.requests_without_usage.saturating_add(1); }
+                        totals.duration_ms = totals.duration_ms.saturating_add(event["duration_ms"].as_u64().unwrap_or(0));
+                    }
+                    Some("tool.call") => totals.tool_calls = totals.tool_calls.saturating_add(1),
+                    _ => {}
+                }
+            }
+        }
+        for task in self.background_task_store.list()? {
+            totals.requests = totals.requests.saturating_add(task.usage.requests);
+            totals.prompt_tokens = totals.prompt_tokens.saturating_add(task.usage.prompt_tokens);
+            totals.completion_tokens = totals.completion_tokens.saturating_add(task.usage.completion_tokens);
+            totals.total_tokens = totals.total_tokens.saturating_add(task.usage.total_tokens);
+            totals.requests_without_usage = totals.requests_without_usage.saturating_add(task.usage.requests_without_usage);
+            totals.duration_ms = totals.duration_ms.saturating_add(task.usage.duration_ms);
+            totals.tool_calls = totals.tool_calls.saturating_add(task.usage.tool_calls);
+        }
+        Ok(totals)
+    }
+
+    fn record_tool_call(&self, tool: &str) {
+        let result = (|| -> Result<(), AgentError> {
+            if let Some(parent) = self.usage_file.parent() { fs::create_dir_all(parent)?; }
+            let mut options = OpenOptions::new();
+            options.create(true).append(true);
+            #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
+            let mut file = options.open(&self.usage_file)?;
+            serde_json::to_writer(&mut file, &json!({
+                "timestamp_ms": now_ms(), "event": "tool.call",
+                "session_id": self.session.session_id, "tool": tool
+            }))?;
+            file.write_all(b"\n")?;
+            Ok(())
+        })();
+        if let Err(error) = result { warn!(%error, "failed to write tool usage event"); }
+    }
+
     pub fn list_background_tasks(&self) -> Result<Vec<BackgroundTaskRecord>, AgentError> {
         self.background_task_store.list()
     }
@@ -848,6 +922,7 @@ impl AgentRuntime {
             error: None,
             delivered_at_ms: None,
             agent_profile: Some(profile.clone()),
+            usage: UsageTotals::default(),
             messages: vec![
                 profile.system_message(),
                 ChatMessage {
@@ -1242,7 +1317,7 @@ impl AgentRuntime {
             let stream_result = tokio::select! {
                 biased;
                 _ = cancellation.cancelled() => None,
-                result = provider.complete_streaming(&request_messages, |delta| {
+                result = provider.complete_streaming_with_usage(&request_messages, |delta| {
                     streamed_bytes = streamed_bytes.saturating_add(delta.len());
                     let event = RuntimeEvent {
                         session_id: session_id.clone(),
@@ -1255,7 +1330,7 @@ impl AgentRuntime {
                     }
                 }) => Some(result),
             };
-            let raw = match stream_result {
+            let completion = match stream_result {
                 None => {
                     self.emit_event("model.output.aborted", None, json!({
                         "step": step + 1,
@@ -1266,6 +1341,8 @@ impl AgentRuntime {
                 }
                 Some(result) => result?,
             };
+            self.record_usage("primary", None, &completion.model, &completion.usage, completion.duration_ms);
+            let raw = completion.content;
             if cancellation.is_cancelled() {
                 self.emit_event("model.output.aborted", None, json!({
                     "step": step + 1,
@@ -1323,6 +1400,7 @@ impl AgentRuntime {
                         return Err(AgentError::Cancelled);
                     }
                     let action = ToolAction { name: tool, arguments };
+                    self.record_tool_call(&action.name);
                     let hook_denial = self.hooks.iter()
                         .find_map(|hook| hook.before_tool(&action).err());
                     if let Some(reason) = hook_denial {
@@ -1444,17 +1522,17 @@ impl AgentRuntime {
             let completion = tokio::select! {
                 biased;
                 _ = cancellation.cancelled() => None,
-                result = provider.complete(&messages) => Some(result),
+                result = provider.complete_with_usage(&messages) => Some(result),
             };
-            let raw = match completion {
+            let completion = match completion {
                 None => {
-                    self.audit("subagent.cancelled", Some("delegate_task"), json!({
-                        "name": name, "step": step + 1
-                    }));
+                    self.audit("subagent.cancelled", Some("delegate_task"), json!({"name": name, "step": step + 1}));
                     return Err(AgentError::Cancelled);
                 }
                 Some(result) => result?,
             };
+            self.record_usage("subagent", Some(&profile.id), &completion.model, &completion.usage, completion.duration_ms);
+            let raw = completion.content;
             if cancellation.is_cancelled() {
                 self.audit("subagent.cancelled", Some("delegate_task"), json!({
                     "name": name, "step": step + 1
@@ -1490,6 +1568,7 @@ impl AgentRuntime {
                 }
                 ModelTurn::ToolCall { tool, arguments } => {
                     let sub_action = ToolAction { name: tool, arguments };
+                    self.record_tool_call(&sub_action.name);
                     let hook_denial = self.hooks.iter()
                         .find_map(|hook| hook.before_tool(&sub_action).err());
                     let result = if let Some(reason) = hook_denial {
@@ -1683,6 +1762,37 @@ impl AgentRuntime {
         }
     }
 
+    fn record_usage(&self, agent_type: &str, profile_id: Option<&str>, model: &str, usage: &CompletionUsage, duration_ms: u64) {
+        let result = (|| -> Result<(), AgentError> {
+            if let Some(parent) = self.usage_file.parent() { fs::create_dir_all(parent)?; }
+            let mut options = OpenOptions::new();
+            options.create(true).append(true);
+            #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
+            let mut file = options.open(&self.usage_file)?;
+            let event = json!({
+                "timestamp_ms": now_ms(),
+                "event": "model.usage",
+                "session_id": self.session.session_id,
+                "agent_type": agent_type,
+                "agent_profile_id": profile_id,
+                "model": model,
+                "prompt_tokens": usage.prompt_tokens,
+                "completion_tokens": usage.completion_tokens,
+                "total_tokens": usage.total_tokens,
+                "duration_ms": duration_ms
+            });
+            serde_json::to_writer(&mut file, &event)?;
+            file.write_all(b"\n")?;
+            Ok(())
+        })();
+        if let Err(error) = result { warn!(%error, "failed to write usage event"); }
+        self.audit("model.usage", None, json!({
+            "agent_type": agent_type, "agent_profile_id": profile_id, "model": model,
+            "prompt_tokens": usage.prompt_tokens, "completion_tokens": usage.completion_tokens,
+            "total_tokens": usage.total_tokens, "duration_ms": duration_ms
+        }));
+    }
+
     fn audit(&self, event: &str, tool: Option<&str>, details: Value) {
         let event = RuntimeEvent {
             session_id: self.session.session_id.clone(),
@@ -1742,12 +1852,16 @@ async fn execute_background_task(
         let completion = tokio::select! {
             biased;
             _ = cancellation.cancelled() => None,
-            result = provider.complete(&record.messages) => Some(result),
+            result = provider.complete_with_usage(&record.messages) => Some(result),
         };
-        let raw = match completion {
+        let completion = match completion {
             None => return Err(AgentError::Cancelled),
             Some(result) => result?,
         };
+        record.usage.add_completion(&completion.usage, completion.duration_ms);
+        record.updated_at_ms = now_ms();
+        store.save(record)?;
+        let raw = completion.content;
         if cancellation.is_cancelled() {
             return Err(AgentError::Cancelled);
         }
@@ -1772,6 +1886,7 @@ async fn execute_background_task(
             }
             ModelTurn::ToolCall { tool, arguments } => {
                 let action = ToolAction { name: tool, arguments };
+                record.usage.tool_calls = record.usage.tool_calls.saturating_add(1);
                 let tool_result = if profile.allows_tool(&action.name) && is_custom_agent_read_tool(&action.name)
                     && matches!(policy::evaluate(&action), PolicyDecision::Allow)
                 {
@@ -1861,7 +1976,7 @@ fn write_private_file(path: &Path, bytes: &[u8], append: bool) -> Result<(), Age
 mod tests {
     use super::{
         AgentProfile, AgentProfileStore, BackgroundTaskRecord, BackgroundTaskStatus,
-        BackgroundTaskStore, CancellationHandle, ChatMessage, MAX_AGENT_PROFILE_STEPS,
+        BackgroundTaskStore, CancellationHandle, ChatMessage, CompletionUsage, UsageTotals, MAX_AGENT_PROFILE_STEPS,
         SessionStore, is_custom_agent_read_tool, new_session_id, now_ms,
     };
 
@@ -1979,6 +2094,23 @@ mod tests {
     }
 
     #[test]
+    fn usage_totals_accumulate_provider_usage_and_unknown_responses() {
+        let mut totals = UsageTotals::default();
+        totals.add_completion(&CompletionUsage {
+            prompt_tokens: Some(10),
+            completion_tokens: Some(5),
+            total_tokens: Some(15),
+        }, 120);
+        totals.add_completion(&CompletionUsage::default(), 80);
+        assert_eq!(totals.requests, 2);
+        assert_eq!(totals.prompt_tokens, 10);
+        assert_eq!(totals.completion_tokens, 5);
+        assert_eq!(totals.total_tokens, 15);
+        assert_eq!(totals.requests_without_usage, 1);
+        assert_eq!(totals.duration_ms, 200);
+    }
+
+    #[test]
     fn background_task_store_round_trips_durable_state() {
         let directory = std::env::temp_dir().join(format!(
             "rust-agent-task-store-{}",
@@ -1999,6 +2131,7 @@ mod tests {
             error: None,
             delivered_at_ms: None,
             agent_profile: Some(AgentProfile::default_background()),
+            usage: UsageTotals::default(),
             messages: vec![
                 ChatMessage { role: "system".into(), content: "system".into() },
                 ChatMessage { role: "user".into(), content: "task".into() },
@@ -2019,9 +2152,11 @@ mod tests {
 
         let mut legacy_value = serde_json::to_value(&record).expect("task should serialize");
         legacy_value.as_object_mut().expect("task object").remove("agent_profile");
+        legacy_value.as_object_mut().expect("task object").remove("usage");
         let legacy: BackgroundTaskRecord =
             serde_json::from_value(legacy_value).expect("legacy task without profile should load");
         assert!(legacy.agent_profile.is_none());
+        assert_eq!(legacy.usage, UsageTotals::default());
 
         std::fs::remove_dir_all(directory).expect("test task directory should be removed");
     }

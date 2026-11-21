@@ -131,6 +131,12 @@ No Shell, process execution, arbitrary network tool, or workspace-external file 
 
 `codebuddy-host/` is retained as an optional compatibility example for users who explicitly want CodeBuddy to own model orchestration. It is not used by the native Rust CLI and is not part of the default dependency or build path. The native runtime is the preferred path when minimizing external runtime dependencies.
 
+## Usage tracking
+
+The runtime appends model-call and tool-call events to `.rust-agent/usage.jsonl` with private file permissions. Model usage includes the effective model after fallback, provider-reported prompt/completion/total tokens when available, and request duration. Streaming requests request a final usage frame from OpenAI-compatible providers. Providers that omit usage are recorded with unknown token counts; token counts are never estimated from text length.
+
+Background tasks persist cumulative request, token, duration, and tool-call totals in each task record, including across restart recovery. The `/usage` command shows totals across the workspace usage log and stored background tasks; `/task <id>` shows the selected task's usage. Failed or cancelled requests that do not return a usage payload cannot be assigned reliable token counts.
+
 ## Current limitations
 
 - Streaming requires the provider to implement OpenAI-compatible Chat Completions SSE. The primary Agent loop emits `model.output.delta` RuntimeHook events and buffers the complete response before parsing it. Delta events contain fragments of the structured action payload, not display-ready assistant text; hosts must wait for the completed turn before rendering final content or acting on a tool call. Delegated subagent requests still use the buffered completion path. If a primary model fails after emitting partial output, fallback is not attempted to avoid mixing two model responses.
