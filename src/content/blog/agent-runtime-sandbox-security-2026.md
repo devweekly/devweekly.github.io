@@ -24,7 +24,44 @@ Agent Runtime 一旦允许模型读文件、改文件、运行命令或调用 MC
 
 本文从 TypeScript / Node.js Agent Runtime 出发，讨论桌面、云端、Kubernetes 和带 GUI 的 VM 执行环境，重点区分 Tool 授权、资源授权与 OS / VM 隔离。
 
-## 1. 先把三个安全层次分开
+## 目录与阅读路径
+
+本文先建立 Agent Runtime 的威胁模型和安全边界，再讨论工具与执行后端，最后分别落到桌面、云端、Kubernetes 和 GUI VM。需要快速做架构评审时，可直接查看第 9 章的部署选型和第 10 章的 Checklist。
+
+## 1. 威胁模型：Agent Runtime 的攻击面已经超出模型输入
+
+传统 Web 应用的威胁模型主要关注请求入口、身份认证、授权、数据访问和服务端执行。Agent Runtime 还增加了一个重要特征：系统会把来自不同信任等级的内容放进同一个推理循环，再由模型决定下一步调用哪个工具。
+
+用户指令、系统策略、邮件正文、网页、PDF、终端输出、MCP Tool Result、Agent Memory、子 Agent 消息，不能被视为同一种可信输入。攻击者不一定需要直接访问 Runtime；只要能影响 Agent 会读取的网页、邮件、仓库文件、工单或工具返回值，就可能改变 Agent 的后续动作。
+
+至少需要考虑以下攻击者和风险来源：
+
+| 风险来源 | 可能的攻击能力 | 典型目标 |
+| --- | --- | --- |
+| 恶意用户或租户 | 构造任务、上传文件、提交代码、诱导资源消耗 | 越权访问、跨租户读取、资源耗尽 |
+| 间接提示注入者 | 控制网页、邮件、文档、代码注释、图片或工具返回内容 | 劫持目标、诱导调用工具、数据外传 |
+| 恶意或被攻陷的 MCP / Plugin | 返回恶意工具描述、参数、结果，或在本地执行代码 | 读取凭证、扩大工具权限、横向移动 |
+| 恶意依赖与构建产物 | 包安装脚本、插件、浏览器扩展、容器镜像或更新包被替换 | RCE、供应链持久化、窃取构建凭证 |
+| 被攻陷的 Agent / 子 Agent | 借助委托关系、共享 Memory 或过宽 Token 访问其他系统 | 身份冒用、跨 Agent 权限提升 |
+| 恶意或失陷的外部服务 | 返回伪造结果、重定向请求、滥用回调和 Webhook | SSRF、凭证泄露、数据污染 |
+| 同机或同集群其他工作负载 | 利用共享内核、共享存储、网络和节点权限 | 容器逃逸、跨租户访问、侧信道 |
+| 内部人员或错误配置 | 过度授权、关闭审计、共享管理员凭证、错误恢复快照 | 隐蔽访问、长期权限残留 |
+
+需要保护的资产不只是文件和 Token。还包括用户身份、Agent 身份、OAuth 授权、云 Workload Identity、浏览器 Cookie、SSH Agent、桌面会话、剪贴板、截图、屏幕录制、持久化 Memory、任务快照、工具清单、策略版本、模型上下文、审计记录以及控制面本身。
+
+一个实用的威胁分析方法，是沿着 Agent 生命周期逐段问问题：
+
+1. **输入与上下文构建**：哪些内容由用户提供，哪些来自外部数据源？有没有把网页或文件中的指令误当成授权？
+2. **规划与决策**：Agent 能否改变原始任务目标？能否在任务执行中自行扩大权限或引入新工具？
+3. **工具选择与参数生成**：参数值来自用户请求、可信工具结果，还是模型猜测？收件人、账户、URL、文件路径和金额是否有可验证来源？
+4. **执行与副作用**：工具实际以什么身份运行？子进程、MCP Server、浏览器和 GUI 自动化是否继承了更大的宿主机权限？
+5. **结果与数据流**：敏感信息会进入模型上下文、日志、截图、外部 API 或共享存储吗？
+6. **状态与委托**：Session、Memory、快照和子 Agent 是否跨用户、跨租户或跨任务复用？权限能否及时撤销？
+7. **监控与恢复**：谁能识别异常行为、终止整个进程树、断开网络、撤销 Token 并保留取证证据？
+
+安全目标不是保证模型永远不犯错，而是确保模型犯错、被注入、工具被攻陷或某个执行组件失陷时，影响范围仍然受控。
+
+## 2. 先把三个安全层次分开
 
 ### Tool Permission：模型可以调用什么
 
@@ -54,246 +91,7 @@ Sandbox 是最后一道执行边界。它限制进程及其子进程能够访问
 
 三层之间的关系可以概括为：Tool Permission 决定入口，Resource Permission 决定目标，Sandbox 限制执行能力。它们应该纵深叠加，而不是互相替代。
 
-## 2. 值得研究的开源实现
-
-### 2.1 Anthropic Sandbox Runtime：最接近通用 Agent 执行隔离层
-
-项目：[anthropic-experimental/sandbox-runtime](https://github.com/anthropic-experimental/sandbox-runtime)  
-npm：[@anthropic-ai/sandbox-runtime](https://www.npmjs.com/package/@anthropic-ai/sandbox-runtime)
-
-Anthropic 将 Claude Code 使用的 Sandbox Runtime 独立开源。它不是 Agent Framework，也不是一个新的 Shell，而是把任意命令或进程放进操作系统提供的限制环境中。项目 README 明确列出 Agent、Bash 命令和本地 MCP Server 等使用场景。
-
-它的实现思路是复用各操作系统的原生安全机制：
-
-| 平台 | 主要实现 |
-| --- | --- |
-| macOS | sandbox-exec 与动态生成的 Seatbelt Profile |
-| Linux | Bubblewrap、namespace 隔离及受控网络代理 |
-| Windows | 独立本地沙箱用户、受限 Token、NTFS ACL 和 Windows Filtering Platform 出站规则 |
-
-文件系统和网络限制需要一起考虑。文件系统采用读写分离策略：写入默认拒绝，只显式开放工作目录和临时目录；读取则可以通过拒绝敏感区域、再开放必要路径的方式配置。网络默认拒绝，通过 HTTP / SOCKS 代理限制允许访问的域名。Unix Socket 等本地 IPC 也有独立限制能力。
-
-一个很实用的设计是：它可以包裹整个 MCP Server，而不是只限制某个 MCP Tool。例如，原本直接启动的 Filesystem MCP Server，可以改成由 srt 启动。这样，Server 内部即使存在未预期的文件访问路径，也仍然受到进程级文件系统和网络策略约束。
-
-示意配置如下，具体字段应以所使用版本的 Schema 为准：
-
-~~~json
-{
-  "filesystem": {
-    "denyRead": ["~/.ssh", "~/.aws", "~/.config"],
-    "allowWrite": ["./workspace", "/tmp"],
-    "denyWrite": ["./workspace/.env"]
-  },
-  "network": {
-    "allowedDomains": [
-      "api.openai.com",
-      "api.anthropic.com"
-    ],
-    "deniedDomains": []
-  }
-}
-~~~
-
-Node.js Runtime 可以把它作为进程启动边界使用，也可以通过 Library API 集成。它的价值在于：Runtime 不必自己实现 Seatbelt、Bubblewrap 或 Windows Filtering Platform 的底层规则，而是把策略交给一个专门的 Sandbox Runtime。
-
-需要注意的是，项目仍标注为 Beta Research Preview，API 和配置格式可能变化。它也不是万能的 VM：不同平台的隔离原语和已知限制不同，网络代理、系统服务代发流量、凭证暴露以及宿主机本身的安全仍需单独审查。引入时应针对目标 OS、Node 版本和实际工具链做逃逸测试，而不是因为命令成功启动就认为隔离已生效。
-
-### 2.2 OpenAI Codex Sandbox：值得借鉴的权限模型和平台实现
-
-项目：[openai/codex](https://github.com/openai/codex)  
-工程文章：[Inside the Codex sandbox](https://openai.com/index/inside-the-codex-sandbox/)
-
-Codex Sandbox 的特点是：不把所有命令搬进容器，而是尽可能利用当前操作系统的隔离机制，让 Agent 在用户现有的开发环境中工作。对于依赖本机 SDK、原生工具链或桌面模拟器的开发任务，这种方式比 Docker 更容易保留宿主机开发环境。
-
-Codex 将 Sandbox 权限组织成 Permission Profile。以 Workspace 权限为例，工作区内可以写入，但 .git、.codex 等敏感目录保持只读；网络默认关闭，需要时再单独开放。这里有一个重要的取舍：为了兼容本机编译器和开发工具，文件读取范围可能比工作区更广。因此，限制写入和关闭网络能减少风险，却不能自动解决敏感文件读取问题。
-
-OpenAI 的工程文章还披露了一个很值得重视的细节：子进程继承父进程的 Sandbox 约束，约束覆盖由该命令启动的整个进程树。这是执行边界必须满足的基本要求。只包裹最外层 Shell，而让 Python、Node 或 MCP 子进程逃到沙箱之外，是不合格的实现。
-
-Codex 的价值主要有两方面：Permission Profile 是 Runtime 的权限配置模型，可以把只读、工作区写入和网络访问等能力组合成可理解的执行模式；OS Sandbox 则通过统一接口屏蔽 macOS、Linux 和 Windows 的平台差异，让调用方提交命令、工作目录、环境变量和权限配置，而不直接操作底层系统调用。
-
-需要区分：Codex 的实现是 Codex 项目的一部分，不应把它误认为一个已经独立发布、可直接 npm install 的通用 Sandbox SDK。对自建 Runtime 来说，更适合先研究其 Permission Profile、子进程继承和 fail-closed 思路，再决定复用哪一层代码或原生机制。
-
-### 2.3 just-bash：TypeScript 里的虚拟 Shell，而不是真正的 OS Sandbox
-
-项目：[vercel-labs/just-bash](https://github.com/vercel-labs/just-bash)
-
-如果 Runtime 本身是 Node.js / TypeScript，just-bash 很值得研究。它用 TypeScript 实现 Shell 语法和一组常用 Unix 命令，提供虚拟文件系统。Agent 可以执行 ls、cat、grep、sed、jq、管道和重定向，而不必直接启动宿主机 Bash。
-
-~~~typescript
-import { Bash } from "just-bash";
-
-const bash = new Bash({
-  files: {
-    "/workspace/report.md": "# Draft\n",
-    "/workspace/data.json": '{"count": 12}'
-  }
-});
-
-const result = await bash.exec(
-  "cat /workspace/data.json | jq '.count'"
-);
-
-console.log(result.stdout);
-~~~
-
-它适合文档处理、结构化数据检查、轻量脚本和受控文件操作。默认内存文件系统不直接访问磁盘；网络默认关闭；Python 和 JavaScript 执行能力也默认关闭。需要真实文件时，可以考虑它提供的其他文件系统实现，但安全边界随之改变。
-
-关键区别在于：just-bash 不提供 VM 隔离。它是在宿主 Node.js 进程内运行的虚拟 Shell。项目自己的 Security Model 也明确说明这一点：自定义命令回调是宿主侧扩展点，可信命令运行在嵌入进程中；JavaScript 不能强制终止任意宿主代码；需要对外部副作用提供硬隔离时，应放到可终止的 Worker 或独立进程中；对任意二进制执行，则应使用真正的 VM 或 OS Sandbox。
-
-因此，不应该把 just-bash 当成 Anthropic Sandbox Runtime 的替代品。它解决的是“不要给 Agent 一个真实 Shell”的问题，后者解决的是“真实进程不能越过 OS 限制”的问题。
-
-### 2.4 OpenHands Runtime：完整的 Docker 执行环境
-
-项目：[OpenHands](https://github.com/OpenHands/OpenHands)  
-架构说明：[OpenHands Runtime](https://docs.openhands.dev/openhands/usage/architecture/runtime)
-
-OpenHands 的 Runtime 采用 Client-Server 结构。Backend 将 Action 发送给 Runtime 容器中的执行服务，容器内运行 Bash、文件操作、Python、浏览器和插件，再把执行结果作为 Observation 返回给 Backend。
-
-这类方案适合需要完整开发环境的 Agent：有依赖安装、编译、测试、浏览器和多种执行工具，且希望每个任务或项目拥有独立环境。Docker 镜像和 Volume 机制也便于定义基础环境、持久化工作目录和只读挂载。
-
-它的代价是容器生命周期、镜像管理、资源配额、Volume 和网络策略都需要运营。更重要的是，容器并不等于独立内核：默认仍共享宿主机 Kernel。对抗高风险不可信代码时，必须谨慎配置 capabilities、seccomp、用户权限、设备、挂载和网络；更高隔离要求可以进一步使用 VM 或微型 VM。
-
-对于桌面 Agent，如果只是需要受控地读取和修改用户选定的文件夹，直接引入一整套 Docker Runtime 可能过重。若任务需要任意依赖安装、编译、浏览器和长时间运行的进程，容器化执行环境才更有价值。
-
-### 2.5 MCP Filesystem Server：目录授权有用，但不是进程沙箱
-
-项目：[modelcontextprotocol/servers — filesystem](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem)
-
-Filesystem MCP Server 在启动时通过命令行参数指定允许访问的目录，也支持只读模式和单独指定只读目录：
-
-~~~bash
-mcp-server-filesystem \
-  --read-only-dir ./reference \
-  ./workspace
-~~~
-
-它适合把文件操作以标准 MCP Tool 的形式交给 Agent。目录范围由 Server 自己检查，--read-only 会直接不注册写工具，而不是仅仅依赖模型不要调用写操作。
-
-但 MCP Server 仍然是一个普通进程。目录 Allowlist 只限制这个 Server 的文件操作，不会自动限制 Agent Runtime 中的 Bash、Python、其他 MCP Server 或插件。一个拥有宿主机高权限的进程，不能因为它只暴露了几个 MCP Tool，就被视为安全沙箱。
-
-Filesystem Server 的安全实现也需要持续审查。路径解析、符号链接、目录移动和协议 Roots 的行为都会影响真实授权范围。建议将命令行目录作为管理员或宿主侧确定的上限；客户端提供的工作区只能缩小范围，不能扩大范围。即使使用只读目录，也应在 OS 文件权限或容器只读挂载层再加一道保护。
-
-## 3. Read、Write、Bash 应该是三个独立的 Tool 边界
-
-前面讨论的是 Tool Permission、Resource Permission 和 Runtime Sandbox 三个安全层次。落到 Agent 的实际工具设计，还需要再做一次拆分：不要把文件读取、文件写入和脚本执行包装成一个通用的 `filesystem` 或 `terminal` 能力。
-
-这三种操作的权限语义不同。Read 是信息披露风险，Write 是数据完整性风险，Bash 则是通用代码执行风险。一个 Agent 获得读取权限，不应该因此获得写入权限；获得写入权限，也不应该自动获得执行刚写入脚本的权限。
-
-### 3.1 Read Tool：把读取做成只读、可审计的资源访问
-
-Read Tool 只负责读取已经授权的资源，不应提供任何执行或修改能力。建议把它拆成几个语义明确的操作：`list_directory`、`stat_file`、`read_file`、`search_files`。如果需要读取大文件，使用 offset、limit 或分页，不要一次把整个目录或文件树塞进上下文。
-
-权限判断至少包含主体、资源、操作和数据分类。比如某个 Agent 可以读取项目文档，却不能读取 `.env`、SSH Key、浏览器 Profile、云凭证或其他客户目录。目录列表本身也可能泄露文件名和项目结构，因此 `list` 不是天然无风险的操作。
-
-不要仅靠字符串前缀判断路径是否在工作区内。路径规范化后仍要处理符号链接、硬链接、挂载点和路径替换竞态。Linux 上可以研究 `openat2` 的 `RESOLVE_BENEATH`、`RESOLVE_NO_MAGICLINKS` 等约束；跨平台实现则应采用经过审查的目录句柄 / capability 文件访问层，或让文件服务本身运行在 OS Sandbox 内。Node.js 的普通 `realpath()` 后再 `readFile()` 并不能单独消除 TOCTOU 风险。
-
-另一个值得研究的方向是 [AgentFense](https://github.com/AjaxZhan/AgentFense)。它使用 FUSE 把真实文件系统投影成 Agent 可访问的视图，并区分 `none`、`view`、`read` 和 `write`：例如可以允许 Agent 看到目录结构，却不能读取文件内容；也可以让它读取代码，但不能修改。这个模型比简单的目录 Allowlist 更细，尤其适合需要把真实代码库暴露给 Agent、同时隐藏密钥和敏感目录的场景。项目目前规模较小，应把它视为值得验证的设计参考，而不是未经测试就直接采用的安全基座。它的文档还记录了 macOS + Docker Desktop 下 `view` 权限可能受 VirtioFS 限制而失效的情况；如果采用这类 FUSE / 虚拟文件系统方案，必须把目标 OS、文件系统驱动和容器组合纳入测试矩阵。
-
-### 3.2 Write / Edit Tool：写入不是执行，修改应该可回滚
-
-Write Tool 不应和 Bash 共用执行权限。它只允许对授权工作区执行明确的文件操作。建议至少区分：
-
-| 操作 | 建议语义 |
-| --- | --- |
-| `create_file` | 仅创建不存在的文件，默认不覆盖 |
-| `replace_file` | 替换已存在文件，要求版本 / ETag 匹配 |
-| `apply_patch` | 应用明确的 Diff，返回实际变更 |
-| `delete_file` | 单独授权，通常需要确认 |
-| `move_file` | 源和目标分别检查权限，不允许借移动绕过目录边界 |
-
-尤其要避免一个常见设计：提供 `write_file(path, content)`，然后把覆盖、创建、删除、目录创建等全部隐含在一个接口里。工具调用越通用，Policy Engine 越难判断实际影响。
-
-对于重要文件，推荐先写入任务级 staging area，再通过 Diff / Preview 展示变更。提交时检查目标路径权限和原文件版本，使用临时文件加原子替换，保留可恢复版本。审批应绑定目标路径、操作类型、内容摘要、任务 ID 和有效期；如果模型在审批后改变了内容或目标，必须重新审批。
-
-还要明确区分“写入脚本文件”和“执行脚本文件”。`write_file("cleanup.sh", ...)` 只产生一个文件，不应触发 Shell。脚本执行必须经过独立的 `execute_script` Tool 和独立的 Sandbox Policy。这样，文档 Agent 即使能够生成自动化脚本，也不会因此获得运行脚本的能力。
-
-### 3.3 Bash / Script Tool：把它当作不可信代码执行服务
-
-Bash 的能力远超普通 Tool。即使只允许一个 `bash` Tool，模型也可能通过 Shell、解释器、管道、重定向、子进程和系统命令访问大量宿主资源。因此，不能把命令黑名单或正则表达式当作主要安全机制。
-
-推荐把执行入口设计成一个独立的 Execution Service：
-
-- 输入是脚本内容、工作目录的资源标识、参数和明确的 Execution Profile，而不是任意宿主机路径。
-- 执行时创建独立进程或 Sandbox Session，不能在 Agent Runtime 主进程中执行任意脚本。
-- Sandbox 显式配置只读目录、可写目录、临时目录、网络策略、环境变量和进程限制。
-- 所有子进程继承相同或更严格的隔离策略。
-- 进程超时后终止整个进程组 / Job Object，而不是只结束最外层 Shell。
-- 限制 CPU、内存、PID 数、文件大小、输出字节数、并发数和执行时长。
-- 默认不注入宿主机环境变量、长期 Token、SSH Agent Socket、浏览器 Profile 和 Docker Socket。
-- 执行结果返回 stdout、stderr、exitCode 和产物引用；不要无限制地把所有输出写回模型上下文。
-
-对于桌面 Runtime，macOS 可以评估 Seatbelt，Linux 可以评估 Bubblewrap、Landlock 和 seccomp；需要跨平台统一管理时，可以研究 Anthropic Sandbox Runtime。需要完整 Linux 环境或运行不可信依赖时，再考虑 Docker、gVisor 或 microVM。
-
-如果脚本由模型生成，审批不应只显示“允许执行 Bash”。应展示脚本内容或 Diff、工作目录、读写范围、网络权限和执行限制。审批绑定脚本内容摘要及 Execution Profile；脚本内容、参数或权限发生变化时，之前的批准失效。
-
-### 3.4 有哪些项目值得对照
-
-| 项目 | 对 Read / Write 的设计 | 对 Bash / Script 的设计 | 适合借鉴的部分 |
-| --- | --- | --- | --- |
-| [AgentFense](https://github.com/AjaxZhan/AgentFense) | FUSE 文件视图，none / view / read / write | 通过受限文件系统配合普通 Shell 工作流 | 文件级能力授权、隐藏敏感资源 |
-| [easy-agent](https://github.com/ConardLi/easy-agent) | Read、Write、Edit、MultiEdit 等独立工具 | Bash / PowerShell 配合 allow / ask / deny 和 OS Sandbox | Tool 拆分、审批策略和执行隔离的组合 |
-| [Deep Agents](https://github.com/langchain-ai/deepagents) | Virtual Filesystem、声明式 read / write path permissions | 可插拔 Sandbox Backend 的 execute Tool | 文件权限和执行后端的职责分离 |
-| [Anthropic Sandbox Runtime](https://github.com/anthropics/sandbox-runtime) | 不负责 Agent 级文件 Tool 语义 | 对任意进程实施 OS 级文件和网络限制 | 作为真实 Shell / MCP 进程的隔离层 |
-| [just-bash](https://github.com/vercel-labs/just-bash) | 虚拟文件系统上的受控读写 | TypeScript 实现的 Shell 语义，不启动真实宿主 Shell | 低风险任务的受限命令环境 |
-
-这里有两个容易误读的地方。第一，Deep Agents 的文件权限规则并不自动约束 Sandbox Backend 中的任意代码执行；其文档明确要求 Sandbox Backend 自己承担执行侧策略。另外，它的路径规则按声明顺序 first-match-wins，且没有匹配规则时默认允许，因此生产策略应明确写出最后的 catch-all deny，避免遗漏路径变成默认放行。第二，AgentFense 的 FUSE 文件视图能把文件访问权限落实到文件系统层，但它不能替代网络隔离、进程限制和凭证保护。工具权限和执行权限仍需分别配置。
-
-[easy-agent](https://github.com/ConardLi/easy-agent) 是一个更完整的 Agent Harness 参考：它把 Read / Write / Edit / Bash 做成不同工具，并组合权限规则、OS Sandbox、MCP 和子 Agent。它适合研究工具注册、授权和执行路径如何在一个 TypeScript Agent 中协作，但仍需按目标平台审查其 Sandbox 覆盖范围；项目文档列出的 Windows Shell Sandbox 能力与 macOS / Linux 并不相同。
-
-### 3.5 推荐的 Tool Contract
-
-可以把 Agent 暴露的接口收敛成以下几类。这里是 Runtime 的逻辑接口，不代表某个项目的现成 API：
-
-```typescript
-type ResourceRef = {
-  workspaceId: string;
-  resourceId: string; // Runtime 解析，不接受任意宿主机绝对路径
-};
-
-interface ReadTools {
-  listDirectory(ref: ResourceRef): Promise<DirectoryEntry[]>;
-  readFile(ref: ResourceRef, range?: { offset: number; limit: number }): Promise<FileContent>;
-  searchFiles(query: SearchQuery): Promise<SearchResult[]>;
-}
-
-interface WriteTools {
-  createFile(ref: ResourceRef, content: string): Promise<ChangeSet>;
-  applyPatch(ref: ResourceRef, patch: string, expectedVersion: string): Promise<ChangeSet>;
-  deleteFile(ref: ResourceRef, expectedVersion: string): Promise<ChangeSet>;
-  commitChangeSet(changeSetId: string, approval?: ApprovalRef): Promise<CommitResult>;
-}
-
-interface ExecutionTools {
-  executeScript(input: {
-    script: string;
-    workingDirectory: ResourceRef;
-    profile: "read-only" | "workspace-write" | "network-enabled";
-    timeoutSeconds?: number;
-  }): Promise<ExecutionResult>;
-}
-```
-
-这套接口刻意不提供 `execute(path)`，也不允许模型传入任意宿主机绝对路径。脚本执行可以使用临时脚本文件，也可以通过标准输入传给固定的 Shell 入口；无论哪种方式，执行目录、挂载范围和权限都由 Runtime 决定。
-
-权限策略应该在 Tool 层和执行后端各检查一次：Tool 层判断这个 Agent 是否能对这个资源发起这个动作；执行后端判断实际进程是否能访问该文件、网络或系统资源。不能把前一层的授权结果当成后一层的隔离保证。
-
-![Read、Write、Bash 三类 Tool 的独立安全边界](/diagrams/agent-runtime-tool-boundaries.svg)
-
-[查看 Read / Write / Bash 架构图（HTML）](/diagrams/agent-runtime-tool-boundaries.html)
-
-## 4. 这些方案到底如何选择
-
-| 方案 | 主要隔离方式 | 适合场景 | 不能替代什么 |
-| --- | --- | --- | --- |
-| Anthropic Sandbox Runtime | OS 原生 Sandbox + 网络代理 | 包裹 Shell、脚本和 MCP Server | 业务级数据授权、完整 VM |
-| OpenAI Codex Sandbox | OS 原生 Sandbox + Permission Profile | 本机开发环境中的受限命令执行 | 独立 npm Sandbox SDK |
-| just-bash | TypeScript Shell + 虚拟文件系统 | 受控命令、文档和数据处理 | 任意宿主进程的 OS 隔离 |
-| OpenHands Runtime | Docker 容器 | 完整、可复现的 Agent 开发环境 | 独立 Guest Kernel 的 VM 隔离 |
-| MCP Filesystem Server | Tool 级目录授权 | 文件读写能力封装 | Shell、Python 和其他进程的限制 |
-
-这里没有一个项目能够单独解决 Agent 的全部安全问题。选择时首先看执行对象：如果只需要读写文件，优先提供受限文件服务；如果需要有限的 Shell 语义，考虑虚拟 Shell；如果要执行真实命令或 MCP Server，就需要 OS Sandbox；如果需要完整、可复现的开发环境，再考虑容器或 VM。
-
-## 5. 一个适合 TypeScript Agent Runtime 的分层设计
+## 3. 一个适合 TypeScript Agent Runtime 的分层设计
 
 对于本地桌面 Agent，我倾向于把策略和执行机制分开：Runtime 自己掌握 Tool Registry、Policy Engine、审批和审计；底层通过成熟的 OS Sandbox 执行真实进程，不自己重写操作系统隔离机制。
 
@@ -337,37 +135,451 @@ limits:
 
 这只是 Runtime 自己的策略模型示例，不是 Anthropic SRT 或 just-bash 的原生配置格式。策略编译器需要把它转换成不同执行后端能够理解的约束，并明确哪些约束由应用层实施、哪些由 OS 强制实施。不能支持某项策略的后端，应拒绝启动该 Profile，不能静默忽略。
 
-### 4.1 不要把“命令白名单”当成完整的执行安全
+### 3.1 不要把“命令白名单”当成完整的执行安全
 
 允许 node、python 或 bash，并不意味着只允许了某种安全操作。它们本身就是通用解释器，可以读取文件、启动子进程、加载模块和访问网络。命令白名单最多是减少入口，不是资源边界。
 
 更有效的控制是：真实进程在 Sandbox 内运行；文件系统和网络权限按 Profile 配置；子进程继承限制；凭证不进入执行环境；执行有时间、内存、CPU、输出和并发上限。对不可信代码，还应限制文件解析器、编译器插件、包安装脚本和本地扩展的执行路径。
 
-### 4.2 MCP Server 也应该被视为执行进程
+### 3.2 MCP Server 也应该被视为执行进程
 
 MCP 只是工具协议，不是安全容器。一个 MCP Server 可以在启动时读取环境变量、访问本地文件、连接网络或启动子进程。Server 的 Tool Schema 只描述模型能看到的调用入口，不代表 Server 运行时的实际权限。
 
 因此，来自第三方或动态安装的 MCP Server，应该以独立进程运行，并使用最小权限身份和独立 Sandbox。对于可信的内置 MCP Server，也应只授予它完成任务所需的目录、网络和凭证范围。不要让所有 MCP Server 共享 Agent Runtime 的主进程权限。
 
-### 4.3 审批应该绑定具体动作，而不是绑定工具名称
+### 3.3 审批应该绑定具体动作，而不是绑定工具名称
 
 “允许调用 write_file”不是一个足够明确的审批对象。审批至少应绑定目标文件、操作类型、内容或 Diff 摘要、任务 ID、执行身份和有效期。对外发送、删除、覆盖、批量移动和业务系统更新等动作，需要单独的风险策略。
 
 如果审批后模型改变了文件路径、内容或目标对象，就应重新进行策略判断。用户确认不能覆盖组织级拒绝规则，也不能把一次批准扩展为长期授权。
 
-## 6. 容易被忽略的安全问题
+### 3.4 通用架构：把身份、策略、执行、数据和观测分开
 
-**文件授权和数据授权不是一回事。** Agent 可以读取某个客户文件，不代表可以把它上传到任意外部网站。文件系统 Sandbox 只能限制文件访问，不能判断数据是否允许流向某个 SaaS 或模型服务。需要独立的数据分类、目的地策略和网络出口控制。
+一个可运营的 Agent Runtime 至少需要五个逻辑平面。它们可以部署在同一个应用中，但不应共享不受约束的权限。
 
-**网络 Allowlist 不能只检查域名字符串。** DNS 解析、重定向、CNAME、IPv4/IPv6 表示差异、私有 IP 和代理绕行都会影响最终连接目标。尤其需要阻止 SSRF、云元数据访问和内网探测。
+| 平面 | 主要组件 | 必须回答的问题 |
+| --- | --- | --- |
+| Identity Plane | User Identity、Agent Identity、Workload Identity、Credential Broker | 谁在行动？代表谁？凭证能访问什么、何时失效？ |
+| Control Plane | Agent Orchestrator、Policy Engine、Approval、Tool Registry、Session Manager | 任务允许做什么？策略由谁批准？权限如何撤销？ |
+| Execution Plane | Tool Worker、Browser Worker、Script Sandbox、Container / VM | 进程实际能访问哪些文件、网络、设备和系统接口？ |
+| Data Plane | Workspace、Object Storage、Memory、RAG、Artifact Store、Secrets | 数据属于谁？可信等级如何标记？数据能流向哪里？ |
+| Observability Plane | Audit、Trace、Runtime Detection、Incident Response | 谁执行了什么？是否越权？能否追溯、终止和恢复？ |
 
-**凭证不要通过环境变量“方便地传进去”。** 执行进程能读取的环境变量，通常也可能被脚本、子进程和日志意外暴露。需要访问下游系统时，应使用短期、窄范围的委托凭证或宿主侧 Credential Broker，不要把用户的长期 Token 和浏览器 Profile 直接挂载给 Agent。
+这五个平面之间要有明确的信任边界。Agent Orchestrator 不应该因为能调度任务，就自动拥有执行任务所需的全部凭证；Sandbox 不应该因为需要读取某个文件，就拿到整个用户 Home；Agent 不应该因为要调用一个 API，就直接获得长期用户 Token。
 
-**沙箱必须覆盖完整进程树。** Shell 启动 Python，Python 再启动 Node，Node 又启动子进程，所有后代都必须继承相同或更严格的限制。工具超时也不能只停止父进程，而留下仍在运行的子进程。
+建议建立以下不可破坏的安全不变量：
 
-**文件写入最好默认可恢复。** 草稿写入、正式覆盖和删除应分开处理。通过临时文件、原子替换、版本快照和 Diff 审查，降低模型误操作的影响。对正式业务系统则优先提供有明确语义的 API，而不是开放数据库连接或通用 HTTP 写入。
+- **权限由可信控制面授予，不由模型授予自己。** 模型可以提出工具调用和所需能力，但不能修改 Policy、扩大 Resource Scope 或选择更宽松的 Sandbox Backend。
+- **外部内容默认不可信。** 网页、邮件、文档、图片 OCR、终端输出和 Tool Result 中出现的命令或授权语句，不能自动变成用户授权。
+- **身份与凭证分离。** Agent 有自己的可审计身份；代表用户执行时使用显式、可撤销、范围受限的委托授权，而不是复制用户的长期凭证。
+- **策略与执行双重检查。** Tool 层判断动作是否获准，执行后端确保进程不能越过已批准的资源边界。
+- **默认拒绝，能力不足时失败关闭。** 某个后端无法执行必要的文件、网络或 UI 限制时，不允许自动退化为宿主机直接执行。
+- **所有高风险副作用可归因、可中止、可恢复。** 审批、执行、网络访问、身份和产物之间必须有可关联的记录。
 
-## 7. 如果基于 Copilot SDK 自己实现桌面端安全防护
+### 3.5 通用安全控制：不能只做 Prompt Filter
+
+#### 任务边界和自主程度
+
+不要给 Agent 一个无限期、无限目标的“自主工作”权限。每个 Task 应有明确的目标、可访问资源、允许动作、时间窗口、预算、最大步骤数、最大工具调用数和终止条件。任务完成、取消、超时或审批撤销后，临时能力应立即失效。
+
+可以将操作分成四个风险等级：
+
+| 等级 | 操作类型 | 典型动作 | 建议策略 |
+| --- | --- | --- | --- |
+| R0 | 观察和本地计算 | 读取已授权文件、搜索、计算、生成草稿 | 默认允许已授权范围，完整审计 |
+| R1 | 可恢复的本地变更 | 写入任务输出目录、创建草稿、修改可回滚文件 | 受限授权，必要时 Diff Preview |
+| R2 | 代码执行和外部通信 | Bash、Python、安装依赖、访问外部网站、调用 SaaS API | 独立 Sandbox、目的地策略、按任务审批 |
+| R3 | 高影响或不可逆动作 | 删除、付款、发送外部邮件、发布、生产变更、权限变更 | 明确的人类确认，绑定具体参数和结果，必要时双人审批 |
+
+风险等级不是简单按 Tool 名称决定。read_file 读取一个公开 README 和读取客户合同，风险不同；browser 打开公开网站和向外部发送客户数据，风险也不同。Policy Engine 应结合主体、动作、资源分类、数据来源、目标地址、任务目标和执行环境计算风险。
+
+#### 身份、授权和凭证
+
+Agent Identity 应成为一等安全主体，而不是把所有动作都记录为“某用户调用了模型”。至少区分：
+
+- User Principal：真实登录用户及其组织、租户和设备上下文。
+- Agent Principal：某个 Agent 实例、角色和版本。
+- Task Principal：当前任务的短期执行身份和权限集合。
+- Workload Identity：实际运行在进程、Pod、容器或 VM 中的工作负载身份。
+- Delegated Identity：代表用户访问外部业务系统时获得的受限委托身份。
+
+每次授权应尽可能包含 subject、action、resource、purpose、audience、expiry 和 constraints。子 Agent 只能获得父任务明确委托的能力，不能继承父 Agent 的全部 Token。MCP Server 也应有独立身份，不能因为它由某个 Agent 启动就自动获得 Agent 的所有权限。
+
+凭证应由 Credential Broker 或受控代理提供。优先使用短期 Token、OAuth On-Behalf-Of、Workload Identity、SPIFFE / SPIRE 或云厂商的短期身份凭证。对脚本和浏览器进程，避免把长期 API Key 放在环境变量、命令行参数、工作目录或可读取文件中。需要出站认证时，可以由 Egress Gateway 在请求路径上注入短期凭证，避免把 Token 直接交给不可信执行环境。
+
+#### Prompt Injection、数据来源和参数溯源
+
+Prompt Injection 不是单纯的输入清洗问题。攻击内容可能藏在 HTML、邮件引用、Markdown、PDF、代码注释、图片 OCR、终端输出、工具描述和 Agent Memory 中。即使输入过滤器漏掉了攻击，执行边界也应该阻止它完成未授权动作。
+
+建议把内容来源和信任等级作为结构化元数据保存，而不是只把所有文本拼进一个 Prompt：
+
+- trusted_instruction：系统策略、经过认证的用户指令和应用控制面下发的约束。
+- user_data：用户提供但不构成授权的文件、文本和附件。
+- external_untrusted：网页、邮件、第三方 API、MCP 结果、外部仓库内容。
+- tool_observation：工具返回的事实数据，保留工具身份、时间和来源。
+- model_generated：模型生成的计划、参数和解释。
+
+对于敏感参数，应记录来源 Provenance。例如邮件收件人、支付账户、文件路径、外部 URL、数据库目标和数据导出目的地，必须能够追溯到用户请求或用户明确指定的数据源。模型自行推测出来的值，不应自动成为高风险动作的授权依据。
+
+[ToolFence](https://arxiv.org/abs/2609.37196) 提供了一个有价值的研究方向：在执行前将用户请求编译成 typed authorization blueprint，再用确定性 Monitor 检查工具和参数；当需要扩展能力时，再走受控的 capability grant。它强调不仅要检查“调用了哪个 Tool”，还要检查参数值来自哪里。这对防止攻击者在一个本来获准的 Tool 内替换收件人、目标 URL 或资源标识尤其重要。论文仍是研究工作，不应把其结果直接视为通用安全保证；Provenance 也不能单独判断多个合法候选值中哪一个真正符合用户意图。
+
+#### Tool、MCP、Plugin 和模型供应链
+
+工具 Schema、MCP Server、Agent Skill、Prompt Template、模型、Embedding Model、浏览器扩展、容器镜像和依赖包都属于运行时供应链。不要允许生产 Agent 在任务执行时随意从公共 Registry 下载并加载新工具。
+
+建议维护批准的工具目录，记录发布者、版本、哈希、签名、权限声明、网络目的地、依赖和升级记录。对 MCP Server 使用独立进程、最小权限和独立 Sandbox。工具发现和工具安装必须分开：Agent 可以搜索可用能力，但安装、启用和授予新权限应由可信控制面或管理员完成。
+
+容器镜像和 VM 基础镜像应固定版本或 Digest，扫描漏洞，生成 SBOM，验证签名和来源。模型版本、System Prompt、Tool Schema 和 Policy Bundle 也应进入变更管理；模型升级不能绕过回归安全测试。
+
+#### 数据保护、信息流和网络出口
+
+文件系统隔离只回答“进程能读什么”，不能回答“读到的数据能发到哪里”。因此要把数据分类、用途、接收方和出口策略结合起来。
+
+至少要区分：
+- 数据读取授权：Agent 能否看到该数据。
+- 数据处理授权：允许用什么模型、区域和服务处理。
+- 数据输出授权：允许写到哪个文件、对象存储或业务系统。
+- 数据传输授权：允许发送给哪个域名、租户、API 或人员。
+- 数据保留授权：日志、Memory、向量库、快照和模型上下文保留多久。
+
+网络策略应默认拒绝，并分别控制 Egress、Ingress 和 Host Loopback。域名 Allowlist 不应只在 Agent 代码里做字符串比较；要防止 DNS Rebinding、CNAME、重定向、私有 IP、云元数据地址、IPv6 表示差异和代理绕过。HTTP 代理只对遵守代理设置的客户端有效，不能假设任意 TCP、UDP、SSH 或自定义协议都会经过它。
+
+对云端 Agent，尤其需要阻断访问云实例元数据服务、Kubernetes API、节点管理端口、内部控制面和其他租户服务。对桌面 Agent，则需要避免把本地浏览器、VPN、企业内网和用户已经登录的业务系统全部暴露给任意脚本。
+
+#### Memory、快照和多 Agent 委托
+
+长期 Memory 是一个持久化攻击面。被污染的文档或工具结果可能进入 Summary、Embedding、用户偏好、Agent Profile 和任务快照，影响后续 Session。Memory 写入需要来源、身份、时间、任务和可信等级；敏感记忆应支持访问控制、版本、撤销和删除传播。
+
+不要跨用户或跨租户复用未经隔离的 Memory、Workspace、Browser Profile、Cookie Jar、文件缓存和 Sandbox Snapshot。快照恢复时要检查镜像来源、策略版本、凭证是否仍有效、网络身份是否重新绑定，以及快照中是否残留上一个任务的数据。
+
+多 Agent 架构要使用显式消息协议和授权委托。消息中应携带发送者身份、任务 ID、能力范围、有效期、数据来源和完整性保护。接收 Agent 不能把另一个 Agent 的自然语言消息视为授权；跨 Agent Tool Call 仍需重新执行 Policy Check。子 Agent 的权限通常应小于或等于父任务当前委托的权限。
+
+#### Human-in-the-loop、审计和应急停止
+
+Human Approval 应由 Orchestrator 强制执行，而不是寄希望于模型在 Prompt 中“记得询问用户”。审批界面必须展示实际目标、资源、接收方、内容摘要、数据分类、权限范围和执行后果。用户批准后，如果参数、脚本摘要、文件内容、收件人、URL 或 Sandbox Profile 发生变化，必须重新审批。
+
+审计至少记录：User / Agent / Task Identity、Session、Tool Name、规范化参数摘要、策略版本、决策结果、审批人、Sandbox Backend、镜像 / 代码版本、资源范围、网络目的地、开始结束时间、退出码、产物引用和异常事件。日志不应直接复制全部 Prompt、文件内容、Token、Cookie 或截图；需要保留证据时应使用独立加密存储、访问控制和保留策略。
+
+必须有独立于 Agent 自身的 Emergency Stop。停止按钮不能只发送一个取消消息给模型；它应该能取消任务、终止完整进程树、停止 Sandbox、撤销短期凭证、断开出站网络、冻结相关队列，并保留审计证据。云端还应支持按 Tenant、Agent、Task、Worker Pool 和工具供应商分别熔断。
+
+## 4. Read、Write、Bash 应该是三个独立的 Tool 边界
+
+前面讨论的是 Tool Permission、Resource Permission 和 Runtime Sandbox 三个安全层次。落到 Agent 的实际工具设计，还需要再做一次拆分：不要把文件读取、文件写入和脚本执行包装成一个通用的 `filesystem` 或 `terminal` 能力。
+
+这三种操作的权限语义不同。Read 是信息披露风险，Write 是数据完整性风险，Bash 则是通用代码执行风险。一个 Agent 获得读取权限，不应该因此获得写入权限；获得写入权限，也不应该自动获得执行刚写入脚本的权限。
+
+### 4.1 Read Tool：把读取做成只读、可审计的资源访问
+
+Read Tool 只负责读取已经授权的资源，不应提供任何执行或修改能力。建议把它拆成几个语义明确的操作：`list_directory`、`stat_file`、`read_file`、`search_files`。如果需要读取大文件，使用 offset、limit 或分页，不要一次把整个目录或文件树塞进上下文。
+
+权限判断至少包含主体、资源、操作和数据分类。比如某个 Agent 可以读取项目文档，却不能读取 `.env`、SSH Key、浏览器 Profile、云凭证或其他客户目录。目录列表本身也可能泄露文件名和项目结构，因此 `list` 不是天然无风险的操作。
+
+不要仅靠字符串前缀判断路径是否在工作区内。路径规范化后仍要处理符号链接、硬链接、挂载点和路径替换竞态。Linux 上可以研究 `openat2` 的 `RESOLVE_BENEATH`、`RESOLVE_NO_MAGICLINKS` 等约束；跨平台实现则应采用经过审查的目录句柄 / capability 文件访问层，或让文件服务本身运行在 OS Sandbox 内。Node.js 的普通 `realpath()` 后再 `readFile()` 并不能单独消除 TOCTOU 风险。
+
+另一个值得研究的方向是 [AgentFense](https://github.com/AjaxZhan/AgentFense)。它使用 FUSE 把真实文件系统投影成 Agent 可访问的视图，并区分 `none`、`view`、`read` 和 `write`：例如可以允许 Agent 看到目录结构，却不能读取文件内容；也可以让它读取代码，但不能修改。这个模型比简单的目录 Allowlist 更细，尤其适合需要把真实代码库暴露给 Agent、同时隐藏密钥和敏感目录的场景。项目目前规模较小，应把它视为值得验证的设计参考，而不是未经测试就直接采用的安全基座。它的文档还记录了 macOS + Docker Desktop 下 `view` 权限可能受 VirtioFS 限制而失效的情况；如果采用这类 FUSE / 虚拟文件系统方案，必须把目标 OS、文件系统驱动和容器组合纳入测试矩阵。
+
+### 4.2 Write / Edit Tool：写入不是执行，修改应该可回滚
+
+Write Tool 不应和 Bash 共用执行权限。它只允许对授权工作区执行明确的文件操作。建议至少区分：
+
+| 操作 | 建议语义 |
+| --- | --- |
+| `create_file` | 仅创建不存在的文件，默认不覆盖 |
+| `replace_file` | 替换已存在文件，要求版本 / ETag 匹配 |
+| `apply_patch` | 应用明确的 Diff，返回实际变更 |
+| `delete_file` | 单独授权，通常需要确认 |
+| `move_file` | 源和目标分别检查权限，不允许借移动绕过目录边界 |
+
+尤其要避免一个常见设计：提供 `write_file(path, content)`，然后把覆盖、创建、删除、目录创建等全部隐含在一个接口里。工具调用越通用，Policy Engine 越难判断实际影响。
+
+对于重要文件，推荐先写入任务级 staging area，再通过 Diff / Preview 展示变更。提交时检查目标路径权限和原文件版本，使用临时文件加原子替换，保留可恢复版本。审批应绑定目标路径、操作类型、内容摘要、任务 ID 和有效期；如果模型在审批后改变了内容或目标，必须重新审批。
+
+还要明确区分“写入脚本文件”和“执行脚本文件”。`write_file("cleanup.sh", ...)` 只产生一个文件，不应触发 Shell。脚本执行必须经过独立的 `execute_script` Tool 和独立的 Sandbox Policy。这样，文档 Agent 即使能够生成自动化脚本，也不会因此获得运行脚本的能力。
+
+### 4.3 Bash / Script Tool：把它当作不可信代码执行服务
+
+Bash 的能力远超普通 Tool。即使只允许一个 `bash` Tool，模型也可能通过 Shell、解释器、管道、重定向、子进程和系统命令访问大量宿主资源。因此，不能把命令黑名单或正则表达式当作主要安全机制。
+
+推荐把执行入口设计成一个独立的 Execution Service：
+
+- 输入是脚本内容、工作目录的资源标识、参数和明确的 Execution Profile，而不是任意宿主机路径。
+- 执行时创建独立进程或 Sandbox Session，不能在 Agent Runtime 主进程中执行任意脚本。
+- Sandbox 显式配置只读目录、可写目录、临时目录、网络策略、环境变量和进程限制。
+- 所有子进程继承相同或更严格的隔离策略。
+- 进程超时后终止整个进程组 / Job Object，而不是只结束最外层 Shell。
+- 限制 CPU、内存、PID 数、文件大小、输出字节数、并发数和执行时长。
+- 默认不注入宿主机环境变量、长期 Token、SSH Agent Socket、浏览器 Profile 和 Docker Socket。
+- 执行结果返回 stdout、stderr、exitCode 和产物引用；不要无限制地把所有输出写回模型上下文。
+
+对于桌面 Runtime，macOS 可以评估 Seatbelt，Linux 可以评估 Bubblewrap、Landlock 和 seccomp；需要跨平台统一管理时，可以研究 Anthropic Sandbox Runtime。需要完整 Linux 环境或运行不可信依赖时，再考虑 Docker、gVisor 或 microVM。
+
+如果脚本由模型生成，审批不应只显示“允许执行 Bash”。应展示脚本内容或 Diff、工作目录、读写范围、网络权限和执行限制。审批绑定脚本内容摘要及 Execution Profile；脚本内容、参数或权限发生变化时，之前的批准失效。
+
+### 4.4 有哪些项目值得对照
+
+| 项目 | 对 Read / Write 的设计 | 对 Bash / Script 的设计 | 适合借鉴的部分 |
+| --- | --- | --- | --- |
+| [AgentFense](https://github.com/AjaxZhan/AgentFense) | FUSE 文件视图，none / view / read / write | 通过受限文件系统配合普通 Shell 工作流 | 文件级能力授权、隐藏敏感资源 |
+| [easy-agent](https://github.com/ConardLi/easy-agent) | Read、Write、Edit、MultiEdit 等独立工具 | Bash / PowerShell 配合 allow / ask / deny 和 OS Sandbox | Tool 拆分、审批策略和执行隔离的组合 |
+| [Deep Agents](https://github.com/langchain-ai/deepagents) | Virtual Filesystem、声明式 read / write path permissions | 可插拔 Sandbox Backend 的 execute Tool | 文件权限和执行后端的职责分离 |
+| [Anthropic Sandbox Runtime](https://github.com/anthropics/sandbox-runtime) | 不负责 Agent 级文件 Tool 语义 | 对任意进程实施 OS 级文件和网络限制 | 作为真实 Shell / MCP 进程的隔离层 |
+| [just-bash](https://github.com/vercel-labs/just-bash) | 虚拟文件系统上的受控读写 | TypeScript 实现的 Shell 语义，不启动真实宿主 Shell | 低风险任务的受限命令环境 |
+
+这里有两个容易误读的地方。第一，Deep Agents 的文件权限规则并不自动约束 Sandbox Backend 中的任意代码执行；其文档明确要求 Sandbox Backend 自己承担执行侧策略。另外，它的路径规则按声明顺序 first-match-wins，且没有匹配规则时默认允许，因此生产策略应明确写出最后的 catch-all deny，避免遗漏路径变成默认放行。第二，AgentFense 的 FUSE 文件视图能把文件访问权限落实到文件系统层，但它不能替代网络隔离、进程限制和凭证保护。工具权限和执行权限仍需分别配置。
+
+[easy-agent](https://github.com/ConardLi/easy-agent) 是一个更完整的 Agent Harness 参考：它把 Read / Write / Edit / Bash 做成不同工具，并组合权限规则、OS Sandbox、MCP 和子 Agent。它适合研究工具注册、授权和执行路径如何在一个 TypeScript Agent 中协作，但仍需按目标平台审查其 Sandbox 覆盖范围；项目文档列出的 Windows Shell Sandbox 能力与 macOS / Linux 并不相同。
+
+### 4.5 推荐的 Tool Contract
+
+可以把 Agent 暴露的接口收敛成以下几类。这里是 Runtime 的逻辑接口，不代表某个项目的现成 API：
+
+```typescript
+type ResourceRef = {
+  workspaceId: string;
+  resourceId: string; // Runtime 解析，不接受任意宿主机绝对路径
+};
+
+interface ReadTools {
+  listDirectory(ref: ResourceRef): Promise<DirectoryEntry[]>;
+  readFile(ref: ResourceRef, range?: { offset: number; limit: number }): Promise<FileContent>;
+  searchFiles(query: SearchQuery): Promise<SearchResult[]>;
+}
+
+interface WriteTools {
+  createFile(ref: ResourceRef, content: string): Promise<ChangeSet>;
+  applyPatch(ref: ResourceRef, patch: string, expectedVersion: string): Promise<ChangeSet>;
+  deleteFile(ref: ResourceRef, expectedVersion: string): Promise<ChangeSet>;
+  commitChangeSet(changeSetId: string, approval?: ApprovalRef): Promise<CommitResult>;
+}
+
+interface ExecutionTools {
+  executeScript(input: {
+    script: string;
+    workingDirectory: ResourceRef;
+    profile: "read-only" | "workspace-write" | "network-enabled";
+    timeoutSeconds?: number;
+  }): Promise<ExecutionResult>;
+}
+```
+
+这套接口刻意不提供 `execute(path)`，也不允许模型传入任意宿主机绝对路径。脚本执行可以使用临时脚本文件，也可以通过标准输入传给固定的 Shell 入口；无论哪种方式，执行目录、挂载范围和权限都由 Runtime 决定。
+
+权限策略应该在 Tool 层和执行后端各检查一次：Tool 层判断这个 Agent 是否能对这个资源发起这个动作；执行后端判断实际进程是否能访问该文件、网络或系统资源。不能把前一层的授权结果当成后一层的隔离保证。
+
+![Read、Write、Bash 三类 Tool 的独立安全边界](/diagrams/agent-runtime-tool-boundaries.svg)
+
+[查看 Read / Write / Bash 架构图（HTML）](/diagrams/agent-runtime-tool-boundaries.html)
+
+## 5. 值得研究的开源实现
+
+### 5.1 Anthropic Sandbox Runtime：最接近通用 Agent 执行隔离层
+
+项目：[anthropic-experimental/sandbox-runtime](https://github.com/anthropic-experimental/sandbox-runtime)  
+npm：[@anthropic-ai/sandbox-runtime](https://www.npmjs.com/package/@anthropic-ai/sandbox-runtime)
+
+Anthropic 将 Claude Code 使用的 Sandbox Runtime 独立开源。它不是 Agent Framework，也不是一个新的 Shell，而是把任意命令或进程放进操作系统提供的限制环境中。项目 README 明确列出 Agent、Bash 命令和本地 MCP Server 等使用场景。
+
+它的实现思路是复用各操作系统的原生安全机制：
+
+| 平台 | 主要实现 |
+| --- | --- |
+| macOS | sandbox-exec 与动态生成的 Seatbelt Profile |
+| Linux | Bubblewrap、namespace 隔离及受控网络代理 |
+| Windows | 独立本地沙箱用户、受限 Token、NTFS ACL 和 Windows Filtering Platform 出站规则 |
+
+文件系统和网络限制需要一起考虑。文件系统采用读写分离策略：写入默认拒绝，只显式开放工作目录和临时目录；读取则可以通过拒绝敏感区域、再开放必要路径的方式配置。网络默认拒绝，通过 HTTP / SOCKS 代理限制允许访问的域名。Unix Socket 等本地 IPC 也有独立限制能力。
+
+一个很实用的设计是：它可以包裹整个 MCP Server，而不是只限制某个 MCP Tool。例如，原本直接启动的 Filesystem MCP Server，可以改成由 srt 启动。这样，Server 内部即使存在未预期的文件访问路径，也仍然受到进程级文件系统和网络策略约束。
+
+示意配置如下，具体字段应以所使用版本的 Schema 为准：
+
+~~~json
+{
+  "filesystem": {
+    "denyRead": ["~/.ssh", "~/.aws", "~/.config"],
+    "allowWrite": ["./workspace", "/tmp"],
+    "denyWrite": ["./workspace/.env"]
+  },
+  "network": {
+    "allowedDomains": [
+      "api.openai.com",
+      "api.anthropic.com"
+    ],
+    "deniedDomains": []
+  }
+}
+~~~
+
+Node.js Runtime 可以把它作为进程启动边界使用，也可以通过 Library API 集成。它的价值在于：Runtime 不必自己实现 Seatbelt、Bubblewrap 或 Windows Filtering Platform 的底层规则，而是把策略交给一个专门的 Sandbox Runtime。
+
+需要注意的是，项目仍标注为 Beta Research Preview，API 和配置格式可能变化。它也不是万能的 VM：不同平台的隔离原语和已知限制不同，网络代理、系统服务代发流量、凭证暴露以及宿主机本身的安全仍需单独审查。引入时应针对目标 OS、Node 版本和实际工具链做逃逸测试，而不是因为命令成功启动就认为隔离已生效。
+
+### 5.2 OpenAI Codex Sandbox：值得借鉴的权限模型和平台实现
+
+项目：[openai/codex](https://github.com/openai/codex)  
+工程文章：[Inside the Codex sandbox](https://openai.com/index/inside-the-codex-sandbox/)
+
+Codex Sandbox 的特点是：不把所有命令搬进容器，而是尽可能利用当前操作系统的隔离机制，让 Agent 在用户现有的开发环境中工作。对于依赖本机 SDK、原生工具链或桌面模拟器的开发任务，这种方式比 Docker 更容易保留宿主机开发环境。
+
+Codex 将 Sandbox 权限组织成 Permission Profile。以 Workspace 权限为例，工作区内可以写入，但 .git、.codex 等敏感目录保持只读；网络默认关闭，需要时再单独开放。这里有一个重要的取舍：为了兼容本机编译器和开发工具，文件读取范围可能比工作区更广。因此，限制写入和关闭网络能减少风险，却不能自动解决敏感文件读取问题。
+
+OpenAI 的工程文章还披露了一个很值得重视的细节：子进程继承父进程的 Sandbox 约束，约束覆盖由该命令启动的整个进程树。这是执行边界必须满足的基本要求。只包裹最外层 Shell，而让 Python、Node 或 MCP 子进程逃到沙箱之外，是不合格的实现。
+
+Codex 的价值主要有两方面：Permission Profile 是 Runtime 的权限配置模型，可以把只读、工作区写入和网络访问等能力组合成可理解的执行模式；OS Sandbox 则通过统一接口屏蔽 macOS、Linux 和 Windows 的平台差异，让调用方提交命令、工作目录、环境变量和权限配置，而不直接操作底层系统调用。
+
+需要区分：Codex 的实现是 Codex 项目的一部分，不应把它误认为一个已经独立发布、可直接 npm install 的通用 Sandbox SDK。对自建 Runtime 来说，更适合先研究其 Permission Profile、子进程继承和 fail-closed 思路，再决定复用哪一层代码或原生机制。
+
+### 5.3 just-bash：TypeScript 里的虚拟 Shell，而不是真正的 OS Sandbox
+
+项目：[vercel-labs/just-bash](https://github.com/vercel-labs/just-bash)
+
+如果 Runtime 本身是 Node.js / TypeScript，just-bash 很值得研究。它用 TypeScript 实现 Shell 语法和一组常用 Unix 命令，提供虚拟文件系统。Agent 可以执行 ls、cat、grep、sed、jq、管道和重定向，而不必直接启动宿主机 Bash。
+
+~~~typescript
+import { Bash } from "just-bash";
+
+const bash = new Bash({
+  files: {
+    "/workspace/report.md": "# Draft\n",
+    "/workspace/data.json": '{"count": 12}'
+  }
+});
+
+const result = await bash.exec(
+  "cat /workspace/data.json | jq '.count'"
+);
+
+console.log(result.stdout);
+~~~
+
+它适合文档处理、结构化数据检查、轻量脚本和受控文件操作。默认内存文件系统不直接访问磁盘；网络默认关闭；Python 和 JavaScript 执行能力也默认关闭。需要真实文件时，可以考虑它提供的其他文件系统实现，但安全边界随之改变。
+
+关键区别在于：just-bash 不提供 VM 隔离。它是在宿主 Node.js 进程内运行的虚拟 Shell。项目自己的 Security Model 也明确说明这一点：自定义命令回调是宿主侧扩展点，可信命令运行在嵌入进程中；JavaScript 不能强制终止任意宿主代码；需要对外部副作用提供硬隔离时，应放到可终止的 Worker 或独立进程中；对任意二进制执行，则应使用真正的 VM 或 OS Sandbox。
+
+因此，不应该把 just-bash 当成 Anthropic Sandbox Runtime 的替代品。它解决的是“不要给 Agent 一个真实 Shell”的问题，后者解决的是“真实进程不能越过 OS 限制”的问题。
+
+### 5.4 OpenHands Runtime：完整的 Docker 执行环境
+
+项目：[OpenHands](https://github.com/OpenHands/OpenHands)  
+架构说明：[OpenHands Runtime](https://docs.openhands.dev/openhands/usage/architecture/runtime)
+
+OpenHands 的 Runtime 采用 Client-Server 结构。Backend 将 Action 发送给 Runtime 容器中的执行服务，容器内运行 Bash、文件操作、Python、浏览器和插件，再把执行结果作为 Observation 返回给 Backend。
+
+这类方案适合需要完整开发环境的 Agent：有依赖安装、编译、测试、浏览器和多种执行工具，且希望每个任务或项目拥有独立环境。Docker 镜像和 Volume 机制也便于定义基础环境、持久化工作目录和只读挂载。
+
+它的代价是容器生命周期、镜像管理、资源配额、Volume 和网络策略都需要运营。更重要的是，容器并不等于独立内核：默认仍共享宿主机 Kernel。对抗高风险不可信代码时，必须谨慎配置 capabilities、seccomp、用户权限、设备、挂载和网络；更高隔离要求可以进一步使用 VM 或微型 VM。
+
+对于桌面 Agent，如果只是需要受控地读取和修改用户选定的文件夹，直接引入一整套 Docker Runtime 可能过重。若任务需要任意依赖安装、编译、浏览器和长时间运行的进程，容器化执行环境才更有价值。
+
+### 5.5 MCP Filesystem Server：目录授权有用，但不是进程沙箱
+
+项目：[modelcontextprotocol/servers — filesystem](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem)
+
+Filesystem MCP Server 在启动时通过命令行参数指定允许访问的目录，也支持只读模式和单独指定只读目录：
+
+~~~bash
+mcp-server-filesystem \
+  --read-only-dir ./reference \
+  ./workspace
+~~~
+
+它适合把文件操作以标准 MCP Tool 的形式交给 Agent。目录范围由 Server 自己检查，--read-only 会直接不注册写工具，而不是仅仅依赖模型不要调用写操作。
+
+但 MCP Server 仍然是一个普通进程。目录 Allowlist 只限制这个 Server 的文件操作，不会自动限制 Agent Runtime 中的 Bash、Python、其他 MCP Server 或插件。一个拥有宿主机高权限的进程，不能因为它只暴露了几个 MCP Tool，就被视为安全沙箱。
+
+Filesystem Server 的安全实现也需要持续审查。路径解析、符号链接、目录移动和协议 Roots 的行为都会影响真实授权范围。建议将命令行目录作为管理员或宿主侧确定的上限；客户端提供的工作区只能缩小范围，不能扩大范围。即使使用只读目录，也应在 OS 文件权限或容器只读挂载层再加一道保护。
+
+## 6. 不同部署环境的安全边界
+
+通用策略可以复用，但执行隔离不能只靠一套抽象接口。桌面端依赖操作系统权限模型，云端需要处理租户和凭证隔离，Kubernetes 还要约束 Pod 与节点，而 GUI VM 必须把显示、输入和 Host Integration 纳入威胁模型。
+
+![Agent Runtime 四类部署环境的安全边界](/diagrams/agent-runtime-deployment-boundaries.svg)
+
+[查看部署环境架构图（HTML）](/diagrams/agent-runtime-deployment-boundaries.html)
+
+### 6.1 桌面端：Windows / macOS 本机 Agent
+
+桌面端的最大特点是 Agent 与真实用户环境距离很近。它可能继承用户的文件权限、浏览器登录态、SSH Agent、VPN、开发工具链、剪贴板和桌面会话。即使 Agent 只在本地运行，风险也不等于低。
+
+**进程与用户权限。** 桌面主应用负责 UI、身份、审批和策略；模型生成的代码、Shell、第三方 MCP Server 和浏览器 Worker 应尽可能在独立进程或 Sandbox 中运行。不要以管理员 / root 启动整个 Agent。需要安装驱动、配置系统服务或申请更高权限时，应把这类操作与普通任务分开，并通过操作系统授权流程完成。
+
+**macOS。** Apple App Sandbox 通过 Entitlements 限制应用访问文件、网络、硬件和用户数据；TCC 则对 Accessibility、Screen Recording、Input Monitoring、Apple Events、Camera、Microphone 等敏感能力进行用户授权。桌面自动化需要的权限可能非常强：Accessibility 可以让应用观察和驱动其他应用，Screen Recording 会暴露屏幕内容，Input Monitoring 和合成事件能力会扩大键鼠控制范围。不要为了让 Agent “方便工作”而一次性申请所有权限；应按功能逐项解释用途，并将 GUI Automation Broker 与 Shell Sandbox 分开。被授权的主应用也不意味着所有子进程都应自动获得相同能力，必须测试签名身份、TCC 授权归属和进程继承行为。
+
+参考：[Apple App Sandbox](https://developer.apple.com/documentation/security/app_sandbox)、[Resetting access to protected resources in macOS](https://developer.apple.com/documentation/xcode/resetting-access-to-protected-resources-in-macos)。
+
+**Windows。** 使用普通用户 Token 运行 Agent。AppContainer、低完整性进程、Windows Sandbox、Restricted Token、ACL 和 Job Object 解决的问题不同，不能混为一个“Windows Sandbox”概念。Job Object 主要负责进程树和资源管理，不单独构成文件与网络安全边界。UI Automation 还涉及 UIPI 和 Integrity Level：UIAccess 是面向辅助技术的特殊能力，需要签名和受保护安装位置，不应作为普通 Agent 获得更高权限窗口控制的通用开关。Agent 不应试图绕过 UAC Secure Desktop，也不应通过模拟点击来批准管理员授权。
+
+参考：[Windows application isolation](https://learn.microsoft.com/en-us/windows/security/book/application-security-application-isolation)、[Security Considerations for Assistive Technologies](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-securityoverview)。
+
+**文件与凭证。** 默认只允许用户显式选择的 Workspace。不要默认开放整个 Home、Documents、Downloads、浏览器 Profile、SSH、云 CLI 配置和密码管理器目录。系统 Keychain / Credential Manager 应由 Host Credential Broker 使用，不能把密钥导出到脚本环境。对于企业桌面，还应考虑设备合规、磁盘加密、端点检测、应用签名、自动更新和撤销机制。
+
+**GUI 自动化。** 屏幕截图、OCR、Accessibility Tree 和浏览器 DOM 都是输入数据，不是可信指令。网页可能通过隐藏文本、覆盖层、弹窗、伪造系统对话框或图片内容诱导 Agent 点击。建议优先使用有明确 API 和权限模型的集成；必须使用屏幕控制时，把截图采集、窗口选择、键鼠注入和敏感动作确认放进独立的 GUI Broker。限制可控制的应用和窗口；对发送邮件、付款、发布、删除、授权、安装软件等动作，显示结构化预览并由用户确认。不要把系统密码、MFA Code、恢复码和密码管理器主密码交给模型处理。
+
+桌面端尤其需要区分两类 Sandbox：Script Sandbox 限制 Shell 和进程；GUI Session Sandbox 限制 Agent 可见和可操作的桌面环境。前者不能自动约束后者。如果 GUI Agent 运行在真实用户桌面，它看到的可能是用户的邮件、内部系统、个人浏览器和管理员窗口。高风险自动化应使用独立低权限 OS 账户或独立 VM，而不是直接操作用户的日常桌面。
+
+### 6.2 云端 Agent Runtime：多租户、凭证和控制面隔离
+
+云端运行环境面临的主要风险不是本地用户目录，而是多租户、云身份、网络横向移动、共享 Worker、持久化存储和控制面暴露。
+
+**控制面与执行面分离。** Orchestrator、Policy Engine、Session API、Credential Broker 和审计服务属于可信控制面；Shell、Browser、MCP、Python 和用户代码属于不可信执行面。执行 Worker 不应直接持有管理集群、调度系统或数据库的高权限凭证。控制面向 Worker 发放短期任务凭证和窄范围资源引用，Worker 不能反向修改租户策略。
+
+**租户隔离。** 至少按 Tenant / User / Task 隔离 Workspace、对象存储 Prefix、缓存、向量库、浏览器 Profile、临时文件和日志访问。对于高风险或高价值租户，使用独立 Worker、节点池、账号或云项目；不能只依赖应用层在 SQL 查询中追加 Tenant ID。对共享 Worker Pool，要明确每次任务前后的清理、进程终止、临时凭证撤销和文件系统重置。
+
+**云身份与凭证。** 每个 Worker / Task 使用独立 Workload Identity，默认不挂载管理级 Service Account。需要访问云资源时，通过 IAM 绑定和短期令牌授予最小权限。外部 SaaS 凭证由 Credential Broker 或 Egress Gateway 注入；不要把云服务账号 JSON、长效 API Key、SSH 私钥和数据库密码写入镜像、环境变量或快照。
+
+**网络出口。** Worker 默认不应直接访问互联网、云元数据、集群 API、控制面、内部管理服务或其他租户网段。通过 Egress Gateway / Proxy 做域名、IP、端口、协议和身份检查；对于上传、下载和 Webhook，记录目标、数据分类和字节数。DNS、重定向、私网地址、IPv6 和代理旁路都要纳入负向测试。
+
+**弹性和资源控制。** 每个 Task 要有 CPU、Memory、磁盘、PID、GPU、带宽、执行时间、并发和成本预算。设置租户级配额、队列长度和速率限制，防止 Agent 无限循环、递归调用、并发爆炸或恶意构造超大输出。执行 Worker 应可回收、可重建，控制面必须能在 Worker 卡死或失联时撤销身份和清理资源。
+
+**日志与数据驻留。** 对模型供应商、推理区域、日志、Trace、截图、附件和 Memory 明确数据处理区域和保留周期。调试日志不应成为第二个数据湖；对敏感内容进行脱敏或引用化存储，限制安全团队以外的访问，并支持按 Tenant / User / Task 进行审计和删除。
+
+### 6.3 Kubernetes：从 Pod Security 到真正的 Sandbox Runtime
+
+Kubernetes 提供调度、资源和网络策略，但普通 Pod 并不等于强安全沙箱。默认容器通常仍共享 Node Kernel；同一集群中的 Namespace 也不自动构成完整的多租户安全边界。
+
+**基础 Pod Hardening。** 生产 Agent Worker 应采用非 root 用户，runAsNonRoot: true，allowPrivilegeEscalation: false，readOnlyRootFilesystem: true，删除不需要的 Linux Capabilities，配置 Seccomp，并按节点能力使用 AppArmor 或 SELinux。避免 privileged: true、hostPID、hostIPC、hostNetwork、不受控 hostPath、Docker Socket 和宿主机设备挂载。Namespace 应强制适当的 Pod Security Standards，不能只靠开发者自觉填写 SecurityContext。
+
+**Service Account 与 RBAC。** 不要使用默认 ServiceAccount；没有访问 Kubernetes API 需求的 Worker 设置 automountServiceAccountToken: false。需要 API 权限时，为具体 Agent Workload 建立独立 ServiceAccount 和最小 RBAC，禁止普通执行 Pod 创建或修改 Role、ClusterRole、Webhook、Node、Namespace 和高权限 Workload。用 Admission Policy / Gatekeeper / Kyverno 等阻止危险 PodSpec。
+
+**网络。** Namespace 或 Pod 默认拒绝 Ingress / Egress，再明确开放 DNS、模型 Endpoint、Artifact Store 和业务 API。NetworkPolicy 通常主要约束 L3/L4；域名级策略需要 CNI 或专门 Egress Gateway 的支持。必须测试 Pod 能否访问 Node IP、云元数据、Kubernetes API、其他 Namespace、内部 Load Balancer 和私有服务。不要假设配置了 NetworkPolicy 就一定有实际 enforcement，先验证集群 CNI 是否支持并启用。
+
+**存储和 Secret。** Workspace 使用任务级 PVC、临时卷或独立对象存储 Prefix。只读基础镜像与只读数据集分开挂载，输出写入专用目录。Secret 优先通过外部 Secret Store / CSI 或短期身份注入，避免把凭证放入 ConfigMap、镜像层或可被其他 Pod 读取的共享卷。etcd Secret 加密、API Audit Log 和 Secret 访问审计都应纳入集群基线。
+
+**Sandbox Runtime。** 对执行不可信代码的 Agent，评估 RuntimeClass：
+- [gVisor](https://gvisor.dev/docs/architecture_guide/security/) 使用用户态 Kernel 拦截和实现系统接口，减少应用直接触达宿主机 Kernel 的范围，通常启动更快、资源开销较低，但存在系统调用兼容性和硬件支持取舍。
+- [Kata Containers](https://katacontainers.io/) 通过轻量 VM 和独立 Guest Kernel 提供更强的 Kernel 隔离，适合需要更强租户隔离、又希望保留 Kubernetes 工作流的场景。
+- [Firecracker](https://github.com/firecracker-microvm/firecracker) 提供 microVM 边界，设计目标是把不可信 Guest 代码限制在多层信任区中。它不是一个完整桌面产品，也不等于开箱即用的 Kubernetes Runtime；还需要管理 VMM、jailer、seccomp、cgroups、网络、磁盘、快照和 Host API Socket。
+- 普通 runc / containerd Pod 适合可信服务和较低风险工作负载，不应不加区分地承载来自不同租户的任意恶意代码。
+
+**节点和集群隔离。** 高敏感租户、执行不可信代码的 Worker、控制面服务和基础设施组件应按风险分配独立 Node Pool / Cluster。使用 taints、tolerations、node affinity 和 admission policy 强制隔离，而不是仅靠调度偏好。限制节点上运行的 DaemonSet、容器运行时 Socket、CSI Driver 和宿主机管理接口。
+
+Google 在 2026 年的 [GKE AI Agent Workloads 架构文档](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/machine-learning/agent-workloads) 已经把 Agent Sandbox 作为专门的工作负载类型讨论，并区分两种模式：Agent Substrate 以 actor 为调度单元，多个 Agent Session 可复用 Worker Pool；Agent Sandbox 则为 Agent 分配专属 Pod。文档还比较 Cloud Hypervisor microVM 与 gVisor：microVM 有独立 Guest Kernel、隔离更强但启动和资源开销更高；gVisor 启动更快、兼容性和 GPU / TPU 支持更好，但 syscall 覆盖不同。
+
+这个实践有几个值得注意的细节：Agent Substrate 使用每个 Actor 的 SPIFFE X.509 Certificate 和 JWT，并通过 Egress Gateway 在请求路径注入凭证；Agent Sandbox 使用 Pod ServiceAccount / Workload Identity，Warm Pool 中的 Pod 可能共享身份，因此不同 Agent 或租户需要按身份拆分 Pool 或按需创建 Sandbox。Agent Sandbox 的 Secret 管理则需要 Kubernetes Secret / CSI 或自行部署代理，不能假设两种模式拥有同样的凭证隔离能力。它说明了一个重要原则：**隔离计算环境之外，还必须单独设计身份隔离、凭证交付和网络出口。**
+
+参考：[Kubernetes Application Security Checklist](https://kubernetes.io/docs/concepts/security/application-security-checklist/)、[Kubernetes Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/)、[Kubernetes Linux Kernel Security Constraints](https://kubernetes.io/docs/concepts/security/linux-kernel-security-constraints/)、[GKE Agent Workloads](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/machine-learning/agent-workloads)、[NIST SP 800-190](https://csrc.nist.gov/pubs/sp/800/190/final)。
+
+### 6.4 带桌面显示和操作能力的 VM：不要把显示通道当成安全边界
+
+有些 Agent 需要操作完整桌面应用，而不只是调用 API 或执行 Shell。此时通常会为每个任务或用户提供一台 Windows / Linux VM，通过 RDP、VNC、WebRTC 或自定义 Desktop Streaming 将画面传给 Agent，再把鼠标和键盘事件发送回 Guest。
+
+这类 VM 的优势是有独立 Guest OS、独立用户、浏览器和桌面会话；但如果 Host 与 Guest 之间开放了共享目录、剪贴板、USB、拖放、打印机、音频、浏览器 Cookie 或本机 Agent Socket，VM 隔离就会被这些集成通道削弱。
+
+**Guest 本身。** 使用经过加固和签名的 Golden Image，定期重建而不是长期手工维护。每个租户 / 任务使用独立 VM 或独立 Guest User；Agent 不使用 Guest Administrator / root。关闭不需要的服务、自动登录、远程管理入口和持久化凭证。浏览器使用独立、临时 Profile，不复用宿主机浏览器 Cookie、密码库或用户的企业 SSO 会话。
+
+**Host / Guest 集成。** 默认关闭共享剪贴板、共享文件夹、拖放、USB Passthrough、打印机、智能卡、宿主机凭证代理、共享浏览器 Profile 和不必要的 Guest Agent RPC。若业务必须传入文件，应通过 Host 控制的 Artifact Gateway，先做类型检查、恶意文件扫描和只读挂载；输出文件通过独立出口收集，不开放 Guest 对 Host 任意路径的写入。
+
+**显示和输入通道。** Display Gateway 只传输经过授权的画面，不应把整个 Host Desktop 暴露给 Guest。Input Gateway 只接受受控的键鼠事件，不应把 Host 的全局键盘、剪贴板或管理员桌面输入直接转发。RDP / VNC / WebRTC 通道需要身份认证、加密、会话绑定、短期访问票据和操作审计。会话结束后关闭通道、销毁临时凭证并清理 Guest 状态。
+
+**屏幕内容也是数据出口。** 截图可能包含客户数据、MFA Code、内部 URL、密码提示、聊天内容和后台管理信息。如果截图要发送到云端模型，就意味着这些信息离开 VM，不能因为它来自“屏幕”就绕过 DLP 和数据驻留策略。建议只采集指定窗口或虚拟桌面，按需截取，敏感区域遮蔽，限制截图保留时间，并记录截图被发送给哪个模型 Endpoint。
+
+**GUI Injection 与外部指令。** Agent 看到的弹窗、网页、PDF、聊天窗口和系统通知都可能包含攻击指令。GUI Agent 不应把屏幕上的“点击允许”“输入密码”“将文件上传到此处”等内容视为授权。对于登录、MFA、付款、发送、删除、安装、下载执行文件和权限变更等动作，应由独立的 Approval UI 确认，而不是让 Agent 自己点击确认。
+
+**VM 快照和恢复。** Snapshot 可能保留 Cookie、Token、浏览器历史、剪贴板、内存中的凭证、已打开文件和任务上下文。快照必须有租户和任务标签、加密、访问控制、保留期和销毁策略。恢复前检查快照来源和策略版本；不要把一个用户的 VM Snapshot 作为另一个用户的干净模板。通用 Golden Image 应在不含用户状态和密钥的条件下制作。
+
+还要区分 microVM 和桌面 VM。Firecracker 适合隔离 Linux 进程和服务，但它的设备模型是为轻量虚拟机设计的，不提供完整 Windows Desktop / GPU 桌面体验。需要真实 GUI 的任务，通常要选择支持图形栈和远程桌面的完整 VM / VDI 技术；不要因为“microVM 隔离更强”就把它当成桌面虚拟化方案。
+
+## 7. Copilot SDK 桌面端的安全接入
 
 如果 Agent Runtime 基于 GitHub Copilot SDK，桌面端同时支持 Windows 和 macOS，我不建议把安全层整体改写成 Rust。更合理的边界是：TypeScript 实现 Agent 控制面和工具服务，操作系统负责强制执行隔离策略；只有在某个平台缺少可靠的 Node.js API、需要调用原生安全接口时，才增加一个很小的原生 Helper。
 
@@ -460,7 +672,6 @@ interface SandboxBackend {
 
 启动执行前，Execution Service 应检查 Backend 能力是否满足 Profile 的要求；不满足就拒绝执行，而不是忽略不支持的限制。执行完成、超时或取消时，要清理整个进程树、临时目录和短期凭证。宿主机环境变量、SSH Agent Socket、浏览器 Profile、Docker Socket 和长期 Token 默认都不应进入 Sandbox。
 
-
 #### 2026 年值得加入评估的选项：Microsoft Execution Containers（MXC）
 
 项目：[microsoft/mxc](https://github.com/microsoft/mxc)；文档：[MXC architecture](https://learn.microsoft.com/en-us/windows/apps/develop/mxc/architecture)、[Policy](https://learn.microsoft.com/en-us/windows/apps/develop/mxc/policy)、[Platform support](https://learn.microsoft.com/en-us/windows/apps/develop/mxc/platform-support)。
@@ -493,240 +704,53 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 对于 Copilot SDK 桌面应用，最终推荐是 **TypeScript 控制面 + OS Sandbox 执行面**。Copilot Hook 负责拦截和决策，应用自己的 Tool Handler 负责资源授权，Sandbox Backend 负责让操作系统强制执行批准范围。不要把 Hook、命令白名单或 Rust 语言本身误认为安全边界。
 
+## 8. 容易被忽略的安全问题
 
-## 8. Agent Runtime 全生命周期安全架构：桌面、云端、Kubernetes 与 GUI VM
+**文件授权和数据授权不是一回事。** Agent 可以读取某个客户文件，不代表可以把它上传到任意外部网站。文件系统 Sandbox 只能限制文件访问，不能判断数据是否允许流向某个 SaaS 或模型服务。需要独立的数据分类、目的地策略和网络出口控制。
 
-前面的章节讨论了 Tool Permission、Read / Write / Bash 的边界，以及 Copilot SDK 桌面应用如何接入 OS Sandbox。但实际部署的 Agent Runtime 不止一种形态：它可能运行在用户的 Windows / macOS 桌面，运行在云端多租户执行服务，运行在 Kubernetes Pod，也可能进入一台有完整桌面和浏览器的虚拟机，通过截图、鼠标和键盘完成任务。
+**网络 Allowlist 不能只检查域名字符串。** DNS 解析、重定向、CNAME、IPv4/IPv6 表示差异、私有 IP 和代理绕行都会影响最终连接目标。尤其需要阻止 SSRF、云元数据访问和内网探测。
 
-这些形态不能只用“容器还是 VM”来区分。安全设计真正需要回答的是：谁拥有 Agent 的身份，Agent 能代表谁行动，哪些输入是不可信的，哪些资源可以读写，凭证如何被使用，GUI 和网络如何连接外部世界，任务状态如何持久化，以及发生异常时谁能立即停止它。
+**凭证不要通过环境变量“方便地传进去”。** 执行进程能读取的环境变量，通常也可能被脚本、子进程和日志意外暴露。需要访问下游系统时，应使用短期、窄范围的委托凭证或宿主侧 Credential Broker，不要把用户的长期 Token 和浏览器 Profile 直接挂载给 Agent。
 
-本章将安全边界拆成通用控制面和部署环境执行面。通用策略可以复用，但执行隔离必须按平台验证。
+**沙箱必须覆盖完整进程树。** Shell 启动 Python，Python 再启动 Node，Node 又启动子进程，所有后代都必须继承相同或更严格的限制。工具超时也不能只停止父进程，而留下仍在运行的子进程。
 
-### 8.1 威胁模型：Agent Runtime 的攻击面已经超出模型输入
+**文件写入最好默认可恢复。** 草稿写入、正式覆盖和删除应分开处理。通过临时文件、原子替换、版本快照和 Diff 审查，降低模型误操作的影响。对正式业务系统则优先提供有明确语义的 API，而不是开放数据库连接或通用 HTTP 写入。
 
-传统 Web 应用的威胁模型主要关注请求入口、身份认证、授权、数据访问和服务端执行。Agent Runtime 还增加了一个重要特征：系统会把来自不同信任等级的内容放进同一个推理循环，再由模型决定下一步调用哪个工具。
+## 8. 方案比较与选型
 
-用户指令、系统策略、邮件正文、网页、PDF、终端输出、MCP Tool Result、Agent Memory、子 Agent 消息，不能被视为同一种可信输入。攻击者不一定需要直接访问 Runtime；只要能影响 Agent 会读取的网页、邮件、仓库文件、工单或工具返回值，就可能改变 Agent 的后续动作。
-
-至少需要考虑以下攻击者和风险来源：
-
-| 风险来源 | 可能的攻击能力 | 典型目标 |
-| --- | --- | --- |
-| 恶意用户或租户 | 构造任务、上传文件、提交代码、诱导资源消耗 | 越权访问、跨租户读取、资源耗尽 |
-| 间接提示注入者 | 控制网页、邮件、文档、代码注释、图片或工具返回内容 | 劫持目标、诱导调用工具、数据外传 |
-| 恶意或被攻陷的 MCP / Plugin | 返回恶意工具描述、参数、结果，或在本地执行代码 | 读取凭证、扩大工具权限、横向移动 |
-| 恶意依赖与构建产物 | 包安装脚本、插件、浏览器扩展、容器镜像或更新包被替换 | RCE、供应链持久化、窃取构建凭证 |
-| 被攻陷的 Agent / 子 Agent | 借助委托关系、共享 Memory 或过宽 Token 访问其他系统 | 身份冒用、跨 Agent 权限提升 |
-| 恶意或失陷的外部服务 | 返回伪造结果、重定向请求、滥用回调和 Webhook | SSRF、凭证泄露、数据污染 |
-| 同机或同集群其他工作负载 | 利用共享内核、共享存储、网络和节点权限 | 容器逃逸、跨租户访问、侧信道 |
-| 内部人员或错误配置 | 过度授权、关闭审计、共享管理员凭证、错误恢复快照 | 隐蔽访问、长期权限残留 |
-
-需要保护的资产不只是文件和 Token。还包括用户身份、Agent 身份、OAuth 授权、云 Workload Identity、浏览器 Cookie、SSH Agent、桌面会话、剪贴板、截图、屏幕录制、持久化 Memory、任务快照、工具清单、策略版本、模型上下文、审计记录以及控制面本身。
-
-一个实用的威胁分析方法，是沿着 Agent 生命周期逐段问问题：
-
-1. **输入与上下文构建**：哪些内容由用户提供，哪些来自外部数据源？有没有把网页或文件中的指令误当成授权？
-2. **规划与决策**：Agent 能否改变原始任务目标？能否在任务执行中自行扩大权限或引入新工具？
-3. **工具选择与参数生成**：参数值来自用户请求、可信工具结果，还是模型猜测？收件人、账户、URL、文件路径和金额是否有可验证来源？
-4. **执行与副作用**：工具实际以什么身份运行？子进程、MCP Server、浏览器和 GUI 自动化是否继承了更大的宿主机权限？
-5. **结果与数据流**：敏感信息会进入模型上下文、日志、截图、外部 API 或共享存储吗？
-6. **状态与委托**：Session、Memory、快照和子 Agent 是否跨用户、跨租户或跨任务复用？权限能否及时撤销？
-7. **监控与恢复**：谁能识别异常行为、终止整个进程树、断开网络、撤销 Token 并保留取证证据？
-
-安全目标不是保证模型永远不犯错，而是确保模型犯错、被注入、工具被攻陷或某个执行组件失陷时，影响范围仍然受控。
-
-### 8.2 通用架构：把身份、策略、执行、数据和观测分开
-
-一个可运营的 Agent Runtime 至少需要五个逻辑平面。它们可以部署在同一个应用中，但不应共享不受约束的权限。
-
-| 平面 | 主要组件 | 必须回答的问题 |
-| --- | --- | --- |
-| Identity Plane | User Identity、Agent Identity、Workload Identity、Credential Broker | 谁在行动？代表谁？凭证能访问什么、何时失效？ |
-| Control Plane | Agent Orchestrator、Policy Engine、Approval、Tool Registry、Session Manager | 任务允许做什么？策略由谁批准？权限如何撤销？ |
-| Execution Plane | Tool Worker、Browser Worker、Script Sandbox、Container / VM | 进程实际能访问哪些文件、网络、设备和系统接口？ |
-| Data Plane | Workspace、Object Storage、Memory、RAG、Artifact Store、Secrets | 数据属于谁？可信等级如何标记？数据能流向哪里？ |
-| Observability Plane | Audit、Trace、Runtime Detection、Incident Response | 谁执行了什么？是否越权？能否追溯、终止和恢复？ |
-
-这五个平面之间要有明确的信任边界。Agent Orchestrator 不应该因为能调度任务，就自动拥有执行任务所需的全部凭证；Sandbox 不应该因为需要读取某个文件，就拿到整个用户 Home；Agent 不应该因为要调用一个 API，就直接获得长期用户 Token。
-
-建议建立以下不可破坏的安全不变量：
-
-- **权限由可信控制面授予，不由模型授予自己。** 模型可以提出工具调用和所需能力，但不能修改 Policy、扩大 Resource Scope 或选择更宽松的 Sandbox Backend。
-- **外部内容默认不可信。** 网页、邮件、文档、图片 OCR、终端输出和 Tool Result 中出现的命令或授权语句，不能自动变成用户授权。
-- **身份与凭证分离。** Agent 有自己的可审计身份；代表用户执行时使用显式、可撤销、范围受限的委托授权，而不是复制用户的长期凭证。
-- **策略与执行双重检查。** Tool 层判断动作是否获准，执行后端确保进程不能越过已批准的资源边界。
-- **默认拒绝，能力不足时失败关闭。** 某个后端无法执行必要的文件、网络或 UI 限制时，不允许自动退化为宿主机直接执行。
-- **所有高风险副作用可归因、可中止、可恢复。** 审批、执行、网络访问、身份和产物之间必须有可关联的记录。
-
-### 8.3 通用安全控制：不能只做 Prompt Filter
-
-#### 任务边界和自主程度
-
-不要给 Agent 一个无限期、无限目标的“自主工作”权限。每个 Task 应有明确的目标、可访问资源、允许动作、时间窗口、预算、最大步骤数、最大工具调用数和终止条件。任务完成、取消、超时或审批撤销后，临时能力应立即失效。
-
-可以将操作分成四个风险等级：
-
-| 等级 | 操作类型 | 典型动作 | 建议策略 |
+| 方案 | 主要隔离方式 | 适合场景 | 不能替代什么 |
 | --- | --- | --- | --- |
-| R0 | 观察和本地计算 | 读取已授权文件、搜索、计算、生成草稿 | 默认允许已授权范围，完整审计 |
-| R1 | 可恢复的本地变更 | 写入任务输出目录、创建草稿、修改可回滚文件 | 受限授权，必要时 Diff Preview |
-| R2 | 代码执行和外部通信 | Bash、Python、安装依赖、访问外部网站、调用 SaaS API | 独立 Sandbox、目的地策略、按任务审批 |
-| R3 | 高影响或不可逆动作 | 删除、付款、发送外部邮件、发布、生产变更、权限变更 | 明确的人类确认，绑定具体参数和结果，必要时双人审批 |
+| Anthropic Sandbox Runtime | OS 原生 Sandbox + 网络代理 | 包裹 Shell、脚本和 MCP Server | 业务级数据授权、完整 VM |
+| OpenAI Codex Sandbox | OS 原生 Sandbox + Permission Profile | 本机开发环境中的受限命令执行 | 独立 npm Sandbox SDK |
+| just-bash | TypeScript Shell + 虚拟文件系统 | 受控命令、文档和数据处理 | 任意宿主进程的 OS 隔离 |
+| OpenHands Runtime | Docker 容器 | 完整、可复现的 Agent 开发环境 | 独立 Guest Kernel 的 VM 隔离 |
+| MCP Filesystem Server | Tool 级目录授权 | 文件读写能力封装 | Shell、Python 和其他进程的限制 |
 
-风险等级不是简单按 Tool 名称决定。read_file 读取一个公开 README 和读取客户合同，风险不同；browser 打开公开网站和向外部发送客户数据，风险也不同。Policy Engine 应结合主体、动作、资源分类、数据来源、目标地址、任务目标和执行环境计算风险。
+这里没有一个项目能够单独解决 Agent 的全部安全问题。选择时首先看执行对象：如果只需要读写文件，优先提供受限文件服务；如果需要有限的 Shell 语义，考虑虚拟 Shell；如果要执行真实命令或 MCP Server，就需要 OS Sandbox；如果需要完整、可复现的开发环境，再考虑容器或 VM。
 
-#### 身份、授权和凭证
+## 9. 架构落地建议：按风险选择隔离强度
 
-Agent Identity 应成为一等安全主体，而不是把所有动作都记录为“某用户调用了模型”。至少区分：
+不需要把所有 Agent 都放进最重的 VM，也不应该让所有 Agent 共用一个普通 Node.js 进程。隔离强度应由数据敏感性、工具权限、租户信任、执行代码来源和可能的副作用决定。
 
-- User Principal：真实登录用户及其组织、租户和设备上下文。
-- Agent Principal：某个 Agent 实例、角色和版本。
-- Task Principal：当前任务的短期执行身份和权限集合。
-- Workload Identity：实际运行在进程、Pod、容器或 VM 中的工作负载身份。
-- Delegated Identity：代表用户访问外部业务系统时获得的受限委托身份。
+| 场景 | 建议运行形态 | 最低安全要求 |
+| --- | --- | --- |
+| 本地文档分析、只读知识问答 | 桌面 Host + Capability File Service | 用户选定目录、只读授权、外发策略、审计 |
+| 本地代码修改和测试 | 桌面 Host + 独立 Script Sandbox | Workspace 写入边界、子进程隔离、网络默认拒绝、Diff / 回滚 |
+| 本地 GUI 操作 | 独立 GUI Broker + 受限桌面会话 | 最小 TCC / UI 权限、独立 Browser Profile、高风险动作确认 |
+| 云端通用 Agent | 独立 Worker / Task Sandbox | 租户隔离、短期 Workload Identity、Egress Gateway、资源配额 |
+| K8s 中执行不可信代码 | Restricted Pod + gVisor / Kata / microVM | Pod Security、RBAC、默认拒绝网络、任务级存储和身份 |
+| 多租户浏览器 / 桌面自动化 | 独立 VM / VDI + Display Gateway | Guest 身份隔离、禁用 Host Integration、截图 DLP、会话销毁 |
+| 高敏感或对抗性代码执行 | 专用节点上的 microVM / VM，必要时独立云账号 | 独立 Kernel / VM、短期身份、严格网络出口、不可变镜像和完整审计 |
 
-每次授权应尽可能包含 subject、action、resource、purpose、audience、expiry 和 constraints。子 Agent 只能获得父任务明确委托的能力，不能继承父 Agent 的全部 Token。MCP Server 也应有独立身份，不能因为它由某个 Agent 启动就自动获得 Agent 的所有权限。
+一个值得坚持的原则是：**不要把“隔离强度”与“权限大小”混为一谈。** VM 并不会自动阻止数据外传；gVisor 不会自动替你管理 OAuth Token；Restricted Pod 不会自动防止 Prompt Injection；独立桌面也不会自动阻止 Agent 把截图发送给模型供应商。身份、授权、数据流、执行隔离和运维控制必须共同成立。
 
-凭证应由 Credential Broker 或受控代理提供。优先使用短期 Token、OAuth On-Behalf-Of、Workload Identity、SPIFFE / SPIRE 或云厂商的短期身份凭证。对脚本和浏览器进程，避免把长期 API Key 放在环境变量、命令行参数、工作目录或可读取文件中。需要出站认证时，可以由 Egress Gateway 在请求路径上注入短期凭证，避免把 Token 直接交给不可信执行环境。
+对基于 Copilot SDK 的桌面应用，可以先采用 TypeScript Policy Engine、独立 Tool Handler、MXC / Anthropic Sandbox Runtime 等成熟执行后端，再逐步增加 GUI Broker 和独立桌面 VM。云端和 Kubernetes 复用同一套 Policy / Resource / Approval 语义，但使用各自的 Workload Identity、Egress Gateway、Pod Security 和 Sandbox Runtime。VM 则把 Host / Guest、Display / Input 和共享设备通道作为独立安全边界。
 
-#### Prompt Injection、数据来源和参数溯源
+这才是可扩展的 Agent Runtime 安全架构：策略统一，身份可追溯，执行隔离按平台实现，数据流受控，失败可终止，安全效果通过真实副作用测试验证。
 
-Prompt Injection 不是单纯的输入清洗问题。攻击内容可能藏在 HTML、邮件引用、Markdown、PDF、代码注释、图片 OCR、终端输出、工具描述和 Agent Memory 中。即使输入过滤器漏掉了攻击，执行边界也应该阻止它完成未授权动作。
+## 10. 安全验证、上线 Checklist 与参考资料
 
-建议把内容来源和信任等级作为结构化元数据保存，而不是只把所有文本拼进一个 Prompt：
-
-- trusted_instruction：系统策略、经过认证的用户指令和应用控制面下发的约束。
-- user_data：用户提供但不构成授权的文件、文本和附件。
-- external_untrusted：网页、邮件、第三方 API、MCP 结果、外部仓库内容。
-- tool_observation：工具返回的事实数据，保留工具身份、时间和来源。
-- model_generated：模型生成的计划、参数和解释。
-
-对于敏感参数，应记录来源 Provenance。例如邮件收件人、支付账户、文件路径、外部 URL、数据库目标和数据导出目的地，必须能够追溯到用户请求或用户明确指定的数据源。模型自行推测出来的值，不应自动成为高风险动作的授权依据。
-
-[ToolFence](https://arxiv.org/abs/2609.37196) 提供了一个有价值的研究方向：在执行前将用户请求编译成 typed authorization blueprint，再用确定性 Monitor 检查工具和参数；当需要扩展能力时，再走受控的 capability grant。它强调不仅要检查“调用了哪个 Tool”，还要检查参数值来自哪里。这对防止攻击者在一个本来获准的 Tool 内替换收件人、目标 URL 或资源标识尤其重要。论文仍是研究工作，不应把其结果直接视为通用安全保证；Provenance 也不能单独判断多个合法候选值中哪一个真正符合用户意图。
-
-#### Tool、MCP、Plugin 和模型供应链
-
-工具 Schema、MCP Server、Agent Skill、Prompt Template、模型、Embedding Model、浏览器扩展、容器镜像和依赖包都属于运行时供应链。不要允许生产 Agent 在任务执行时随意从公共 Registry 下载并加载新工具。
-
-建议维护批准的工具目录，记录发布者、版本、哈希、签名、权限声明、网络目的地、依赖和升级记录。对 MCP Server 使用独立进程、最小权限和独立 Sandbox。工具发现和工具安装必须分开：Agent 可以搜索可用能力，但安装、启用和授予新权限应由可信控制面或管理员完成。
-
-容器镜像和 VM 基础镜像应固定版本或 Digest，扫描漏洞，生成 SBOM，验证签名和来源。模型版本、System Prompt、Tool Schema 和 Policy Bundle 也应进入变更管理；模型升级不能绕过回归安全测试。
-
-#### 数据保护、信息流和网络出口
-
-文件系统隔离只回答“进程能读什么”，不能回答“读到的数据能发到哪里”。因此要把数据分类、用途、接收方和出口策略结合起来。
-
-至少要区分：
-- 数据读取授权：Agent 能否看到该数据。
-- 数据处理授权：允许用什么模型、区域和服务处理。
-- 数据输出授权：允许写到哪个文件、对象存储或业务系统。
-- 数据传输授权：允许发送给哪个域名、租户、API 或人员。
-- 数据保留授权：日志、Memory、向量库、快照和模型上下文保留多久。
-
-网络策略应默认拒绝，并分别控制 Egress、Ingress 和 Host Loopback。域名 Allowlist 不应只在 Agent 代码里做字符串比较；要防止 DNS Rebinding、CNAME、重定向、私有 IP、云元数据地址、IPv6 表示差异和代理绕过。HTTP 代理只对遵守代理设置的客户端有效，不能假设任意 TCP、UDP、SSH 或自定义协议都会经过它。
-
-对云端 Agent，尤其需要阻断访问云实例元数据服务、Kubernetes API、节点管理端口、内部控制面和其他租户服务。对桌面 Agent，则需要避免把本地浏览器、VPN、企业内网和用户已经登录的业务系统全部暴露给任意脚本。
-
-#### Memory、快照和多 Agent 委托
-
-长期 Memory 是一个持久化攻击面。被污染的文档或工具结果可能进入 Summary、Embedding、用户偏好、Agent Profile 和任务快照，影响后续 Session。Memory 写入需要来源、身份、时间、任务和可信等级；敏感记忆应支持访问控制、版本、撤销和删除传播。
-
-不要跨用户或跨租户复用未经隔离的 Memory、Workspace、Browser Profile、Cookie Jar、文件缓存和 Sandbox Snapshot。快照恢复时要检查镜像来源、策略版本、凭证是否仍有效、网络身份是否重新绑定，以及快照中是否残留上一个任务的数据。
-
-多 Agent 架构要使用显式消息协议和授权委托。消息中应携带发送者身份、任务 ID、能力范围、有效期、数据来源和完整性保护。接收 Agent 不能把另一个 Agent 的自然语言消息视为授权；跨 Agent Tool Call 仍需重新执行 Policy Check。子 Agent 的权限通常应小于或等于父任务当前委托的权限。
-
-#### Human-in-the-loop、审计和应急停止
-
-Human Approval 应由 Orchestrator 强制执行，而不是寄希望于模型在 Prompt 中“记得询问用户”。审批界面必须展示实际目标、资源、接收方、内容摘要、数据分类、权限范围和执行后果。用户批准后，如果参数、脚本摘要、文件内容、收件人、URL 或 Sandbox Profile 发生变化，必须重新审批。
-
-审计至少记录：User / Agent / Task Identity、Session、Tool Name、规范化参数摘要、策略版本、决策结果、审批人、Sandbox Backend、镜像 / 代码版本、资源范围、网络目的地、开始结束时间、退出码、产物引用和异常事件。日志不应直接复制全部 Prompt、文件内容、Token、Cookie 或截图；需要保留证据时应使用独立加密存储、访问控制和保留策略。
-
-必须有独立于 Agent 自身的 Emergency Stop。停止按钮不能只发送一个取消消息给模型；它应该能取消任务、终止完整进程树、停止 Sandbox、撤销短期凭证、断开出站网络、冻结相关队列，并保留审计证据。云端还应支持按 Tenant、Agent、Task、Worker Pool 和工具供应商分别熔断。
-
-### 8.4 桌面端：Windows / macOS 本机 Agent
-
-桌面端的最大特点是 Agent 与真实用户环境距离很近。它可能继承用户的文件权限、浏览器登录态、SSH Agent、VPN、开发工具链、剪贴板和桌面会话。即使 Agent 只在本地运行，风险也不等于低。
-
-**进程与用户权限。** 桌面主应用负责 UI、身份、审批和策略；模型生成的代码、Shell、第三方 MCP Server 和浏览器 Worker 应尽可能在独立进程或 Sandbox 中运行。不要以管理员 / root 启动整个 Agent。需要安装驱动、配置系统服务或申请更高权限时，应把这类操作与普通任务分开，并通过操作系统授权流程完成。
-
-**macOS。** Apple App Sandbox 通过 Entitlements 限制应用访问文件、网络、硬件和用户数据；TCC 则对 Accessibility、Screen Recording、Input Monitoring、Apple Events、Camera、Microphone 等敏感能力进行用户授权。桌面自动化需要的权限可能非常强：Accessibility 可以让应用观察和驱动其他应用，Screen Recording 会暴露屏幕内容，Input Monitoring 和合成事件能力会扩大键鼠控制范围。不要为了让 Agent “方便工作”而一次性申请所有权限；应按功能逐项解释用途，并将 GUI Automation Broker 与 Shell Sandbox 分开。被授权的主应用也不意味着所有子进程都应自动获得相同能力，必须测试签名身份、TCC 授权归属和进程继承行为。
-
-参考：[Apple App Sandbox](https://developer.apple.com/documentation/security/app_sandbox)、[Resetting access to protected resources in macOS](https://developer.apple.com/documentation/xcode/resetting-access-to-protected-resources-in-macos)。
-
-**Windows。** 使用普通用户 Token 运行 Agent。AppContainer、低完整性进程、Windows Sandbox、Restricted Token、ACL 和 Job Object 解决的问题不同，不能混为一个“Windows Sandbox”概念。Job Object 主要负责进程树和资源管理，不单独构成文件与网络安全边界。UI Automation 还涉及 UIPI 和 Integrity Level：UIAccess 是面向辅助技术的特殊能力，需要签名和受保护安装位置，不应作为普通 Agent 获得更高权限窗口控制的通用开关。Agent 不应试图绕过 UAC Secure Desktop，也不应通过模拟点击来批准管理员授权。
-
-参考：[Windows application isolation](https://learn.microsoft.com/en-us/windows/security/book/application-security-application-isolation)、[Security Considerations for Assistive Technologies](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-securityoverview)。
-
-**文件与凭证。** 默认只允许用户显式选择的 Workspace。不要默认开放整个 Home、Documents、Downloads、浏览器 Profile、SSH、云 CLI 配置和密码管理器目录。系统 Keychain / Credential Manager 应由 Host Credential Broker 使用，不能把密钥导出到脚本环境。对于企业桌面，还应考虑设备合规、磁盘加密、端点检测、应用签名、自动更新和撤销机制。
-
-**GUI 自动化。** 屏幕截图、OCR、Accessibility Tree 和浏览器 DOM 都是输入数据，不是可信指令。网页可能通过隐藏文本、覆盖层、弹窗、伪造系统对话框或图片内容诱导 Agent 点击。建议优先使用有明确 API 和权限模型的集成；必须使用屏幕控制时，把截图采集、窗口选择、键鼠注入和敏感动作确认放进独立的 GUI Broker。限制可控制的应用和窗口；对发送邮件、付款、发布、删除、授权、安装软件等动作，显示结构化预览并由用户确认。不要把系统密码、MFA Code、恢复码和密码管理器主密码交给模型处理。
-
-桌面端尤其需要区分两类 Sandbox：Script Sandbox 限制 Shell 和进程；GUI Session Sandbox 限制 Agent 可见和可操作的桌面环境。前者不能自动约束后者。如果 GUI Agent 运行在真实用户桌面，它看到的可能是用户的邮件、内部系统、个人浏览器和管理员窗口。高风险自动化应使用独立低权限 OS 账户或独立 VM，而不是直接操作用户的日常桌面。
-
-### 8.5 云端 Agent Runtime：多租户、凭证和控制面隔离
-
-云端运行环境面临的主要风险不是本地用户目录，而是多租户、云身份、网络横向移动、共享 Worker、持久化存储和控制面暴露。
-
-**控制面与执行面分离。** Orchestrator、Policy Engine、Session API、Credential Broker 和审计服务属于可信控制面；Shell、Browser、MCP、Python 和用户代码属于不可信执行面。执行 Worker 不应直接持有管理集群、调度系统或数据库的高权限凭证。控制面向 Worker 发放短期任务凭证和窄范围资源引用，Worker 不能反向修改租户策略。
-
-**租户隔离。** 至少按 Tenant / User / Task 隔离 Workspace、对象存储 Prefix、缓存、向量库、浏览器 Profile、临时文件和日志访问。对于高风险或高价值租户，使用独立 Worker、节点池、账号或云项目；不能只依赖应用层在 SQL 查询中追加 Tenant ID。对共享 Worker Pool，要明确每次任务前后的清理、进程终止、临时凭证撤销和文件系统重置。
-
-**云身份与凭证。** 每个 Worker / Task 使用独立 Workload Identity，默认不挂载管理级 Service Account。需要访问云资源时，通过 IAM 绑定和短期令牌授予最小权限。外部 SaaS 凭证由 Credential Broker 或 Egress Gateway 注入；不要把云服务账号 JSON、长效 API Key、SSH 私钥和数据库密码写入镜像、环境变量或快照。
-
-**网络出口。** Worker 默认不应直接访问互联网、云元数据、集群 API、控制面、内部管理服务或其他租户网段。通过 Egress Gateway / Proxy 做域名、IP、端口、协议和身份检查；对于上传、下载和 Webhook，记录目标、数据分类和字节数。DNS、重定向、私网地址、IPv6 和代理旁路都要纳入负向测试。
-
-**弹性和资源控制。** 每个 Task 要有 CPU、Memory、磁盘、PID、GPU、带宽、执行时间、并发和成本预算。设置租户级配额、队列长度和速率限制，防止 Agent 无限循环、递归调用、并发爆炸或恶意构造超大输出。执行 Worker 应可回收、可重建，控制面必须能在 Worker 卡死或失联时撤销身份和清理资源。
-
-**日志与数据驻留。** 对模型供应商、推理区域、日志、Trace、截图、附件和 Memory 明确数据处理区域和保留周期。调试日志不应成为第二个数据湖；对敏感内容进行脱敏或引用化存储，限制安全团队以外的访问，并支持按 Tenant / User / Task 进行审计和删除。
-
-### 8.6 Kubernetes：从 Pod Security 到真正的 Sandbox Runtime
-
-Kubernetes 提供调度、资源和网络策略，但普通 Pod 并不等于强安全沙箱。默认容器通常仍共享 Node Kernel；同一集群中的 Namespace 也不自动构成完整的多租户安全边界。
-
-**基础 Pod Hardening。** 生产 Agent Worker 应采用非 root 用户，runAsNonRoot: true，allowPrivilegeEscalation: false，readOnlyRootFilesystem: true，删除不需要的 Linux Capabilities，配置 Seccomp，并按节点能力使用 AppArmor 或 SELinux。避免 privileged: true、hostPID、hostIPC、hostNetwork、不受控 hostPath、Docker Socket 和宿主机设备挂载。Namespace 应强制适当的 Pod Security Standards，不能只靠开发者自觉填写 SecurityContext。
-
-**Service Account 与 RBAC。** 不要使用默认 ServiceAccount；没有访问 Kubernetes API 需求的 Worker 设置 automountServiceAccountToken: false。需要 API 权限时，为具体 Agent Workload 建立独立 ServiceAccount 和最小 RBAC，禁止普通执行 Pod 创建或修改 Role、ClusterRole、Webhook、Node、Namespace 和高权限 Workload。用 Admission Policy / Gatekeeper / Kyverno 等阻止危险 PodSpec。
-
-**网络。** Namespace 或 Pod 默认拒绝 Ingress / Egress，再明确开放 DNS、模型 Endpoint、Artifact Store 和业务 API。NetworkPolicy 通常主要约束 L3/L4；域名级策略需要 CNI 或专门 Egress Gateway 的支持。必须测试 Pod 能否访问 Node IP、云元数据、Kubernetes API、其他 Namespace、内部 Load Balancer 和私有服务。不要假设配置了 NetworkPolicy 就一定有实际 enforcement，先验证集群 CNI 是否支持并启用。
-
-**存储和 Secret。** Workspace 使用任务级 PVC、临时卷或独立对象存储 Prefix。只读基础镜像与只读数据集分开挂载，输出写入专用目录。Secret 优先通过外部 Secret Store / CSI 或短期身份注入，避免把凭证放入 ConfigMap、镜像层或可被其他 Pod 读取的共享卷。etcd Secret 加密、API Audit Log 和 Secret 访问审计都应纳入集群基线。
-
-**Sandbox Runtime。** 对执行不可信代码的 Agent，评估 RuntimeClass：
-- [gVisor](https://gvisor.dev/docs/architecture_guide/security/) 使用用户态 Kernel 拦截和实现系统接口，减少应用直接触达宿主机 Kernel 的范围，通常启动更快、资源开销较低，但存在系统调用兼容性和硬件支持取舍。
-- [Kata Containers](https://katacontainers.io/) 通过轻量 VM 和独立 Guest Kernel 提供更强的 Kernel 隔离，适合需要更强租户隔离、又希望保留 Kubernetes 工作流的场景。
-- [Firecracker](https://github.com/firecracker-microvm/firecracker) 提供 microVM 边界，设计目标是把不可信 Guest 代码限制在多层信任区中。它不是一个完整桌面产品，也不等于开箱即用的 Kubernetes Runtime；还需要管理 VMM、jailer、seccomp、cgroups、网络、磁盘、快照和 Host API Socket。
-- 普通 runc / containerd Pod 适合可信服务和较低风险工作负载，不应不加区分地承载来自不同租户的任意恶意代码。
-
-**节点和集群隔离。** 高敏感租户、执行不可信代码的 Worker、控制面服务和基础设施组件应按风险分配独立 Node Pool / Cluster。使用 taints、tolerations、node affinity 和 admission policy 强制隔离，而不是仅靠调度偏好。限制节点上运行的 DaemonSet、容器运行时 Socket、CSI Driver 和宿主机管理接口。
-
-Google 在 2026 年的 [GKE AI Agent Workloads 架构文档](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/machine-learning/agent-workloads) 已经把 Agent Sandbox 作为专门的工作负载类型讨论，并区分两种模式：Agent Substrate 以 actor 为调度单元，多个 Agent Session 可复用 Worker Pool；Agent Sandbox 则为 Agent 分配专属 Pod。文档还比较 Cloud Hypervisor microVM 与 gVisor：microVM 有独立 Guest Kernel、隔离更强但启动和资源开销更高；gVisor 启动更快、兼容性和 GPU / TPU 支持更好，但 syscall 覆盖不同。
-
-这个实践有几个值得注意的细节：Agent Substrate 使用每个 Actor 的 SPIFFE X.509 Certificate 和 JWT，并通过 Egress Gateway 在请求路径注入凭证；Agent Sandbox 使用 Pod ServiceAccount / Workload Identity，Warm Pool 中的 Pod 可能共享身份，因此不同 Agent 或租户需要按身份拆分 Pool 或按需创建 Sandbox。Agent Sandbox 的 Secret 管理则需要 Kubernetes Secret / CSI 或自行部署代理，不能假设两种模式拥有同样的凭证隔离能力。它说明了一个重要原则：**隔离计算环境之外，还必须单独设计身份隔离、凭证交付和网络出口。**
-
-参考：[Kubernetes Application Security Checklist](https://kubernetes.io/docs/concepts/security/application-security-checklist/)、[Kubernetes Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/)、[Kubernetes Linux Kernel Security Constraints](https://kubernetes.io/docs/concepts/security/linux-kernel-security-constraints/)、[GKE Agent Workloads](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/machine-learning/agent-workloads)、[NIST SP 800-190](https://csrc.nist.gov/pubs/sp/800/190/final)。
-
-### 8.7 带桌面显示和操作能力的 VM：不要把显示通道当成安全边界
-
-有些 Agent 需要操作完整桌面应用，而不只是调用 API 或执行 Shell。此时通常会为每个任务或用户提供一台 Windows / Linux VM，通过 RDP、VNC、WebRTC 或自定义 Desktop Streaming 将画面传给 Agent，再把鼠标和键盘事件发送回 Guest。
-
-这类 VM 的优势是有独立 Guest OS、独立用户、浏览器和桌面会话；但如果 Host 与 Guest 之间开放了共享目录、剪贴板、USB、拖放、打印机、音频、浏览器 Cookie 或本机 Agent Socket，VM 隔离就会被这些集成通道削弱。
-
-**Guest 本身。** 使用经过加固和签名的 Golden Image，定期重建而不是长期手工维护。每个租户 / 任务使用独立 VM 或独立 Guest User；Agent 不使用 Guest Administrator / root。关闭不需要的服务、自动登录、远程管理入口和持久化凭证。浏览器使用独立、临时 Profile，不复用宿主机浏览器 Cookie、密码库或用户的企业 SSO 会话。
-
-**Host / Guest 集成。** 默认关闭共享剪贴板、共享文件夹、拖放、USB Passthrough、打印机、智能卡、宿主机凭证代理、共享浏览器 Profile 和不必要的 Guest Agent RPC。若业务必须传入文件，应通过 Host 控制的 Artifact Gateway，先做类型检查、恶意文件扫描和只读挂载；输出文件通过独立出口收集，不开放 Guest 对 Host 任意路径的写入。
-
-**显示和输入通道。** Display Gateway 只传输经过授权的画面，不应把整个 Host Desktop 暴露给 Guest。Input Gateway 只接受受控的键鼠事件，不应把 Host 的全局键盘、剪贴板或管理员桌面输入直接转发。RDP / VNC / WebRTC 通道需要身份认证、加密、会话绑定、短期访问票据和操作审计。会话结束后关闭通道、销毁临时凭证并清理 Guest 状态。
-
-**屏幕内容也是数据出口。** 截图可能包含客户数据、MFA Code、内部 URL、密码提示、聊天内容和后台管理信息。如果截图要发送到云端模型，就意味着这些信息离开 VM，不能因为它来自“屏幕”就绕过 DLP 和数据驻留策略。建议只采集指定窗口或虚拟桌面，按需截取，敏感区域遮蔽，限制截图保留时间，并记录截图被发送给哪个模型 Endpoint。
-
-**GUI Injection 与外部指令。** Agent 看到的弹窗、网页、PDF、聊天窗口和系统通知都可能包含攻击指令。GUI Agent 不应把屏幕上的“点击允许”“输入密码”“将文件上传到此处”等内容视为授权。对于登录、MFA、付款、发送、删除、安装、下载执行文件和权限变更等动作，应由独立的 Approval UI 确认，而不是让 Agent 自己点击确认。
-
-**VM 快照和恢复。** Snapshot 可能保留 Cookie、Token、浏览器历史、剪贴板、内存中的凭证、已打开文件和任务上下文。快照必须有租户和任务标签、加密、访问控制、保留期和销毁策略。恢复前检查快照来源和策略版本；不要把一个用户的 VM Snapshot 作为另一个用户的干净模板。通用 Golden Image 应在不含用户状态和密钥的条件下制作。
-
-还要区分 microVM 和桌面 VM。Firecracker 适合隔离 Linux 进程和服务，但它的设备模型是为轻量虚拟机设计的，不提供完整 Windows Desktop / GPU 桌面体验。需要真实 GUI 的任务，通常要选择支持图形栈和远程桌面的完整 VM / VDI 技术；不要因为“microVM 隔离更强”就把它当成桌面虚拟化方案。
-
-### 8.8 安全验证：用真实副作用和状态变化测试，而不是只看模型回答
+### 10.1 安全验证：用真实副作用和状态变化测试，而不是只看模型回答
 
 安全评估不能只统计模型有没有说出危险的话，也不能只测 Prompt Injection Classifier 的准确率。一个 Agent 可能在文本层面拒绝了攻击，但另一个工具已经完成了数据外传；也可能模型接受了恶意指令，但执行边界成功阻止了真实副作用。
 
@@ -747,7 +771,7 @@ Google 在 2026 年的 [GKE AI Agent Workloads 架构文档](https://docs.cloud.
 
 每次安全回归都应同时执行正常用例和负向攻击用例。正常用例验证工具仍然可用；负向用例验证越权确实失败。只做负向测试会导致系统通过“全部拒绝”获得虚假的安全成绩。
 
-### 8.9 Agent Runtime Security Checklist
+### 10.2 Agent Runtime Security Checklist
 
 下面的清单适合作为架构评审、PoC 验收和生产上线 Gate。它不是合规认证，也不能替代针对具体数据、行业和司法辖区的威胁建模。建议把 P0 视为上线阻断项，P1 视为生产环境必须完成或有明确风险接受记录的项目。
 
@@ -863,7 +887,7 @@ Google 在 2026 年的 [GKE AI Agent Workloads 架构文档](https://docs.cloud.
 - [ ] **P1** 每个平台、每个 Sandbox Backend、每个镜像版本都运行正向与负向测试。
 - [ ] **P1** 定期演练 Agent 失陷、凭证泄露、Sandbox 逃逸、租户越权和紧急停止。
 
-### 8.10 业界实践、标准和研究资料
+### 10.3 业界实践、标准和研究资料
 
 下面的资料按用途整理。标准和官方工程文档用于建立控制基线；研究论文用于理解攻击路径、验证方法和现有防御的局限。论文中的实验结果不等于生产环境安全保证。
 
@@ -905,31 +929,12 @@ Google 在 2026 年的 [GKE AI Agent Workloads 架构文档](https://docs.cloud.
 | [Your Agent is More Brittle Than You Think: Uncovering Indirect Injection Vulnerabilities in Agentic LLMs](https://arxiv.org/abs/2604.03870), 2026 | 在动态多步工具环境中研究间接注入与多种防御策略，强调单轮静态测试的局限。 |
 | [The Hidden Dangers of Browsing AI Agents](https://arxiv.org/abs/2505.13076), 2025 | 浏览器 Agent 的端到端威胁模型，讨论 Prompt Injection、域名校验绕过、凭证外泄和 Planner / Executor 隔离。 |
 
-### 8.11 架构落地建议：按风险选择隔离强度
-
-不需要把所有 Agent 都放进最重的 VM，也不应该让所有 Agent 共用一个普通 Node.js 进程。隔离强度应由数据敏感性、工具权限、租户信任、执行代码来源和可能的副作用决定。
-
-| 场景 | 建议运行形态 | 最低安全要求 |
-| --- | --- | --- |
-| 本地文档分析、只读知识问答 | 桌面 Host + Capability File Service | 用户选定目录、只读授权、外发策略、审计 |
-| 本地代码修改和测试 | 桌面 Host + 独立 Script Sandbox | Workspace 写入边界、子进程隔离、网络默认拒绝、Diff / 回滚 |
-| 本地 GUI 操作 | 独立 GUI Broker + 受限桌面会话 | 最小 TCC / UI 权限、独立 Browser Profile、高风险动作确认 |
-| 云端通用 Agent | 独立 Worker / Task Sandbox | 租户隔离、短期 Workload Identity、Egress Gateway、资源配额 |
-| K8s 中执行不可信代码 | Restricted Pod + gVisor / Kata / microVM | Pod Security、RBAC、默认拒绝网络、任务级存储和身份 |
-| 多租户浏览器 / 桌面自动化 | 独立 VM / VDI + Display Gateway | Guest 身份隔离、禁用 Host Integration、截图 DLP、会话销毁 |
-| 高敏感或对抗性代码执行 | 专用节点上的 microVM / VM，必要时独立云账号 | 独立 Kernel / VM、短期身份、严格网络出口、不可变镜像和完整审计 |
-
-一个值得坚持的原则是：**不要把“隔离强度”与“权限大小”混为一谈。** VM 并不会自动阻止数据外传；gVisor 不会自动替你管理 OAuth Token；Restricted Pod 不会自动防止 Prompt Injection；独立桌面也不会自动阻止 Agent 把截图发送给模型供应商。身份、授权、数据流、执行隔离和运维控制必须共同成立。
-
-对基于 Copilot SDK 的桌面应用，可以先采用 TypeScript Policy Engine、独立 Tool Handler、MXC / Anthropic Sandbox Runtime 等成熟执行后端，再逐步增加 GUI Broker 和独立桌面 VM。云端和 Kubernetes 复用同一套 Policy / Resource / Approval 语义，但使用各自的 Workload Identity、Egress Gateway、Pod Security 和 Sandbox Runtime。VM 则把 Host / Guest、Display / Input 和共享设备通道作为独立安全边界。
-
-这才是可扩展的 Agent Runtime 安全架构：策略统一，身份可追溯，执行隔离按平台实现，数据流受控，失败可终止，安全效果通过真实副作用测试验证。
-
-## 9. 结论：复用 OS Sandbox，自己实现策略控制面
+## 11. 结论：复用 OS Sandbox，自己实现策略控制面
 
 如果是 TypeScript / Node.js Agent Runtime，我会按以下方式落地：
 
-- Read：使用只读 Capability Filesystem，细分目录列表、元数据、内容读取和搜索权限。\n- Write / Edit：使用独立的 ChangeSet、Patch、版本检查和可回滚提交接口，不与执行能力绑定。
+- Read：使用只读 Capability Filesystem，细分目录列表、元数据、内容读取和搜索权限。
+- Write / Edit：使用独立的 ChangeSet、Patch、版本检查和可回滚提交接口，不与执行能力绑定。
 - 轻量 Shell：使用 just-bash，优先采用内存文件系统；只在确有需要时开放网络、Python 或 JavaScript。
 - Bash / Script：通过独立 Execution Service 调用 Anthropic Sandbox Runtime、Microsoft Execution Containers（MXC）等经验证的 OS Sandbox，脚本写入与脚本执行分别授权。
 - 完整开发环境：需要依赖安装、编译、浏览器和长任务时，再采用 OpenHands 这类 Docker Runtime；高风险任务考虑 VM。
