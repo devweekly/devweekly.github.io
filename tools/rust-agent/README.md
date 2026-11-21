@@ -79,7 +79,7 @@ flowchart TD
 
 ### 本机信任边界
 
-首阶段不把 Agent 与 Worker 描述成已经隔离的安全边界。若二者同进程、同用户运行，Agent 失陷后仍可能绕过应用层检查。架构预留独立 Worker / Broker 接口，后续可通过 OS 进程身份和 Sandbox 实现强制隔离。
+首阶段不把 Agent 与 Worker 描述成已经隔离的安全边界。若二者同进程、同用户运行，Agent 失陷后仍可能绕过应用层检查。架构预留独立 Worker / Broker 接口，后续可通过 OS 进程身份和 Sandbox 实现强制隔离。WASM 采用 Native Host + WASM Artifact 的路线：Agent 主体仍是 Native Rust；部分工具未来可以编译为 WASM 模块作为可移植交付物，但当前不负责加载或执行这些模块。
 
 高风险工具最终应由权限更低、策略受保护的执行主体运行。Agent 不持有可任意使用的长期凭证；需要凭证的操作由 Broker 代为执行，只暴露窄化后的动作能力。
 
@@ -125,6 +125,8 @@ flowchart TD
 | 标识符 | `uuid` | 建议 | Task、Session、Action 和 Tool Call ID |
 | Secret 内存处理 | `secrecy`、`zeroize` | 后续 | 减少意外暴露；不能阻止进程内存读取 |
 | OS 权限与 Sandbox | 平台相关 crate / 系统 API | 后续单独确认 | macOS Seatbelt、Linux Landlock/seccomp、Windows AppContainer/Job Objects，不能用一个跨平台 crate 假装能力一致 |
+| WASM 编译 | Rust 官方 target / `rustc` | 后续按需 | 工具模块可编译为 `.wasm` 作为交付格式；不代表 Native Agent 能直接执行它 |
+| WASM 执行 | 暂不选 Runtime | 当前不需要 | 明确不引入 Wasmtime、Wasmer 或其他 WASM Runtime；需要执行时再单独评估宿主环境和隔离边界 |
 | 本地持久化 | 暂不选 | 后续 | 先明确 SQLite、JSONL 或宿主数据库需求，再决定是否引入 crate |
 
 **需要用户确认的最小依赖集合：** `tokio`、`reqwest`、`serde`、`serde_json`、`clap`、`thiserror`、`tracing`、`tracing-subscriber`。在得到确认之前，不添加这些依赖、不运行 Cargo 初始化来生成依赖锁文件，也不选用额外 Agent Framework。
@@ -144,7 +146,7 @@ flowchart TD
 7. Tool 超时、取消、错误和执行结果未知分别建模。
 8. 单元测试覆盖路径穿越、符号链接、参数篡改、审批重放、取消竞态和超时后的副作用状态。
 
-**不在首阶段做：** GUI、MCP Server、插件市场、多 Agent、远端执行集群、WASM Sandbox、跨平台 OS Sandbox 全覆盖、自动修改自身代码或安全策略。
+**不在首阶段做：** GUI、MCP Server、插件市场、多 Agent、远端执行集群、WASM 模块加载与执行、WASM Sandbox、跨平台 OS Sandbox 全覆盖、自动修改自身代码或安全策略。这里不排斥未来把独立 Tool Worker 编译成 `.wasm`；只是首阶段不提供 WASM Runtime。
 
 ## 7. 建议目录结构
 
@@ -188,6 +190,12 @@ tools/rust-agent/
 
 这是目标结构，不代表上述源码文件已经创建。
 
-## 8. 下一步需要确认
+## 8. 已确认的实施决策
 
-请确认是否允许首阶段引入第 5 节列出的 8 个基础 crate：`tokio`、`reqwest`、`serde`、`serde_json`、`clap`、`thiserror`、`tracing`、`tracing-subscriber`。如果希望先做到零第三方依赖，也可以先只实现 Rust 标准库下的类型、状态机和接口，但那不会是一个可直接调用模型 API 的完整 Agent。
+- 已批准首阶段使用 8 个基础 crate：`tokio`、`reqwest`、`serde`、`serde_json`、`clap`、`thiserror`、`tracing`、`tracing-subscriber`。未经再次确认，不增加其他 crate。
+- Agent Runtime、Policy Gate、Dispatcher 和首批 Worker 使用 Native Rust 实现。
+- WASM 采用“Native Host + WASM Artifact”：未来可把适合独立运行的 Tool Worker 编译为 `.wasm`，用于跨平台分发或交给外部、已存在的 WASM 宿主执行。
+- 当前不引入 Wasmtime、Wasmer 或任何其他 WASM Runtime，不实现 WASM 动态加载、WASM 模块执行或 WASM Sandbox。仅保留 Worker 接口边界，避免未来接入时改动 Agent Runtime。
+- `.wasm` 文件本身不是可执行程序；没有 Runtime / Host 就不能在本机直接运行。编译成 WASM 也不会自动获得安全隔离，实际能力仍由执行宿主提供的 Host Interface 和权限控制决定。
+
+因此，当前可以开始创建 Native Rust Cargo 工程和基础模块；WASM 先作为后续可选的构建产物，不进入当前执行链路。
