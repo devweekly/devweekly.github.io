@@ -15,6 +15,7 @@ struct Args {
     workspace: PathBuf,
     base_url: String,
     model: String,
+    fallback_model: Option<String>,
     api_key_env: String,
     session_id: Option<String>,
     continue_session: bool,
@@ -31,6 +32,7 @@ impl Args {
             workspace: PathBuf::from("."),
             base_url: "https://api.openai.com/v1".into(),
             model: String::new(),
+            fallback_model: None,
             api_key_env: "OPENAI_API_KEY".into(),
             session_id: None,
             continue_session: false,
@@ -72,6 +74,7 @@ impl Args {
                 "--workspace" => parsed.workspace = PathBuf::from(value),
                 "--base-url" => parsed.base_url = value,
                 "--model" => parsed.model = value,
+                "--fallback-model" => parsed.fallback_model = Some(value),
                 "--api-key-env" => parsed.api_key_env = value,
                 "--session-id" => parsed.session_id = Some(value),
                 "--session-dir" => parsed.session_dir = Some(PathBuf::from(value)),
@@ -140,7 +143,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         format!("missing API key: set environment variable {}", args.api_key_env)
     })?;
 
-    let provider = OpenAiCompatibleProvider::new(args.base_url, args.model, api_key)?;
+    let provider = OpenAiCompatibleProvider::new_with_fallback(
+        args.base_url,
+        args.model,
+        args.fallback_model,
+        api_key,
+    )?;
     let options = RuntimeOptions {
         session_dir: args.session_dir,
         session_id: args.session_id,
@@ -154,7 +162,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Rust Agent ready. Workspace: {}", runtime.workspace().display());
     println!("Session: {}", runtime.session_id());
-    println!("Commands: /new, /session, /resume <id>, /fork, /exit");
+    println!("Commands: /new, /session, /resume <id>, /fork, /model <id>, /exit");
 
     let stdin = io::stdin();
     loop {
@@ -184,6 +192,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if input == "/fork" {
             runtime.fork_session()?;
             println!("Forked session: {}", runtime.session_id());
+            continue;
+        }
+        if let Some(model) = input.strip_prefix("/model ") {
+            runtime.set_model(model.trim().to_owned())?;
+            println!("Active model: {}", runtime.model());
             continue;
         }
         if let Some(session_id) = input.strip_prefix("/resume ") {

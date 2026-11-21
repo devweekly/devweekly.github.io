@@ -200,6 +200,16 @@ impl AgentRuntime {
         &self.session.session_id
     }
 
+    pub fn model(&self) -> &str {
+        self.provider.model()
+    }
+
+    pub fn set_model(&mut self, model: String) -> Result<(), AgentError> {
+        self.provider.set_model(model)?;
+        self.audit("model.changed", None, json!({"model": self.provider.model()}));
+        Ok(())
+    }
+
     pub fn start_new_session(&mut self) -> Result<(), AgentError> {
         let now = now_ms();
         self.session = SessionRecord {
