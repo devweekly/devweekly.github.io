@@ -298,6 +298,8 @@ struct SessionRecord {
     parent_session_id: Option<String>,
     #[serde(default)]
     project_id: Option<String>,
+    #[serde(default)]
+    revision: u64,
     created_at_ms: u128,
     updated_at_ms: u128,
     messages: Vec<ChatMessage>,
@@ -351,11 +353,27 @@ impl SessionStore {
     fn save_record(&self, record: &SessionRecord) -> Result<(), AgentError> {
         ensure_real_directory(&self.directory)?;
         let path = self.path_for(&record.session_id)?;
+        let lock = lock_state_file(&path)?;
         ensure_regular_file_or_missing(&path)?;
+        let expected_revision = match fs::read(&path) {
+            Ok(bytes) => {
+                let current: SessionRecord = serde_json::from_slice(&bytes)?;
+                current.revision.saturating_add(1)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => 1,
+            Err(error) => return Err(error.into()),
+        };
+        if record.revision != expected_revision {
+            return Err(AgentError::InvalidAction(format!(
+                "session write conflict: expected revision {expected_revision}, received {}",
+                record.revision
+            )));
+        }
         let temporary = path.with_extension(format!("json.tmp-{}-{}", std::process::id(), now_ms()));
         let bytes = serde_json::to_vec_pretty(record)?;
         write_private_file(&temporary, &bytes, false)?;
         fs::rename(&temporary, &path)?;
+        lock.unlock()?;
         Ok(())
     }
 
@@ -399,6 +417,7 @@ impl SessionStore {
             let count = previous.saturating_sub(record.messages.len());
             if count > 0 {
                 record.updated_at_ms = now_ms();
+                record.revision = record.revision.saturating_add(1);
                 self.save_record(&record)?;
                 removed = removed.saturating_add(count);
             }
@@ -913,6 +932,7 @@ impl AgentRuntime {
                 session_id: new_session_id(now),
                 parent_session_id: None,
                 project_id: options.project_id.clone(),
+                revision: 0,
                 created_at_ms: now,
                 updated_at_ms: now,
                 messages: vec![system_message(Some(&configured_system_prompt))],
@@ -1621,6 +1641,7 @@ impl AgentRuntime {
             session_id: new_session_id(now),
             parent_session_id: None,
             project_id: self.project_id.clone(),
+            revision: 0,
             created_at_ms: now,
             updated_at_ms: now,
             messages: vec![system_message(Some(&self.system_prompt))],
@@ -1654,6 +1675,7 @@ impl AgentRuntime {
             session_id: new_session_id(now),
             parent_session_id: Some(parent_id.clone()),
             project_id: self.project_id.clone(),
+            revision: 0,
             created_at_ms: now,
             updated_at_ms: now,
             messages: self.messages.clone(),
@@ -2338,7 +2360,15 @@ impl AgentRuntime {
     fn persist(&mut self) -> Result<(), AgentError> {
         self.session.updated_at_ms = now_ms();
         self.session.messages = self.messages.clone();
-        self.store.save(&self.session)
+        let previous_revision = self.session.revision;
+        self.session.revision = previous_revision.saturating_add(1);
+        match self.store.save(&self.session) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                self.session.revision = previous_revision;
+                Err(error)
+            }
+        }
     }
 
     fn emit_event(&self, name: &str, tool: Option<&str>, details: Value) {
@@ -2951,6 +2981,21 @@ fn rotate_private_log(path: &Path, max_bytes: u64, backups: usize) -> Result<(),
     Ok(())
 }
 
+fn lock_state_file(path: &Path) -> Result<fs::File, AgentError> {
+    let lock_path = path.with_extension("lock");
+    ensure_regular_file_or_missing(&lock_path)?;
+    let mut options = OpenOptions::new();
+    options.create(true).read(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.open(lock_path)?;
+    file.lock()?;
+    Ok(file)
+}
+
 fn ensure_real_directory(path: &Path) -> Result<(), AgentError> {
     if let Some(parent) = path.parent() {
         match fs::symlink_metadata(parent) {
@@ -3030,6 +3075,43 @@ mod tests {
         assert_eq!(fs::read(root.join("usage.jsonl.1")).unwrap(), vec![b'b'; 64]);
         assert_eq!(fs::read(root.join("usage.jsonl.2")).unwrap(), vec![b'a'; 64]);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn session_store_rejects_stale_concurrent_writer_revisions() {
+        let directory = std::env::temp_dir().join(format!(
+            "rust-agent-session-cas-{}", new_session_id(now_ms())
+        ));
+        let store = SessionStore::new(directory.clone());
+        let now = now_ms();
+        let mut initial = SessionRecord {
+            schema_version: SESSION_SCHEMA_VERSION,
+            session_id: "shared-session".into(),
+            parent_session_id: None,
+            project_id: Some("project-a".into()),
+            revision: 1,
+            created_at_ms: now,
+            updated_at_ms: now,
+            messages: vec![ChatMessage { role: "system".into(), content: "system".into() }],
+        };
+        store.save(&initial).unwrap();
+        let mut writer_a = store.load("shared-session").unwrap();
+        let mut writer_b = store.load("shared-session").unwrap();
+
+        writer_a.revision = 2;
+        writer_a.messages.push(ChatMessage { role: "user".into(), content: "writer A".into() });
+        store.save_record(&writer_a).unwrap();
+
+        writer_b.revision = 2;
+        writer_b.messages.push(ChatMessage { role: "user".into(), content: "writer B".into() });
+        assert!(store.save_record(&writer_b).is_err());
+        let persisted = store.load("shared-session").unwrap();
+        assert_eq!(persisted.revision, 2);
+        assert!(persisted.messages.iter().any(|message| message.content == "writer A"));
+        assert!(!persisted.messages.iter().any(|message| message.content == "writer B"));
+        initial.revision = persisted.revision;
+        let _ = initial;
+        let _ = fs::remove_dir_all(directory);
     }
 
     #[test]
