@@ -1,6 +1,7 @@
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tracing::warn;
 
 use crate::error::AgentError;
 
@@ -14,6 +15,7 @@ pub struct OpenAiCompatibleProvider {
     client: Client,
     endpoint: String,
     model: String,
+    fallback_model: Option<String>,
     api_key: String,
 }
 
@@ -23,10 +25,24 @@ impl OpenAiCompatibleProvider {
         model: String,
         api_key: String,
     ) -> Result<Self, AgentError> {
+        Self::new_with_fallback(base_url, model, None, api_key)
+    }
+
+    pub fn new_with_fallback(
+        base_url: String,
+        model: String,
+        fallback_model: Option<String>,
+        api_key: String,
+    ) -> Result<Self, AgentError> {
         let base_url = base_url.trim_end_matches('/');
         if base_url.is_empty() || model.trim().is_empty() || api_key.is_empty() {
             return Err(AgentError::InvalidProviderConfig(
                 "base URL, model, and API key must be non-empty".into(),
+            ));
+        }
+        if fallback_model.as_deref().is_some_and(|name| name.trim().is_empty()) {
+            return Err(AgentError::InvalidProviderConfig(
+                "fallback model must be non-empty when specified".into(),
             ));
         }
 
@@ -39,13 +55,50 @@ impl OpenAiCompatibleProvider {
             client,
             endpoint,
             model,
+            fallback_model,
             api_key,
         })
     }
 
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
+    pub fn set_model(&mut self, model: String) -> Result<(), AgentError> {
+        if model.trim().is_empty() {
+            return Err(AgentError::InvalidProviderConfig("model must be non-empty".into()));
+        }
+        self.model = model;
+        Ok(())
+    }
+
     pub async fn complete(&self, messages: &[ChatMessage]) -> Result<String, AgentError> {
+        match self.complete_with_model(&self.model, messages).await {
+            Ok(content) => Ok(content),
+            Err(primary_error) => {
+                let Some(fallback_model) = self.fallback_model.as_deref() else {
+                    return Err(primary_error);
+                };
+                if !is_retryable(&primary_error) {
+                    return Err(primary_error);
+                }
+                warn!(
+                    primary_model = %self.model,
+                    fallback_model,
+                    "primary model failed transiently; trying fallback model"
+                );
+                self.complete_with_model(fallback_model, messages).await
+            }
+        }
+    }
+
+    async fn complete_with_model(
+        &self,
+        model: &str,
+        messages: &[ChatMessage],
+    ) -> Result<String, AgentError> {
         let body = ChatCompletionRequest {
-            model: &self.model,
+            model,
             messages,
             stream: false,
         };
@@ -65,6 +118,19 @@ impl OpenAiCompatibleProvider {
             .as_str()
             .map(ToOwned::to_owned)
             .ok_or(AgentError::InvalidProviderResponse)
+    }
+}
+
+fn is_retryable(error: &AgentError) -> bool {
+    match error {
+        AgentError::Http(error) => {
+            error.is_timeout()
+                || error.is_connect()
+                || error.status().is_some_and(|status| {
+                    status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
+                })
+        }
+        _ => false,
     }
 }
 
