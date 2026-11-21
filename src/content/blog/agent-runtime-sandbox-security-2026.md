@@ -627,7 +627,7 @@ Google 在 2026 年的 [GKE AI Agent Workloads 架构文档](https://docs.cloud.
 | 适用场景 | 低延迟、细粒度交互、轻量工具 | 长任务、大文件、复杂工作流和数据驻留 |
 | 主要风险 | 内容经过本地模型链路，远端工具授权容易被误当成完整安全 | 双 Agent 权限叠加、委托边界和远端模型数据出口 |
 
-建议默认采用模式 B 作为远端工作区的主要入口；只有确实需要本地模型逐步控制的轻量操作，才开放少量模式 A 工具。
+建议默认采用模式 B 作为远端工作区的主要入口；只有确实需要本地模型逐步控制的轻量操作，才开放少量模式 A 工具。高层委托工具的输入只包含任务目标、Workspace 引用和输出约束；Tenant、User、Session、权限和模型凭证必须由服务端根据已验证的身份上下文注入，不能让模型通过参数指定。
 
 ### 7.3 远端文件夹应该是 Workspace，不是本地目录的网络映射
 
@@ -686,9 +686,9 @@ Google 在 2026 年的 [GKE AI Agent Workloads 架构文档](https://docs.cloud.
 - **远端服务到 Workspace / Tool**：远端服务根据已验证的用户身份和 Task Policy 生成内部授权上下文，使用独立的服务身份或短期委托凭证访问资源。
 - **远端服务到第三方 API**：需要用户授权时，使用 Token Exchange / On-Behalf-Of 或专用 Credential Broker 获取面向目标资源的 Token。不要把客户端发给 Agent Service 的 Token 原样转发给下游 API。
 - **远端服务到模型 Provider**：由服务端自己的 Model Client 管理 Provider Key、BYOK 凭证和用量配额。用户对 Agent Service 的授权不等于用户授权 Agent 使用任意模型或任意工具。
-- **远端服务到本地浏览器**：默认不开放反向访问。确实需要时，由本地 Browser Broker 建立受控的出站连接，只暴露有限的浏览器操作能力，不导出 Cookie、浏览器 Profile 或通用调试端口。
+- **远端服务到本地浏览器**：默认不开放远端到桌面的入站访问。确实需要时，由本地客户端主动建立出站的长连接，远端只能通过短时 Capability Lease 请求有限的浏览器操作；本地 Browser Broker 对每个动作检查当前用户、目标 Tab、域名和动作类型，必要时要求确认。不导出 Cookie、浏览器 Profile 或通用调试端口。
 
-MCP 2026-07-28 Authorization 规范要求客户端使用 Resource Indicators 将 Token 绑定到目标 MCP Server，服务端验证 Token 的 Audience，并明确禁止 Token Passthrough。远端 Agent Service 收到的 Token 应用于识别调用者和授权本服务；访问其他资源时必须取得面向该资源的凭证。这一点尤其重要，因为 Agent Service 同时是 MCP Server、工具客户端和模型客户端，天然容易变成一个权限过大的 Confused Deputy。
+[MCP 2026-07-28 Authorization 规范](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)要求客户端使用 Resource Indicators 将 Token 绑定到目标 MCP Server，服务端验证 Token 的 Audience，并明确禁止 Token Passthrough；[MCP Security Best Practices](https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices)还专门讨论 Confused Deputy、Token Passthrough 和 SSRF。远端 Agent Service 收到的 Token 应用于识别调用者和授权本服务；访问其他资源时必须取得面向该资源的凭证。这一点尤其重要，因为 Agent Service 同时是 MCP Server、工具客户端和模型客户端，天然容易变成一个权限过大的 Confused Deputy。
 
 ### 7.6 文件内容到底会经过哪一个模型：必须画清楚数据流
 
