@@ -59,7 +59,7 @@ Sandbox 是最后一道执行边界。它限制进程及其子进程能够访问
 ### 2.1 Anthropic Sandbox Runtime：最接近通用 Agent 执行隔离层
 
 项目：[anthropic-experimental/sandbox-runtime](https://github.com/anthropic-experimental/sandbox-runtime)  
-npm：[ @anthropic-ai/sandbox-runtime ](https://www.npmjs.com/package/@anthropic-ai/sandbox-runtime)
+npm：[@anthropic-ai/sandbox-runtime](https://www.npmjs.com/package/@anthropic-ai/sandbox-runtime)
 
 Anthropic 将 Claude Code 使用的 Sandbox Runtime 独立开源。它不是 Agent Framework，也不是一个新的 Shell，而是把任意命令或进程放进操作系统提供的限制环境中。项目 README 明确列出 Agent、Bash 命令和本地 MCP Server 等使用场景。
 
