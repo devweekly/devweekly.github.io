@@ -403,7 +403,170 @@ Rust 编译成单一二进制，并不代表依赖供应链消失。Cargo 依赖
 
 如果目标是构建完整 Rust Agent Client，先看 thClaws 的 Agent Harness 和策略实现；如果目标是给现有 TS/JS Agent 加固，先研究 nono 和 Strands Box；如果需要一个内置治理能力的 Rust Runtime，再看 Symbiont。
 
-## 11. 建议的落地路径
+## 11. Rust Agent 的业界经验：语言选择之外，真正困难的是 Runtime
+
+Rust Agent 项目逐渐成熟后，工程重点并没有停留在“用 Rust 重写 Agent Loop”。从 Goose、IronClaw、Moltis、ZeroClaw、Strands Shell，以及 ADK-Rust 的公开实现和文档，可以归纳出几条更有价值的经验。需要说明，开源项目的架构和 issue 能证明某个问题确实出现过或某种设计正在被采用，但不能自动证明它已经在大规模生产环境中得到验证。
+
+### 11.1 Rust 更适合承载执行核心，不代表所有层都应该 Rust 化
+
+Goose 把桌面应用、CLI、ACP Server 和可复用的 oi-kit Runtime 组合起来；Moltis 将 Agent Server、Gateway、Tool Runtime 和 Desktop Client 分开；ADK-Rust 则把 Runner、Session、Invocation、Event Stream、State、Checkpoint 和协议适配作为明确的 Runtime 抽象。
+
+这些项目体现出一个共同方向：把高频执行、并发控制、进程管理、工具生命周期和状态转换放在可控的 Runtime 核心中，UI、外部协议和应用集成则通过明确接口连接。它不意味着 UI 必须重写成 Rust，也不意味着所有业务流程都必须编译进一个大型二进制。
+
+对已有 TS/JS 产品，更合理的迁移边界通常是先把敏感执行和系统资源访问从 Agent Orchestrator 中剥离，而不是一次性重写模型调用、UI、对话管理和全部业务逻辑。
+
+### 11.2 MCP 是远程边界，不是安全边界
+
+Goose 采用 MCP 扩展模式，ADK-Rust 的 MCP 文档也强调：当工具属于另一个进程、团队、语言、安全边界或部署单元时，MCP 是合适的契约边界。但协议只定义发现和调用方式，不自动提供可信身份、最小权限或安全执行。
+
+生产使用 MCP 至少要解决这些问题：
+
+- 工具发现与执行权限分开。不要把 Server 暴露的全部工具无差别交给模型；按任务过滤工具，并区分只读、可写和高影响操作。
+- Server 生命周期需要管理。连接关闭、初始化失败、工具注册变化和 Server 重启都必须成为可观测事件。
+- 为连接、工具调用和整个 Agent Task 分别设置超时。单个 HTTP 请求超时不能代表整个任务已经安全取消。
+- 工具描述、Schema、返回值和错误信息都属于不可信输入。Schema 校验只能保证结构，不保证语义安全。
+- 对工具调用、审批、拒绝、错误和 Server 生命周期保留结构化记录。
+
+Goose 的公开 issue 中出现过 MCP 工具进入异常 Timeout 状态、后续连即时工具也失败的报告。这是单个 issue，不能据此推断 Goose 普遍存在该缺陷；但它提醒 Runtime 不能把一次调用超时简单等同于底层连接健康状态。连接级状态、请求级状态和 Agent Task 状态应分开管理，超时后需要明确判断是取消、重试、重连还是进入可恢复状态。
+
+参考：[ADK-Rust MCP Tools 文档](https://adk-rust.com/en/docs/tools/mcp-tools)、[Goose MCP timeout issue](https://github.com/aaif-goose/goose/issues/1164)。
+
+### 11.3 Async Rust 的关键不是吞吐量，而是取消和资源生命周期
+
+Agent 任务会同时等待模型 API、MCP、浏览器、子进程和用户审批。Tokio 可以高效管理并发，但异步并发本身不会自动解决任务生命周期问题。
+
+实现时需要区分至少四种状态：调用方停止等待、Future 被取消、外部操作真正停止、外部副作用已经发生。它们并不等价。例如，取消一个等待 HTTP 响应的 Future，不一定能撤销远端服务已经提交的写操作；停止等待子进程，也不代表整个子进程树已经退出。
+
+建议在 Runtime 中明确实现：
+
+- **分层 Deadline**：模型请求、单次 Tool、子任务和整个 Session 使用不同 Deadline，并向下传递剩余预算。
+- **Cancellation Token**：取消信号沿 Agent → Tool → Worker 传播；Worker 必须定义收到取消后的清理行为。
+- **并发上限**：分别限制模型请求、MCP Server、子进程、文件操作和每个 Session 的并发量，避免一个任务耗尽整个 Runtime。
+- **幂等和补偿**：对可能产生外部副作用的操作使用幂等键、执行状态查询或补偿流程，不能把网络超时后的盲目重试当成通用恢复策略。
+- **资源回收**：确保临时文件、文件描述符、子进程、IPC Channel、Sandbox 和短期 Capability 都有明确的 owner 和释放路径。
+
+对安全 Broker 而言，取消也不能绕过审计。授权已发出但 Worker 尚未执行、Worker 已执行但响应丢失、执行结果未知，这些状态必须分别记录，不能简单记为“调用失败”。
+
+### 11.4 长任务需要持久化状态机，不能依赖内存中的 Agent Loop
+
+Agent 任务可能在等待审批时停留数小时，也可能在模型供应商、MCP Server 或本机进程重启后继续执行。只把消息历史写入数据库，不等于具备 Durable Execution。
+
+Runtime 应持久化任务状态、当前步骤、工具调用 ID、审批状态、重试次数、外部副作用标识和恢复点。恢复时不能简单重放最后一段对话并期待模型重新做出相同决定，因为模型输出并不保证确定性，重放工具也可能重复执行外部副作用。
+
+更稳妥的模式是把模型输出视为候选 Action，把 Action 的授权与执行状态单独持久化。恢复流程先查询外部副作用是否已经完成，再决定继续、补偿或要求人工介入。Goose oi-kit 的 State Machine / Operations 分层，以及 ADK-Rust 的 Session、Invocation 和 Graph Checkpoint 设计，都值得从这个角度研究；它们提供的是可借鉴的抽象，不代表应用无需自行定义持久化和恢复语义。
+
+### 11.5 可观测性必须覆盖 Agent 的真实执行结果
+
+普通应用的日志通常可以围绕请求和异常组织。Agent Runtime 还需要记录模型决策、工具调用、授权、审批、外部副作用和最终任务状态之间的关联。
+
+建议为每个 Task、Invocation、Tool Call、Worker 和 Approval 分配稳定 ID，并通过 Trace Context 贯穿模型请求、MCP、子进程和远端服务。事件至少要能回答：谁提出动作、依据什么任务、哪个策略版本做出判定、授权了哪些参数、哪个 Worker 实际执行、OS 是否拒绝、外部结果是否确认。
+
+特别要避免只记录 Agent 自己声称的“执行成功”。应当从 Tool Worker 或远端服务取得执行结果，并把不确定状态显式呈现给用户。对于 Agent 系统，错误被模型总结成一段看似合理的成功叙述，比普通服务返回 500 更难发现。
+
+### 11.6 WASM Tool 与 OS Sandbox 是不同层次
+
+IronClaw 和 Strands Shell/Box 展示了不同的工具执行思路。WASM Component Model 通过 Host 明确授予文件、网络、环境变量等能力；没有获得相应 Import 或 Capability 的组件，原则上无法直接调用对应宿主能力。Akamai 的 Spin 示例也展示了通过声明 allowed outbound hosts 来限制组件网络访问。
+
+这适合运行第三方 Tool、用户生成 Tool 或需要跨平台分发的轻量执行逻辑。但 WASM 的安全边界仍依赖 Runtime、Host Function 和 Capability 配置。一个过度宽泛的 Host Function，可能重新把宿主权限交还给 Guest。
+
+OS Sandbox 则进一步限制 Worker 进程及其子进程能够访问的文件、网络、系统调用和 IPC。对于原生程序、浏览器、Python 或复杂 Shell，WASM 并不总是可行替代。实践中可以采用分层方案：受信任的内置 Tool 走受限 Native Worker；不可信插件走 WASM；需要运行任意原生代码的任务进入 Container 或 MicroVM。
+
+参考：[WASI Security Model](https://wasi.dev/security)、[Akamai: Sandboxed Agentic Tools with Rust and Spin](https://developers.akamai.com/blog/sandboxed-agentic-tools/)。
+
+### 11.7 审计日志不能只做到 append-only
+
+审计系统本身也可能成为可靠性短板。多进程并发写入、崩溃时的半行记录、日志轮转、索引和长期查询都需要实测。简单地给 JSONL 文件追加内容，并不自动意味着记录完整、不可篡改或适合长期审计。
+
+建议采用单写者或明确的事务提交机制，记录序号、主体、策略版本、Action Digest、授权结果、Worker 结果和时间信息；使用哈希链或签名检测篡改；对日志缺口、解析失败和写入失败设置独立告警。高价值审计记录应放在 Agent 无权修改的边界之外，并定期导出到独立存储。
+
+后文引用的 2026 年执行治理研究报告了并发写入丢记录、日志增长导致查询变慢，以及格式错误记录被静默跳过等问题。它的实验环境和实现规模有限，但说明审计完整性必须通过并发和长期运行测试验证，而不能仅凭数据结构设计推断。
+
+### 11.8 多平台支持要按隔离能力声明，不能按可运行性声明
+
+一个 Rust Binary 能在 macOS、Windows 和 Linux 编译运行，不代表三个平台拥有相同的安全保证。Landlock、Seatbelt、seccomp、AppContainer、Job Objects 和容器运行时的能力、覆盖范围与配置复杂度不同。
+
+项目的支持矩阵应至少分别描述：文件隔离、网络隔离、子进程继承、环境变量清理、凭证访问、进程身份、资源限制和审计保护。缺少 OS Sandbox 后端时，应明确显示降级状态，并对高风险操作失败关闭，而不是静默退回字符串 Allowlist。
+
+这也是 ZeroClaw 的平台差异、Strands Box 的 Preview 状态，以及 OpenAI Fence 收敛到特定 Linux Runner 的设计所体现的工程现实：安全产品应该对支持范围做窄而准确的声明。
+
+## 12. 相关论文：从研究结论转成工程约束
+
+以下研究主要发表于 2026 年，许多是 arXiv 预印本。论文中的数据应按其威胁模型、模型版本、实验环境和评估集理解；预印本结果不等于独立复现或生产验证。
+
+### 12.1 Agent Runtime 应该像操作系统一样设计
+
+**Toward Securing AI Agents Like Operating Systems**（2026）从操作系统安全角度分析 Agent，把资源隔离、权限分离和通信中介作为核心问题，并对四个 OpenClaw-like Agent 做了案例评估。研究发现，即使攻击者能力有限，一些现有保护机制在实际配置下也会失效；但传统 OS 安全技术仍能缓解不少问题。
+
+这项研究支持本文的基本判断：Agent Runtime 不只是一个 Prompt Loop，而是一个需要资源管理、主体隔离、权限检查和通信控制的系统软件。工程上应优先验证 OS 实际拒绝了什么，而不是只检查应用层是否返回了 DENY。
+
+论文：[arXiv:2605.14932](https://arxiv.org/abs/2605.14932)。
+
+### 12.2 权限检查必须绑定真实执行内容
+
+**Separation of Duties for Privileged LLM Agents: A Governed Execution Architecture with Measured Security-Utility Trade-offs**（2026）把 Planner、Policy Gate、Executor 和 Auditor 分开，并使用结构化 Intent、一次性授权凭证和执行前内容摘要校验。论文在其 313 个案例的实验中报告，攻击成功率从直接执行基线的 98.3% 降至部署方案的 7.7%；同时报告了误拒绝、审计延迟和实现缺陷。
+
+更值得工程团队注意的是作者报告的缺陷：只验证 Intent 而不验证待执行文件，可能出现审批后替换内容；可重复使用的 Approval 也可能被重放。论文还报告审计日志并发写入丢失记录，以及日志规模增长后的查询性能问题。
+
+这些结果来自论文指定的单机、单操作系统实验，不应直接外推为所有 Agent 的安全提升比例。可复用的工程结论是：审批必须绑定实际执行字节或规范化参数；授权应一次性消费；Executor 在执行前再次验证；审计路径需要做并发、损坏恢复和规模测试。
+
+论文：[arXiv:2609.38224](https://arxiv.org/abs/2609.38224)。
+
+### 12.3 凭证应该被代理使用，而不是交给 Agent 持有
+
+**CapSeal: Capability-Sealed Secret Mediation for Secure Agent Execution**（2026）提出由本机可信 Broker 代替 Agent 持有 API Key、SSH 凭证。Agent 获得的是受限 Capability，通过 Schema 约束的 HTTP 请求或受控 SSH 命令使用凭证；设计还包括 Session Binding、Anti-Replay 和审计。
+
+这与 Rust Broker 的设计高度相关：不要把 Secret 放进模型上下文、环境变量或可读取的配置文件；把“使用凭证的权力”和“读取凭证内容的权力”分开。需要注意，论文描述的是 Rust 原型和条件性安全目标，并提出了评估方案，不能把它写成已经完成大规模实证验证的产品。
+
+论文：[arXiv:2604.16762](https://arxiv.org/abs/2604.16762)。
+
+### 12.4 Prompt Injection 防御需要模型外的强制执行
+
+**Adaptive Evaluation of Out-of-Band Defenses Against Prompt Injection in LLM Agents**（2026）比较模型外策略、Capability 和信息流控制，并强调静态攻击集不足以证明防御有效。论文对 Progent 的一次独立复现，在特定 Qwen2.5-7B、单台 H200 和有限攻击模板条件下报告攻击成功率下降；作者也明确指出更强的白盒自适应攻击仍未覆盖。
+
+它给工程评估带来的启示是：不能只用固定 Prompt Injection 样本做回归测试。应让攻击者了解策略边界，尝试变换工具名称、参数、调用顺序和多步组合，并验证实际副作用是否被阻止。模型审查可以作为辅助信号，但不能替代确定性的执行路径授权。
+
+论文：[arXiv:2606.26479](https://arxiv.org/abs/2606.26479)。
+
+### 12.5 Skill 的供应链风险发生在执行之前
+
+**Agent Skill Security: Threat Models, Attacks, Defenses, and Evaluation**（2026）把 Skill 生命周期拆成仓库准入、语义检索、Planner 选择、执行和后续演化。其 327 个公开 Skill 的受控评估显示，攻击不仅发生在运行时；关键词堆叠、语义伪装、推荐信息伪造和权限描述欺骗都可能影响 Agent 选用哪个 Skill。论文的运行时实验也显示，即使加入动态监控，仍有部分攻击到达最终执行点。
+
+对 Rust Client 的实际意义是：签名和扫描不能只在安装时做一次。Skill Manifest 应声明权限，仓库来源和版本要可追溯，检索结果要验证元数据，执行时还要核对实际请求是否超出声明权限。Skill 更新、依赖变化和撤销也应进入生命周期治理。
+
+论文：[arXiv:2607.13987](https://arxiv.org/abs/2607.13987)。
+
+### 12.6 长期运行系统最危险的故障可能是“看起来成功”
+
+**When Errors Become Narratives: A Longitudinal Taxonomy of Silent Failures in a Production LLM Agent Runtime**（2026）报告了一个个人助理 Agent Runtime 连续八周的运行观察：约 40 个定时任务、8 个模型供应商，记录 22 起事件。作者将错误吞没、假设不匹配、环境差异、模型补写错误叙述和取证盲点归纳为几类问题，并指出有些失败会被模型转换成流畅但不真实的用户反馈。
+
+这是单一系统的纵向案例，不是跨产品统计；但它提供了一个重要的可靠性视角：Agent 的失败不一定表现为异常退出，也可能表现为错误结果被包装成成功。Runtime 应把工具真实结果、任务状态和模型生成的总结分开存储，并让用户界面展示未确认、部分完成和执行结果未知等状态。
+
+论文：[arXiv:2606.14589](https://arxiv.org/abs/2606.14589)。
+
+### 12.7 安全评估不能只测单次 Tool Call
+
+**Toward Secure LLM Agents: Threat Surfaces, Attacks, Defenses, and Evaluation**（2026）综述了 247 篇研究，按信息流、委托权限和持久状态组织 Agent 安全问题。作者指出，现有基准对长周期、有状态和部署环境相关的风险覆盖不足，持久状态污染和多 Agent 攻击传播值得进一步研究。
+
+这意味着 Rust Runtime 的安全测试应覆盖完整生命周期：从 Skill 安装、检索、权限授予，到多步工具调用、Session 恢复、状态持久化和策略更新。单个函数的单元测试通过，并不能证明跨进程、跨 Session 或跨重启的权限边界仍然有效。
+
+论文：[arXiv:2606.10749](https://arxiv.org/abs/2606.10749)。
+
+### 12.8 研究结论如何落到工程验收
+
+| 研究问题 | 工程控制 | 应验证的行为 |
+| --- | --- | --- |
+| Agent 是否拥有过多能力 | Task-scoped Capability、工具过滤 | 摘要任务无法获得 Shell、凭证和写权限 |
+| Agent 能否滥用凭证 | Secret Broker、非导出 Capability | Agent 无法读取 Secret，只能调用受限动作 |
+| 审批后动作是否可被替换 | Action Digest、一次性 Grant | 修改参数或文件字节后，执行必须被拒绝 |
+| Skill 是否可能被投毒 | 来源验证、签名 Manifest、运行时权限核对 | Skill 更新或元数据伪装不能扩大权限 |
+| 长任务失败是否会被掩盖 | Durable State、外部结果核验 | 超时、取消、未知结果不能被总结成成功 |
+| 审计是否完整 | 单写者/事务、哈希链、独立存储 | 并发、崩溃、日志轮转和损坏测试不丢失事件 |
+| 防御是否能抵抗自适应攻击 | Red-team Trace Replay | 攻击者了解策略后仍无法触发未授权副作用 |
+
+这些研究共同指向一个工程方向：安全能力要从模型输出之前的提示约束，延伸到 Tool 发现、权限授予、执行、状态保存和结果验证的整个生命周期。
+
+## 13. 建议的落地路径
+
 
 不要一开始就把全部 Client Agent 改写为 Rust。先把真正影响安全的执行路径收敛出来。
 
@@ -417,7 +580,7 @@ Rust 编译成单一二进制，并不代表依赖供应链消失。Cargo 依赖
 
 每个阶段都应该通过对抗性测试验收：让 Agent 尝试修改策略、覆盖 Broker、终止 Broker、直接访问受保护目录、启动未授权子进程、连接非白名单域名、替换 Skill 和回滚旧策略。测试结果要检查 OS 实际拒绝了什么，而不是只看 Broker 返回了什么。
 
-## 12. 最终判断
+## 14. 最终判断
 
 Rust 对 Agent Client 安全有价值，但它的价值不在于让程序变得无法破解，而在于能以较小的 Native 组件承载安全关键逻辑，减少动态运行时和内存错误，并与操作系统的权限和隔离机制直接集成。
 
@@ -452,6 +615,22 @@ Rust 对 Agent Client 安全有价值，但它的价值不在于让程序变得�
 - [Apple Creating Distribution-Signed Code](https://developer.apple.com/documentation/xcode/creating-distribution-signed-code-for-the-mac/)
 - [Microsoft: Code Signing with App Control for Business](https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/deployment/use-code-signing-for-better-control-and-protection)
 - [Microsoft: Smart App Control](https://learn.microsoft.com/en-us/windows/apps/develop/smart-app-control/overview)
+
+### Agent Runtime 工程实践与研究论文
+
+- [Block: Block Open Source Introduces codename goose](https://block.xyz/inside/block-open-source-introduces-codename-goose)
+- [Goose Documentation](https://goose-docs.ai/)
+- [Goose MCP timeout issue #1164](https://github.com/aaif-goose/goose/issues/1164)
+- [ADK-Rust: MCP Tools](https://adk-rust.com/en/docs/tools/mcp-tools)
+- [WASI Security Model](https://wasi.dev/security)
+- [Akamai: Sandboxed Agentic Tools with Rust and Spin](https://developers.akamai.com/blog/sandboxed-agentic-tools/)
+- [Toward Securing AI Agents Like Operating Systems](https://arxiv.org/abs/2605.14932)
+- [Separation of Duties for Privileged LLM Agents](https://arxiv.org/abs/2609.38224)
+- [CapSeal: Capability-Sealed Secret Mediation for Secure Agent Execution](https://arxiv.org/abs/2604.16762)
+- [Adaptive Evaluation of Out-of-Band Defenses Against Prompt Injection in LLM Agents](https://arxiv.org/abs/2606.26479)
+- [Agent Skill Security: Threat Models, Attacks, Defenses, and Evaluation](https://arxiv.org/abs/2607.13987)
+- [When Errors Become Narratives: A Longitudinal Taxonomy of Silent Failures](https://arxiv.org/abs/2606.14589)
+- [Toward Secure LLM Agents: Threat Surfaces, Attacks, Defenses, and Evaluation](https://arxiv.org/abs/2606.10749)
 
 ### Rust 供应链
 
