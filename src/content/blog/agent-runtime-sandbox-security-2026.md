@@ -16,13 +16,13 @@ description: "从工具授权、资源权限和执行隔离出发，分析 Agent
 
 # Agent Runtime 安全架构：桌面、云端、Kubernetes 与 GUI VM 的隔离设计
 
-Agent Runtime 一旦允许模型读文件、改文件、运行命令或调用 MCP，安全问题就不再只是“模型会不会听 Prompt”。真正需要回答的是：即使模型生成了恶意命令，或者某个工具被 Prompt Injection 诱导，它实际能够访问哪些文件、启动哪些进程、连接哪些网络目标？
+Agent Runtime 允许模型读取和修改文件、启动命令或调用 MCP 后，攻击面就从 Prompt 扩展到了真实系统资源。评估安全性时，关键不是模型是否承诺遵守规则，而是恶意指令、被注入的网页或失陷工具，能否借执行进程访问未授权的文件、进程、网络和凭证。
 
-这不是给 Tool Schema 加一个权限字段就能解决的问题。工具权限、资源授权和执行隔离是三个不同层次。前两者决定 Agent 理论上可以做什么，最后一层要保证即使执行路径发生偏差，也不能越过操作系统设置的边界。
+Tool Schema 上增加一个权限字段解决不了这个问题。工具授权决定 Agent 能调用什么，资源授权限定它能操作哪些对象，Sandbox 则约束进程实际能触及的系统资源。这三层各自解决不同问题，不能互相替代。
 
-开源生态已经有几种不同取向的实现：Anthropic 把 Claude Code 使用的 OS Sandbox Runtime 开源；OpenAI 公开了 Codex Sandbox 的工程设计；Vercel 的 just-bash 用 TypeScript 实现一个虚拟 Shell；OpenHands 用 Docker Runtime 提供完整执行环境；MCP Filesystem Server 则在文件工具本身实施目录范围控制。它们解决的问题并不相同，不能简单排成一个“沙箱产品排行榜”。
+现有开源实现覆盖了不同层次：Anthropic Sandbox Runtime 和 OpenAI Codex Sandbox 使用操作系统隔离机制约束真实进程；Vercel just-bash 在 TypeScript 进程内提供虚拟 Shell；OpenHands 用 Docker 提供完整执行环境；MCP Filesystem Server 则在文件工具层实施目录授权。它们不是同类产品，不能只按“沙箱强度”排一个名次。
 
-本文从 TypeScript / Node.js Agent Runtime 出发，讨论桌面、云端、Kubernetes 和带 GUI 的 VM 执行环境，重点区分 Tool 授权、资源授权与 OS / VM 隔离。
+下面以 TypeScript / Node.js Agent Runtime 为主线，分析桌面、云端、Kubernetes 和 GUI VM 的执行边界，并比较工具授权、资源控制与 OS / VM 隔离各自应该由哪一层负责。
 
 ## 1. 威胁模型：Agent Runtime 的攻击面已经超出模型输入
 
@@ -369,7 +369,7 @@ interface ExecutionTools {
 
 [查看 Read / Write / Bash 架构图（HTML）](/diagrams/agent-runtime-tool-boundaries.html)
 
-## 5. 值得研究的开源实现
+## 5. 开源实现的能力边界
 
 ### 5.1 Anthropic Sandbox Runtime：最接近通用 Agent 执行隔离层
 
@@ -703,7 +703,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 对于 Copilot SDK 桌面应用，最终推荐是 **TypeScript 控制面 + OS Sandbox 执行面**。Copilot Hook 负责拦截和决策，应用自己的 Tool Handler 负责资源授权，Sandbox Backend 负责让操作系统强制执行批准范围。不要把 Hook、命令白名单或 Rust 语言本身误认为安全边界。
 
-## 8. 容易被忽略的安全问题
+## 8. 跨层控制中容易遗漏的细节
 
 **文件授权和数据授权不是一回事。** Agent 可以读取某个客户文件，不代表可以把它上传到任意外部网站。文件系统 Sandbox 只能限制文件访问，不能判断数据是否允许流向某个 SaaS 或模型服务。需要独立的数据分类、目的地策略和网络出口控制。
 
@@ -727,7 +727,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 这里没有一个项目能够单独解决 Agent 的全部安全问题。选择时首先看执行对象：如果只需要读写文件，优先提供受限文件服务；如果需要有限的 Shell 语义，考虑虚拟 Shell；如果要执行真实命令或 MCP Server，就需要 OS Sandbox；如果需要完整、可复现的开发环境，再考虑容器或 VM。
 
-## 10. 架构落地建议：按风险选择隔离强度
+## 10. 按风险选择部署形态
 
 不需要把所有 Agent 都放进最重的 VM，也不应该让所有 Agent 共用一个普通 Node.js 进程。隔离强度应由数据敏感性、工具权限、租户信任、执行代码来源和可能的副作用决定。
 
@@ -928,17 +928,14 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 | [Your Agent is More Brittle Than You Think: Uncovering Indirect Injection Vulnerabilities in Agentic LLMs](https://arxiv.org/abs/2604.03870), 2026 | 在动态多步工具环境中研究间接注入与多种防御策略，强调单轮静态测试的局限。 |
 | [The Hidden Dangers of Browsing AI Agents](https://arxiv.org/abs/2505.13076), 2025 | 浏览器 Agent 的端到端威胁模型，讨论 Prompt Injection、域名校验绕过、凭证外泄和 Planner / Executor 隔离。 |
 
-## 12. 结论：复用 OS Sandbox，自己实现策略控制面
+## 12. 落地原则：策略由 Runtime 管，隔离交给 OS
 
-如果是 TypeScript / Node.js Agent Runtime，我会按以下方式落地：
+对 TypeScript / Node.js Runtime，职责边界可以收敛为三件事：
 
-- Read：使用只读 Capability Filesystem，细分目录列表、元数据、内容读取和搜索权限。
-- Write / Edit：使用独立的 ChangeSet、Patch、版本检查和可回滚提交接口，不与执行能力绑定。
-- 轻量 Shell：使用 just-bash，优先采用内存文件系统；只在确有需要时开放网络、Python 或 JavaScript。
-- Bash / Script：通过独立 Execution Service 调用 Anthropic Sandbox Runtime、Microsoft Execution Containers（MXC）等经验证的 OS Sandbox，脚本写入与脚本执行分别授权。
-- 完整开发环境：需要依赖安装、编译、浏览器和长任务时，再采用 OpenHands 这类 Docker Runtime；高风险任务考虑 VM。
-- 权限与审计：由自己的 Agent Runtime 统一管理 Tool Registry、Policy Engine、审批、Execution Profile 和 Audit Log。
+- 文件操作走独立的 Capability Filesystem。Read、Write、Delete 分开授权；写入通过 ChangeSet、Patch 和版本检查提交，不能因为能写文件就能执行文件。
+- Shell 和脚本执行走独立 Execution Service。轻量、受限命令可用 just-bash；需要真实进程时再调用经过验证的 OS Sandbox，例如 Anthropic Sandbox Runtime 或 Microsoft Execution Containers（MXC）。需要完整开发环境时才引入 Docker；面对高风险不可信代码，再考虑 VM 或 microVM。
+- Tool Registry、Policy Engine、审批、Execution Profile 和 Audit Log 由 Runtime 自己管理。策略模型可以统一，底层执行后端按操作系统和部署环境分别实现。
 
-这套组合的重点不是多增加一层抽象，而是避免让 Agent Runtime 自己承担操作系统安全机制的实现成本。Runtime 应该知道谁在执行什么任务、请求操作哪个资源、为什么被允许；Sandbox 则保证实际进程不能超出已批准的执行范围。
+这套设计不要求 Runtime 重写 Seatbelt、AppContainer、seccomp 或 VM Monitor。Runtime 负责回答谁在执行、请求操作什么资源、凭什么允许；OS Sandbox 负责把这些限制落实到进程和资源访问上。
 
-最后要强调：Sandbox 不能消除 Prompt Injection，也不能自动解决数据外传、恶意依赖、宿主机漏洞或用户误授权。它的作用是把模型可能犯错的影响范围限制住。一个可靠的 Agent Runtime，应该允许模型提出动作，但不能允许模型决定自己的权限边界。
+Sandbox 也不是 Prompt Injection 的解决方案。它无法判断数据是否应该发给某个 SaaS，也不能替代身份治理、供应链管理和用户审批。它的价值是限制失误或失陷后的影响范围：模型可以提出动作，但不能自行扩大权限。
