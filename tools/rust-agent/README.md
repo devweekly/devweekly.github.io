@@ -89,7 +89,7 @@ No Shell, process execution, arbitrary network tool, or workspace-external file 
 
 ## Current limitations
 
-- Streaming requires the provider to implement OpenAI-compatible Chat Completions SSE. Delta events contain fragments of the structured action payload, not display-ready assistant text; hosts must wait for the completed turn before rendering final content or acting on a tool call. If a primary model fails after emitting partial output, fallback is not attempted to avoid mixing two model responses. In-flight cancellation is not implemented yet.
+- Streaming requires the provider to implement OpenAI-compatible Chat Completions SSE. The primary Agent loop emits `model.output.delta` RuntimeHook events and buffers the complete response before parsing it. Delta events contain fragments of the structured action payload, not display-ready assistant text; hosts must wait for the completed turn before rendering final content or acting on a tool call. Delegated subagent requests still use the buffered completion path. If a primary model fails after emitting partial output, fallback is not attempted to avoid mixing two model responses. In-flight cancellation is not implemented yet.
 - Model discovery requires the provider to expose the OpenAI-compatible GET /models endpoint.
 - Permission modes intentionally omit automatic edit approval: default always asks before writes, while plan blocks writes.
 - Context management uses a sliding window; semantic summarization is not implemented yet.
