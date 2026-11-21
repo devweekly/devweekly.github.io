@@ -42,20 +42,20 @@ No npm install or CodeBuddy login is required.
 
 ## Sessions and context
 
-Sessions are stored as JSON files under `.rust-agent/sessions/` in the configured workspace. The `latest` pointer supports `--continue`; use `--session-id` to resume a specific session. Use `/new`, `/session`, `/resume <id>`, and `/fork` in the interactive CLI. `/models` queries the provider's OpenAI-compatible GET /models endpoint. `/mode plan` blocks writes; `/mode default` restores per-write approval. `/context` displays the retained message count and `/compact` applies the configured sliding-window limit. When the model returns an ask_user action, the CLI presents structured choices or a free-text question and sends the answer back into the current turn.
+Sessions are stored as JSON files under `.rust-agent/sessions/` in the configured workspace. The `latest` pointer supports `--continue`; use `--session-id` to resume a specific session. Use `/new`, `/session`, `/resume <id>`, and `/fork` in the interactive CLI. `/models` queries the provider's OpenAI-compatible GET /models endpoint. `/mode plan` blocks writes; `/mode default` restores per-write approval. `/context` displays the retained message count and `/compact` applies the configured sliding-window limit. The complete request budget includes the system prompt, current request, history, agent catalog, tool output and attachment metadata; oversized input is truncated on a Unicode boundary and older history is removed first. A conservative local tokenizer estimate is used, not a model-specific tokenizer. The same input/output budget is applied to the foreground Agent, delegated subagents and background tasks. When the model returns an ask_user action, the CLI presents structured choices or a free-text question and sends the answer back into the current turn. Embedding Hosts can supply `RuntimeOptions.user_question_handler` with a `UserQuestionHandler` implementation to render questions in a desktop or web UI; only the CLI fallback reads stdin, on a blocking worker thread.
 
 ```bash
 cargo run -- --model <model-id> --workspace /path/to/workspace --continue
 cargo run -- --model <model-id> --workspace /path/to/workspace --session-id <session-id>
 ```
 
-A fork copies the current conversation into a new session and records its parent session ID. Session writes use a temporary file followed by rename to avoid leaving a partially written JSON document. Session IDs are validated before they are used as file names.
+A fork copies the current conversation into a new session and records its parent session ID. Every session is bound to its optional project ID; resuming the same session under a different project is rejected. Older session files without a project ID remain usable only when no project scope is configured. Session writes use a temporary file followed by rename to avoid leaving a partially written JSON document. Session IDs are validated before they are used as file names.
 
 Embedding hosts can create a `CancellationHandle`, pass it to `run_turn_with_cancellation`, and call `cancel()` from a UI cancel action. The CLI maps Ctrl-C to the same mechanism while a turn is running. Cancellation aborts in-flight model requests, including delegated subagent requests, persists a synthetic cancelled-turn marker for conversation continuity, and emits `turn.cancelled`. It does not roll back a local tool operation that has already completed. Synchronous local tools and blocking approval/question prompts are not preemptible; the cancellation request is checked immediately after a prompt returns and before a pending write approval can execute. The CLI keeps one process-lifetime Ctrl-C listener, so Ctrl-C cancels an active turn and exits when the CLI is idle.
 
 The runtime bounds the active conversation history to the most recent 80 non-system messages by default. It removes complete older turns rather than cutting through the middle of a tool exchange. This is a sliding context window, not semantic summarization. The model can delegate a bounded investigation or review through `delegate_task`; the delegated Agent has its own short-lived context and can only read, list, and search workspace files. Its result is returned to the parent conversation.
 
-Longer independent investigations can use `start_background_task`. A task gets its own message history and is stored under `.rust-agent/tasks/<task-id>.json`, separately from its parent session. The task ID is returned immediately, so the foreground Agent turn can continue. Task status and intermediate messages are persisted after each completed tool step. On process startup, queued or previously running tasks are requeued from their last persisted checkpoint; a task persisted in `cancelling` is finalized as `cancelled` instead. The task's selected model is captured when it starts.
+Longer independent investigations can use `start_background_task`. A task gets its own message history and is stored under `.rust-agent/tasks/<task-id>.json`, separately from its parent session. The task ID is returned immediately, so the foreground Agent turn can continue. Task status and intermediate messages are persisted after each completed tool step. Each worker must claim a task lease in the workspace SQLite database before execution, so two Runtime instances cannot run the same task or exceed the shared eight-worker limit. The worker renews its 120-second lease every 30 seconds and releases it on completion. A queued task can be claimed immediately; a previously running task is resumed only after its lease expires, so a Host should call `resume_background_tasks()` again after the lease window when recovery is still required. A task persisted in `cancelling` is finalized as `cancelled` after a worker can safely claim it. The task's selected model is captured when it starts.
 
 Use these CLI commands to manage tasks:
 
@@ -65,9 +65,11 @@ Use these CLI commands to manage tasks:
 /wait <id>             Wait for completion (Ctrl-C stops waiting, not the task)
 /cancel-task <id>      Request task cancellation
 /deliver-task <id>     Add a completed result to its original parent session
+/forget-memory <id>       Forget a memory and redact exclusive transcript sources
+/prune-transcripts <days> Prune unreferenced transcript rows older than N days
 ```
 
-A result can only be delivered to the parent session that created the task. Delivery is idempotent. Cancellation first persists a `cancelling` state before signalling the worker; a process restart completes that cancellation instead of requeueing the task. Background tasks are limited to eight active tasks and twelve model steps per task; a selected profile can lower that step budget. They can only read, list, and search workspace files; they cannot write files, ask questions, start nested tasks, or use arbitrary network or process tools.
+A result can only be delivered to the parent session that created the task. Delivery is idempotent. Cancellation first persists a `cancelling` state before signalling the worker; the active worker observes it after the in-flight provider request and exits. Cross-process cancellation is cooperative, not an instantaneous interruption. Background tasks are limited to eight active tasks and twelve model steps per task; a selected profile can lower that step budget. They can only read, list, and search workspace files; they cannot write files, ask questions, start nested tasks, or use arbitrary network or process tools.
 
 
 ## Custom Agents
@@ -110,7 +112,7 @@ The built-in defaults remain available when no profile ID is supplied: foregroun
 | Runtime controls | Interactive model/mode switching, context inspection, manual window compaction, and host-triggered turn cancellation |
 | Memory lifecycle | SQLite transcript log, evidence-backed notes, linked knowledge pages, scoped retrieval, and model-assisted dreaming consolidation |
 | Lifecycle hooks | Native `RuntimeHook` callbacks plus JSONL audit events; hooks can deny a tool call but cannot grant permissions |
-| Workspace tools | Rust read, list, search, and write operations |
+| Workspace tools | Rust read, list, search, and write operations with bounded reads and results |
 | MCP | Standalone Rust stdio server with tools, resources, and prompts |
 
 Options:
@@ -125,6 +127,8 @@ Options:
 Audit events intentionally omit prompt text and file contents. Audit failures are logged but do not fail an otherwise successful Agent turn.
 
 ## Tools and policy
+
+`read_file` rejects files larger than 1 MiB. `list_dir` returns at most 2,000 entries and 256 KiB of output. `search_files` examines at most 10,000 candidate paths, skips files larger than 1 MiB, reads no more than 64 MiB in total per request, caps individual matching lines at 4 KiB, and returns at most 256 KiB. These limits bound application memory and data returned to the model; they do not replace OS-level CPU, disk or filesystem isolation.
 
 | Tool | Rust policy | Behavior |
 |---|---|---|
@@ -141,7 +145,7 @@ No Shell, process execution, arbitrary network tool, or workspace-external file 
 
 The Rust library is the embedding API; it does not start an HTTP server. A desktop or service Host owns its upload transport and calls AgentRuntime::attach_bytes(filename, content_type, bytes) before run_turn or run_turn_with_cancellation. The Runtime enforces a 20 MiB per-file limit, stores bytes under .rust-agent/attachments/ using generated IDs (never client filenames as storage paths), and writes metadata separately. The Runtime automatically adds attachment metadata to the next user message; the Agent uses read_attachment with the returned ID to inspect UTF-8 text. Arbitrary binary files can be stored but are not decoded. No HTTP server, multipart parser, OCR, PDF, or Office parser is bundled.
 
-The embedding surface exposes RuntimeHook for lifecycle events and additional tool denials, CancellationHandle for cancellation, and the optional asynchronous ApprovalHandler callback. A desktop Host can await its approval UI without blocking the Tokio runtime; the Rust Policy Gate still makes the final allow/deny decision. The CLI uses a blocking terminal prompt on a dedicated blocking thread.
+The embedding surface exposes RuntimeHook for lifecycle events and additional tool denials, CancellationHandle for cancellation, the optional asynchronous ApprovalHandler callback, and the optional asynchronous UserQuestionHandler callback. A desktop Host can await its approval or question UI without blocking the Tokio runtime; the Rust Policy Gate still makes the final allow/deny decision. The CLI uses blocking terminal prompts on dedicated blocking threads.
 
 ## Optional CodeBuddy adapter
 
@@ -175,7 +179,7 @@ During a turn, the Agent can call `memory_note` to save a proposed observation, 
 
 Dreaming run state is durable in SQLite: each run records its trigger, cursor range, model usage, outcome and error. A database lease prevents two processes from consolidating the same workspace concurrently. If a process exits while holding the lease, another worker can reclaim the run after lease expiry. Failed runs store a retry time and are retried with bounded backoff. Model requests have a timeout. No auto-Dreaming call is made by default, because transcripts are sent to the configured model provider when consolidation runs.
 
-The Rust layer validates evidence existence and scope, verifies page links stay within their scope, and commits the complete note/page update and transcript cursor in one SQLite transaction. Notes and pages retain revision snapshots; hosts can inspect history and restore a prior version. Dreaming can retire obsolete pages only after all incoming links are removed, and it records a restorable deletion revision. Explicit memory forget and expiry cleanup remove both the live record and its revision snapshots, rather than leaving deleted content in history. Duplicate notes are merged while retaining recent evidence references. The compact global `index` page is the preloaded map; relevant consolidated notes and page summaries are selected for each request, while full pages and transcripts are loaded on demand.
+The Rust layer validates evidence existence and scope, verifies page links stay within their scope, and commits the complete note/page update and transcript cursor in one SQLite transaction. Notes and pages retain revision snapshots; hosts can inspect history and restore a prior version. Dreaming can retire obsolete pages only after all incoming links are removed, and it records a restorable deletion revision. Explicit memory forget removes the selected note and its revision snapshots. Transcript rows used only by that note are deleted, and their exact source messages are redacted from matching persisted Session files and the current in-memory conversation. A transcript shared by another live or revisioned memory/page is retained. `/prune-transcripts <days>` removes only old, unreferenced transcript rows, preserves the newest 1,000 rows, and deletes at most 1,000 rows per invocation. Retention is explicit; it does not run silently at startup. Duplicate notes are merged while retaining recent evidence references. The compact global `index` page is the preloaded map; relevant consolidated notes and page summaries are selected for each request, while full pages and transcripts are loaded on demand.
 
 Transcript entries record `session_id`, `project_id` and `task_id`. Search and read operations are scoped to the active session/project/task, and Dreaming cannot use evidence from another project to create a project-specific memory. Global notes require user-authored transcript evidence; project, session and task memories must match their corresponding source scope.
 
@@ -183,7 +187,7 @@ Embedding Hosts can use `MemoryStore::open(path)` or `AgentRuntime::memory_store
 
 The built-in `RuntimeHook` covers before-turn, before-tool, runtime events and after-turn callbacks. Hooks can observe or deny operations, but cannot grant permissions or bypass the deterministic Rust Policy Gate.
 
-Trace records are written to `.rust-agent/traces.jsonl` and include timestamp, trace ID, sequence, session ID, event, tool and sanitized metadata. Prompt bodies, model response bodies, file contents and tool arguments are excluded. Audit and Usage remain separate views over their respective event types.
+Trace records are written to `.rust-agent/traces.jsonl` and include timestamp, trace ID, sequence, session ID, event, tool and sanitized metadata. A process-unique trace identity and OS file lock serialize appends across Runtime processes sharing the same trace file. Trace files rotate at 32 MiB with three backups; Usage rotates at 16 MiB and Audit at 32 MiB, each with three backups. Prompt bodies, model response bodies, file contents and tool arguments are excluded. Audit and Usage remain separate views over their respective event types.
 
 Example:
 
@@ -216,7 +220,7 @@ let answer = runtime.run_turn("Review the repository").await?;
 
 - Streaming requires the provider to implement OpenAI-compatible Chat Completions SSE. The primary Agent loop emits `model.output.delta` RuntimeHook events and buffers the complete response before parsing it. Delta events contain fragments of the structured action payload, not display-ready assistant text; hosts must wait for the completed turn before rendering final content or acting on a tool call. Delegated subagent requests still use the buffered completion path. If a primary model fails after emitting partial output, fallback is not attempted to avoid mixing two model responses.
 - Host-triggered cancellation and CLI Ctrl-C abort in-flight provider requests and record a cancelled-turn marker. Cancellation cannot undo a local tool operation that has already completed, and synchronous local tools plus blocking CLI approval/question prompts are not preemptible.
-- Background task file tools are synchronous and cannot be interrupted mid-operation. Cancelling such a task takes effect after the current local tool call returns. Background task recovery is automatic when the runtime is constructed inside an active Tokio runtime; hosts constructing it elsewhere must call `resume_background_tasks()` from their async runtime.
+- Background task file tools are synchronous and cannot be interrupted mid-operation. Cancelling such a task takes effect after the current local tool call returns. Background task lease recovery requires an active Tokio runtime; after a crashed worker's lease expires, the Host may call `resume_background_tasks()` again to claim and restart its last persisted checkpoint.
 - Model discovery requires the provider to expose the OpenAI-compatible GET /models endpoint.
 - Permission modes intentionally omit automatic edit approval: default always asks before writes, while plan blocks writes.
 - Memory retrieval uses local lexical matching and CJK n-grams; dense embedding retrieval is not implemented.
@@ -224,9 +228,9 @@ let answer = runtime.run_turn("Review the repository").await?;
 - Automatic Dreaming is opt-in and requires an active Tokio runtime. The CLI enables it with `--auto-dreaming`; embedding Hosts configure `DreamingOptions`.
 - Context management uses a sliding window; semantic summarization is not implemented yet.
 - Runtime hooks are synchronous callbacks. Long-running hook work should be delegated by the embedding host rather than blocking the Agent loop.
-- Delegated subagents still run sequentially in the parent turn and are not independently resumable. Background tasks are separate, read-only workers; after a process crash, the last persisted checkpoint is resumed. A model request that was in flight at the time of the crash can be repeated, so task execution is at-least-once across crashes rather than exactly-once. Concurrent writers to the same workspace task directory are not coordinated across separate Rust Agent processes.
+- Delegated subagents still run sequentially in the parent turn and are not independently resumable. Background tasks are separate, read-only workers coordinated by SQLite leases across Runtime processes. After a worker crash, its checkpoint becomes eligible for restart after the 120-second lease expires; a model request that was in flight at the time of the crash can be repeated, so task execution is at-least-once rather than exactly-once. The lease protects task ownership and the global concurrency limit, but task JSON updates are not a general multi-writer transactional store.
 - Custom Agent profiles currently expose only read-only workspace tools. They cannot add write approval workflows, network access, process execution, nested delegation, or background task creation. Profile configuration is local JSON rather than a separate profile-management UI.
 - Fallback routing is deliberately limited to transient transport, rate-limit, and server failures. Authentication, invalid-request, and malformed-response failures are not retried.
 - Terminal approval is synchronous. A desktop host will need an approval channel, but must retain the Rust policy check.
-- Session storage is local JSON and is not designed for concurrent writers to the same session.
+- Session storage is local JSON and is not designed for concurrent writers to the same session. Attachments and historical session/task records do not yet have a global workspace quota or automatic retention policy; only audit, usage and trace logs rotate automatically.
 - The standalone MCP server supports tools, resources, and prompts over stdio.
