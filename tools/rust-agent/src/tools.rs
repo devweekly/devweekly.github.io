@@ -96,9 +96,9 @@ impl ToolExecutor {
         if !path.is_file() {
             return Err(AgentError::InvalidAction("read_file target is not a regular file".into()));
         }
-        let mut file = fs::File::open(path)?;
+        let file = fs::File::open(path)?;
         let mut content = String::new();
-        file.by_ref().take(MAX_READ_FILE_BYTES + 1).read_to_string(&mut content)?;
+        file.take(MAX_READ_FILE_BYTES + 1).read_to_string(&mut content)?;
         if content.len() as u64 > MAX_READ_FILE_BYTES {
             return Err(AgentError::InvalidAction(format!(
                 "read_file is limited to {MAX_READ_FILE_BYTES} bytes"
