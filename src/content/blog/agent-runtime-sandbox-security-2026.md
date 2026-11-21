@@ -20,7 +20,7 @@ Agent 一旦能读写文件、运行命令、操作浏览器或调用 MCP，模�
 
 这需要分清三件事：Tool Permission 决定 Agent 能调用什么；Resource Permission 决定操作哪些文件和业务对象；Sandbox 限制进程实际能访问的系统资源。三者不能互相替代。
 
-本文从 TypeScript / Node.js Agent Runtime 的实现出发，先梳理工具与执行边界，再比较桌面 OS Sandbox、Docker、gVisor、VM 和远端执行，最后给出 Remote-first 架构和落地建议。
+下文重点讨论这些边界在 TypeScript / Node.js Runtime、本机桌面、Kubernetes 和远端 Agent Service 中如何落地。
 
 ## 1. 威胁模型：Agent Runtime 的攻击面已经超出模型输入
 
@@ -55,7 +55,7 @@ Agent 一旦能读写文件、运行命令、操作浏览器或调用 MCP，模�
 
 安全目标不是保证模型永远不犯错，而是确保模型犯错、被注入、工具被攻陷或某个执行组件失陷时，影响范围仍然受控。
 
-## 2. 先把三个安全层次分开
+## 2. 工具授权、资源授权与进程隔离
 
 ### Tool Permission：模型可以调用什么
 
