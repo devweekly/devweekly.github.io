@@ -189,6 +189,31 @@ pub struct MemoryPage {
     pub revision: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryRevision {
+    pub revision_id: i64,
+    pub memory_id: String,
+    pub revision: u64,
+    pub action: String,
+    pub before: Option<MemoryRecord>,
+    pub after: Option<MemoryRecord>,
+    pub reason: String,
+    pub evidence_refs: Vec<String>,
+    pub created_at_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryPageRevision {
+    pub revision_id: i64,
+    pub page_id: String,
+    pub revision: u64,
+    pub action: String,
+    pub before: Option<MemoryPage>,
+    pub after: Option<MemoryPage>,
+    pub reason: String,
+    pub created_at_ms: u128,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct DreamingOutput {
     pub reviewed_through: i64,
@@ -236,6 +261,7 @@ pub struct DreamingPage {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DreamingReport {
+    pub run_id: Option<i64>,
     pub transcripts_reviewed: usize,
     pub notes_created: usize,
     pub notes_updated: usize,
@@ -326,7 +352,61 @@ impl MemoryStore {
             CREATE TABLE IF NOT EXISTS memory_meta (
                 key TEXT PRIMARY KEY NOT NULL,
                 value TEXT NOT NULL
-            );",
+            );
+            CREATE TABLE IF NOT EXISTS memory_revisions (
+                revision_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                memory_id TEXT NOT NULL,
+                revision INTEGER NOT NULL,
+                action TEXT NOT NULL,
+                before_json TEXT,
+                after_json TEXT,
+                reason TEXT NOT NULL,
+                evidence_refs_json TEXT NOT NULL,
+                created_at_ms INTEGER NOT NULL,
+                UNIQUE(memory_id, revision)
+            );
+            CREATE INDEX IF NOT EXISTS idx_memory_revisions_memory
+                ON memory_revisions(memory_id, revision DESC);
+            CREATE TABLE IF NOT EXISTS memory_page_revisions (
+                revision_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                page_id TEXT NOT NULL,
+                revision INTEGER NOT NULL,
+                action TEXT NOT NULL,
+                before_json TEXT,
+                after_json TEXT,
+                reason TEXT NOT NULL,
+                created_at_ms INTEGER NOT NULL,
+                UNIQUE(page_id, revision)
+            );
+            CREATE INDEX IF NOT EXISTS idx_memory_page_revisions_page
+                ON memory_page_revisions(page_id, revision DESC);
+            CREATE TABLE IF NOT EXISTS dreaming_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                trigger TEXT NOT NULL,
+                status TEXT NOT NULL,
+                cursor_from INTEGER NOT NULL,
+                cursor_to INTEGER,
+                transcript_count INTEGER NOT NULL,
+                model TEXT,
+                prompt_tokens INTEGER,
+                completion_tokens INTEGER,
+                total_tokens INTEGER,
+                duration_ms INTEGER,
+                started_at_ms INTEGER NOT NULL,
+                completed_at_ms INTEGER,
+                error TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_dreaming_runs_started
+                ON dreaming_runs(started_at_ms DESC);
+            CREATE TABLE IF NOT EXISTS dreaming_control (
+                id INTEGER PRIMARY KEY CHECK(id=1),
+                current_run_id INTEGER,
+                lease_until_ms INTEGER,
+                next_retry_at_ms INTEGER,
+                failure_count INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT
+            );
+            INSERT OR IGNORE INTO dreaming_control(id) VALUES (1);",
         )?;
 
         ensure_memory_column(&connection, "status", "TEXT NOT NULL DEFAULT 'consolidated'")?;
@@ -426,7 +506,9 @@ impl MemoryStore {
             updated_at_ms: now,
             expires_at_ms: input.expires_at_ms,
         };
-        self.conn()?.execute(
+        let mut connection = self.conn()?;
+        let transaction = connection.transaction()?;
+        transaction.execute(
             "INSERT INTO memories (
                 id, schema_version, kind, scope, scope_id, content, source,
                 confidence, created_at_ms, updated_at_ms, expires_at_ms,
@@ -449,6 +531,10 @@ impl MemoryStore {
                 serde_json::to_string(&record.source_refs)?
             ],
         )?;
+        insert_memory_revision(&transaction, &record.id, "created", None, Some(&record),
+            if status == MemoryStatus::Proposed { "agent proposal" } else { "host memory write" },
+            &record.source_refs)?;
+        transaction.commit()?;
         Ok(record)
     }
 
@@ -482,36 +568,51 @@ impl MemoryStore {
                 "memory update is outside configured limits".into(),
             ));
         }
-        let changed = self.conn()?.execute(
+        let mut connection = self.conn()?;
+        let transaction = connection.transaction()?;
+        let before = load_memory(&transaction, id)?
+            .ok_or_else(|| AgentError::InvalidAction(format!("memory record not found: {id}")))?;
+        transaction.execute(
             "UPDATE memories
              SET content=?2, source=COALESCE(?3,source),
                  confidence=COALESCE(?4,confidence), updated_at_ms=?5
              WHERE id=?1",
             params![id, content, source, confidence, to_i64(now_ms())?],
         )?;
-        if changed == 0 {
-            return Err(AgentError::InvalidAction(format!("memory record not found: {id}")));
-        }
-        self.get(id)
+        let after = load_memory(&transaction, id)?.expect("updated memory must exist");
+        insert_memory_revision(&transaction, id, "updated", Some(&before), Some(&after),
+            "host memory update", &after.source_refs)?;
+        transaction.commit()?;
+        Ok(after)
     }
 
     pub fn set_status(&self, id: &str, status: MemoryStatus) -> Result<MemoryRecord, AgentError> {
         Self::validate_id(id)?;
-        let changed = self.conn()?.execute(
+        let mut connection = self.conn()?;
+        let transaction = connection.transaction()?;
+        let before = load_memory(&transaction, id)?
+            .ok_or_else(|| AgentError::InvalidAction(format!("memory record not found: {id}")))?;
+        transaction.execute(
             "UPDATE memories SET status=?2, updated_at_ms=?3 WHERE id=?1",
             params![id, status.as_str(), to_i64(now_ms())?],
         )?;
-        if changed == 0 {
-            return Err(AgentError::InvalidAction(format!("memory record not found: {id}")));
-        }
-        self.get(id)
+        let after = load_memory(&transaction, id)?.expect("updated memory must exist");
+        insert_memory_revision(&transaction, id, "status_changed", Some(&before), Some(&after),
+            "host status review", &after.source_refs)?;
+        transaction.commit()?;
+        Ok(after)
     }
 
     pub fn forget(&self, id: &str) -> Result<(), AgentError> {
         Self::validate_id(id)?;
-        if self.conn()?.execute("DELETE FROM memories WHERE id=?1", [id])? == 0 {
-            return Err(AgentError::InvalidAction(format!("memory record not found: {id}")));
-        }
+        let mut connection = self.conn()?;
+        let transaction = connection.transaction()?;
+        let before = load_memory(&transaction, id)?
+            .ok_or_else(|| AgentError::InvalidAction(format!("memory record not found: {id}")))?;
+        transaction.execute("DELETE FROM memories WHERE id=?1", [id])?;
+        insert_memory_revision(&transaction, id, "forgotten", Some(&before), None,
+            "host deleted memory", &before.source_refs)?;
+        transaction.commit()?;
         Ok(())
     }
 
@@ -587,6 +688,70 @@ impl MemoryStore {
             transaction.commit()?;
         }
         Ok(selected)
+    }
+
+    pub fn list_page_revisions(&self, page_id: &str, limit: usize) -> Result<Vec<MemoryPageRevision>, AgentError> {
+        validate_page_id(page_id)?;
+        let connection = self.conn()?;
+        let mut statement = connection.prepare(
+            "SELECT revision_id,page_id,revision,action,before_json,after_json,reason,created_at_ms
+             FROM memory_page_revisions WHERE page_id=?1 ORDER BY revision DESC LIMIT ?2"
+        )?;
+        Ok(statement.query_map(params![page_id, limit.clamp(1, 200)], row_memory_page_revision)?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn restore_page_revision(&self, page_id: &str, revision: u64) -> Result<MemoryPage, AgentError> {
+        validate_page_id(page_id)?;
+        let mut connection = self.conn()?;
+        let transaction = connection.transaction()?;
+        let (before_json, after_json): (Option<String>, Option<String>) = transaction.query_row(
+            "SELECT before_json,after_json FROM memory_page_revisions WHERE page_id=?1 AND revision=?2",
+            params![page_id, revision],
+            |row| Ok((row.get(0)?,row.get(1)?)),
+        ).optional()?.ok_or_else(|| AgentError::InvalidAction("knowledge page revision not found".into()))?;
+        let snapshot = after_json.or(before_json)
+            .ok_or_else(|| AgentError::InvalidAction("knowledge page revision has no restorable snapshot".into()))?;
+        let restored: MemoryPage = serde_json::from_str(&snapshot)?;
+        let previous = load_page(&transaction, page_id)?;
+        write_page_record(&transaction, &restored)?;
+        let current = load_page(&transaction, page_id)?.expect("restored page must exist");
+        insert_page_revision(&transaction, page_id, "restored", previous.as_ref(), Some(&current),
+            &format!("restored revision {revision}"))?;
+        transaction.commit()?;
+        Ok(current)
+    }
+
+    pub fn list_revisions(&self, memory_id: &str, limit: usize) -> Result<Vec<MemoryRevision>, AgentError> {
+        Self::validate_id(memory_id)?;
+        let connection = self.conn()?;
+        let mut statement = connection.prepare(
+            "SELECT revision_id,memory_id,revision,action,before_json,after_json,reason,evidence_refs_json,created_at_ms
+             FROM memory_revisions WHERE memory_id=?1 ORDER BY revision DESC LIMIT ?2"
+        )?;
+        Ok(statement.query_map(params![memory_id, limit.clamp(1, 200)], row_memory_revision)?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn restore_revision(&self, memory_id: &str, revision: u64) -> Result<MemoryRecord, AgentError> {
+        Self::validate_id(memory_id)?;
+        let mut connection = self.conn()?;
+        let transaction = connection.transaction()?;
+        let (before_json, after_json): (Option<String>, Option<String>) = transaction.query_row(
+            "SELECT before_json,after_json FROM memory_revisions WHERE memory_id=?1 AND revision=?2",
+            params![memory_id, revision],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).optional()?.ok_or_else(|| AgentError::InvalidAction("memory revision not found".into()))?;
+        let snapshot = after_json.or(before_json)
+            .ok_or_else(|| AgentError::InvalidAction("memory revision has no restorable snapshot".into()))?;
+        let restored: MemoryRecord = serde_json::from_str(&snapshot)?;
+        let previous = load_memory(&transaction, memory_id)?;
+        write_memory_record(&transaction, &restored)?;
+        let current = load_memory(&transaction, memory_id)?.expect("restored memory must exist");
+        insert_memory_revision(&transaction, memory_id, "restored", previous.as_ref(), Some(&current),
+            &format!("restored revision {revision}"), &current.source_refs)?;
+        transaction.commit()?;
+        Ok(current)
     }
 
     pub fn count(&self) -> Result<usize, AgentError> {
@@ -687,7 +852,7 @@ impl MemoryStore {
         let connection = self.conn()?;
         let mut statement = connection.prepare(
             "SELECT id,session_id,project_id,task_id,role,content,created_at_ms FROM transcripts
-             WHERE session_id=?1
+             WHERE (session_id=?1 AND ((?3 IS NULL AND task_id IS NULL) OR task_id=?3))
                 OR (?2 IS NOT NULL AND project_id=?2
                     AND ((?3 IS NULL AND task_id IS NULL) OR task_id=?3))
              ORDER BY id DESC LIMIT 1000",
@@ -719,7 +884,8 @@ impl MemoryStore {
         task_id: Option<&str>,
     ) -> Result<TranscriptEntry, AgentError> {
         let entry = self.get_transcript(id)?;
-        let visible = entry.session_id == session_id
+        let visible = (entry.session_id == session_id
+            && ((task_id.is_none() && entry.task_id.is_none()) || entry.task_id.as_deref() == task_id))
             || (project_id.is_some() && entry.project_id.as_deref() == project_id
                 && ((task_id.is_none() && entry.task_id.is_none()) || entry.task_id.as_deref() == task_id));
         if !visible {
@@ -773,9 +939,103 @@ impl MemoryStore {
         Ok(ranked.into_iter().take(limit.clamp(1, 50)).map(|(_, page)| page).collect())
     }
 
+    pub fn start_dreaming_run(
+        &self,
+        minimum_transcripts: usize,
+        lease_ms: u64,
+        trigger: &str,
+    ) -> Result<Option<(i64, i64)>, AgentError> {
+        let mut connection = self.conn()?;
+        let transaction = connection.transaction()?;
+        let cursor = last_dreamed_cursor(&transaction)?;
+        let max_id: i64 = transaction.query_row("SELECT COALESCE(MAX(id),0) FROM transcripts", [], |row| row.get(0))?;
+        let pending: i64 = transaction.query_row("SELECT COUNT(*) FROM transcripts WHERE id>?1", [cursor], |row| row.get(0))?;
+        if pending < i64::try_from(minimum_transcripts).unwrap_or(i64::MAX) {
+            return Ok(None);
+        }
+        let (current_run, lease_until, next_retry): (Option<i64>, Option<i64>, Option<i64>) =
+            transaction.query_row(
+                "SELECT current_run_id,lease_until_ms,next_retry_at_ms FROM dreaming_control WHERE id=1",
+                [],
+                |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?)),
+            )?;
+        let now = to_i64(now_ms())?;
+        if lease_until.is_some_and(|until| until > now)
+            || next_retry.is_some_and(|next| next > now)
+        {
+            return Ok(None);
+        }
+        if let Some(previous_run) = current_run {
+            transaction.execute(
+                "UPDATE dreaming_runs SET status='abandoned',completed_at_ms=?2,
+                    error='Dreaming worker lease expired before completion' WHERE id=?1 AND status='running'",
+                params![previous_run,now],
+            )?;
+        }
+        let transcript_count = pending.min(200);
+        transaction.execute(
+            "INSERT INTO dreaming_runs(trigger,status,cursor_from,cursor_to,transcript_count,started_at_ms)
+             VALUES (?1,'running',?2,?3,?4,?5)",
+            params![trigger,cursor,max_id,transcript_count,now],
+        )?;
+        let run_id = transaction.last_insert_rowid();
+        transaction.execute(
+            "UPDATE dreaming_control SET current_run_id=?1,lease_until_ms=?2 WHERE id=1",
+            params![run_id, now.saturating_add(i64::try_from(lease_ms).unwrap_or(i64::MAX))],
+        )?;
+        transaction.commit()?;
+        Ok(Some((run_id,cursor)))
+    }
+
+    pub fn fail_dreaming_run(&self, run_id: i64, error: &str, retry_after_ms: u64) -> Result<(), AgentError> {
+        let mut connection = self.conn()?;
+        let transaction = connection.transaction()?;
+        let now = to_i64(now_ms())?;
+        transaction.execute(
+            "UPDATE dreaming_runs SET status='failed',completed_at_ms=?2,error=?3 WHERE id=?1 AND status='running'",
+            params![run_id,now,error.chars().take(2_000).collect::<String>()],
+        )?;
+        transaction.execute(
+            "UPDATE dreaming_control SET current_run_id=NULL,lease_until_ms=NULL,
+                next_retry_at_ms=?1,failure_count=failure_count+1,last_error=?2 WHERE id=1 AND current_run_id=?3",
+            params![now.saturating_add(i64::try_from(retry_after_ms).unwrap_or(i64::MAX)),
+                error.chars().take(2_000).collect::<String>(),run_id],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn pending_transcript_count(&self) -> Result<usize, AgentError> {
+        let connection = self.conn()?;
+        let cursor = last_dreamed_cursor(&connection)?;
+        let count: i64 = connection.query_row("SELECT COUNT(*) FROM transcripts WHERE id>?1", [cursor], |row| row.get(0))?;
+        usize::try_from(count).map_err(|_| AgentError::InvalidAction("transcript count out of range".into()))
+    }
+
     /// Apply an offline consolidation pass as one SQLite transaction.
     /// Every new or changed note/page must cite a transcript or an existing memory.
     pub fn apply_dreaming(&self, output: DreamingOutput) -> Result<DreamingReport, AgentError> {
+        self.apply_dreaming_inner(output, None)
+    }
+
+    pub fn apply_dreaming_run(
+        &self,
+        run_id: i64,
+        output: DreamingOutput,
+        model: &str,
+        prompt_tokens: Option<u64>,
+        completion_tokens: Option<u64>,
+        total_tokens: Option<u64>,
+        duration_ms: u64,
+    ) -> Result<DreamingReport, AgentError> {
+        self.apply_dreaming_inner(output, Some((run_id, model, prompt_tokens, completion_tokens, total_tokens, duration_ms)))
+    }
+
+    fn apply_dreaming_inner(
+        &self,
+        output: DreamingOutput,
+        run: Option<(i64, &str, Option<u64>, Option<u64>, Option<u64>, u64)>,
+    ) -> Result<DreamingReport, AgentError> {
         if output.notes.len() > 32 || output.pages.len() > 16 {
             return Err(AgentError::InvalidAction("dreaming output exceeds operation limits".into()));
         }
@@ -796,6 +1056,7 @@ impl MemoryStore {
         }
 
         let mut report = DreamingReport {
+            run_id: run.map(|value| value.0),
             reviewed_through: output.reviewed_through,
             ..DreamingReport::default()
         };
@@ -809,7 +1070,9 @@ impl MemoryStore {
                     if note.confidence > 100 || note.importance > 100 {
                         return Err(AgentError::InvalidAction("dreaming confidence or importance exceeds 100".into()));
                     }
-                    validate_evidence_in_transaction(&transaction, &note.evidence)?;
+                    validate_evidence_scope_in_transaction(
+                        &transaction, &note.evidence, scope, note.scope_id.as_deref()
+                    )?;
                     if note.evidence.is_empty() {
                         return Err(AgentError::InvalidAction("dreaming notes require source evidence".into()));
                     }
@@ -817,13 +1080,38 @@ impl MemoryStore {
                     let refs = serde_json::to_string(&note.evidence)?;
                     let status = if note.confidence >= 70 { MemoryStatus::Consolidated } else { MemoryStatus::Proposed };
                     if note.action == "create" {
-                        if transaction.query_row(
-                            "SELECT EXISTS(SELECT 1 FROM memories WHERE lower(content)=lower(?1) AND scope=?2 AND COALESCE(scope_id,'')=COALESCE(?3,''))",
-                            params![note.content.trim(), scope.as_str(), note.scope_id],
-                            |row| row.get::<_, bool>(0),
-                        )? {
+                        let duplicate_id: Option<String> = transaction.query_row(
+                            "SELECT id FROM memories WHERE lower(content)=lower(?1)
+                             AND scope=?2 AND COALESCE(scope_id,'')=COALESCE(?3,'')
+                             ORDER BY updated_at_ms DESC LIMIT 1",
+                            params![note.content.trim(),scope.as_str(),note.scope_id],
+                            |row| row.get(0),
+                        ).optional()?;
+                        if let Some(id) = duplicate_id {
+                            let before = load_memory(&transaction, &id)?.expect("duplicate memory must exist");
+                            let mut merged_refs = before.source_refs.clone();
+                            for reference in &note.evidence {
+                                if !merged_refs.contains(reference) {
+                                    merged_refs.push(reference.clone());
+                                }
+                            }
+                            if merged_refs.len() > MAX_EVIDENCE_REFS {
+                                merged_refs.drain(0..merged_refs.len() - MAX_EVIDENCE_REFS);
+                            }
+                            let merged_json = serde_json::to_string(&merged_refs)?;
+                            transaction.execute(
+                                "UPDATE memories SET confidence=MAX(confidence,?2),
+                                    importance=MAX(importance,?3),source_refs_json=?4,updated_at_ms=?5
+                                 WHERE id=?1",
+                                params![id,note.confidence,note.importance,merged_json,now],
+                            )?;
+                            let after = load_memory(&transaction, &id)?.expect("merged memory must exist");
+                            insert_memory_revision(&transaction, &id, "evidence_merged", Some(&before), Some(&after),
+                                "dreaming merged duplicate observations", &note.evidence)?;
+                            report.notes_updated += 1;
                             continue;
                         }
+                        let id = new_id(now as u128);
                         transaction.execute(
                             "INSERT INTO memories (
                                 id,schema_version,kind,scope,scope_id,content,source,confidence,
@@ -831,24 +1119,30 @@ impl MemoryStore {
                                 source_refs_json,access_count,last_accessed_at_ms
                             ) VALUES (?1,?2,?3,?4,?5,?6,'dreaming',?7,?8,?8,NULL,?9,?10,?11,0,NULL)",
                             params![
-                                new_id(now as u128),
-                                SCHEMA_VERSION,
-                                kind.as_str(),
-                                scope.as_str(),
-                                note.scope_id,
-                                note.content.trim(),
-                                note.confidence,
-                                now,
-                                status.as_str(),
-                                note.importance,
-                                refs
+                                id,SCHEMA_VERSION,kind.as_str(),scope.as_str(),note.scope_id,
+                                note.content.trim(),note.confidence,now,status.as_str(),note.importance,refs
                             ],
                         )?;
+                        let after = load_memory(&transaction, &id)?.expect("created memory must exist");
+                        insert_memory_revision(&transaction, &id, "created", None, Some(&after),
+                            "dreaming extracted a durable observation", &note.evidence)?;
                         report.notes_created += 1;
                     } else {
                         let id = note.id.as_deref().ok_or_else(|| AgentError::InvalidAction("dreaming update is missing memory ID".into()))?;
                         MemoryStore::validate_id(id)?;
-                        let changed = transaction.execute(
+                        let before = load_memory(&transaction, id)?
+                            .ok_or_else(|| AgentError::InvalidAction(format!("dreaming update references missing memory: {id}")))?;
+                        let mut merged_refs = before.source_refs.clone();
+                        for reference in &note.evidence {
+                            if !merged_refs.contains(reference) {
+                                merged_refs.push(reference.clone());
+                            }
+                        }
+                        if merged_refs.len() > MAX_EVIDENCE_REFS {
+                            merged_refs.drain(0..merged_refs.len() - MAX_EVIDENCE_REFS);
+                        }
+                        let refs = serde_json::to_string(&merged_refs)?;
+                        transaction.execute(
                             "UPDATE memories SET kind=?2,scope=?3,scope_id=?4,content=?5,
                                 confidence=?6,importance=?7,source='dreaming',source_refs_json=?8,
                                 status=?9,updated_at_ms=?10 WHERE id=?1",
@@ -857,27 +1151,31 @@ impl MemoryStore {
                                 note.confidence,note.importance,refs,status.as_str(),now
                             ],
                         )?;
-                        if changed == 0 {
-                            return Err(AgentError::InvalidAction(format!("dreaming update references missing memory: {id}")));
-                        }
+                        let after = load_memory(&transaction, id)?.expect("updated memory must exist");
+                        insert_memory_revision(&transaction, id, "updated", Some(&before), Some(&after),
+                            "dreaming corrected or consolidated a memory", &note.evidence)?;
                         report.notes_updated += 1;
                     }
                 }
                 "dispute" | "stale" => {
                     let id = note.id.as_deref().ok_or_else(|| AgentError::InvalidAction("dreaming review is missing memory ID".into()))?;
                     MemoryStore::validate_id(id)?;
-                    validate_evidence_in_transaction(&transaction, &note.evidence)?;
                     if note.evidence.is_empty() {
                         return Err(AgentError::InvalidAction("dreaming reviews require source evidence".into()));
                     }
+                    let before = load_memory(&transaction, id)?
+                        .ok_or_else(|| AgentError::InvalidAction(format!("dreaming review references missing memory: {id}")))?;
+                    validate_evidence_scope_in_transaction(
+                        &transaction, &note.evidence, before.scope, before.scope_id.as_deref()
+                    )?;
                     let status = if note.action == "dispute" { MemoryStatus::Disputed } else { MemoryStatus::Stale };
-                    let changed = transaction.execute(
+                    transaction.execute(
                         "UPDATE memories SET status=?2,updated_at_ms=?3 WHERE id=?1",
                         params![id,status.as_str(),to_i64(now_ms())?],
                     )?;
-                    if changed == 0 {
-                        return Err(AgentError::InvalidAction(format!("dreaming review references missing memory: {id}")));
-                    }
+                    let after = load_memory(&transaction, id)?.expect("reviewed memory must exist");
+                    insert_memory_revision(&transaction, id, note.action.as_str(), Some(&before), Some(&after),
+                        "dreaming review", &note.evidence)?;
                     if status == MemoryStatus::Disputed {
                         report.notes_disputed += 1;
                     } else {
@@ -889,6 +1187,7 @@ impl MemoryStore {
             }
         }
 
+        let mut pending_page_links = Vec::new();
         for page in output.pages {
             validate_page_id(&page.id)?;
             if page.title.trim().is_empty() || page.title.len() > 160
@@ -899,7 +1198,17 @@ impl MemoryStore {
                 return Err(AgentError::InvalidAction(format!("dreaming page {} is outside configured limits", page.id)));
             }
             validate_scope(page.scope, page.scope_id.as_deref())?;
-            validate_evidence_in_transaction(&transaction, &page.evidence)?;
+            validate_evidence_scope_in_transaction(
+                &transaction, &page.evidence, page.scope, page.scope_id.as_deref()
+            )?;
+            let before = load_page(&transaction, &page.id)?;
+            if before.as_ref().is_some_and(|existing| {
+                existing.scope != page.scope || existing.scope_id != page.scope_id
+            }) {
+                return Err(AgentError::InvalidAction(format!(
+                    "knowledge page ID {} is already owned by a different scope", page.id
+                )));
+            }
             if page.evidence.is_empty() {
                 return Err(AgentError::InvalidAction(format!("dreaming page {} has no source evidence", page.id)));
             }
@@ -909,11 +1218,7 @@ impl MemoryStore {
             let refs = serde_json::to_string(&page.evidence)?;
             let links = serde_json::to_string(&page.links)?;
             let now = to_i64(now_ms())?;
-            let exists: bool = transaction.query_row(
-                "SELECT EXISTS(SELECT 1 FROM memory_pages WHERE id=?1)",
-                [&page.id],
-                |row| row.get(0),
-            )?;
+            let exists = before.is_some();
             transaction.execute(
                 "INSERT INTO memory_pages (
                     id,title,summary,content,scope,scope_id,source_refs_json,links_json,updated_at_ms,revision
@@ -926,7 +1231,27 @@ impl MemoryStore {
                 params![page.id,page.title.trim(),page.summary.trim(),page.content.trim(),page.scope.as_str(),
                     page.scope_id,refs,links,now],
             )?;
+            let after = load_page(&transaction, &page.id)?.expect("upserted page must exist");
+            insert_page_revision(&transaction, &page.id,
+                if exists { "updated" } else { "created" },
+                before.as_ref(), Some(&after), "dreaming wiki maintenance")?;
+            pending_page_links.push((page.id.clone(), page.scope, page.scope_id.clone(), page.links.clone()));
             if exists { report.pages_updated += 1; } else { report.pages_created += 1; }
+        }
+        for (source_id, source_scope, source_scope_id, links) in pending_page_links {
+            for target_id in links {
+                let target = load_page(&transaction, &target_id)?.ok_or_else(|| {
+                    AgentError::InvalidAction(format!(
+                        "knowledge page {source_id} links to missing page {target_id}"
+                    ))
+                })?;
+                let same_scope = target.scope == source_scope && target.scope_id == source_scope_id;
+                if target.scope != MemoryScope::Global && !same_scope {
+                    return Err(AgentError::InvalidAction(format!(
+                        "knowledge page {source_id} links outside its scope to {target_id}"
+                    )));
+                }
+            }
         }
 
         let reviewed_count: i64 = transaction.query_row(
@@ -940,6 +1265,22 @@ impl MemoryStore {
              ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             [output.reviewed_through.to_string()],
         )?;
+        if let Some((run_id, model, prompt_tokens, completion_tokens, total_tokens, duration_ms)) = run {
+            let now = to_i64(now_ms())?;
+            transaction.execute(
+                "UPDATE dreaming_runs SET status='completed',cursor_to=?2,transcript_count=?3,
+                    model=?4,prompt_tokens=?5,completion_tokens=?6,total_tokens=?7,duration_ms=?8,
+                    completed_at_ms=?9,error=NULL WHERE id=?1 AND status='running'",
+                params![run_id,output.reviewed_through,report.transcripts_reviewed,model,
+                    prompt_tokens,completion_tokens,total_tokens,duration_ms,now],
+            )?;
+            transaction.execute(
+                "UPDATE dreaming_control SET current_run_id=NULL,lease_until_ms=NULL,
+                    next_retry_at_ms=NULL,failure_count=0,last_error=NULL
+                 WHERE id=1 AND current_run_id=?1",
+                [run_id],
+            )?;
+        }
         transaction.commit()?;
         Ok(report)
     }
@@ -1034,6 +1375,209 @@ fn scope_matches(scope: MemoryScope, scope_id: Option<&str>, query: &MemoryQuery
         MemoryScope::Session => query.session_id.as_deref() == scope_id,
         MemoryScope::Task => query.task_id.as_deref() == scope_id,
     }
+}
+
+fn last_dreamed_cursor(connection: &Connection) -> Result<i64, AgentError> {
+    let value: Option<String> = connection.query_row(
+        "SELECT value FROM memory_meta WHERE key='last_dreamed_transcript_id'",
+        [],
+        |row| row.get(0),
+    ).optional()?;
+    Ok(value.and_then(|value| value.parse().ok()).unwrap_or(0))
+}
+
+fn load_page(connection: &Connection, id: &str) -> Result<Option<MemoryPage>, AgentError> {
+    Ok(connection.query_row(
+        "SELECT id,title,summary,content,scope,scope_id,source_refs_json,links_json,updated_at_ms,revision
+         FROM memory_pages WHERE id=?1",
+        [id],
+        row_page,
+    ).optional()?)
+}
+
+fn write_page_record(transaction: &Transaction<'_>, page: &MemoryPage) -> Result<(), AgentError> {
+    transaction.execute(
+        "INSERT INTO memory_pages (
+            id,title,summary,content,scope,scope_id,source_refs_json,links_json,updated_at_ms,revision
+         ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+         ON CONFLICT(id) DO UPDATE SET title=excluded.title,summary=excluded.summary,
+            content=excluded.content,scope=excluded.scope,scope_id=excluded.scope_id,
+            source_refs_json=excluded.source_refs_json,links_json=excluded.links_json,
+            updated_at_ms=excluded.updated_at_ms,revision=excluded.revision",
+        params![page.id,page.title,page.summary,page.content,page.scope.as_str(),page.scope_id,
+            serde_json::to_string(&page.source_refs)?,serde_json::to_string(&page.links)?,
+            to_i64(page.updated_at_ms)?,page.revision],
+    )?;
+    Ok(())
+}
+
+fn insert_page_revision(
+    transaction: &Transaction<'_>,
+    page_id: &str,
+    action: &str,
+    before: Option<&MemoryPage>,
+    after: Option<&MemoryPage>,
+    reason: &str,
+) -> Result<(), AgentError> {
+    let revision: i64 = transaction.query_row(
+        "SELECT COALESCE(MAX(revision),0)+1 FROM memory_page_revisions WHERE page_id=?1",
+        [page_id],
+        |row| row.get(0),
+    )?;
+    transaction.execute(
+        "INSERT INTO memory_page_revisions(page_id,revision,action,before_json,after_json,reason,created_at_ms)
+         VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![page_id,revision,action,before.map(serde_json::to_string).transpose()?,
+            after.map(serde_json::to_string).transpose()?,reason,to_i64(now_ms())?],
+    )?;
+    Ok(())
+}
+
+fn row_memory_page_revision(row: &Row<'_>) -> rusqlite::Result<MemoryPageRevision> {
+    let before: Option<String> = row.get(4)?;
+    let after: Option<String> = row.get(5)?;
+    Ok(MemoryPageRevision {
+        revision_id: row.get(0)?,
+        page_id: row.get(1)?,
+        revision: row.get(2)?,
+        action: row.get(3)?,
+        before: before.map(|value| serde_json::from_str(&value)).transpose()
+            .map_err(|error| conversion_error(4, rusqlite::types::Type::Text, error.to_string()))?,
+        after: after.map(|value| serde_json::from_str(&value)).transpose()
+            .map_err(|error| conversion_error(5, rusqlite::types::Type::Text, error.to_string()))?,
+        reason: row.get(6)?,
+        created_at_ms: from_i64(row.get(7)?, 7)?,
+    })
+}
+
+fn validate_evidence_scope_in_transaction(
+    transaction: &Transaction<'_>,
+    refs: &[String],
+    target_scope: MemoryScope,
+    target_scope_id: Option<&str>,
+) -> Result<(), AgentError> {
+    validate_evidence_in_transaction(transaction, refs)?;
+    for reference in refs {
+        let (kind, id) = reference.split_once(':').expect("evidence reference format was validated");
+        let allowed = match kind {
+            "transcript" => {
+                let transcript_id = id.parse::<i64>()
+                    .map_err(|_| AgentError::InvalidAction(format!("invalid transcript reference: {reference}")))?;
+                let (session_id, project_id, task_id, role): (String, Option<String>, Option<String>, String) =
+                    transaction.query_row(
+                        "SELECT session_id,project_id,task_id,role FROM transcripts WHERE id=?1",
+                        [transcript_id],
+                        |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)),
+                    )?;
+                match target_scope {
+                    MemoryScope::Global => role == "user" && task_id.is_none(),
+                    MemoryScope::Project => project_id.as_deref() == target_scope_id && task_id.is_none(),
+                    MemoryScope::Session => session_id == target_scope_id.unwrap_or_default(),
+                    MemoryScope::Task => task_id.as_deref() == target_scope_id,
+                }
+            }
+            "memory" => {
+                let (source_scope, source_scope_id): (String, Option<String>) = transaction.query_row(
+                    "SELECT scope,scope_id FROM memories WHERE id=?1",
+                    [id],
+                    |row| Ok((row.get(0)?,row.get(1)?)),
+                )?;
+                let source_scope = MemoryScope::parse(&source_scope)?;
+                source_scope == MemoryScope::Global
+                    || (source_scope == target_scope && source_scope_id.as_deref() == target_scope_id)
+            }
+            _ => false,
+        };
+        if !allowed {
+            return Err(AgentError::InvalidAction(format!(
+                "memory evidence {reference} does not belong to the target {:?} scope",
+                target_scope
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn load_memory(connection: &Connection, id: &str) -> Result<Option<MemoryRecord>, AgentError> {
+    Ok(connection.query_row(MEMORY_SELECT_BY_ID, [id], row_memory).optional()?)
+}
+
+fn insert_memory_revision(
+    transaction: &Transaction<'_>,
+    memory_id: &str,
+    action: &str,
+    before: Option<&MemoryRecord>,
+    after: Option<&MemoryRecord>,
+    reason: &str,
+    evidence_refs: &[String],
+) -> Result<(), AgentError> {
+    let revision: i64 = transaction.query_row(
+        "SELECT COALESCE(MAX(revision),0)+1 FROM memory_revisions WHERE memory_id=?1",
+        [memory_id],
+        |row| row.get(0),
+    )?;
+    transaction.execute(
+        "INSERT INTO memory_revisions(memory_id,revision,action,before_json,after_json,reason,evidence_refs_json,created_at_ms)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+        params![
+            memory_id,
+            revision,
+            action,
+            before.map(serde_json::to_string).transpose()?,
+            after.map(serde_json::to_string).transpose()?,
+            reason,
+            serde_json::to_string(evidence_refs)?,
+            to_i64(now_ms())?
+        ],
+    )?;
+    Ok(())
+}
+
+fn write_memory_record(transaction: &Transaction<'_>, record: &MemoryRecord) -> Result<(), AgentError> {
+    transaction.execute(
+        "INSERT INTO memories (
+            id,schema_version,kind,scope,scope_id,content,source,confidence,
+            created_at_ms,updated_at_ms,expires_at_ms,status,importance,
+            source_refs_json,access_count,last_accessed_at_ms
+         ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
+         ON CONFLICT(id) DO UPDATE SET
+            schema_version=excluded.schema_version,kind=excluded.kind,scope=excluded.scope,
+            scope_id=excluded.scope_id,content=excluded.content,source=excluded.source,
+            confidence=excluded.confidence,created_at_ms=excluded.created_at_ms,
+            updated_at_ms=excluded.updated_at_ms,expires_at_ms=excluded.expires_at_ms,
+            status=excluded.status,importance=excluded.importance,
+            source_refs_json=excluded.source_refs_json,access_count=excluded.access_count,
+            last_accessed_at_ms=excluded.last_accessed_at_ms",
+        params![
+            record.id,record.schema_version,record.kind.as_str(),record.scope.as_str(),
+            record.scope_id,record.content,record.source,record.confidence,
+            to_i64(record.created_at_ms)?,to_i64(record.updated_at_ms)?,
+            record.expires_at_ms.map(to_i64).transpose()?,record.status.as_str(),
+            record.importance,serde_json::to_string(&record.source_refs)?,
+            record.access_count,record.last_accessed_at_ms.map(to_i64).transpose()?
+        ],
+    )?;
+    Ok(())
+}
+
+fn row_memory_revision(row: &Row<'_>) -> rusqlite::Result<MemoryRevision> {
+    let before: Option<String> = row.get(4)?;
+    let after: Option<String> = row.get(5)?;
+    let evidence: String = row.get(7)?;
+    Ok(MemoryRevision {
+        revision_id: row.get(0)?,
+        memory_id: row.get(1)?,
+        revision: row.get(2)?,
+        action: row.get(3)?,
+        before: before.map(|value| serde_json::from_str(&value)).transpose()
+            .map_err(|error| conversion_error(4, rusqlite::types::Type::Text, error.to_string()))?,
+        after: after.map(|value| serde_json::from_str(&value)).transpose()
+            .map_err(|error| conversion_error(5, rusqlite::types::Type::Text, error.to_string()))?,
+        reason: row.get(6)?,
+        evidence_refs: serde_json::from_str(&evidence)
+            .map_err(|error| conversion_error(7, rusqlite::types::Type::Text, error.to_string()))?,
+        created_at_ms: from_i64(row.get(8)?, 8)?,
+    })
 }
 
 fn row_memory(row: &Row<'_>) -> rusqlite::Result<MemoryRecord> {
@@ -1264,6 +1808,127 @@ mod tests {
         assert_eq!(report.pages_created, 1);
         assert_eq!(store.last_dreamed_transcript_id().unwrap(), transcript);
         assert_eq!(store.get_page("workspace-policy").unwrap().revision, 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn transcript_search_and_read_are_project_and_task_scoped() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let first = store.record_transcript("session-a", Some("project-a"), None, "user", "project alpha note").unwrap();
+        let second = store.record_transcript("session-b", Some("project-b"), None, "user", "project beta note").unwrap();
+        let scoped = store.search_transcripts("project note", Some("session-x"), Some("project-a"), None, 10).unwrap();
+        assert_eq!(scoped.len(), 1);
+        assert_eq!(scoped[0].id, first);
+        assert!(store.get_transcript_scoped(second, "session-x", Some("project-a"), None).is_err());
+        assert_eq!(store.get_transcript_scoped(first, "session-a", Some("project-a"), None).unwrap().id, first);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn memory_revisions_can_restore_a_previous_snapshot() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let created = store.remember(input(MemoryScope::Global, None, "Prefer explicit Rust APIs")).unwrap();
+        store.update(&created.id, "Prefer explicit and small Rust APIs", None, Some(90)).unwrap();
+        let revisions = store.list_revisions(&created.id, 10).unwrap();
+        assert_eq!(revisions.len(), 2);
+        assert_eq!(revisions[1].action, "created");
+        let restored = store.restore_revision(&created.id, 1).unwrap();
+        assert_eq!(restored.content, "Prefer explicit Rust APIs");
+        assert_eq!(store.list_revisions(&created.id, 10).unwrap().len(), 3);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn dreaming_rejects_evidence_from_a_different_project() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript("session-a", Some("project-a"), None, "user", "Use a small project-specific API").unwrap();
+        let output = DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![DreamingNote {
+                action: "create".into(), id: None, kind: Some(MemoryKind::Procedural),
+                scope: Some(MemoryScope::Project), scope_id: Some("project-b".into()),
+                content: "Project B requires a small API".into(), confidence: 95, importance: 80,
+                evidence: vec![format!("transcript:{transcript}")],
+            }],
+            pages: vec![],
+        };
+        assert!(store.apply_dreaming(output).is_err());
+        assert_eq!(store.last_dreamed_transcript_id().unwrap(), 0);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn dreaming_lease_prevents_duplicate_workers_and_recovers_after_failure() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        store.record_transcript("session-a", Some("project-a"), None, "user", "Keep the memory compact").unwrap();
+        assert_eq!(store.pending_transcript_count().unwrap(), 1);
+        let first = store.start_dreaming_run(1, 60_000, "test").unwrap().unwrap();
+        assert!(store.start_dreaming_run(1, 60_000, "duplicate").unwrap().is_none());
+        store.fail_dreaming_run(first.0, "temporary model failure", 0).unwrap();
+        assert!(store.start_dreaming_run(1, 60_000, "retry").unwrap().is_some());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn dreaming_requires_valid_evidence_and_builds_linked_pages() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript("s1", None, None, "user", "The team prefers explicit approval for writes").unwrap();
+        let output = DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![DreamingNote {
+                action: "create".into(), id: None, kind: Some(MemoryKind::Procedural),
+                scope: Some(MemoryScope::Global), scope_id: None,
+                content: "Workspace writes require explicit approval".into(), confidence: 90,
+                importance: 90, evidence: vec![format!("transcript:{transcript}")],
+            }],
+            pages: vec![
+                DreamingPage {
+                    id: "workspace-policy".into(), title: "Workspace policy".into(),
+                    summary: "Write operations require explicit approval.".into(),
+                    content: "## Write approval\n\nAll workspace writes require user approval.".into(),
+                    scope: MemoryScope::Global, scope_id: None,
+                    evidence: vec![format!("transcript:{transcript}")], links: vec!["approval-workflow".into()],
+                },
+                DreamingPage {
+                    id: "approval-workflow".into(), title: "Approval workflow".into(),
+                    summary: "Approval steps for workspace writes.".into(),
+                    content: "Ask before writes.".into(),
+                    scope: MemoryScope::Global, scope_id: None,
+                    evidence: vec![format!("transcript:{transcript}")], links: vec!["workspace-policy".into()],
+                },
+            ],
+        };
+        let report = store.apply_dreaming(output).unwrap();
+        assert_eq!(report.notes_created, 1);
+        assert_eq!(report.pages_created, 2);
+        assert_eq!(store.last_dreamed_transcript_id().unwrap(), transcript);
+        assert_eq!(store.get_page("workspace-policy").unwrap().revision, 1);
+        assert_eq!(store.list_page_revisions("workspace-policy", 10).unwrap().len(), 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn dreaming_rejects_broken_knowledge_page_links() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript("s1", None, None, "user", "Keep policy pages linked").unwrap();
+        let output = DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![],
+            pages: vec![DreamingPage {
+                id: "policy".into(), title: "Policy".into(), summary: "A policy page".into(),
+                content: "Policy details".into(), scope: MemoryScope::Global, scope_id: None,
+                evidence: vec![format!("transcript:{transcript}")], links: vec!["missing-page".into()],
+            }],
+        };
+        assert!(store.apply_dreaming(output).is_err());
+        assert_eq!(store.last_dreamed_transcript_id().unwrap(), 0);
+        assert!(store.get_page("policy").is_err());
         let _ = fs::remove_dir_all(root);
     }
 

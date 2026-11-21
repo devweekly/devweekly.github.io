@@ -24,6 +24,7 @@ struct Args {
     audit_file: Option<PathBuf>,
     max_tool_calls: usize,
     max_history_messages: usize,
+    auto_dreaming: bool,
 }
 
 impl Args {
@@ -41,6 +42,7 @@ impl Args {
             audit_file: None,
             max_tool_calls: 8,
             max_history_messages: 80,
+            auto_dreaming: false,
         };
 
         while let Some(argument) = args.next() {
@@ -63,6 +65,13 @@ impl Args {
                     return Err("--continue does not accept a value".into());
                 }
                 parsed.continue_session = true;
+                continue;
+            }
+            if name == "--auto-dreaming" {
+                if inline_value.is_some() {
+                    return Err("--auto-dreaming does not accept a value".into());
+                }
+                parsed.auto_dreaming = true;
                 continue;
             }
 
@@ -119,6 +128,7 @@ impl Args {
              --audit-file <PATH>      Append lifecycle and policy events as JSONL\n\
              --max-tool-calls <N>     Maximum tool calls per turn [default: 8]\n\
              --max-history-messages <N> Retained non-system messages [default: 80]\n\
+             --auto-dreaming           Enable automatic idle-time memory consolidation\n\
              -h, --help               Print help\n\
              -V, --version            Print version"
         );
@@ -162,6 +172,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         approval_handler: None,
         context_manager: rust_agent::context::ContextManager::default(),
         project_id: None,
+        dreaming: rust_agent::runtime::DreamingOptions {
+            auto_enabled: args.auto_dreaming,
+            ..rust_agent::runtime::DreamingOptions::default()
+        },
     };
     let mut runtime = AgentRuntime::new(provider, workspace, options)?;
 

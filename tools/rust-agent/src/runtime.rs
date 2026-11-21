@@ -9,7 +9,7 @@ use std::{
         Arc, Mutex,
     },
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
@@ -81,11 +81,15 @@ Principles:
 - Prefer durable preferences, reusable procedures, strategies, decisions, constraints, recurring project facts, and lessons learned.
 - Do not store transient UI state, temporary values, cheaply re-readable facts, or a diary of every action.
 - Treat transcripts as the source of truth. Every new or changed note and every new or changed page must cite exact evidence references supplied in the input.
+- Every transcript includes project_id and task_id. Never combine evidence from different projects or tasks into one project/session/task memory.
+- Global memories are only for explicit user preferences or rules intended to apply across projects. A user statement made in a project can support a global memory only when its wording clearly expresses a general preference.
+- Project memories must be supported by transcripts from that same project. Session and task memories must be supported by the matching session or task.
+- An assistant assertion is evidence that the assistant said something, not that the assertion is true. Prefer user corrections, successful tool results, and independently verified outcomes; label hypotheses as unconfirmed.
 - Distinguish what the user explicitly stated, what the agent inferred, what was tested, and what remains uncertain. Set confidence accordingly.
 - Check existing notes against transcripts. Use update only when evidence supports a correction. Use dispute when evidence conflicts and cannot be resolved. Use stale when a fact is likely obsolete. Never silently rewrite a disputed claim.
 - Merge duplicates instead of creating near-identical notes. Preserve important details and provenance when merging.
 - Prefer a small number of useful notes. A compact abstraction is better than a transcript archive.
-- Build knowledge pages only when related facts across sessions benefit from a navigable representation. Pages should be shorter than source material, link to related page IDs, and cite source evidence. Do not recreate source documents as a wiki.
+- Build knowledge pages only when related facts across sessions benefit from a navigable representation. Pages should be shorter than source material, link only to existing pages or pages created in this batch, and cite source evidence. Keep links within the same scope or point to a global page. Merge duplicate pages, repair broken links, and remove obsolete or redundant pages instead of growing the wiki indefinitely. Do not recreate source documents as a wiki.
 - Keep the global page with ID "index" very small. It is a dashboard of knowledge areas and where to look, not a second copy of the knowledge base.
 - Do not infer external truth from an agent's previous assertion. A transcript proves that something was said or done, not that its underlying factual claim is objectively true.
 - Use global scope only for cross-project user preferences; prefer project scope for project-specific knowledge.
@@ -125,6 +129,33 @@ Use the exact reviewed_through value supplied in the input. Use at most 32 note 
 
 const SESSION_SCHEMA_VERSION: u32 = 1;
 
+#[derive(Debug, Clone)]
+pub struct DreamingOptions {
+    pub auto_enabled: bool,
+    pub idle_delay: Duration,
+    pub minimum_transcripts: usize,
+    pub batch_size: usize,
+    pub max_batches_per_idle: usize,
+    pub max_attempts: usize,
+    pub lease_duration: Duration,
+    pub model_timeout: Duration,
+}
+
+impl Default for DreamingOptions {
+    fn default() -> Self {
+        Self {
+            auto_enabled: false,
+            idle_delay: Duration::from_secs(90),
+            minimum_transcripts: 12,
+            batch_size: 40,
+            max_batches_per_idle: 3,
+            max_attempts: 3,
+            lease_duration: Duration::from_secs(600),
+            model_timeout: Duration::from_secs(300),
+        }
+    }
+}
+
 pub struct RuntimeOptions {
     pub session_dir: Option<PathBuf>,
     pub session_id: Option<String>,
@@ -137,6 +168,7 @@ pub struct RuntimeOptions {
     pub approval_handler: Option<Arc<dyn ApprovalHandler>>,
     pub context_manager: ContextManager,
     pub project_id: Option<String>,
+    pub dreaming: DreamingOptions,
 }
 
 impl Default for RuntimeOptions {
@@ -153,6 +185,7 @@ impl Default for RuntimeOptions {
             approval_handler: None,
             context_manager: ContextManager::default(),
             project_id: None,
+            dreaming: DreamingOptions::default(),
         }
     }
 }
@@ -720,6 +753,23 @@ struct BackgroundTaskControl {
 
 type SharedTaskControls = Arc<Mutex<HashMap<String, BackgroundTaskControl>>>;
 
+struct DreamingSignal {
+    notify: Notify,
+    activity: AtomicU64,
+    shutdown: AtomicBool,
+}
+
+impl DreamingSignal {
+    fn new() -> Self {
+        Self { notify: Notify::new(), activity: AtomicU64::new(0), shutdown: AtomicBool::new(false) }
+    }
+
+    fn signal_activity(&self) {
+        self.activity.fetch_add(1, Ordering::AcqRel);
+        self.notify.notify_one();
+    }
+}
+
 pub struct AgentRuntime {
     provider: OpenAiCompatibleProvider,
     workspace: PathBuf,
@@ -745,6 +795,9 @@ pub struct AgentRuntime {
     context_report: Option<ContextReport>,
     project_id: Option<String>,
     task_scope: Option<String>,
+    dreaming_options: DreamingOptions,
+    dreaming_signal: Arc<DreamingSignal>,
+    dreaming_worker_started: bool,
 }
 
 impl AgentRuntime {
@@ -819,11 +872,15 @@ impl AgentRuntime {
             context_report: None,
             project_id: options.project_id,
             task_scope: None,
+            dreaming_options: options.dreaming,
+            dreaming_signal: Arc::new(DreamingSignal::new()),
+            dreaming_worker_started: false,
         };
         runtime.persist()?;
         runtime.audit("session.start", None, json!({"resumed": options.session_id.is_some() || options.continue_session}));
         if tokio::runtime::Handle::try_current().is_ok() {
             runtime.resume_background_tasks()?;
+            runtime.start_dreaming_worker();
         }
         Ok(runtime)
     }
@@ -836,56 +893,39 @@ impl AgentRuntime {
         self.memory_store.set_status(id, status)
     }
 
-    /// Run an explicit offline consolidation pass over transcript entries not yet reviewed.
+    /// Consolidate one transcript batch immediately, bypassing the automatic idle threshold.
     pub async fn dream_memories(&mut self) -> Result<DreamingReport, AgentError> {
-        const MAX_TRANSCRIPT_ENTRIES: usize = 40;
-        let cursor = self.memory_store.last_dreamed_transcript_id()?;
-        let transcripts = self.memory_store.transcripts_after(cursor, MAX_TRANSCRIPT_ENTRIES)?;
-        let Some(last_entry) = transcripts.last() else {
-            return Ok(DreamingReport { reviewed_through: cursor, ..DreamingReport::default() });
-        };
-        let reviewed_through = last_entry.id;
-        let transcript_payload = transcripts.iter().map(|entry| json!({
-            "id": entry.id,
-            "evidence_ref": format!("transcript:{}", entry.id),
-            "session_id": entry.session_id,
-            "project_id": entry.project_id,
-            "task_id": entry.task_id,
-            "role": entry.role,
-            "content": entry.content.chars().take(1_800).collect::<String>()
-        })).collect::<Vec<_>>();
-        let existing_notes = self.memory_store.list()?.into_iter().take(100).map(|note| json!({
-            "id": note.id, "kind": note.kind, "scope": note.scope, "scope_id": note.scope_id,
-            "status": note.status, "confidence": note.confidence, "importance": note.importance,
-            "source_refs": note.source_refs, "content": note.content.chars().take(1_200).collect::<String>()
-        })).collect::<Vec<_>>();
-        let existing_pages = self.memory_store.list_pages(40)?.into_iter().map(|page| json!({
-            "id": page.id, "title": page.title, "summary": page.summary,
-            "content_excerpt": page.content.chars().take(1_500).collect::<String>(),
-            "scope": page.scope, "scope_id": page.scope_id, "source_refs": page.source_refs, "links": page.links
-        })).collect::<Vec<_>>();
-        let payload = json!({
-            "reviewed_through": reviewed_through,
-            "current_scope": {"session_id": self.session.session_id, "project_id": self.project_id},
-            "transcripts": transcript_payload, "existing_notes": existing_notes, "existing_pages": existing_pages
-        });
-        let messages = vec![
-            ChatMessage { role: "system".into(), content: DREAMING_PROMPT.into() },
-            ChatMessage { role: "user".into(), content: payload.to_string() },
-        ];
-        self.emit_event("memory.dream.start", None, json!({
-            "transcript_count": transcripts.len(), "from_cursor": cursor, "to_cursor": reviewed_through
-        }));
-        let completion = self.provider.complete_with_usage(&messages).await?;
-        self.record_usage("memory_dreaming", None, &completion.model, &completion.usage, completion.duration_ms);
-        let output: DreamingOutput = serde_json::from_str(strip_json_fence(&completion.content))
-            .map_err(|error| AgentError::InvalidAction(format!("memory dreaming returned invalid JSON: {error}")))?;
-        if output.reviewed_through != reviewed_through {
-            return Err(AgentError::InvalidAction("memory dreaming did not acknowledge the supplied transcript batch exactly".into()));
+        match run_dreaming_batch(
+            &self.provider,
+            &self.memory_store,
+            &self.dreaming_options,
+            1,
+            "manual",
+        ).await? {
+            Some(report) => Ok(report),
+            None => Ok(DreamingReport {
+                reviewed_through: self.memory_store.last_dreamed_transcript_id()?,
+                ..DreamingReport::default()
+            }),
         }
-        let report = self.memory_store.apply_dreaming(output)?;
-        self.emit_event("memory.dream.complete", None, serde_json::to_value(&report)?);
-        Ok(report)
+    }
+
+    fn start_dreaming_worker(&mut self) {
+        if self.dreaming_worker_started || !self.dreaming_options.auto_enabled {
+            return;
+        }
+        if tokio::runtime::Handle::try_current().is_err() {
+            return;
+        }
+        let provider = self.provider.clone();
+        let memory_store = self.memory_store.clone();
+        let options = self.dreaming_options.clone();
+        let signal = Arc::clone(&self.dreaming_signal);
+        tokio::spawn(async move {
+            dreaming_worker_loop(provider, memory_store, options, signal).await;
+        });
+        self.dreaming_worker_started = true;
+        self.dreaming_signal.notify.notify_one();
     }
     pub fn set_task_scope(&mut self, task_id: Option<String>) { self.task_scope = task_id; }
     pub fn remember(&self, input: MemoryInput) -> Result<MemoryRecord, AgentError> { self.memory_store.remember(input) }
@@ -1481,6 +1521,7 @@ impl AgentRuntime {
         input: &str,
         cancellation: &CancellationHandle,
     ) -> Result<String, AgentError> {
+        self.start_dreaming_worker();
         if cancellation.is_cancelled() {
             return Err(AgentError::Cancelled);
         }
@@ -1506,6 +1547,9 @@ impl AgentRuntime {
         }
         let hook_result = result.as_ref().map(Clone::clone).map_err(ToString::to_string);
         for hook in &self.hooks { hook.after_turn(&session_id, &hook_result); }
+        if self.dreaming_options.auto_enabled {
+            self.dreaming_signal.signal_activity();
+        }
         result
     }
 
@@ -2324,6 +2368,208 @@ fn parse_memory_kind(value: &str) -> Result<MemoryKind, AgentError> {
 
 fn parse_memory_scope(value: &str) -> Result<MemoryScope, AgentError> {
     Ok(serde_json::from_value(Value::String(value.to_owned()))?)
+}
+
+impl Drop for AgentRuntime {
+    fn drop(&mut self) {
+        self.dreaming_signal.shutdown.store(true, Ordering::Release);
+        self.dreaming_signal.notify.notify_waiters();
+    }
+}
+
+async fn run_dreaming_batch(
+    provider: &OpenAiCompatibleProvider,
+    memory_store: &MemoryStore,
+    options: &DreamingOptions,
+    minimum_transcripts: usize,
+    trigger: &str,
+) -> Result<Option<DreamingReport>, AgentError> {
+    let lease_duration = options.lease_duration.max(options.model_timeout + Duration::from_secs(30));
+    let lease_ms = lease_duration.as_millis().min(u64::MAX as u128) as u64;
+    let Some((run_id, cursor)) =
+        memory_store.start_dreaming_run(minimum_transcripts, lease_ms, trigger)?
+    else {
+        return Ok(None);
+    };
+
+    let result = async {
+        let transcripts = memory_store.transcripts_after(cursor, options.batch_size.clamp(1, 200))?;
+        let Some(last_entry) = transcripts.last() else {
+            return Err(AgentError::InvalidAction(
+                "Dreaming claimed a run without any pending transcript entries".into(),
+            ));
+        };
+        let reviewed_through = last_entry.id;
+        let transcript_payload = transcripts.iter().map(|entry| json!({
+            "id": entry.id,
+            "evidence_ref": format!("transcript:{}", entry.id),
+            "session_id": entry.session_id,
+            "project_id": entry.project_id,
+            "task_id": entry.task_id,
+            "role": entry.role,
+            "content": entry.content.chars().take(1_800).collect::<String>()
+        })).collect::<Vec<_>>();
+        let existing_notes = memory_store.list()?.into_iter().take(100).map(|note| json!({
+            "id": note.id, "kind": note.kind, "scope": note.scope, "scope_id": note.scope_id,
+            "status": note.status, "confidence": note.confidence, "importance": note.importance,
+            "source_refs": note.source_refs, "content": note.content.chars().take(1_200).collect::<String>()
+        })).collect::<Vec<_>>();
+        let existing_pages = memory_store.list_pages(40)?.into_iter().map(|page| json!({
+            "id": page.id, "title": page.title, "summary": page.summary,
+            "content_excerpt": page.content.chars().take(1_500).collect::<String>(),
+            "scope": page.scope, "scope_id": page.scope_id, "source_refs": page.source_refs, "links": page.links
+        })).collect::<Vec<_>>();
+        let payload = json!({
+            "reviewed_through": reviewed_through,
+            "transcripts": transcript_payload,
+            "existing_notes": existing_notes,
+            "existing_pages": existing_pages
+        });
+        let messages = vec![
+            ChatMessage { role: "system".into(), content: DREAMING_PROMPT.into() },
+            ChatMessage { role: "user".into(), content: payload.to_string() },
+        ];
+        let completion = tokio::time::timeout(
+            options.model_timeout,
+            provider.complete_with_usage(&messages),
+        )
+        .await
+        .map_err(|_| AgentError::InvalidAction("Dreaming model request timed out".into()))??;
+        let output: DreamingOutput = serde_json::from_str(strip_json_fence(&completion.content))
+            .map_err(|error| AgentError::InvalidAction(format!("Dreaming returned invalid JSON: {error}")))?;
+        if output.reviewed_through != reviewed_through {
+            return Err(AgentError::InvalidAction(
+                "Dreaming did not acknowledge the supplied transcript batch exactly".into(),
+            ));
+        }
+        memory_store.apply_dreaming_run(
+            run_id,
+            output,
+            &completion.model,
+            completion.usage.prompt_tokens,
+            completion.usage.completion_tokens,
+            completion.usage.total_tokens,
+            completion.duration_ms,
+        )
+    }.await;
+
+    match result {
+        Ok(report) => Ok(Some(report)),
+        Err(error) => {
+            let retry_after = 15_000u64;
+            if let Err(persist_error) = memory_store.fail_dreaming_run(run_id, &error.to_string(), retry_after) {
+                warn!(%persist_error, run_id, "failed to persist Dreaming failure state");
+            }
+            Err(error)
+        }
+    }
+}
+
+async fn dreaming_worker_loop(
+    provider: OpenAiCompatibleProvider,
+    memory_store: MemoryStore,
+    options: DreamingOptions,
+    signal: Arc<DreamingSignal>,
+) {
+    signal.notify.notify_one();
+
+    loop {
+        if signal.shutdown.load(Ordering::Acquire) {
+            return;
+        }
+
+        tokio::select! {
+            _ = signal.notify.notified() => {},
+            _ = tokio::time::sleep(Duration::from_secs(30)) => {},
+        }
+        if signal.shutdown.load(Ordering::Acquire) {
+            return;
+        }
+
+        let mut observed_activity = signal.activity.load(Ordering::Acquire);
+        loop {
+            tokio::select! {
+                _ = tokio::time::sleep(options.idle_delay) => break,
+                _ = signal.notify.notified() => {
+                    observed_activity = signal.activity.load(Ordering::Acquire);
+                },
+            }
+            if signal.shutdown.load(Ordering::Acquire) {
+                return;
+            }
+        }
+        if signal.activity.load(Ordering::Acquire) != observed_activity {
+            continue;
+        }
+
+        let mut completed_batches = 0usize;
+        let max_batches = options.max_batches_per_idle.clamp(1, 16);
+        while completed_batches < max_batches
+            && !signal.shutdown.load(Ordering::Acquire)
+            && signal.activity.load(Ordering::Acquire) == observed_activity
+        {
+            match run_dreaming_batch(
+                &provider,
+                &memory_store,
+                &options,
+                options.minimum_transcripts,
+                "automatic_idle",
+            ).await {
+                Ok(Some(_)) => completed_batches += 1,
+                Ok(None) => break,
+                Err(error) => {
+                    warn!(%error, "automatic Dreaming batch failed");
+                    let mut retry = 1u32;
+                    while retry < options.max_attempts.clamp(1, 8) {
+                        let delay = Duration::from_secs((15u64 << (retry - 1)).min(300));
+                        tokio::select! {
+                            _ = tokio::time::sleep(delay) => {},
+                            _ = signal.notify.notified() => {
+                                observed_activity = signal.activity.load(Ordering::Acquire);
+                            },
+                        }
+                        if signal.shutdown.load(Ordering::Acquire)
+                            || signal.activity.load(Ordering::Acquire) != observed_activity
+                        {
+                            break;
+                        }
+                        match run_dreaming_batch(
+                            &provider,
+                            &memory_store,
+                            &options,
+                            options.minimum_transcripts,
+                            "automatic_retry",
+                        ).await {
+                            Ok(Some(_)) => {
+                                completed_batches += 1;
+                                break;
+                            }
+                            Ok(None) => break,
+                            Err(retry_error) => {
+                                warn!(%retry_error, retry, "automatic Dreaming retry failed");
+                            }
+                        }
+                        retry += 1;
+                    }
+                    break;
+                }
+            }
+        }
+
+        if signal.shutdown.load(Ordering::Acquire) {
+            return;
+        }
+        if signal.activity.load(Ordering::Acquire) != observed_activity {
+            continue;
+        }
+        match memory_store.pending_transcript_count() {
+            Ok(pending) if pending >= options.minimum_transcripts => {
+                signal.notify.notify_one();
+            }
+            Ok(_) => {}
+            Err(error) => warn!(%error, "could not inspect pending Dreaming transcripts"),
+        }
+    }
 }
 
 fn strip_json_fence(value: &str) -> &str {

@@ -15,10 +15,11 @@ flowchart TB
     RUNTIME --> AUDIT["Lifecycle / Policy Audit JSONL"]
     RUNTIME --> TASKS["Background Task Workers / Durable Task Store"]
     RUNTIME --> MEMORY["SQLite Memory Store"]
-    MEMORY --> TRANSCRIPTS["Transcript Log"]
-    MEMORY --> NOTES["Memory Notes"]
-    MEMORY --> WIKI["Knowledge Pages / Wiki"]
-    DREAM["Dreaming / Offline Consolidation"] --> MEMORY
+    MEMORY --> TRANSCRIPTS["Scoped Transcript Log"]
+    MEMORY --> NOTES["Versioned Memory Notes"]
+    MEMORY --> WIKI["Versioned Knowledge Pages"]
+    RUNTIME --> DREAM["Opt-in Idle Dreaming Worker"]
+    DREAM --> MEMORY
     APPROVAL["User Approval"] --> RUNTIME
 ```
 
@@ -116,6 +117,7 @@ Options:
 
 - `--max-tool-calls N`: maximum tool calls per turn (1–64).
 - `--max-history-messages N`: retained non-system messages (4–2000).
+- `--auto-dreaming`: enable idle-time memory consolidation (disabled by default).
 - `--session-dir PATH`: override session storage.
 - `--audit-file PATH`: override the JSONL audit file.
 
@@ -168,9 +170,15 @@ The design follows a four-layer memory model:
 
 During a turn, the Agent can call `memory_note` to save a proposed observation, `memory_search` to find notes/pages/transcript evidence, and `memory_read` to open a note, page or transcript. Proposed notes are deliberately excluded from future context until reviewed. The Host can explicitly accept a note with `AgentRuntime::set_memory_status(id, MemoryStatus::Consolidated)`; explicit Host `remember` calls create consolidated notes.
 
-**Dreaming** is an explicit idle-time consolidation pass, exposed as `AgentRuntime::dream_memories().await` and CLI `/dream`. It sends a bounded batch of transcript excerpts plus current notes/pages to the configured model. The model can propose notes, correct notes with supporting evidence, mark conflicts as disputed, mark obsolete notes stale, and build/update compact linked pages. The Rust layer validates evidence IDs and scope, applies the entire pass in a SQLite transaction, and advances a transcript cursor only when the transaction succeeds. The process is not run on every user turn and does not silently turn unsupported claims into memory.
+**Dreaming** is an offline consolidation worker within the same `AgentRuntime`, not a second runtime. Manual execution is available through `AgentRuntime::dream_memories().await` and CLI `/dream`. Automatic execution is opt-in through `DreamingOptions::auto_enabled` or CLI `--auto-dreaming`; the worker waits for an idle window after activity, then processes bounded transcript batches. It continues across batches while the backlog remains above the configured threshold.
 
-Embedding Hosts can use `MemoryStore::open(path)` or `AgentRuntime::memory_store()`. The store exposes transcript search, memory CRUD/review, page retrieval/search, access counts and expiry cleanup. Retrieval is lexical and local; it does not require embeddings or a vector database. Dreaming sends transcript excerpts and existing memory material to the configured model provider, so it should be scheduled according to the Host's data-handling policy.
+Dreaming run state is durable in SQLite: each run records its trigger, cursor range, model usage, outcome and error. A database lease prevents two processes from consolidating the same workspace concurrently. If a process exits while holding the lease, another worker can reclaim the run after lease expiry. Failed runs store a retry time and are retried with bounded backoff. Model requests have a timeout. No auto-Dreaming call is made by default, because transcripts are sent to the configured model provider when consolidation runs.
+
+The Rust layer validates evidence existence and scope, verifies page links stay within their scope, and commits the complete note/page update and transcript cursor in one SQLite transaction. Notes and pages retain revision snapshots; hosts can inspect history and restore a prior version. Duplicate notes are merged while retaining recent evidence references. The compact global `index` page is the preloaded map; relevant consolidated notes and page summaries are selected for each request, while full pages and transcripts are loaded on demand.
+
+Transcript entries record `session_id`, `project_id` and `task_id`. Search and read operations are scoped to the active session/project/task, and Dreaming cannot use evidence from another project to create a project-specific memory. Global notes require user-authored transcript evidence; project, session and task memories must match their corresponding source scope.
+
+Embedding Hosts can use `MemoryStore::open(path)` or `AgentRuntime::memory_store()`. The store exposes transcript search, note CRUD/review, note and page revision history, restore operations, page retrieval/search, Dreaming run history, access counts and expiry cleanup. Retrieval uses local lexical ranking with Latin tokenization and CJK character n-grams for Chinese/Japanese text. No embedding model, vector database, ORM or external database service is required.
 
 The built-in `RuntimeHook` covers before-turn, before-tool, runtime events and after-turn callbacks. Hooks can observe or deny operations, but cannot grant permissions or bypass the deterministic Rust Policy Gate.
 
