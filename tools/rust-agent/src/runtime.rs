@@ -1126,7 +1126,7 @@ impl AgentRuntime {
     }
 
     pub fn cancel_background_task(&self, task_id: &str) -> Result<bool, AgentError> {
-        let mut controls = self.background_task_controls
+        let controls = self.background_task_controls
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut record = self.background_task_store.load(task_id)?;
