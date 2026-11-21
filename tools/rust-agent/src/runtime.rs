@@ -2833,11 +2833,13 @@ fn new_session_id(now: u128) -> String {
 
 fn ensure_real_directory(path: &Path) -> Result<(), AgentError> {
     if let Some(parent) = path.parent() {
-        if parent.exists() {
-            let metadata = fs::symlink_metadata(parent)?;
-            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        match fs::symlink_metadata(parent) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
                 return Err(AgentError::InvalidAction("state directory parent must be a real directory".into()));
             }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
         }
     }
     match fs::symlink_metadata(path) {
@@ -2886,8 +2888,8 @@ fn write_private_file(path: &Path, bytes: &[u8], append: bool) -> Result<(), Age
 mod tests {
     use super::{
         AgentProfile, AgentProfileStore, BackgroundTaskRecord, BackgroundTaskStatus,
-        BackgroundTaskStore, CancellationHandle, ChatMessage, CompletionUsage, UsageTotals, MAX_AGENT_PROFILE_STEPS,
-        SessionStore, is_custom_agent_read_tool, new_session_id, now_ms,
+        BackgroundTaskStore, CancellationHandle, ChatMessage, CompletionUsage, UsageTotals, UserQuestion,
+        MAX_AGENT_PROFILE_STEPS, SessionStore, is_custom_agent_read_tool, new_session_id, now_ms,
     };
 
     #[test]
