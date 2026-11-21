@@ -238,8 +238,14 @@ mod tests {
     use std::time::Duration;
 
     fn workspace() -> PathBuf {
-        let path = std::env::temp_dir().join(format!("rust-agent-memory-{}", now_ms()));
-        fs::create_dir_all(&path).unwrap(); path
+        static NEXT_TEST: AtomicU64 = AtomicU64::new(1);
+        let path = std::env::temp_dir().join(format!(
+            "rust-agent-memory-{}-{}",
+            now_ms(),
+            NEXT_TEST.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&path).unwrap();
+        path
     }
 
     #[test]
