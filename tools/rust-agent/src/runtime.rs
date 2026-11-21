@@ -282,6 +282,8 @@ struct SessionRecord {
     schema_version: u32,
     session_id: String,
     parent_session_id: Option<String>,
+    #[serde(default)]
+    project_id: Option<String>,
     created_at_ms: u128,
     updated_at_ms: u128,
     messages: Vec<ChatMessage>,
@@ -314,7 +316,9 @@ impl SessionStore {
     }
 
     fn load(&self, session_id: &str) -> Result<SessionRecord, AgentError> {
+        ensure_real_directory(&self.directory)?;
         let path = self.path_for(session_id)?;
+        ensure_regular_file_or_missing(&path)?;
         let bytes = fs::read(path)?;
         let record: SessionRecord = serde_json::from_slice(&bytes)?;
         if record.schema_version != SESSION_SCHEMA_VERSION || record.session_id != session_id {
@@ -324,14 +328,17 @@ impl SessionStore {
     }
 
     fn load_latest(&self) -> Result<SessionRecord, AgentError> {
+        ensure_real_directory(&self.directory)?;
+        ensure_regular_file_or_missing(&self.latest_pointer)?;
         let session_id = fs::read_to_string(&self.latest_pointer)?;
         self.load(session_id.trim())
     }
 
     fn save(&self, record: &SessionRecord) -> Result<(), AgentError> {
-        fs::create_dir_all(&self.directory)?;
+        ensure_real_directory(&self.directory)?;
         let path = self.path_for(&record.session_id)?;
-        let temporary = path.with_extension(format!("json.tmp-{}", std::process::id()));
+        ensure_regular_file_or_missing(&path)?;
+        let temporary = path.with_extension(format!("json.tmp-{}-{}", std::process::id(), now_ms()));
         let bytes = serde_json::to_vec_pretty(record)?;
         write_private_file(&temporary, &bytes, false)?;
         fs::rename(&temporary, &path)?;
@@ -442,7 +449,10 @@ impl BackgroundTaskStore {
     }
 
     fn load(&self, task_id: &str) -> Result<BackgroundTaskRecord, AgentError> {
-        let bytes = fs::read(self.path_for(task_id)?)?;
+        ensure_real_directory(&self.directory)?;
+        let path = self.path_for(task_id)?;
+        ensure_regular_file_or_missing(&path)?;
+        let bytes = fs::read(path)?;
         let record: BackgroundTaskRecord = serde_json::from_slice(&bytes)?;
         if record.schema_version != BACKGROUND_TASK_SCHEMA_VERSION || record.task_id != task_id {
             return Err(AgentError::InvalidAction(
@@ -453,14 +463,15 @@ impl BackgroundTaskStore {
     }
 
     fn save(&self, record: &BackgroundTaskRecord) -> Result<(), AgentError> {
-        fs::create_dir_all(&self.directory)?;
+        ensure_real_directory(&self.directory)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&self.directory, fs::Permissions::from_mode(0o700))?;
         }
         let path = self.path_for(&record.task_id)?;
-        let temporary = path.with_extension(format!("json.tmp-{}", std::process::id()));
+        ensure_regular_file_or_missing(&path)?;
+        let temporary = path.with_extension(format!("json.tmp-{}-{}", std::process::id(), now_ms()));
         let bytes = serde_json::to_vec_pretty(record)?;
         write_private_file(&temporary, &bytes, false)?;
         fs::rename(&temporary, &path)?;
@@ -468,9 +479,7 @@ impl BackgroundTaskStore {
     }
 
     fn list(&self) -> Result<Vec<BackgroundTaskRecord>, AgentError> {
-        if !self.directory.exists() {
-            return Ok(Vec::new());
-        }
+        ensure_real_directory(&self.directory)?;
         let mut records = Vec::new();
         for entry in fs::read_dir(&self.directory)? {
             let entry = entry?;
@@ -831,11 +840,18 @@ impl AgentRuntime {
                 schema_version: SESSION_SCHEMA_VERSION,
                 session_id: new_session_id(now),
                 parent_session_id: None,
+                project_id: options.project_id.clone(),
                 created_at_ms: now,
                 updated_at_ms: now,
                 messages: vec![system_message(Some(&configured_system_prompt))],
             }
         };
+
+        if session.project_id != options.project_id {
+            return Err(AgentError::InvalidAction(
+                "session belongs to a different project scope; refusing to resume it".into(),
+            ));
+        }
 
         let messages = if session.messages.is_empty() {
             vec![system_message(options.system_prompt.as_deref())]
@@ -1435,7 +1451,7 @@ impl AgentRuntime {
         }
 
         let result = record.result.as_deref().unwrap_or("Task completed without a result.");
-        self.record_transcript("user", &format!("{marker}: {result}"));
+        self.record_transcript("assistant", &format!("{marker}: {result}"));
         self.messages.push(ChatMessage {
             role: "user".into(),
             content: format!(
@@ -1480,6 +1496,7 @@ impl AgentRuntime {
             schema_version: SESSION_SCHEMA_VERSION,
             session_id: new_session_id(now),
             parent_session_id: None,
+            project_id: self.project_id.clone(),
             created_at_ms: now,
             updated_at_ms: now,
             messages: vec![system_message(Some(&self.system_prompt))],
@@ -1492,6 +1509,11 @@ impl AgentRuntime {
 
     pub fn resume_session(&mut self, session_id: &str) -> Result<(), AgentError> {
         let record = self.store.load(session_id)?;
+        if record.project_id != self.project_id {
+            return Err(AgentError::InvalidAction(
+                "session belongs to a different project scope; refusing to resume it".into(),
+            ));
+        }
         self.messages = record.messages.clone();
         self.session = record;
         self.memory_store.backfill_transcript(&self.session.session_id, self.project_id.as_deref(), &self.messages)?;
@@ -1507,6 +1529,7 @@ impl AgentRuntime {
             schema_version: SESSION_SCHEMA_VERSION,
             session_id: new_session_id(now),
             parent_session_id: Some(parent_id.clone()),
+            project_id: self.project_id.clone(),
             created_at_ms: now,
             updated_at_ms: now,
             messages: self.messages.clone(),
@@ -1603,7 +1626,13 @@ impl AgentRuntime {
                 user_content.push_str(&format!("\n- id={} filename={:?} content_type={} size_bytes={}", attachment.id, attachment.filename, attachment.content_type, attachment.size_bytes));
             }
         }
-        self.record_transcript("user", input);
+        self.memory_store.record_transcript(
+            &self.session.session_id,
+            self.project_id.as_deref(),
+            self.task_scope.as_deref(),
+            "user",
+            input,
+        )?;
         self.messages.push(ChatMessage {
             role: "user".into(),
             content: user_content,
@@ -2650,7 +2679,44 @@ fn new_session_id(now: u128) -> String {
     format!("{now}-{}-{sequence}", std::process::id())
 }
 
+fn ensure_real_directory(path: &Path) -> Result<(), AgentError> {
+    if let Some(parent) = path.parent() {
+        if parent.exists() {
+            let metadata = fs::symlink_metadata(parent)?;
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Err(AgentError::InvalidAction("state directory parent must be a real directory".into()));
+            }
+        }
+    }
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+            return Err(AgentError::InvalidAction("state directory must be a real directory".into()));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => fs::create_dir_all(path)?,
+        Err(error) => return Err(error.into()),
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
+}
+
+fn ensure_regular_file_or_missing(path: &Path) -> Result<(), AgentError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            Err(AgentError::InvalidAction("state file must be a regular file, not a symbolic link".into()))
+        }
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
 fn write_private_file(path: &Path, bytes: &[u8], append: bool) -> Result<(), AgentError> {
+    ensure_regular_file_or_missing(path)?;
     let mut options = OpenOptions::new();
     options.create(true).write(true);
     if append { options.append(true); } else { options.truncate(true); }
