@@ -174,6 +174,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         system_prompt: None,
         hooks: Vec::new(),
         approval_handler: None,
+        user_question_handler: None,
         context_manager: rust_agent::context::ContextManager::default(),
         project_id: args.project_id,
         dreaming: rust_agent::runtime::DreamingOptions {
