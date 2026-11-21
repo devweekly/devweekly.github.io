@@ -266,6 +266,66 @@ Human Approval 应由 Orchestrator 强制执行，而不是寄希望于模型在
 
 这套治理机制的关键不是增加审批步骤，而是让安全要求在执行前可验证、执行中可强制、执行后可追溯，并且在策略或组件发生变化时仍然成立。
 
+
+### 3.4 Policy Enforcement Point：策略不能只存在于 Agent Hook
+
+很多 Agent SDK 提供 BeforeToolCall、AfterToolCall、Middleware 或 Hook。这些扩展点适合接入策略，但不能自动构成安全边界：Hook 可能被绕过、执行器可能被直接调用、某个 MCP Server 可能拥有自己的工具入口，甚至 Agent Host 本身失陷后也可能跳过应用层检查。
+
+因此应区分 Policy Decision Point（PDP）和 Policy Enforcement Point（PEP）。PDP 根据身份、动作、资源、数据分类、任务状态和策略版本给出确定性结果；PEP 必须位于实际副作用发生的路径上，确保无论请求来自 Agent SDK、MCP、Browser Worker 还是远端 API，都无法绕过授权检查。
+
+推荐的决策结果不应只有 Allow / Deny，还应支持 RequireApproval、Mask / Redact 和 Constrain。策略评估顺序也很重要：先验证身份、租户边界和硬性禁止项，再检查资源授权与数据分类，然后评估动作约束，最后才考虑风险升级和审批。审批不能覆盖租户隔离、数据驻留或法律禁止项。
+
+| Enforcement Point | 应放在哪里 | 不能只依赖什么 |
+| --- | --- | --- |
+| Tool PEP | Runtime Tool Dispatcher 和 MCP Gateway | SDK Hook 或 Prompt 约束 |
+| Resource PEP | File Service、Workspace Service、业务 API | 对模型提供的路径或资源 ID 做字符串匹配 |
+| Execution PEP | Sandbox Launcher、Container / VM Manager | 只在启动前检查一次 |
+| Network PEP | 强制 Egress Proxy、Firewall、DNS / IP Policy | Agent 进程自觉使用 HTTP Proxy |
+| Identity PEP | Credential Broker、Token Exchange、下游 API | 复制用户 Cookie 或长期 Token |
+| Commit PEP | 邮件发送、支付、发布、生产变更等最终提交接口 | 仅在 Agent UI 上显示确认按钮 |
+
+关键原则是：**授权检查必须靠近资源和副作用，并由资源所有者或受信任的基础设施最终执行。** 如果 Agent Host 能直接访问数据库、文件系统或 SaaS 管理 API，外围再完善的 Tool Policy 也无法阻止它绕开 Tool 层。
+
+### 3.5 审批必须绑定将要执行的动作
+
+Human Approval 最常见的设计缺陷，是审批对象与真正执行的对象不是同一个。用户看到的是“发送这封邮件”，但审批后 Agent 又修改了收件人、附件或正文；或者用户批准了一个脚本，实际执行时脚本内容已经变化。这样的审批只是一次 UI 交互，不是有效的授权。
+
+审批请求应由可信 Runtime 生成不可变的 Action Proposal，至少包含主体、动作、目标资源、参数摘要、内容或 Diff 摘要、数据分类、目的地、执行身份、策略版本、Sandbox Profile、有效期和幂等键。用户批准的是这个具体提案，而不是一个抽象动作类别。
+
+执行时，Commit PEP 必须重新计算摘要并验证审批仍然有效。只要目标、参数、内容、身份、策略版本或权限范围发生变化，就必须重新审批。审批记录还应能关联最终下游系统的事务 ID 或结果引用。
+
+对于可分阶段执行的操作，推荐把“准备”和“提交”分开：Agent 可以先生成邮件草稿、支付指令、部署计划或数据库变更；由独立 Commit Service 校验并提交。Agent 不应同时拥有任意修改提案和绕过审批直接提交的能力。对外部系统不支持事务的操作，需要使用幂等键、状态查询和补偿流程处理超时与重试，避免重复付款、重复发送或重复发布。
+
+### 3.6 浏览器、GUI 和用户会话是独立的高价值安全边界
+
+浏览器自动化经常被误认为只是另一个 Tool。实际上，已登录浏览器包含 Cookie、OAuth Session、企业 SSO、下载文件、内部站点访问能力和用户可见的业务操作权限。只要 Agent 能控制用户正在使用的浏览器，它就可能在不窃取密码的情况下，以用户现有会话访问业务系统。
+
+因此需要明确区分三种模式：
+
+| 模式 | 安全边界 | 适用场景与限制 |
+| --- | --- | --- |
+| 专用 Agent Browser Profile | 独立 Cookie Jar、扩展、下载目录和缓存 | 默认推荐；只登录任务需要的站点，不复用个人浏览器完整 Profile |
+| 用户显式共享当前 Tab / Session | 仅共享用户明确选择的标签页或会话能力 | 适合协作和辅助操作；必须显示当前共享范围，并限制跨 Tab、下载和跨站访问 |
+| 独立 Browser VM / VDI | 独立 Guest、浏览器会话和网络出口 | 多租户、高敏感或不可信网页自动化；仍需限制剪贴板、共享目录、下载和显示通道 |
+
+浏览器操作应进一步拆成 Navigate、Read、Download、Fill、Submit、Upload 和 Credential Use 等动作。读取页面与提交付款、发送邮件或修改客户记录不是同一个风险等级。提交动作应通过独立的确认与授权接口，不能因为 Agent 已经控制浏览器就默认允许点击任意按钮。
+
+不要把“复用已登录 Cookie”当成通用集成方案。优先使用官方 OAuth / API 和明确授权的委托身份；如果产品必须使用浏览器现有会话，应限制到用户显式共享的会话范围，不得从浏览器进程中提取 Cookie 后转交给 Agent 或直接调用站点内部 API。截图、DOM、下载文件和剪贴板也可能包含敏感数据，应纳入数据分类、日志脱敏和外发策略。
+
+### 3.7 失陷后的遏制：限制横向移动和持续性
+
+Sandbox 解决的是执行环境的部分隔离，不代表 Agent 失陷后不能继续扩大影响。一个已获得工具权限的 Agent 可能创建新任务、启动子 Agent、写入共享 Memory、修改工作流、留下定时任务，或利用长期 Token 在当前 Session 结束后继续访问外部系统。
+
+需要在 Runtime 中明确限制以下行为：
+
+- **任务与委托预算**：限制最大 Agent 深度、子任务数量、并发数、总执行时间、Token / API 成本和累计副作用数量；不能让每个子 Agent 都重新获得一份完整预算。
+- **权限传播**：子 Agent 的权限必须来自可验证的 Delegation Grant，包含委托者、受托者、任务、资源范围、可委托动作、有效期和调用链 ID；禁止仅凭自然语言消息继承权限。
+- **状态持久化**：Agent 不得自行创建长期后台任务、修改启动项或持久化执行器；确需计划任务时，由独立调度服务登记 Owner、用途、权限、到期时间和撤销方式。
+- **故障域隔离**：一个 Agent、Worker 或工具失陷后，不应能够修改共享 Policy、Credential Broker、Agent Registry 或其他租户的 Workspace。
+- **快速撤销**：支持按 User、Agent、Task、Credential、Tool、Tenant 和 Worker Pool 撤销能力，并能验证撤销已经传递到下游 Token、网络连接和执行进程。
+
+多 Agent 系统还应限制递归委托和循环调用。每次调用都携带不可伪造的 Trace / Delegation Context，记录父任务、委托链、当前权限和剩余预算。不能只记录最外层用户请求，否则发生横向移动时无法确定哪个 Agent 将权限传递给了谁。
+
 ## 4. Read、Write、Bash 应该是三个独立的 Tool 边界
 
 前面讨论的是 Tool Permission、Resource Permission 和 Runtime Sandbox 三个安全层次。落到 Agent 的实际工具设计，还需要再做一次拆分：不要把文件读取、文件写入和脚本执行包装成一个通用的 `filesystem` 或 `terminal` 能力。
@@ -1246,7 +1306,45 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 - [ ] 正向和负向测试覆盖越权读写、跨租户访问、数据外传、取消和故障恢复。
 - [ ] 每次执行可关联 User、Agent、Task、Policy Version、审批、Sandbox Backend 和最终 Artifact。
 
-### 11.3 业界实践、标准和研究资料
+
+
+### 11.3 安全事件响应：从发现异常到完成遏制
+
+Agent Runtime 的事件响应不能停留在“取消当前生成”。取消模型请求不代表工具进程已经退出，也不代表网络连接、短期凭证、异步任务和外部系统中的操作已经停止。应把 Agent 事件纳入现有 SOC / Incident Response 流程，同时增加能够理解 Agent 任务和工具链的处置动作。
+
+| 事件类型 | 典型信号 | 首要处置 |
+| --- | --- | --- |
+| 越权访问或策略绕过 | 被拒绝后反复换工具、路径或身份；PEP 与资源端授权结果不一致 | 暂停 Agent / Task，保留策略和调用证据，检查是否存在旁路入口 |
+| Prompt Injection 或目标劫持 | 外部内容导致任务目标、收件人、数据目的地或工具组合异常变化 | 冻结高风险动作，隔离相关输入和 Memory，回溯内容来源与传播链 |
+| 凭证泄露或身份滥用 | 异常 Token 使用、超出任务范围的 API 调用、过期任务继续访问 | 撤销凭证和 Delegation Grant，检查下游会话与审计记录 |
+| 数据外传 | 异常 Egress、批量下载、非预期域名、异常 Artifact 或模型上下文流量 | 断开相关出口，隔离 Artifact，确认数据分类、接收方和实际传输量 |
+| Sandbox 或 Worker 失陷 | 异常系统调用、逃逸告警、非预期子进程、跨租户访问尝试 | 隔离节点或 Worker Pool，销毁相关 Sandbox，轮换可能暴露的凭证 |
+| 多 Agent 级联故障 | 子 Agent 数量或调用深度异常、任务循环、共享资源被连续修改 | 暂停委托入口，撤销调用链授权，按租户或 Agent 组熔断 |
+
+建议把处置能力实现为 Runtime 外部的管理通道，而不是依赖 Agent 自己执行“停止自己”的工具调用。Emergency Stop 至少应能暂停新任务、阻断工具调用、终止完整进程树、关闭网络出口、撤销短期凭证、冻结相关队列，并保留不可篡改的审计证据。对于已经提交到外部系统的动作，还要查询最终状态并启动人工核对、回滚或补偿；不能把进程停止误认为业务操作已经撤销。
+
+事件记录至少应包含首次异常时间、检测来源、User / Agent / Task / Tenant、关联调用链、策略与工具版本、实际资源和网络目的地、已发生的副作用、处置动作、凭证撤销结果、恢复条件和责任人。日志与证据存储应与被调查的 Agent Runtime 分离，避免失陷进程能够删除或修改自己的调查记录。
+
+每次真实事件、演练和误报都应更新威胁模型与安全回归用例。生产环境还应演练“模型仍在生成、Tool Worker 已启动、外部 API 请求已发出、凭证已撤销但下游 Session 尚未失效”等非原子状态，验证停止和恢复流程是否真正有效。
+
+### 11.4 治理交付物与验收证据
+
+安全治理需要留下可以被架构评审、审计和运维团队复核的交付物，而不只是配置文件和一份 Checklist。建议每个生产 Agent 至少维护以下记录：
+
+| 治理资产 | 必须回答的问题 | 更新触发点 |
+| --- | --- | --- |
+| Agent Inventory / Owner | 有哪些 Agent？谁负责？部署在哪里？ | 新建、迁移、停用、Owner 变更 |
+| Agent Risk Assessment | 用途、自治等级、数据分类、影响范围和风险接受人是谁？ | 用途、模型、工具或数据范围变化 |
+| Threat Model | 攻击者、信任边界、滥用路径和残余风险是什么？ | 新工具、新委托链、新执行后端或重大事件 |
+| Capability / Policy Manifest | Agent 能做什么、访问什么、哪些动作需要审批？ | 权限、策略和资源范围变化 |
+| Runtime Profile | 文件、网络、进程、资源和设备限制是什么？ | Sandbox Backend 或部署形态变化 |
+| Delegation Map | Agent 如何委托给其他 Agent / Tool？权限如何传播和撤销？ | 新增 Agent、MCP Server 或委托路径 |
+| Security Test Evidence | 哪些攻击和负向用例通过？哪些限制无法强制？ | 模型、Prompt、Tool、Policy、镜像升级 |
+| Incident & Exception Register | 哪些风险被接受、谁批准、何时到期？发生过哪些事件？ | 例外批准、事件发生、复审到期 |
+
+验收时要检查实际执行结果，而不是只检查策略声明。例如策略文件写着禁止公网访问，并不能证明进程无法通过 IPv6、代理旁路或 DNS 重绑定访问公网；审计系统记录了 Tool Call，也不能证明它记录了最终业务系统的状态。证据应覆盖策略评估、PEP 强制执行、Sandbox 实际能力、下游资源授权和最终副作用，并能通过同一 Correlation ID 关联起来。
+
+### 11.5 业界实践、标准和研究资料
 
 下面的资料按用途整理。标准和官方工程文档用于建立控制基线；研究论文用于理解攻击路径、验证方法和现有防御的局限。论文中的实验结果不等于生产环境安全保证。
 
@@ -1256,6 +1354,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 | --- | --- |
 | [OWASP Top 10 for Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/) | Agent Goal Hijack、Tool Misuse、Identity & Privilege Abuse、Supply Chain、Unexpected Code Execution、Memory Poisoning、Inter-Agent Communication、Cascading Failures、Human-Agent Trust、Rogue Agents 的风险分类。 |
 | [OWASP Securing Agentic Applications V2](https://genai.owasp.org/resource/securing-agentic-applications-v2/)（2026-11） | 从架构、身份访问控制、运行时保护、供应链和 Assurance Testing 讨论单 Agent 与多 Agent 安全。 |
+| [OWASP Agent Control Standard (ACS)](https://genai.owasp.org/resource/agent-control-standard-acs/)（2026-09） | 提供跨 Agent Framework 的 Middleware Hook 与声明式运行时策略控制思路；可用于评估策略可移植性和运行时可观测性，但仍需确认 Hook 是否位于不可绕过的实际执行路径。 |
 | [OWASP GenAI Data Security Best Practices V2 Part 1](https://genai.owasp.org/resource/genai-data-security-best-practices-v2-part1/) / [Part 2](https://genai.owasp.org/resource/genai-data-security-best-practices-v2-part2/)（2026-11） | 数据分类、治理、生命周期、Metadata Propagation、Retrieval Boundary、全链路删除、AI-BOM 和策略联邦执行。 |
 | [UK NCSC: Managing the cyber risk of agentic AI](https://www.ncsc.gov.uk/blogs/managing-the-cyber-risk-of-agentic-ai)（2026-08） | 自主程度评估、威胁建模、Sandbox 边界、可观测性、行为归因和 Emergency Shutdown。NCSC 明确说明这是一份随研究演进的阶段性建议，不应误称为最终强制标准。 |
 | [Microsoft: Secure autonomous agentic AI systems](https://learn.microsoft.com/en-us/security/zero-trust/sfi/secure-agentic-systems) | 从 Model、Safety System、Application 和 Positioning 等层次提出纵深防御、最小权限、显式 Action Schema、HITL 和审计监控。 |
