@@ -1106,7 +1106,8 @@ impl AgentRuntime {
 
     fn record_tool_call(&self, tool: &str) {
         let result = (|| -> Result<(), AgentError> {
-            if let Some(parent) = self.usage_file.parent() { fs::create_dir_all(parent)?; }
+            if let Some(parent) = self.usage_file.parent() { ensure_real_directory(parent)?; }
+            ensure_regular_file_or_missing(&self.usage_file)?;
             let mut options = OpenOptions::new();
             options.create(true).append(true);
             #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
@@ -2006,7 +2007,12 @@ impl AgentRuntime {
 
     fn execute_and_record(&mut self, action: &ToolAction) {
         self.audit("tool.start", Some(&action.name), json!({}));
-        match self.executor.execute(action) {
+        let execution = if matches!(policy::evaluate(action), PolicyDecision::RequireApproval) {
+            self.executor.execute_approved(action)
+        } else {
+            self.executor.execute(action)
+        };
+        match execution {
             Ok(result) => {
                 info!(tool = %action.name, ok = result.ok, "tool execution completed");
                 self.audit("tool.complete", Some(&action.name), json!({"ok": result.ok}));
@@ -2226,7 +2232,8 @@ impl AgentRuntime {
 
     fn record_usage(&self, agent_type: &str, profile_id: Option<&str>, model: &str, usage: &CompletionUsage, duration_ms: u64) {
         let result = (|| -> Result<(), AgentError> {
-            if let Some(parent) = self.usage_file.parent() { fs::create_dir_all(parent)?; }
+            if let Some(parent) = self.usage_file.parent() { ensure_real_directory(parent)?; }
+            ensure_regular_file_or_missing(&self.usage_file)?;
             let mut options = OpenOptions::new();
             options.create(true).append(true);
             #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
@@ -2268,8 +2275,9 @@ impl AgentRuntime {
         let Some(path) = &self.audit_file else { return };
         let result = (|| -> Result<(), AgentError> {
             if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
-                fs::create_dir_all(parent)?;
+                ensure_real_directory(parent)?;
             }
+            ensure_regular_file_or_missing(path)?;
             let mut options = OpenOptions::new();
             options.create(true).append(true);
             #[cfg(unix)]
