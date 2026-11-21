@@ -182,7 +182,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Rust Agent ready. Workspace: {}", runtime.workspace().display());
     println!("Session: {}", runtime.session_id());
-    println!("Commands: /help, /new, /session, /resume <id>, /fork, /model <id>, /models, /agents, /agent <id>, /mode <default|plan>, /context, /compact, /usage, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
+    println!("Commands: /help, /attach <workspace-relative-path>, /new, /session, /resume <id>, /fork, /model <id>, /models, /agents, /agent <id>, /mode <default|plan>, /context, /compact, /usage, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
 
     loop {
         print!("you> ");
@@ -204,6 +204,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             break;
         }
         if input == "/help" {
+            println!(" /attach <path>       Attach a workspace file to the next user turn (max 20 MiB)");
             println!(" /new                 Start a new session");
             println!(" /session             Show the active session ID");
             println!(" /resume <id>         Resume a session");
@@ -223,6 +224,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!(" /deliver-task <id>   Add a completed result to the current session");
             println!(" Ctrl-C               Cancel the current turn or wait");
             println!(" /exit                Exit");
+            continue;
+        }
+        if let Some(path) = input.strip_prefix("/attach ") {
+            match runtime.attach_workspace_file(path.trim()) {
+                Ok(attachment) => println!("Attached {} as {} ({} bytes). It will be included with the next message.", attachment.filename, attachment.id, attachment.size_bytes),
+                Err(error) => eprintln!("Could not attach file: {error}"),
+            }
             continue;
         }
         if input == "/new" {

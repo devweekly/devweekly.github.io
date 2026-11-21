@@ -1,0 +1,28 @@
+name: Rust Agent checks
+on:
+  push:
+    branches: [main]
+    paths: ["tools/rust-agent/**", ".github/workflows/rust-agent.yml"]
+  pull_request:
+    paths: ["tools/rust-agent/**", ".github/workflows/rust-agent.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/rust-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.100.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tools/rust-agent
+      - run: cargo check --all-targets
+      - run: cargo test --all-targets
+      - run: cargo clippy --all-targets -- -D warnings

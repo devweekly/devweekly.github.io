@@ -120,12 +120,19 @@ Audit events intentionally omit prompt text and file contents. Audit failures ar
 | Tool | Rust policy | Behavior |
 |---|---|---|
 | `read_file` | Allow | Read a UTF-8 file inside the workspace |
+| `read_attachment` | Allow | Read a UTF-8 text attachment supplied by the Host |
 | `list_dir` | Allow | List a workspace directory |
 | `search_files` | Allow | Search workspace files natively |
 | `write_file` | Require approval | Ask for approval on every write |
 | Unknown tool | Deny | Reject |
 
 No Shell, process execution, arbitrary network tool, or workspace-external file tool is exposed. File operations remain subject to application-level path checks; this is not an OS sandbox and does not eliminate filesystem TOCTOU risks.
+
+## Host API and attachments
+
+The Rust library is the embedding API; it does not start an HTTP server. A desktop or service Host owns its upload transport and calls AgentRuntime::attach_bytes(filename, content_type, bytes) before run_turn or run_turn_with_cancellation. The Runtime enforces a 20 MiB per-file limit, stores bytes under .rust-agent/attachments/ using generated IDs (never client filenames as storage paths), and writes metadata separately. The Runtime automatically adds attachment metadata to the next user message; the Agent uses read_attachment with the returned ID to inspect UTF-8 text. Arbitrary binary files can be stored but are not decoded. No HTTP server, multipart parser, OCR, PDF, or Office parser is bundled.
+
+The embedding surface exposes RuntimeHook for lifecycle events and additional tool denials, plus CancellationHandle for cancellation. The current CLI approval prompt is synchronous.
 
 ## Optional CodeBuddy adapter
 

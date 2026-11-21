@@ -10,7 +10,7 @@ pub enum PolicyDecision {
 /// Deterministic allow-list policy. Model-supplied risk labels are never trusted.
 pub fn evaluate(action: &ToolAction) -> PolicyDecision {
     match action.name.as_str() {
-        "read_file" | "list_dir" | "search_files" => PolicyDecision::Allow,
+        "read_file" | "read_attachment" | "list_dir" | "search_files" => PolicyDecision::Allow,
         "write_file" => PolicyDecision::RequireApproval,
         _ => PolicyDecision::Deny,
     }

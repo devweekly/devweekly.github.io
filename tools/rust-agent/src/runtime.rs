@@ -17,6 +17,7 @@ use tracing::{info, warn};
 
 use crate::{
     action::{ModelTurn, ToolAction, UserQuestion},
+    attachments::{AttachmentMetadata, AttachmentStore},
     error::AgentError,
     policy::{self, PolicyDecision},
     provider::{ChatMessage, CompletionUsage, OpenAiCompatibleProvider},
@@ -28,6 +29,8 @@ Return exactly one JSON object, without Markdown fences:
 {"type":"final","content":"..."}
 or
 {"type":"tool_call","tool":"read_file","arguments":{"path":"relative/path"}}
+or
+{"type":"tool_call","tool":"read_attachment","arguments":{"id":"attachment-id"}}
 or
 {"type":"tool_call","tool":"list_dir","arguments":{"path":"relative/path"}}
 or
@@ -43,7 +46,8 @@ or
 
 Tool rules:
 - Paths are relative to the configured workspace.
-- read_file, list_dir, and search_files are read-only.
+- read_file, read_attachment, list_dir, and search_files are read-only.
+- read_attachment reads UTF-8 text supplied by the embedding Host.
 - search_files searches workspace files natively, respects hidden-file and Git ignore rules, and supports literal or regular-expression matching.
 - write_file changes a workspace file and always requires explicit user approval.
 - Use ask_user when a material requirement or decision is ambiguous. Ask concise questions and provide useful options when possible.
@@ -411,8 +415,8 @@ impl AgentProfile {
                 "agent profile max_steps must be between 1 and {MAX_AGENT_PROFILE_STEPS}"
             )));
         }
-        if self.allowed_tools.len() > 3 {
-            return Err(AgentError::InvalidAction("agent profile may allow at most three read-only tools".into()));
+        if self.allowed_tools.len() > 4 {
+            return Err(AgentError::InvalidAction("agent profile may allow at most four read-only tools".into()));
         }
         let mut unique = std::collections::HashSet::new();
         for tool in &self.allowed_tools {
@@ -462,11 +466,11 @@ impl AgentProfile {
 }
 
 fn default_read_only_tools() -> Vec<String> {
-    vec!["read_file".into(), "list_dir".into(), "search_files".into()]
+    vec!["read_file".into(), "read_attachment".into(), "list_dir".into(), "search_files".into()]
 }
 
 fn is_custom_agent_read_tool(name: &str) -> bool {
-    matches!(name, "read_file" | "list_dir" | "search_files")
+    matches!(name, "read_file" | "read_attachment" | "list_dir" | "search_files")
 }
 
 fn compose_agent_system_prompt(profile: &AgentProfile) -> String {
@@ -474,6 +478,7 @@ fn compose_agent_system_prompt(profile: &AgentProfile) -> String {
     for tool in &profile.allowed_tools {
         let specification = match tool.as_str() {
             "read_file" => r#"{"type":"tool_call","tool":"read_file","arguments":{"path":"relative/path"}}"#,
+            "read_attachment" => r#"{"type":"tool_call","tool":"read_attachment","arguments":{"id":"attachment-id"}}"#,
             "list_dir" => r#"{"type":"tool_call","tool":"list_dir","arguments":{"path":"relative/path"}}"#,
             "search_files" => r#"{"type":"tool_call","tool":"search_files","arguments":{"path":"relative/path","query":"text","regex":false,"case_sensitive":true,"glob":"*","max_results":100}}"#,
             _ => continue,
@@ -638,6 +643,8 @@ pub struct AgentRuntime {
     provider: OpenAiCompatibleProvider,
     workspace: PathBuf,
     executor: ToolExecutor,
+    attachment_store: AttachmentStore,
+    pending_attachments: Vec<AttachmentMetadata>,
     messages: Vec<ChatMessage>,
     session: SessionRecord,
     store: SessionStore,
@@ -698,6 +705,8 @@ impl AgentRuntime {
         let mut runtime = Self {
             provider,
             executor: ToolExecutor::new(workspace.clone()),
+            attachment_store: AttachmentStore::new(workspace.clone())?,
+            pending_attachments: Vec::new(),
             workspace,
             messages,
             session,
@@ -724,6 +733,32 @@ impl AgentRuntime {
     pub fn workspace(&self) -> &Path {
         &self.workspace
     }
+
+    /// Accept bytes supplied by an embedding Host and associate the attachment with the next user turn.
+    /// Attach a regular file whose canonical path is inside the configured workspace.
+    pub fn attach_workspace_file(&mut self, relative_path: &str) -> Result<AttachmentMetadata, AgentError> {
+        let path = self.workspace.join(relative_path);
+        let canonical = path.canonicalize()?;
+        if !canonical.starts_with(&self.workspace) || !canonical.is_file() {
+            return Err(AgentError::InvalidAction("attachment source must be a regular file inside the workspace".into()));
+        }
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.file_type().is_symlink() || metadata.len() > AttachmentStore::MAX_BYTES {
+            return Err(AgentError::InvalidAction("attachment source is a symlink or exceeds the 20 MiB limit".into()));
+        }
+        let bytes = fs::read(&canonical)?;
+        let filename = canonical.file_name().and_then(|name| name.to_str()).unwrap_or("attachment");
+        self.attach_bytes(filename, "application/octet-stream", &bytes)
+    }
+
+    pub fn attach_bytes(&mut self, filename: &str, content_type: &str, bytes: &[u8]) -> Result<AttachmentMetadata, AgentError> {
+        let attachment = self.attachment_store.store(filename, content_type, bytes)?;
+        self.pending_attachments.push(attachment.clone());
+        self.audit("attachment.stored", None, json!({"attachment_id": attachment.id, "size_bytes": attachment.size_bytes, "content_type": attachment.content_type}));
+        Ok(attachment)
+    }
+
+
 
     pub fn session_id(&self) -> &str {
         &self.session.session_id
@@ -1300,9 +1335,16 @@ impl AgentRuntime {
         input: &str,
         cancellation: &CancellationHandle,
     ) -> Result<String, AgentError> {
+        let mut user_content = input.to_owned();
+        if !self.pending_attachments.is_empty() {
+            user_content.push_str("\n\nAttachments supplied with this turn (use read_attachment with the ID to inspect UTF-8 text files):");
+            for attachment in self.pending_attachments.drain(..) {
+                user_content.push_str(&format!("\n- id={} filename={:?} content_type={} size_bytes={}", attachment.id, attachment.filename, attachment.content_type, attachment.size_bytes));
+            }
+        }
         self.messages.push(ChatMessage {
             role: "user".into(),
-            content: input.to_owned(),
+            content: user_content,
         });
         self.compact_history();
         self.audit("prompt.submit", None, json!({"prompt_length": input.len()}));

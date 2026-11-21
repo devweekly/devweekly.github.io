@@ -28,6 +28,7 @@ impl ToolExecutor {
     pub fn execute(&self, action: &ToolAction) -> Result<ToolResult, AgentError> {
         match action.name.as_str() {
             "read_file" => self.read_file(&required_string(&action.arguments, "path")?),
+            "read_attachment" => self.read_attachment(&required_string(&action.arguments, "id")?),
             "list_dir" => self.list_dir(&required_string(&action.arguments, "path")?),
             "write_file" => self.write_file(
                 &required_string(&action.arguments, "path")?,
@@ -36,6 +37,28 @@ impl ToolExecutor {
             "search_files" => self.search_files(action),
             other => Err(AgentError::InvalidAction(format!("tool is not registered: {other}"))),
         }
+    }
+
+    fn read_attachment(&self, id: &str) -> Result<ToolResult, AgentError> {
+        if id.is_empty() || id.len() > 64 || !id.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_') {
+            return Err(AgentError::InvalidAction("invalid attachment ID".into()));
+        }
+        let directory = self.workspace.join(".rust-agent").join("attachments");
+        let dir_meta = fs::symlink_metadata(&directory)?;
+        if dir_meta.file_type().is_symlink() || !dir_meta.is_dir() {
+            return Err(AgentError::InvalidAction("attachment storage must be a real directory".into()));
+        }
+        let directory = directory.canonicalize()?;
+        if !directory.starts_with(&self.workspace) {
+            return Err(AgentError::InvalidAction("attachment storage resolves outside the workspace".into()));
+        }
+        let path = directory.join(format!("{id}.bin"));
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > 256 * 1024 {
+            return Err(AgentError::InvalidAction("attachment is invalid or exceeds the 256 KiB text inspection limit".into()));
+        }
+        let content = fs::read_to_string(path).map_err(|error| AgentError::InvalidAction(format!("attachment is not UTF-8 text: {error}")))?;
+        Ok(ToolResult { ok: true, output: content })
     }
 
     fn read_file(&self, relative: &str) -> Result<ToolResult, AgentError> {

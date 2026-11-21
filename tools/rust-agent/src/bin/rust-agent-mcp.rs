@@ -199,6 +199,16 @@ fn tool_definitions() -> Value {
             }
         },
         {
+            "name": "read_attachment",
+            "description": "Read a UTF-8 text attachment supplied by the embedding Host.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "id": { "type": "string" } },
+                "required": ["id"],
+                "additionalProperties": false
+            }
+        },
+        {
             "name": "list_dir",
             "description": "List entries in a directory inside the configured workspace.",
             "inputSchema": {
@@ -285,9 +295,9 @@ mod tests {
     use rust_agent::tools::ToolExecutor;
 
     #[test]
-    fn advertises_only_the_four_workspace_tools() {
+    fn advertises_workspace_tools_and_attachment_reader() {
         let tools = tool_definitions();
-        assert_eq!(tools.as_array().map(Vec::len), Some(4));
+        assert_eq!(tools.as_array().map(Vec::len), Some(5));
     }
 
     #[test]
