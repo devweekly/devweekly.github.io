@@ -1,7 +1,7 @@
 ---
 author: SW
 pubDatetime: 2026-11-21T00:00:00Z
-title: "Agent Runtime 安全架构：桌面、云端、Kubernetes 与 GUI VM 的隔离设计"
+title: "Agent Runtime 安全设计：本机、容器、VM 与远端执行"
 featured: false
 draft: false
 tags:
@@ -11,18 +11,14 @@ tags:
   - Security
   - Sandbox
   - Architecture
-description: "从工具授权、资源权限和执行隔离出发，分析 Agent Runtime 在桌面、云端、Kubernetes 与 GUI VM 中的安全架构、Sandbox 选型和上线控制。"
+description: "从实际执行边界出发，比较本机进程、OS Sandbox、Docker、gVisor、VM 和远端 Agent 的安全能力与工程取舍。"
 ---
 
-# Agent Runtime 安全架构：桌面、云端、Kubernetes 与 GUI VM 的隔离设计
+Agent 一旦能读写文件、运行命令、操作浏览器或调用 MCP，模型输出就可能产生真实副作用。安全设计要回答的不是“模型会不会听话”，而是它做错事或被恶意内容诱导后，最多能影响哪些资源。
 
-Agent Runtime 允许模型读取和修改文件、启动命令或调用 MCP 后，攻击面就从 Prompt 扩展到了真实系统资源。评估安全性时，关键不是模型是否承诺遵守规则，而是恶意指令、被注入的网页或失陷工具，能否借执行进程访问未授权的文件、进程、网络和凭证。
+这需要分清三件事：Tool Permission 决定 Agent 能调用什么；Resource Permission 决定操作哪些文件和业务对象；Sandbox 限制进程实际能访问的系统资源。三者不能互相替代。
 
-Tool Schema 上增加一个权限字段解决不了这个问题。工具授权决定 Agent 能调用什么，资源授权限定它能操作哪些对象，Sandbox 则约束进程实际能触及的系统资源。这三层各自解决不同问题，不能互相替代。
-
-现有开源实现覆盖了不同层次：Anthropic Sandbox Runtime 和 OpenAI Codex Sandbox 使用操作系统隔离机制约束真实进程；Vercel just-bash 在 TypeScript 进程内提供虚拟 Shell；OpenHands 用 Docker 提供完整执行环境；MCP Filesystem Server 则在文件工具层实施目录授权。它们不是同类产品，不能只按“沙箱强度”排一个名次。
-
-下面以 TypeScript / Node.js Agent Runtime 为主线，分析桌面、云端、Kubernetes 和 GUI VM 的执行边界，并比较工具授权、资源控制与 OS / VM 隔离各自应该由哪一层负责。
+本文从 TypeScript / Node.js Agent Runtime 的实现出发，先梳理工具与执行边界，再比较桌面 OS Sandbox、Docker、gVisor、VM 和远端执行，最后给出 Remote-first 架构和落地建议。
 
 ## 1. 威胁模型：Agent Runtime 的攻击面已经超出模型输入
 
@@ -203,7 +199,7 @@ Prompt Injection 不是单纯的输入清洗问题。攻击内容可能藏在 HT
 
 对于敏感参数，应记录来源 Provenance。例如邮件收件人、支付账户、文件路径、外部 URL、数据库目标和数据导出目的地，必须能够追溯到用户请求或用户明确指定的数据源。模型自行推测出来的值，不应自动成为高风险动作的授权依据。
 
-[ToolFence](https://arxiv.org/abs/2609.37196) 提供了一个有价值的研究方向：在执行前将用户请求编译成 typed authorization blueprint，再用确定性 Monitor 检查工具和参数；当需要扩展能力时，再走受控的 capability grant。它强调不仅要检查“调用了哪个 Tool”，还要检查参数值来自哪里。这对防止攻击者在一个本来获准的 Tool 内替换收件人、目标 URL 或资源标识尤其重要。论文仍是研究工作，不应把其结果直接视为通用安全保证；Provenance 也不能单独判断多个合法候选值中哪一个真正符合用户意图。
+参数来源要能追溯。邮件收件人、支付账户、文件路径、外部 URL、数据库目标和数据导出目的地，不能仅凭模型推测就成为高风险动作的授权依据。
 
 #### Tool、MCP、Plugin 和模型供应链
 
@@ -655,28 +651,24 @@ Google 在 2026 年的 [GKE AI Agent Workloads 架构文档](https://docs.cloud.
 
 ### 7.4 本地 Agent Client 与远端 Agent Service 的通信协议
 
-建议把通信拆成控制、事件流和工具三部分，不要试图用一个长时间不返回的 HTTP 请求承载全部交互。
+跨机器通信不应只有一个“万能 API”。按职责拆分即可：
 
-| 通道 | 建议协议 | 用途 |
+| 通道 | 建议方式 | 负责什么 |
 | --- | --- | --- |
-| Client → Agent Service | HTTPS REST | 创建 / 恢复 Session、提交 Task、查询状态、审批、取消、获取 Artifact |
-| Agent Service → Client | WebSocket 或 SSE | Token Stream、工具进度、任务状态、审批请求、Artifact 就绪事件 |
-| Agent Client → Remote Tools | MCP Streamable HTTP 或内部 RPC | 远端工具发现与调用；不暴露 Sandbox 的宿主机接口 |
-| Agent Service → Model Provider | HTTPS Provider API | 远端 Agent 自己的模型调用 |
-| Agent Service → Workspace / Sandbox | 内部 API / 文件后端 / Runtime Adapter | 远端文件操作和受隔离的命令执行 |
+| 本地客户端 → Agent Gateway | HTTPS / OIDC | 登录、创建 Session、提交任务、审批、取消和获取结果 |
+| Agent ↔ Agent | A2A | 远端 Agent 发现、任务委托、状态更新、取消和 Artifact 交付 |
+| Agent → Tool Server | MCP Streamable HTTP 或内部 RPC | 远端工具发现与调用 |
+| 客户端 ← 服务端事件 | SSE 或 WebSocket | UI 展示任务进度、审批请求和结果就绪事件 |
+| Agent Service → Workspace / Sandbox | 内部 API / Runtime Adapter | 文件访问和受隔离的命令执行 |
+| Agent Service → Model Provider | Provider API | 远端 Agent 的模型调用 |
 
-如果使用 MCP，推荐把 MCP Streamable HTTP 用于远端工具连接；不要把旧式 SSE 当成新系统默认传输。MCP 的工具协议解决能力发现和调用格式，不自动解决租户隔离、工作区映射、任务生命周期和审批。远端 Agent Service 作为一个完整 Agent，也可以通过 MCP 暴露一个高层 Agent Tool，但这不代表必须把内部所有文件和 Shell 工具都公开给本地模型。
+如果只是调用一个确定的远端工具，使用 MCP 或普通 API 即可；如果远端拥有自己的 Agent Loop，需要异步委托，优先使用 A2A。不要把长任务伪装成一个长时间不返回的 MCP Tool 调用。
 
-长任务必须有明确的异步语义：
+A2A 负责 Agent 间的任务通信，不负责 Workspace、Sandbox、租户授权和凭证管理。客户端仍需要 A2A Adapter；远端则需要 A2A Server / Gateway，把协议请求转换为内部任务。任务状态、审批、幂等、断线恢复和清理可以保留在内部 Task Domain Model 中，再映射到 A2A。
 
-1. 客户端提交请求时携带唯一的 `requestId` / `idempotencyKey`，服务端返回稳定的 `taskId`。
-2. 客户端订阅事件流，事件带单调递增的序号或可恢复 Cursor。断线后从最后确认的位置恢复，不依赖一次性 HTTP 响应。
-3. 任务状态至少区分 `queued`、`running`、`waiting_for_approval`、`completed`、`failed`、`cancelled` 和 `expired`。
-4. 取消必须传播到远端 Agent Loop、正在执行的 Tool、子进程和 Sandbox；不能只关闭本地 UI 的请求。
-5. 写文件、提交变更、调用外部 API 等副作用必须有幂等键或可查询的执行记录。网络超时不代表操作没有发生，不能盲目重试。
-6. 审批请求要携带具体动作、资源、参数摘要、风险和有效期。用户批准的是一次明确的动作，不是给整个 Agent 永久开放权限。
+对于长任务，至少要保证：请求有幂等标识；事件可以断线恢复；取消能传递到 Agent Loop、Tool 和子进程；外部写操作可查询或幂等；审批绑定具体动作和参数。网络超时不代表远端没有执行成功，不能无条件重试。
 
-本地 Agent Client 负责把远端事件转换成 UI 状态；远端服务负责事件的事实来源和任务状态机。不能让本地 UI 的 loading 状态成为任务是否完成的唯一依据。
+本地 UI 只展示远端任务状态，不应成为任务状态的事实来源。远端服务负责持久化任务状态和事件 Cursor，并提供查询与恢复能力。
 
 ### 7.5 身份与凭证：本地用户身份、远端服务身份和模型凭证分开
 
@@ -1203,142 +1195,59 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 ## 12. 安全验证、上线 Checklist 与参考资料
 
-### 12.1 安全验证：用真实副作用和状态变化测试，而不是只看模型回答
+### 12.1 安全验证：检查真实副作用
 
-安全评估不能只统计模型有没有说出危险的话，也不能只测 Prompt Injection Classifier 的准确率。一个 Agent 可能在文本层面拒绝了攻击，但另一个工具已经完成了数据外传；也可能模型接受了恶意指令，但执行边界成功阻止了真实副作用。
+安全测试不能只看模型有没有拒绝恶意指令。需要验证工具调用、文件、网络和业务系统中的实际状态是否符合授权。
 
-研究和实践都在推动分阶段评估：
-- [AgentDojo](https://arxiv.org/abs/2406.13352) 使用多轮、有状态的 Workspace、Slack、Travel 和 Banking 环境，评估正常任务效用与间接提示注入攻击成功率。它的核心启示是安全测试必须包含真实工具调用和状态变化，而不是只测单轮 Prompt。
-- [SafeClawBench](https://arxiv.org/abs/2606.18356) 将语义层攻击接受、审计证据和 Sandbox 中可观察到的工具 / 状态危害分开报告。其研究说明，模型文本判断通过并不代表执行环境没有产生危害；反过来，模型语义失败也不一定产生可验证副作用。
-- [AutoDojo](https://arxiv.org/abs/2606.15057) 关注自适应生成 Prompt Injection，提醒防御测试不能只重复固定攻击样本。
-- [Toward Secure LLM Agents](https://arxiv.org/abs/2606.10749) 汇总了 247 篇 Agent Security 研究，指出当前防御在 Prompt、工具、Memory 和多 Agent 协作之间仍然缺少足够强的组合性；Memory Provenance、权限撤销和跨 Agent 隔离尤其需要加强。
+每个 Sandbox Backend 和部署形态至少测试以下场景：
 
-建议把安全验证拆成四类指标：
+- 正常任务仍能完成，避免用“全部拒绝”制造虚假的安全结果。
+- 访问工作区以外的文件、敏感目录、符号链接和路径穿越均失败。
+- 子进程继承相同限制；超时和取消能终止整个进程树。
+- 未授权网络、云元数据、内网管理地址和代理旁路均无法访问。
+- 凭证、环境变量、浏览器 Profile、Docker Socket 和宿主机目录不会意外进入执行环境。
+- 不同用户、租户、Session 和 Task 之间不能读取对方的 Workspace、Memory、Artifact 或缓存。
+- 审批后如果目标、参数、脚本内容或权限范围改变，旧审批失效。
+- 任务取消、Worker 崩溃和网络断开后，能够确认副作用是否发生，并安全恢复或补偿。
 
-| 评估维度 | 应测量什么 | 不应只看什么 |
-| --- | --- | --- |
-| Semantic Safety | 是否识别任务边界、是否拒绝不相关指令、是否遵循授权来源 | 只看最终回答是否包含拒绝语句 |
-| Authorization Safety | 未授权 Tool / 参数 / 资源 / 目的地是否被策略拒绝 | 只看 Prompt Filter 命中率 |
-| Execution Containment | 越权读写、网络连接、子进程、系统调用、跨租户访问是否真正失败 | 只看 Sandbox 进程是否启动成功 |
-| Observable Harm | 文件、数据库、邮件、支付、Memory、外部网络是否发生未授权状态变化 | 只看模型自述“没有执行” |
+[AgentDojo](https://github.com/ethz-spylab/agentdojo) 可以作为间接 Prompt Injection 和工具调用安全测试的参考环境；它适合补充攻击用例，不替代针对实际 Runtime、文件系统和网络策略的集成测试。
 
-每次安全回归都应同时执行正常用例和负向攻击用例。正常用例验证工具仍然可用；负向用例验证越权确实失败。只做负向测试会导致系统通过“全部拒绝”获得虚假的安全成绩。
+验收时同时看四件事：任务是否正常完成、未授权操作是否被拒绝、执行边界是否生效、外部系统是否出现未授权状态变化。
 
 ### 12.2 Agent Runtime Security Checklist
 
-下面的清单适合作为架构评审、PoC 验收和生产上线 Gate。它不是合规认证，也不能替代针对具体数据、行业和司法辖区的威胁建模。建议把 P0 视为上线阻断项，P1 视为生产环境必须完成或有明确风险接受记录的项目。
+以下清单用于架构评审和上线验收。P0 是上线阻断项；P1 应完成，或有明确的风险接受记录。
 
-#### A. 威胁模型与任务边界
+#### P0：必须满足
 
-- [ ] **P0** 已明确保护资产、信任边界、攻击者能力和允许的业务目标。
-- [ ] **P0** 每个 Agent / Task 都有明确的目标、资源范围、动作范围、时限和终止条件。
-- [ ] **P0** Agent 不能修改自己的 System Policy、Tool Registry、审批规则或 Sandbox Profile。
-- [ ] **P0** 外部网页、邮件、文档、图片 OCR、终端输出和 Tool Result 均按不可信数据处理。
-- [ ] **P1** 已按 R0–R3 或等效风险等级分类工具和业务动作。
-- [ ] **P1** 已定义最大步骤数、工具调用数、递归深度、并发数、Token / API 预算和成本上限。
-- [ ] **P1** 已对 Prompt Injection、Tool Poisoning、Memory Poisoning、Rogue Agent 和供应链攻击做过威胁建模。
+- [ ] 每个 Task 有明确目标、资源范围、允许动作、时限和终止条件。
+- [ ] 外部网页、邮件、文档、终端输出和 Tool Result 默认视为不可信数据。
+- [ ] User、Agent、Task 和 Workload 身份可区分；每次工具执行都重新检查授权。
+- [ ] Agent 不能修改自己的 Policy、Tool Registry、审批规则或 Sandbox Profile。
+- [ ] Read、Write、Delete、Bash、Browser 和业务写操作分别授权。
+- [ ] 文件访问使用服务端解析的 ResourceRef / Capability，不接受模型任意指定宿主机路径。
+- [ ] Shell、脚本和第三方 MCP Server 不在 Agent Host 主进程中运行。
+- [ ] Sandbox 不继承整个用户目录、长期 Token、SSH Agent、浏览器 Profile 或 Docker Socket。
+- [ ] Sandbox 无法满足必要的文件、网络或进程限制时，拒绝启动，不允许静默降级。
+- [ ] 子进程继承相同或更严格的限制；取消和超时能终止完整进程树。
+- [ ] 网络默认拒绝；明确阻断云元数据、集群 API、管理网段和其他租户地址。
+- [ ] 每个租户的 Workspace、Memory、Cache、Artifact、Browser Profile 和日志均有隔离边界。
+- [ ] 高风险动作审批绑定具体目标、参数摘要、内容 / Diff、执行身份和有效期。
+- [ ] 有独立 Emergency Stop，可终止任务、Sandbox 和出站网络，并撤销短期凭证。
+- [ ] 日志不明文保存 Token、Cookie、私钥和不必要的敏感文件内容。
 
-#### B. 身份、授权和凭证
+#### P1：生产环境应完成
 
-- [ ] **P0** User、Agent、Task、Workload 和外部服务身份可以区分并可审计。
-- [ ] **P0** 每个 Tool Handler 在执行时重新验证主体、动作、资源和任务范围。
-- [ ] **P0** Agent 默认没有权限；未匹配规则、策略错误和授权服务不可用时均拒绝执行。
-- [ ] **P0** 子 Agent 和 MCP Server 不继承父 Agent 的全部凭证和权限。
-- [ ] **P0** 长期 API Key、SSH Private Key、浏览器 Cookie 和云管理员 Token 不进入模型上下文或不可信执行进程。
-- [ ] **P1** 使用短期、窄范围、可撤销的委托凭证或 Workload Identity。
-- [ ] **P1** 凭证获取、续期、撤销和访问失败均有审计事件。
-- [ ] **P1** 高风险动作使用独立身份或二次审批，不依赖 Agent 自己判断是否需要授权。
-
-#### C. Tool、MCP 和供应链
-
-- [ ] **P0** Read、Write、Delete、Bash、Browser、Network 和业务写入能力彼此独立授权。
-- [ ] **P0** 未批准的 MCP Server、Plugin、Skill 和动态工具不能直接安装或执行。
-- [ ] **P0** 工具参数经过 Schema 校验、语义校验和资源级授权，不接受任意宿主机路径。
-- [ ] **P1** 工具、模型、Prompt Template、镜像和依赖都有版本、来源和完整性记录。
-- [ ] **P1** 生产环境使用签名 / Digest 固定的镜像和依赖，维护 SBOM 和漏洞扫描结果。
-- [ ] **P1** MCP Server 和第三方工具运行在独立进程或 Sandbox 中。
-- [ ] **P1** 工具升级、权限变化和 Schema 变化触发安全回归测试。
-
-#### D. 文件、数据和网络
-
-- [ ] **P0** 文件访问按 ResourceRef / Capability 授权，不能由模型任意指定宿主机绝对路径。
-- [ ] **P0** 路径检查覆盖符号链接、路径穿越、挂载点、硬链接和 TOCTOU 风险。
-- [ ] **P0** 读取、写入、删除、执行和外发是不同权限。
-- [ ] **P0** 数据有分类标签和来源信息，外部内容不会自动成为授权。
-- [ ] **P0** 出站网络默认拒绝；Ingress、Egress 和 Host Loopback 分别控制。
-- [ ] **P0** 阻断云元数据、集群 API、管理网段、其他租户地址和不必要的内网访问。
-- [ ] **P1** DNS、CNAME、重定向、IPv4 / IPv6、私有 IP 和代理旁路都经过测试。
-- [ ] **P1** 数据上传、外部 API 写入和跨区域传输经过 DLP / Destination Policy。
-- [ ] **P1** 日志、截图、Trace、Memory、快照和产物都有保留期、访问控制和删除策略。
-
-#### E. 执行 Sandbox 与资源隔离
-
-- [ ] **P0** 任意脚本和第三方 MCP Server 不在 Agent Host 主进程中执行。
-- [ ] **P0** Sandbox 的文件、网络、进程和 UI 能力均有明确 Profile。
-- [ ] **P0** 后端不支持必要策略时拒绝启动，不允许静默降级。
-- [ ] **P0** 子进程继承相同或更严格的限制，超时会终止整个进程树。
-- [ ] **P0** Sandbox 不默认继承 Host 环境变量、SSH Agent、Docker Socket、浏览器 Profile 和长期凭证。
-- [ ] **P1** 限制 CPU、Memory、Disk、PID、GPU、带宽、输出大小、并发和执行时间。
-- [ ] **P1** 每个任务结束后清理临时目录、进程、网络连接和短期凭证。
-- [ ] **P1** Sandbox 版本、策略版本和平台能力检测结果进入审计记录。
-
-#### F. 桌面端专用
-
-- [ ] **P0** Agent Host 不以 Administrator / root 运行普通任务。
-- [ ] **P0** 只开放用户明确选择的 Workspace，不默认开放整个 Home / 用户目录。
-- [ ] **P0** Shell、MCP、浏览器和 GUI Automation 与主 UI 进程隔离。
-- [ ] **P0** Screen Capture、Accessibility、Input Monitoring、剪贴板和键鼠注入按功能单独授权。
-- [ ] **P0** GUI Agent 不操作用户日常浏览器 Profile、密码管理器和管理员桌面。
-- [ ] **P1** macOS TCC 权限、App Sandbox Entitlements、代码签名和子进程行为经过真实安装包测试。
-- [ ] **P1** Windows AppContainer / Restricted Token / ACL / Job Object 的实际能力和 UAC 行为经过验证。
-- [ ] **P1** 桌面更新包签名验证、回滚、权限撤销和卸载清理均有测试。
-
-#### G. 云端与多租户专用
-
-- [ ] **P0** Control Plane 与不可信 Execution Worker 分离。
-- [ ] **P0** 每个租户的 Workspace、Memory、Cache、Browser Profile、Artifact 和日志访问隔离。
-- [ ] **P0** Worker 使用独立 Workload Identity，不持有集群或云账户管理权限。
-- [ ] **P0** Worker 默认不能访问云元数据、控制面和内部管理服务。
-- [ ] **P1** 高风险租户或任务可以分配独立 Worker、Node Pool、云账号或项目。
-- [ ] **P1** Worker Pool 复用前后有强制清理和身份重绑定。
-- [ ] **P1** 有租户级速率、并发、资源、成本和异常调用限制。
-
-#### H. Kubernetes 专用
-
-- [ ] **P0** Namespace 强制适当的 Pod Security Standards，优先 Restricted。
-- [ ] **P0** runAsNonRoot: true、allowPrivilegeEscalation: false、readOnlyRootFilesystem: true。
-- [ ] **P0** 删除不需要的 Linux Capabilities，配置 Seccomp；按环境启用 AppArmor / SELinux。
-- [ ] **P0** 禁止不必要的 privileged、hostPID、hostIPC、hostNetwork、hostPath 和容器运行时 Socket。
-- [ ] **P0** 默认 ServiceAccount 不挂载 Token；需要 API 权限时使用独立 SA 和最小 RBAC。
-- [ ] **P0** Namespace / Pod 默认拒绝网络，明确允许 DNS、模型、Artifact 和业务 Endpoint。
-- [ ] **P1** 通过 Admission Policy 阻止危险 PodSpec 和高权限 RBAC。
-- [ ] **P1** 按不可信代码风险选择 runc、gVisor、Kata 或 microVM RuntimeClass。
-- [ ] **P1** 高敏感 Worker 与控制面、基础设施和不同信任等级租户分离 Node Pool。
-- [ ] **P1** 镜像签名、SBOM、漏洞扫描、etcd Secret 加密和 Kubernetes Audit Log 已启用。
-
-#### I. GUI VM / VDI 专用
-
-- [ ] **P0** 每个租户 / 任务使用独立 VM 或独立 Guest 身份。
-- [ ] **P0** VM Guest 不使用 Administrator / root 运行 Agent。
-- [ ] **P0** 默认关闭共享剪贴板、共享目录、拖放、USB、打印机和 Host Credential Passthrough。
-- [ ] **P0** Display / Input Gateway 有认证、加密、会话绑定和操作审计。
-- [ ] **P0** 截图作为敏感数据处理，发送模型前应用数据策略和必要脱敏。
-- [ ] **P0** GUI Agent 不能自行确认付款、发送、删除、安装、授权和 MFA 等高风险操作。
-- [ ] **P1** VM 使用不可变 Golden Image、临时 Browser Profile 和任务结束销毁机制。
-- [ ] **P1** Snapshot 加密、按租户隔离、清理凭证并在恢复前验证策略版本。
-- [ ] **P1** Host / Guest 网络、管理接口、元数据服务和远程桌面入口单独隔离。
-
-#### J. 监控、应急和安全测试
-
-- [ ] **P0** 每次工具调用都能关联 User、Agent、Task、Session、Policy Version 和审批结果。
-- [ ] **P0** 日志不会明文保存 Token、Cookie、私钥、完整敏感 Prompt 或不必要的屏幕内容。
-- [ ] **P0** 有独立 Emergency Stop，可终止任务、进程树、Sandbox 和出站网络。
-- [ ] **P0** 能撤销短期凭证、停止队列、冻结 Agent / Tenant 并保留取证证据。
-- [ ] **P1** 有异常检测：越权尝试、异常网络目的地、工具调用爆发、跨租户访问和资源耗尽。
-- [ ] **P1** 安全测试同时验证 Semantic Safety、Authorization Safety、Execution Containment 和 Observable Harm。
-- [ ] **P1** 测试集覆盖 Direct / Indirect Prompt Injection、Tool Poisoning、Memory Poisoning、供应链攻击和多 Agent 委托。
-- [ ] **P1** 每个平台、每个 Sandbox Backend、每个镜像版本都运行正向与负向测试。
-- [ ] **P1** 定期演练 Agent 失陷、凭证泄露、Sandbox 逃逸、租户越权和紧急停止。
+- [ ] 工具、MCP Server、模型、镜像和依赖有版本、来源及完整性记录。
+- [ ] 使用短期、窄范围、可撤销的凭证；子 Agent 不继承父 Agent 的全部权限。
+- [ ] 限制 CPU、内存、磁盘、PID、GPU、带宽、输出大小、并发和执行时间。
+- [ ] 覆盖 DNS、CNAME、重定向、IPv4 / IPv6、私有 IP 和代理旁路测试。
+- [ ] 桌面端分别验证 macOS TCC / Entitlements 和 Windows Token / ACL / Job Object 行为。
+- [ ] Kubernetes 使用 Restricted Pod Security、最小 RBAC、默认拒绝网络和受控 RuntimeClass。
+- [ ] GUI VM 关闭不需要的共享目录、剪贴板、USB 和凭证透传；截图按敏感数据处理。
+- [ ] 任务结束后清理进程、临时目录、网络连接和短期凭证。
+- [ ] 正向和负向测试覆盖越权读写、跨租户访问、数据外传、取消和故障恢复。
+- [ ] 每次执行可关联 User、Agent、Task、Policy Version、审批、Sandbox Backend 和最终 Artifact。
 
 ### 12.3 业界实践、标准和研究资料
 
@@ -1370,20 +1279,18 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 | [Apple App Sandbox](https://developer.apple.com/documentation/security/app_sandbox) | macOS 文件、网络和硬件 Entitlements。 |
 | [Windows Application Isolation](https://learn.microsoft.com/en-us/windows/security/book/application-security-application-isolation) | AppContainer、Windows Sandbox、应用隔离与系统控制。 |
 
-**研究论文与可复现实验**
 
-| 研究 | 主要发现 / 用途 |
-| --- | --- |
-| [AgentDojo: A Dynamic Environment to Evaluate Prompt Injection Attacks and Defenses for LLM Agents](https://arxiv.org/abs/2406.13352), NeurIPS 2024 | 有状态多轮任务和工具环境，联合评估正常任务效用与攻击成功率。 |
-| [Toward Secure LLM Agents: Threat Surfaces, Attacks, Defenses, and Evaluation](https://arxiv.org/abs/2606.10749), 2026 | 汇总 247 篇研究，按信息流、委托权限和持久状态分析 Agent 生命周期风险，并指出 Memory 与多 Agent 防御仍有缺口。 |
-| [ToolFence: Fine-Grained Authorization for Secure Tool-Using LLM Agents](https://arxiv.org/abs/2609.37196), 2026 | 以授权蓝图、参数 Provenance 和确定性 Monitor 限制工具副作用，尤其关注同一 Tool 内参数被注入篡改的风险。 |
-| [SafeClawBench: Separating Semantic, Audit-Evidence, and Sandbox Harm in Tool-Using LLM Agents](https://arxiv.org/abs/2606.18356), 2026 | 将语义失败、审计可见危害和真实 Sandbox 状态危害分开测量，适合设计 Runtime 安全验收指标。 |
-| [AutoDojo: A Generative Benchmark for Evaluating Prompt Injection Defenses in LLM Agents](https://arxiv.org/abs/2606.15057), 2026 | 研究自适应生成攻击，说明固定攻击集可能高估 Prompt Injection 防御效果。 |
-| [Your Agent is More Brittle Than You Think: Uncovering Indirect Injection Vulnerabilities in Agentic LLMs](https://arxiv.org/abs/2604.03870), 2026 | 在动态多步工具环境中研究间接注入与多种防御策略，强调单轮静态测试的局限。 |
-| [The Hidden Dangers of Browsing AI Agents](https://arxiv.org/abs/2505.13076), 2025 | 浏览器 Agent 的端到端威胁模型，讨论 Prompt Injection、域名校验绕过、凭证外泄和 Planner / Executor 隔离。 |
+## 13. 落地建议
 
-## 13. 落地原则：策略由 Runtime 管，隔离交给 OS
+对 TypeScript / Node.js Agent Runtime，建议把控制面留在 TypeScript，把真正的进程隔离交给操作系统或虚拟化层：
 
+- **文件操作**：使用 Capability Filesystem 或 Workspace Service。Read、Write、Delete 分开授权；重要修改先生成 ChangeSet / Diff，再提交。
+- **命令执行**：使用独立 Execution Service。简单、有限的命令可以使用 just-bash；需要真实进程时使用经过验证的 OS Sandbox；需要完整开发环境时再用容器；面对高风险不可信代码或多租户执行，优先评估 gVisor、Kata 或 microVM。
+- **策略和审计**：Tool Registry、Policy Engine、审批、短期凭证和 Audit Log 由 Runtime 管理。不同后端必须报告实际能力，不支持必要策略就拒绝执行。
+- **远端执行**：本地保留 UI 和明确授权的浏览器能力；远端拥有独立 Agent Loop、Workspace 和 Sandbox。Agent 间委托用 A2A，工具调用用 MCP。
+- **数据流**：明确哪些内容进入本地模型、远端模型、工具日志和 Artifact。远端执行不代表数据不会交给模型 Provider 或服务运营方。
+
+不必为了安全把所有任务都放进 VM，也不能因为使用 Docker 或远端服务就认为已经隔离。先明确威胁对象，再选择执行边界；同时限制凭证、文件和网络权限。真正的验收标准是：Agent 即使犯错或执行恶意代码，也只能影响当前任务明确获准的资源。
 对 TypeScript / Node.js Runtime，职责边界可以收敛为三件事：
 
 - 文件操作走独立的 Capability Filesystem。Read、Write、Delete 分开授权；写入通过 ChangeSet、Patch 和版本检查提交，不能因为能写文件就能执行文件。
