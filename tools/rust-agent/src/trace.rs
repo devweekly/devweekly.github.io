@@ -10,6 +10,8 @@ use std::{
 
 use crate::{error::AgentError, runtime::{RuntimeEvent, RuntimeHook}};
 
+static NEXT_TRACE_INSTANCE_ID: AtomicU64 = AtomicU64::new(1);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TraceRecord {
     pub schema_version: u32,
@@ -39,7 +41,8 @@ impl TraceStore {
         ensure_regular_file_or_missing(&path)?;
         let supplied_trace_id = trace_id.into();
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
-        let trace_id = format!("{supplied_trace_id}-{}-{nonce:x}", std::process::id());
+        let instance = NEXT_TRACE_INSTANCE_ID.fetch_add(1, Ordering::Relaxed);
+        let trace_id = format!("{supplied_trace_id}-{}-{nonce:x}-{instance:x}", std::process::id());
         Ok(Self { path, trace_id, session_id: session_id.into(),
             sequence: Arc::new(AtomicU64::new(1)), write_lock: Arc::new(Mutex::new(())) })
     }
@@ -52,6 +55,7 @@ impl TraceStore {
             session_id: self.session_id.clone(), event: event.to_owned(),
             tool: tool.map(str::to_owned), details: sanitize_details(&details),
         };
+        let lock = lock_trace_file(&self.path)?;
         ensure_regular_file_or_missing(&self.path)?;
         let mut options = OpenOptions::new();
         options.create(true).append(true);
@@ -60,6 +64,7 @@ impl TraceStore {
         let mut line = serde_json::to_vec(&record)?;
         line.push(b'\n');
         file.write_all(&line)?;
+        lock.unlock()?;
         Ok(record)        Ok(record)
     }
 
@@ -71,6 +76,7 @@ impl TraceStore {
             session_id: event.session_id.clone(), event: event.name.clone(),
             tool: event.tool.clone(), details: sanitize_details(&event.details),
         };
+        let lock = lock_trace_file(&self.path)?;
         ensure_regular_file_or_missing(&self.path)?;
         let mut options = OpenOptions::new();
         options.create(true).append(true);
@@ -79,6 +85,7 @@ impl TraceStore {
         let mut line = serde_json::to_vec(&record)?;
         line.push(b'\n');
         file.write_all(&line)?;
+        lock.unlock()?;
         Ok(record)        Ok(record)
     }
 
@@ -101,13 +108,30 @@ impl RuntimeHook for TraceHook {
     }
 }
 
+fn lock_trace_file(path: &Path) -> Result<fs::File, AgentError> {
+    let lock_path = path.with_extension("lock");
+    ensure_regular_file_or_missing(&lock_path)?;
+    let mut options = OpenOptions::new();
+    options.create(true).read(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.open(lock_path)?;
+    file.lock()?;
+    Ok(file)
+}
+
 fn ensure_real_directory(path: &Path) -> Result<(), AgentError> {
     if let Some(parent) = path.parent() {
-        if parent.exists() {
-            let metadata = fs::symlink_metadata(parent)?;
-            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        match fs::symlink_metadata(parent) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
                 return Err(AgentError::InvalidAction("trace directory parent must be a real directory".into()));
             }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
         }
     }
     match fs::symlink_metadata(path) {
