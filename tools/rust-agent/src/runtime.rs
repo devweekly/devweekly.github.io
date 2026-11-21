@@ -22,7 +22,7 @@ use crate::{
     attachments::{AttachmentMetadata, AttachmentStore},
     context::{ContextManager, ContextReport},
     error::AgentError,
-    memory::{DreamingOutput, DreamingReport, DreamingRunMetrics, MemoryInput, MemoryKind, MemoryQuery, MemoryRecord, MemoryScope, MemoryStore},
+    memory::{DreamingOutput, DreamingReport, DreamingRunMetrics, MemoryInput, MemoryKind, MemoryQuery, MemoryRecord, MemoryScope, MemoryStore, TranscriptEntry},
     policy::{self, PolicyDecision},
     provider::{ChatMessage, CompletionUsage, OpenAiCompatibleProvider},
     tools::ToolExecutor,
@@ -386,14 +386,16 @@ impl SessionStore {
                 Err(error) => return Err(error.into()),
             }
             let mut record = self.load(&source.session_id)?;
+            let session_id = record.session_id.clone();
             let previous = record.messages.len();
             record.messages.retain(|message| {
                 !sources.iter().any(|item|
-                    item.session_id == record.session_id && item.content == message.content
+                    item.session_id == session_id && item.content == message.content
                 )
             });
             let count = previous.saturating_sub(record.messages.len());
             if count > 0 {
+                record.updated_at_ms = now_ms();
                 self.save_record(&record)?;
                 removed = removed.saturating_add(count);
             }
