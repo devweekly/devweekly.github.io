@@ -1,4 +1,6 @@
 use std::{
+    future::Future,
+    pin::Pin,
     fs::{self, OpenOptions},
     io::{self, Write},
     collections::HashMap,
@@ -69,6 +71,7 @@ pub struct RuntimeOptions {
     pub max_history_messages: usize,
     pub system_prompt: Option<String>,
     pub hooks: Vec<Box<dyn RuntimeHook>>,
+    pub approval_handler: Option<Arc<dyn ApprovalHandler>>,
 }
 
 impl Default for RuntimeOptions {
@@ -82,6 +85,7 @@ impl Default for RuntimeOptions {
             max_history_messages: 80,
             system_prompt: None,
             hooks: Vec::new(),
+            approval_handler: None,
         }
     }
 }
@@ -140,11 +144,19 @@ impl Default for CancellationHandle {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
 pub struct RuntimeEvent {
     pub session_id: String,
     pub name: String,
     pub tool: Option<String>,
     pub details: Value,
+}
+
+pub trait ApprovalHandler: Send + Sync {
+    fn request_approval<'a>(
+        &'a self,
+        action: &'a ToolAction,
+    ) -> Pin<Box<dyn Future<Output = Result<bool, AgentError>> + Send + 'a>>;
 }
 
 pub trait RuntimeHook: Send + Sync {
@@ -655,6 +667,7 @@ pub struct AgentRuntime {
     permission_mode: PermissionMode,
     system_prompt: String,
     hooks: Vec<Box<dyn RuntimeHook>>,
+    approval_handler: Option<Arc<dyn ApprovalHandler>>,
     background_task_store: BackgroundTaskStore,
     background_task_controls: SharedTaskControls,
     agent_profile_store: AgentProfileStore,
@@ -664,7 +677,7 @@ impl AgentRuntime {
     pub fn new(
         provider: OpenAiCompatibleProvider,
         workspace: PathBuf,
-        options: RuntimeOptions,
+        mut options: RuntimeOptions,
     ) -> Result<Self, AgentError> {
         let session_directory = options
             .session_dir
@@ -673,6 +686,7 @@ impl AgentRuntime {
 
         let configured_system_prompt = options.system_prompt.clone().unwrap_or_else(|| SYSTEM_PROMPT.to_owned());
         let hooks = std::mem::take(&mut options.hooks);
+        let approval_handler = options.approval_handler;
         let session = if let Some(session_id) = options.session_id.as_deref() {
             store.load(session_id)?
         } else if options.continue_session {
@@ -718,6 +732,7 @@ impl AgentRuntime {
             permission_mode: PermissionMode::Default,
             system_prompt: configured_system_prompt,
             hooks,
+            approval_handler,
             background_task_store,
             background_task_controls,
             agent_profile_store,
@@ -1036,7 +1051,7 @@ impl AgentRuntime {
         };
 
         {
-            let mut controls = self.background_task_controls
+            let controls = self.background_task_controls
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             if controls.contains_key(&task_id) {
@@ -1484,7 +1499,13 @@ impl AgentRuntime {
                                     self.audit("policy.plan_mode_denied", Some(&action.name), json!({}));
                                     self.push_tool_result(false, "Write operations are disabled in plan mode");
                                 } else {
-                                    let approved = self.request_approval(&action)?;
+                                    let approved = tokio::select! {
+                                        biased;
+                                        _ = cancellation.cancelled() => {
+                                            return Err(AgentError::Cancelled);
+                                        }
+                                        result = self.request_approval(&action) => result?,
+                                    };
                                     if cancellation.is_cancelled() {
                                         self.push_tool_result(false, "Write approval was cancelled by the host.");
                                         return Err(AgentError::Cancelled);
@@ -1776,14 +1797,24 @@ impl AgentRuntime {
         Ok(Value::Object(answers))
     }
 
-    fn request_approval(&self, action: &ToolAction) -> Result<bool, AgentError> {
-        let path = action.arguments.get("path").and_then(Value::as_str).unwrap_or("<invalid path>");
-        print!("Approve write_file to '{path}'? Type 'yes' to continue: ");
-        io::stdout().flush()?;
-
-        let mut answer = String::new();
-        io::stdin().read_line(&mut answer)?;
-        Ok(answer.trim().eq_ignore_ascii_case("yes"))
+    async fn request_approval(&self, action: &ToolAction) -> Result<bool, AgentError> {
+        self.emit_event("approval.requested", Some(&action.name), json!({
+            "path": action.arguments.get("path").and_then(Value::as_str)
+        }));
+        let approved = if let Some(handler) = &self.approval_handler {
+            handler.request_approval(action).await?
+        } else {
+            let path = action.arguments.get("path").and_then(Value::as_str).unwrap_or("<invalid path>").to_owned();
+            tokio::task::spawn_blocking(move || {
+                print!("Approve write_file to '{path}'? Type 'yes' to continue: ");
+                io::stdout().flush()?;
+                let mut answer = String::new();
+                io::stdin().read_line(&mut answer)?;
+                Ok::<bool, std::io::Error>(answer.trim().eq_ignore_ascii_case("yes"))
+            }).await.map_err(|error| AgentError::InvalidAction(format!("approval prompt task failed: {error}")))??
+        };
+        self.emit_event("approval.resolved", Some(&action.name), json!({"approved": approved}));
+        Ok(approved)
     }
 
     fn persist(&mut self) -> Result<(), AgentError> {

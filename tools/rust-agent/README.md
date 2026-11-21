@@ -132,7 +132,7 @@ No Shell, process execution, arbitrary network tool, or workspace-external file 
 
 The Rust library is the embedding API; it does not start an HTTP server. A desktop or service Host owns its upload transport and calls AgentRuntime::attach_bytes(filename, content_type, bytes) before run_turn or run_turn_with_cancellation. The Runtime enforces a 20 MiB per-file limit, stores bytes under .rust-agent/attachments/ using generated IDs (never client filenames as storage paths), and writes metadata separately. The Runtime automatically adds attachment metadata to the next user message; the Agent uses read_attachment with the returned ID to inspect UTF-8 text. Arbitrary binary files can be stored but are not decoded. No HTTP server, multipart parser, OCR, PDF, or Office parser is bundled.
 
-The embedding surface exposes RuntimeHook for lifecycle events and additional tool denials, plus CancellationHandle for cancellation. The current CLI approval prompt is synchronous.
+The embedding surface exposes RuntimeHook for lifecycle events and additional tool denials, CancellationHandle for cancellation, and the optional asynchronous ApprovalHandler callback. A desktop Host can await its approval UI without blocking the Tokio runtime; the Rust Policy Gate still makes the final allow/deny decision. The CLI uses a blocking terminal prompt on a dedicated blocking thread.
 
 ## Optional CodeBuddy adapter
 
