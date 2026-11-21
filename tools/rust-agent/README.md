@@ -4,7 +4,7 @@
 
 ## 当前实现状态
 
-已创建 Cargo 工程，使用已批准的 8 个基础 crate。当前支持普通非流式 Chat Completions 请求，以及 `read_file`、`list_dir`、`write_file` 三个 Workspace 文件工具。写入操作必须由用户在终端明确输入 `yes` 批准；未知工具默认拒绝；当前没有 Shell、进程执行、任意网络工具或 Workspace 外文件访问接口。
+已创建 Cargo 工程，使用已批准的 8 个基础 crate。当前支持普通非流式 Chat Completions 请求，以及 `read_file`、`list_dir`、`write_file`、`search_files` 四个由 Rust 原生实现的 Workspace 工具。搜索不启动 `rg`、`grep`、`find` 等外部进程；使用 `ignore` 遍历并遵循 Git ignore 规则，使用 `regex` 匹配，使用 `rayon` 并行处理文件。写入操作必须由用户在终端明确输入 `yes` 批准；未知工具默认拒绝；当前没有 Shell、进程执行、任意网络工具或 Workspace 外文件访问接口。
 
 当前版本是最小可运行骨架，不是完整安全沙箱：Worker 与 Agent 同进程、同用户运行；文件路径检查仍属于应用层防护，不能抵御同权限恶意进程或利用 TOCTOU 竞态的本机攻击者；审计目前通过 tracing 输出诊断事件，尚未实现独立、持久化、防篡改的 Audit Store。模型响应采用非流式请求，工具调用由应用层 JSON 协议驱动，不使用 Provider 原生 Tool Calling。
 
@@ -135,7 +135,7 @@ flowchart TD
 | WASM 执行 | 暂不选 Runtime | 当前不需要 | 明确不引入 Wasmtime、Wasmer 或其他 WASM Runtime；需要执行时再单独评估宿主环境和隔离边界 |
 | 本地持久化 | 暂不选 | 后续 | 先明确 SQLite、JSONL 或宿主数据库需求，再决定是否引入 crate |
 
-**需要用户确认的最小依赖集合：** `tokio`、`reqwest`、`serde`、`serde_json`、`clap`、`thiserror`、`tracing`、`tracing-subscriber`。在得到确认之前，不添加这些依赖、不运行 Cargo 初始化来生成依赖锁文件，也不选用额外 Agent Framework。
+**当前已批准依赖：** `tokio`、`reqwest`、`serde`、`serde_json`、`clap`、`thiserror`、`tracing`、`tracing-subscriber`、`regex`、`ignore`、`rayon`。后续新增 crate 仍需先确认。
 
 不建议首版依赖完整 Agent Framework。Runtime 的核心状态机、Action Proposal、Policy Gate 和 Tool Dispatcher 应由本项目掌握，避免框架的 Tool 生命周期和权限模型成为安全边界。后续如果需要 MCP，再单独比较官方 Rust SDK 与轻量 JSON-RPC 实现，并在确认后引入。
 
@@ -147,7 +147,7 @@ flowchart TD
 2. 一个 Provider Adapter，支持流式模型响应。
 3. Tool Registry 和结构化 Action Proposal。
 4. Policy Gate：默认拒绝未知 Tool，Low/Medium/High 的规则显式配置。
-5. 首批只提供 Workspace 只读、受限文件写入和明确命令执行接口；不提供无约束的万能 Shell。
+5. 首批提供 Workspace 只读、受限文件写入和 Rust 原生文件搜索；不提供无约束的万能 Shell，也不通过 shell-out 调用本机搜索命令。
 6. 每次调用记录 Action、Policy Decision、Approval 和 Worker Result。
 7. Tool 超时、取消、错误和执行结果未知分别建模。
 8. 单元测试覆盖路径穿越、符号链接、参数篡改、审批重放、取消竞态和超时后的副作用状态。
@@ -206,7 +206,7 @@ tools/rust-agent/
 
 因此，当前 Native Rust Cargo 工程和基础模块已经创建。WASM 仍只是后续可选的构建产物，不进入当前执行链路。
 
-## 9. 本地构建与运行
+## 9. Rust 原生文件搜索\n\n新增 `search_files` 工具，参数如下：\n\n- `path`：Workspace 内的相对文件或目录。\n- `query`：非空查询字符串。\n- `regex`：可选，默认 `false`；开启后按 Rust regex 语法匹配。\n- `case_sensitive`：可选，默认 `true`。\n- `glob`：可选，限制匹配的文件路径模式。\n- `max_results`：可选，默认 200，上限 1000。\n\n目录遍历遵循隐藏文件和 Git ignore 规则，不跟随目录符号链接；文件内容由 Rust 代码读取，二进制或不可读文件跳过。文件搜索在 Rayon 线程池中并行执行，最终结果按相对路径和行号排序。当前版本是可用的第一版，不包含多行匹配、上下文行、编码探测、mmap 和 ripgrep 的 SIMD/literal 优化；大文件性能和资源上限仍需后续基准测试。\n\n## 10. 本地构建与运行
 
 要求安装 Rust 1.100.0（rustup 会根据 `rust-toolchain.toml` 选择工具链）。在 `tools/rust-agent` 目录执行：
 

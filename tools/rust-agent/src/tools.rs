@@ -3,12 +3,18 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+use ignore::WalkBuilder;
+use rayon::prelude::*;
+use regex::{Regex, RegexBuilder};
 use serde_json::Value;
 
 use crate::{
     action::{ToolAction, ToolResult},
     error::AgentError,
 };
+
+const DEFAULT_SEARCH_LIMIT: usize = 200;
+const MAX_SEARCH_LIMIT: usize = 1_000;
 
 pub struct ToolExecutor {
     workspace: PathBuf,
@@ -27,6 +33,7 @@ impl ToolExecutor {
                 &required_string(&action.arguments, "path")?,
                 &required_string(&action.arguments, "content")?,
             ),
+            "search_files" => self.search_files(action),
             other => Err(AgentError::InvalidAction(format!("tool is not registered: {other}"))),
         }
     }
@@ -88,6 +95,100 @@ impl ToolExecutor {
         })
     }
 
+    /// Search files using native Rust code; no external grep/rg process is spawned.
+    fn search_files(&self, action: &ToolAction) -> Result<ToolResult, AgentError> {
+        let relative = required_string(&action.arguments, "path")?;
+        let query = required_string(&action.arguments, "query")?;
+        if query.is_empty() {
+            return Err(AgentError::InvalidAction("search_files query must not be empty".into()));
+        }
+
+        let regex_mode = optional_bool(&action.arguments, "regex", false)?;
+        let case_sensitive = optional_bool(&action.arguments, "case_sensitive", true)?;
+        let max_results = optional_usize(&action.arguments, "max_results", DEFAULT_SEARCH_LIMIT)?
+            .clamp(1, MAX_SEARCH_LIMIT);
+        let glob = optional_string(&action.arguments, "glob")?;
+
+        let matcher = if regex_mode {
+            RegexBuilder::new(query)
+                .case_insensitive(!case_sensitive)
+                .build()
+                .map_err(|error| AgentError::InvalidAction(format!("invalid search regex: {error}")))?
+        } else {
+            RegexBuilder::new(&regex::escape(query))
+                .case_insensitive(!case_sensitive)
+                .build()
+                .map_err(|error| AgentError::InvalidAction(format!("invalid search query: {error}")))?
+        };
+
+        let search_root = self.resolve_existing(relative)?;
+        let files = self.collect_search_files(&search_root, glob)?;
+        let mut matches = files
+            .par_iter()
+            .map(|path| search_one_file(path, &self.workspace, &matcher))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+
+        matches.sort_by(|left, right| {
+            left.path.cmp(&right.path).then(left.line_number.cmp(&right.line_number))
+        });
+        matches.truncate(max_results);
+
+        let output = if matches.is_empty() {
+            "No matches found.".to_string()
+        } else {
+            matches
+                .into_iter()
+                .map(|item| format!("{}:{}: {}", item.path, item.line_number, item.line))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        Ok(ToolResult { ok: true, output })
+    }
+
+    fn collect_search_files(&self, root: &Path, glob: Option<&str>) -> Result<Vec<PathBuf>, AgentError> {
+        if root.is_file() {
+            return Ok(vec![root.to_path_buf()]);
+        }
+        if !root.is_dir() {
+            return Err(AgentError::InvalidAction("search_files path must be a file or directory".into()));
+        }
+
+        let mut builder = WalkBuilder::new(root);
+        builder
+            .hidden(true)
+            .git_ignore(true)
+            .git_exclude(true)
+            .ignore(true)
+            .parents(true)
+            .follow_links(false);
+
+        if let Some(pattern) = glob {
+            builder.add_custom_ignore_filename(".agentignore");
+            builder
+                .overrides( ignore::overrides::OverrideBuilder::new(root)
+                    .add(pattern)
+                    .map_err(|error| AgentError::InvalidAction(format!("invalid file glob: {error}")))?
+                    .build()
+                    .map_err(|error| AgentError::InvalidAction(format!("invalid file glob: {error}")))? );
+        }
+
+        let mut files = Vec::new();
+        for entry in builder.build() {
+            let entry = entry.map_err(|error| AgentError::InvalidAction(format!("directory traversal failed: {error}")))?;
+            if entry.file_type().is_some_and(|kind| kind.is_file()) {
+                let path = entry.into_path();
+                if path.starts_with(&self.workspace) {
+                    files.push(path);
+                }
+            }
+        }
+        files.sort();
+        Ok(files)
+    }
+
     fn resolve_existing(&self, relative: &str) -> Result<PathBuf, AgentError> {
         let relative_path = validate_relative_path(relative)?;
         let resolved = self.workspace.join(relative_path).canonicalize()?;
@@ -105,6 +206,30 @@ impl ToolExecutor {
     }
 }
 
+struct SearchMatch {
+    path: String,
+    line_number: usize,
+    line: String,
+}
+
+fn search_one_file(path: &Path, workspace: &Path, matcher: &Regex) -> Vec<SearchMatch> {
+    let Ok(content) = fs::read_to_string(path) else {
+        // Binary files and unreadable files are intentionally skipped.
+        return Vec::new();
+    };
+    let relative = path.strip_prefix(workspace).unwrap_or(path).to_string_lossy().into_owned();
+    content
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| matcher.is_match(line))
+        .map(|(index, line)| SearchMatch {
+            path: relative.clone(),
+            line_number: index + 1,
+            line: line.to_string(),
+        })
+        .collect()
+}
+
 fn validate_relative_path(input: &str) -> Result<&Path, AgentError> {
     let path = Path::new(input);
     if input.is_empty()
@@ -118,6 +243,40 @@ fn validate_relative_path(input: &str) -> Result<&Path, AgentError> {
         ));
     }
     Ok(path)
+}
+
+fn required_string<'a>(value: &'a Value, key: &str) -> Result<&'a str, AgentError> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .ok_or_else(|| AgentError::InvalidAction(format!("missing string argument: {key}")))
+}
+
+fn optional_string<'a>(value: &'a Value, key: &str) -> Result<Option<&'a str>, AgentError> {
+    match value.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value)),
+        _ => Err(AgentError::InvalidAction(format!("{key} must be a string"))),
+    }
+}
+
+fn optional_bool(value: &Value, key: &str, default: bool) -> Result<bool, AgentError> {
+    match value.get(key) {
+        None | Some(Value::Null) => Ok(default),
+        Some(Value::Bool(value)) => Ok(*value),
+        _ => Err(AgentError::InvalidAction(format!("{key} must be a boolean"))),
+    }
+}
+
+fn optional_usize(value: &Value, key: &str, default: usize) -> Result<usize, AgentError> {
+    match value.get(key) {
+        None | Some(Value::Null) => Ok(default),
+        Some(Value::Number(value)) => value
+            .as_u64()
+            .and_then(|number| usize::try_from(number).ok())
+            .ok_or_else(|| AgentError::InvalidAction(format!("{key} must be a non-negative integer"))),
+        _ => Err(AgentError::InvalidAction(format!("{key} must be an integer"))),
+    }
 }
 
 #[cfg(test)]
@@ -136,11 +295,4 @@ mod tests {
         assert!(validate_relative_path("docs/architecture.md").is_ok());
         assert!(validate_relative_path("./README.md").is_ok());
     }
-}
-
-fn required_string<'a>(value: &'a Value, key: &str) -> Result<&'a str, AgentError> {
-    value
-        .get(key)
-        .and_then(Value::as_str)
-        .ok_or_else(|| AgentError::InvalidAction(format!("missing string argument: {key}")))
 }

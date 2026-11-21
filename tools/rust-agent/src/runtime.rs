@@ -22,11 +22,11 @@ or
 or
 {"type":"tool_call","tool":"list_dir","arguments":{"path":"relative/path"}}
 or
-{"type":"tool_call","tool":"write_file","arguments":{"path":"relative/path","content":"..."}}
+{"type":"tool_call","tool":"write_file","arguments":{"path":"relative/path","content":"..."}}\nor\n{"type":"tool_call","tool":"search_files","arguments":{"path":"relative/path","query":"text","regex":false,"case_sensitive":true,"glob":"*.rs","max_results":200}}
 
 Tool rules:
 - Paths are relative to the configured workspace.
-- read_file and list_dir are read-only.
+- read_file, list_dir, and search_files are read-only.\n- search_files searches workspace files natively, respects hidden-file and Git ignore rules, and supports literal or regular-expression matching.
 - write_file changes a workspace file and always requires explicit user approval.
 - There is no shell, process execution, arbitrary network tool, or access outside the workspace.
 - Never claim a tool succeeded unless its result says it succeeded.

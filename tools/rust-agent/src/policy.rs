@@ -10,7 +10,7 @@ pub enum PolicyDecision {
 /// Deterministic allow-list policy. Model-supplied risk labels are never trusted.
 pub fn evaluate(action: &ToolAction) -> PolicyDecision {
     match action.name.as_str() {
-        "read_file" | "list_dir" => PolicyDecision::Allow,
+        "read_file" | "list_dir" | "search_files" => PolicyDecision::Allow,
         "write_file" => PolicyDecision::RequireApproval,
         _ => PolicyDecision::Deny,
     }
@@ -24,17 +24,19 @@ mod tests {
     use crate::action::ToolAction;
 
     #[test]
-    fn reads_are_allowed_and_writes_require_approval() {
-        let read = ToolAction {
-            name: "read_file".into(),
-            arguments: json!({"path": "README.md"}),
-        };
+    fn reads_and_search_are_allowed_and_writes_require_approval() {
+        for name in ["read_file", "search_files"] {
+            let action = ToolAction {
+                name: name.into(),
+                arguments: json!({"path": ".", "query": "needle"}),
+            };
+            assert_eq!(evaluate(&action), PolicyDecision::Allow);
+        }
+
         let write = ToolAction {
             name: "write_file".into(),
             arguments: json!({"path": "notes.txt", "content": "hello"}),
         };
-
-        assert_eq!(evaluate(&read), PolicyDecision::Allow);
         assert_eq!(evaluate(&write), PolicyDecision::RequireApproval);
     }
 
