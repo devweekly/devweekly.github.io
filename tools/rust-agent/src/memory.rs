@@ -264,7 +264,7 @@ impl MemoryStore {
             .parent()
             .filter(|parent| !parent.as_os_str().is_empty())
             .unwrap_or_else(|| Path::new("."));
-        ensure_private_dir(parent)?;
+        ensure_real_dir(parent)?;
         match std::fs::symlink_metadata(path) {
             Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
                 return Err(AgentError::InvalidAction(
@@ -532,6 +532,7 @@ impl MemoryStore {
             .query_map([to_i64(now_ms())?], row_memory)?
             .collect::<Result<Vec<_>, _>>()?;
         drop(statement);
+        drop(connection);
 
         let mut ranked = Vec::new();
         for record in records {
@@ -609,11 +610,12 @@ impl MemoryStore {
             return Ok(0);
         }
         let content = content.chars().take(12_000).collect::<String>();
-        self.conn()?.execute(
+        let connection = self.conn()?;
+        connection.execute(
             "INSERT INTO transcripts(session_id,role,content,created_at_ms) VALUES (?1,?2,?3,?4)",
             params![session_id, role, content, to_i64(now_ms())?],
         )?;
-        Ok(self.conn()?.last_insert_rowid())
+        Ok(connection.last_insert_rowid())
     }
 
     /// Index an existing session snapshot once when upgrading an older workspace.
@@ -684,6 +686,14 @@ impl MemoryStore {
         }).collect::<Vec<_>>();
         ranked.sort_by(|left, right| right.0.cmp(&left.0).then(right.1.id.cmp(&left.1.id)));
         Ok(ranked.into_iter().take(limit.clamp(1, 100)).map(|(_, entry)| entry).collect())
+    }
+
+    pub fn get_transcript(&self, id: i64) -> Result<TranscriptEntry, AgentError> {
+        self.conn()?.query_row(
+            "SELECT id,session_id,role,content,created_at_ms FROM transcripts WHERE id=?1",
+            [id],
+            row_transcript,
+        ).optional()?.ok_or_else(|| AgentError::InvalidAction(format!("transcript entry not found: {id}")))
     }
 
     pub fn last_dreamed_transcript_id(&self) -> Result<i64, AgentError> {
@@ -825,6 +835,9 @@ impl MemoryStore {
                     let id = note.id.as_deref().ok_or_else(|| AgentError::InvalidAction("dreaming review is missing memory ID".into()))?;
                     MemoryStore::validate_id(id)?;
                     validate_evidence_in_transaction(&transaction, &note.evidence)?;
+                    if note.evidence.is_empty() {
+                        return Err(AgentError::InvalidAction("dreaming reviews require source evidence".into()));
+                    }
                     let status = if note.action == "dispute" { MemoryStatus::Disputed } else { MemoryStatus::Stale };
                     let changed = transaction.execute(
                         "UPDATE memories SET status=?2,updated_at_ms=?3 WHERE id=?1",
@@ -1063,6 +1076,18 @@ fn validate_page_id(id: &str) -> Result<(), AgentError> {
 
 fn to_i64(value: u128) -> Result<i64, AgentError> {
     i64::try_from(value).map_err(|_| AgentError::InvalidAction("memory timestamp exceeds SQLite integer range".into()))
+}
+
+fn ensure_real_dir(path: &Path) -> Result<(), AgentError> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+            return Err(AgentError::InvalidAction("memory database parent must be a real directory".into()));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => std::fs::create_dir_all(path)?,
+        Err(error) => return Err(error.into()),
+    }
+    Ok(())
 }
 
 fn ensure_private_dir(path: &Path) -> Result<(), AgentError> {

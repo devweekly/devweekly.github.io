@@ -220,6 +220,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!(" /context             Show retained context message count");
             println!(" /compact             Apply the configured sliding-window limit");
             println!(" /usage               Show cumulative model and tool usage");
+            println!(" /dream               Consolidate transcripts into evidence-backed memory");
             println!(" /tasks               List background tasks");
             println!(" /task <id>           Show task status and result");
             println!(" /wait <id>           Wait for a background task (Ctrl-C stops waiting)");
@@ -327,6 +328,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
             continue;
         }
 
+        if input == "/dream" {
+            match runtime.dream_memories().await {
+                Ok(report) => println!(
+                    "Reviewed {} transcript entries; notes +{}/~{}/disputed {}/stale {}; pages +{}/~{}; cursor {}.",
+                    report.transcripts_reviewed,
+                    report.notes_created,
+                    report.notes_updated,
+                    report.notes_disputed,
+                    report.notes_marked_stale,
+                    report.pages_created,
+                    report.pages_updated,
+                    report.reviewed_through
+                ),
+                Err(error) => eprintln!("Memory dreaming failed: {error}"),
+            }
+            continue;
+        }
         if input == "/usage" {
             match runtime.usage_summary() {
                 Ok(usage) => {

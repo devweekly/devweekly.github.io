@@ -14,6 +14,11 @@ flowchart TB
     RUNTIME --> SESSION["Session Store"]
     RUNTIME --> AUDIT["Lifecycle / Policy Audit JSONL"]
     RUNTIME --> TASKS["Background Task Workers / Durable Task Store"]
+    RUNTIME --> MEMORY["SQLite Memory Store"]
+    MEMORY --> TRANSCRIPTS["Transcript Log"]
+    MEMORY --> NOTES["Memory Notes"]
+    MEMORY --> WIKI["Knowledge Pages / Wiki"]
+    DREAM["Dreaming / Offline Consolidation"] --> MEMORY
     APPROVAL["User Approval"] --> RUNTIME
 ```
 
@@ -47,7 +52,7 @@ A fork copies the current conversation into a new session and records its parent
 
 Embedding hosts can create a `CancellationHandle`, pass it to `run_turn_with_cancellation`, and call `cancel()` from a UI cancel action. The CLI maps Ctrl-C to the same mechanism while a turn is running. Cancellation aborts in-flight model requests, including delegated subagent requests, persists a synthetic cancelled-turn marker for conversation continuity, and emits `turn.cancelled`. It does not roll back a local tool operation that has already completed. Synchronous local tools and blocking approval/question prompts are not preemptible; the cancellation request is checked immediately after a prompt returns and before a pending write approval can execute. The CLI keeps one process-lifetime Ctrl-C listener, so Ctrl-C cancels an active turn and exits when the CLI is idle.
 
-The runtime bounds the conversation history to the most recent 80 non-system messages by default. It removes complete older turns rather than cutting through the middle of a tool exchange. This is a sliding context window, not semantic summarization. The model can delegate a bounded investigation or review through `delegate_task`; the delegated Agent has its own short-lived context and can only read, list, and search workspace files. Its result is returned to the parent conversation.
+The runtime bounds the active conversation history to the most recent 80 non-system messages by default. It removes complete older turns rather than cutting through the middle of a tool exchange. This is a sliding context window, not semantic summarization. The model can delegate a bounded investigation or review through `delegate_task`; the delegated Agent has its own short-lived context and can only read, list, and search workspace files. Its result is returned to the parent conversation.
 
 Longer independent investigations can use `start_background_task`. A task gets its own message history and is stored under `.rust-agent/tasks/<task-id>.json`, separately from its parent session. The task ID is returned immediately, so the foreground Agent turn can continue. Task status and intermediate messages are persisted after each completed tool step. On process startup, queued or previously running tasks are requeued from their last persisted checkpoint; a task persisted in `cancelling` is finalized as `cancelled` instead. The task's selected model is captured when it starts.
 
@@ -97,11 +102,12 @@ The built-in defaults remain available when no profile ID is supplied: foregroun
 | Background tasks | Durable, independently scheduled read-only tasks with status, wait, cancel, restart recovery, and parent-session result delivery |
 | Custom Agents | JSON profiles with independent prompts, optional model overrides, read-only tool allow-lists, and bounded step budgets |
 | Session lifecycle | Create, resume, continue latest, fork |
-| Context management | Configurable sliding message window with whole-turn pruning |
+| Context management | Configurable sliding message window with whole-turn pruning and a small retrieved-memory context |
 | Permission control | Deterministic Rust Policy Gate, default/plan modes, and per-write approval |
 | User interaction | Structured ask-user questions with single/multiple choice or free text |
 | Model discovery | OpenAI-compatible /models endpoint |
 | Runtime controls | Interactive model/mode switching, context inspection, manual window compaction, and host-triggered turn cancellation |
+| Memory lifecycle | SQLite transcript log, evidence-backed notes, linked knowledge pages, scoped retrieval, and model-assisted dreaming consolidation |
 | Lifecycle hooks | Native `RuntimeHook` callbacks plus JSONL audit events; hooks can deny a tool call but cannot grant permissions |
 | Workspace tools | Rust read, list, search, and write operations |
 | MCP | Standalone Rust stdio server with tools, resources, and prompts |
@@ -151,7 +157,20 @@ Context management, persistent memory, lifecycle hooks and tracing are built int
 
 `RuntimeOptions` configures the context budget and optional project scope. Every turn retrieves applicable memories, adds them as untrusted reference material, reports the estimated context budget, and then follows the same Agent loop and sliding history window.
 
-Memory is stored in the embedded SQLite database `.rust-agent/memory.sqlite3` using WAL mode and private file permissions. SQLite is compiled into the executable with the bundled build; no system SQLite installation or database service is required. Embedding Hosts can open a standalone store with `MemoryStore::open(path)` or access the runtime-owned store through `AgentRuntime::memory_store()`. The API supports remember, get, retrieve, update, list, count, delete-expired and forget operations. Records carry kind, scope (global/project/session/task), provenance, confidence, timestamps and optional expiry. Retrieval uses lightweight lexical matching; no embedding model or vector database is required. Memory writes are explicit Host operations: model output and tool results are never silently promoted into durable memory.
+Memory is stored in the embedded SQLite database `.rust-agent/memory.sqlite3` using WAL mode and private file permissions. SQLite is compiled into the executable; no database service or system SQLite installation is required. Existing SQLite Memory records are migrated in place.
+
+The design follows a four-layer memory model:
+
+1. **Transcripts** are the append-only source log of user messages, model actions and tool results. Session JSON remains the active conversation snapshot; the transcript table preserves messages across context compaction and provides evidence for later review.
+2. **Memory notes** capture durable preferences, decisions, reusable procedures and lessons. Each note carries scope, confidence, importance, status, access statistics and references to the transcript or prior notes that support it. Status is `proposed`, `consolidated`, `disputed` or `stale`. Only consolidated notes are eligible for automatic retrieval.
+3. **Knowledge pages** are compact, linked Markdown representations for topics that span multiple notes or sessions. Each page has a short retrieval summary, full content, links and evidence references. The optional global `index` page acts as a small dashboard; it is not a copy of the knowledge base.
+4. **Injected context** consists of a small index, relevant consolidated notes and relevant page summaries. Full pages and transcript evidence are loaded only when the Agent asks to inspect them. All injected material is explicitly marked as untrusted reference data.
+
+During a turn, the Agent can call `memory_note` to save a proposed observation, `memory_search` to find notes/pages/transcript evidence, and `memory_read` to open a note, page or transcript. Proposed notes are deliberately excluded from future context until reviewed. The Host can explicitly accept a note with `AgentRuntime::set_memory_status(id, MemoryStatus::Consolidated)`; explicit Host `remember` calls create consolidated notes.
+
+**Dreaming** is an explicit idle-time consolidation pass, exposed as `AgentRuntime::dream_memories().await` and CLI `/dream`. It sends a bounded batch of transcript excerpts plus current notes/pages to the configured model. The model can propose notes, correct notes with supporting evidence, mark conflicts as disputed, mark obsolete notes stale, and build/update compact linked pages. The Rust layer validates evidence IDs and scope, applies the entire pass in a SQLite transaction, and advances a transcript cursor only when the transaction succeeds. The process is not run on every user turn and does not silently turn unsupported claims into memory.
+
+Embedding Hosts can use `MemoryStore::open(path)` or `AgentRuntime::memory_store()`. The store exposes transcript search, memory CRUD/review, page retrieval/search, access counts and expiry cleanup. Retrieval is lexical and local; it does not require embeddings or a vector database. Dreaming sends transcript excerpts and existing memory material to the configured model provider, so it should be scheduled according to the Host's data-handling policy.
 
 The built-in `RuntimeHook` covers before-turn, before-tool, runtime events and after-turn callbacks. Hooks can observe or deny operations, but cannot grant permissions or bypass the deterministic Rust Policy Gate.
 
