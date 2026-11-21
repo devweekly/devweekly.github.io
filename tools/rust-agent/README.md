@@ -133,7 +133,7 @@ No Shell, process execution, arbitrary network tool, or workspace-external file 
 
 ## Usage tracking
 
-The runtime appends model-call and tool-call events to `.rust-agent/usage.jsonl` with private file permissions. Model usage includes the effective model after fallback, provider-reported prompt/completion/total tokens when available, and request duration. Streaming requests request a final usage frame from OpenAI-compatible providers. Providers that omit usage are recorded with unknown token counts; token counts are never estimated from text length.
+The runtime appends model-call and tool-call events to `.rust-agent/usage.jsonl` with private file permissions. Model usage includes the effective model after fallback, provider-reported prompt/completion/total tokens when available, and end-to-end completion latency. Streaming requests ask for a final usage frame; if a provider rejects the optional `stream_options` extension, the runtime retries once without it to preserve compatibility. Providers that omit usage are recorded with unknown token counts; token counts are never estimated from text length. The response count includes successful model responses, not failed or interrupted attempts.
 
 Background tasks persist cumulative request, token, duration, and tool-call totals in each task record, including across restart recovery. The `/usage` command shows totals across the workspace usage log and stored background tasks; `/task <id>` shows the selected task's usage. Failed or cancelled requests that do not return a usage payload cannot be assigned reliable token counts.
 

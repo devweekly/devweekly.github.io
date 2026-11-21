@@ -150,15 +150,32 @@ impl OpenAiCompatibleProvider {
         F: FnMut(&str),
     {
         let body = ChatCompletionRequest { model, messages, stream: true, stream_options: Some(StreamOptions { include_usage: true }) };
-        let response = self.client
+        let initial_response = self.client
             .post(&self.endpoint)
             .bearer_auth(&self.api_key)
             .json(&body)
             .send()
             .await
-            .map_err(|error| (AgentError::Http(error), false))?
-            .error_for_status()
             .map_err(|error| (AgentError::Http(error), false))?;
+        let response = match initial_response.error_for_status() {
+            Ok(response) => response,
+            Err(error) if error.status().is_some_and(|status| status.as_u16() == 400 || status.as_u16() == 422) => {
+                // Some OpenAI-compatible endpoints reject stream_options. Retry once without
+                // the optional usage extension so streaming remains compatible.
+                warn!(model = %model, "provider rejected stream_options; retrying stream without usage extension");
+                let compatible_body = ChatCompletionRequest { model, messages, stream: true, stream_options: None };
+                self.client
+                    .post(&self.endpoint)
+                    .bearer_auth(&self.api_key)
+                    .json(&compatible_body)
+                    .send()
+                    .await
+                    .map_err(|error| (AgentError::Http(error), false))?
+                    .error_for_status()
+                    .map_err(|error| (AgentError::Http(error), false))?
+            }
+            Err(error) => return Err((AgentError::Http(error), false)),
+        };
 
         let mut response = response;
         let mut pending = Vec::<u8>::new();
@@ -303,6 +320,7 @@ mod tests {
         assert_eq!(usage.completion_tokens, Some(8));
         assert_eq!(usage.total_tokens, Some(29));
         assert_eq!(super::parse_usage(&json!({})), super::CompletionUsage::default());
+        assert_eq!(super::parse_usage(&json!({"prompt_tokens": 2, "completion_tokens": 3})).total_tokens, Some(5));
     }
 
     #[test]

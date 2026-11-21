@@ -319,7 +319,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if input == "/usage" {
             match runtime.usage_summary() {
                 Ok(usage) => {
-                    println!("Model requests: {}", usage.requests);
+                    println!("Completed model responses: {}", usage.requests);
                     println!("Prompt tokens: {}", usage.prompt_tokens);
                     println!("Completion tokens: {}", usage.completion_tokens);
                     println!("Total tokens: {}", usage.total_tokens);
