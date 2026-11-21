@@ -1,6 +1,12 @@
 # Rust Agent
 
-本目录用于实现一个本机优先（local-first）的 Rust Agent。目标不是再造一个庞大的 Agent Framework，而是建立一个可审计、可扩展、能逐步接入模型与本机工具的 Agent Runtime。首阶段先确定架构与依赖边界；**未经确认，不新增第三方 crate，也不生成带外部依赖的 Cargo 工程**。
+本目录实现一个本机优先（local-first）的 Rust Agent。目标不是再造一个庞大的 Agent Framework，而是建立一个可审计、可扩展、能逐步接入模型与本机工具的 Agent Runtime。当前代码是可运行的最小骨架：Native Rust CLI、OpenAI-compatible Chat Completions Provider、确定性 Tool Policy，以及限定 Workspace 的文件工具。
+
+## 当前实现状态
+
+已创建 Cargo 工程，使用已批准的 8 个基础 crate。当前支持普通非流式 Chat Completions 请求，以及 `read_file`、`list_dir`、`write_file` 三个 Workspace 文件工具。写入操作必须由用户在终端明确输入 `yes` 批准；未知工具默认拒绝；当前没有 Shell、进程执行、任意网络工具或 Workspace 外文件访问接口。
+
+当前版本是最小可运行骨架，不是完整安全沙箱：Worker 与 Agent 同进程、同用户运行；文件路径检查仍属于应用层防护，不能抵御同权限恶意进程或利用 TOCTOU 竞态的本机攻击者；审计目前通过 tracing 输出诊断事件，尚未实现独立、持久化、防篡改的 Audit Store。模型响应采用非流式请求，工具调用由应用层 JSON 协议驱动，不使用 Provider 原生 Tool Calling。
 
 ## 1. 目标与边界
 
@@ -146,7 +152,7 @@ flowchart TD
 7. Tool 超时、取消、错误和执行结果未知分别建模。
 8. 单元测试覆盖路径穿越、符号链接、参数篡改、审批重放、取消竞态和超时后的副作用状态。
 
-**不在首阶段做：** GUI、MCP Server、插件市场、多 Agent、远端执行集群、WASM 模块加载与执行、WASM Sandbox、跨平台 OS Sandbox 全覆盖、自动修改自身代码或安全策略。这里不排斥未来把独立 Tool Worker 编译成 `.wasm`；只是首阶段不提供 WASM Runtime。
+**当前尚未实现：** GUI、MCP Server、插件市场、多 Agent、远端执行集群、Shell/进程工具、流式模型响应、独立 Worker 进程、持久化审计、WASM 模块加载与执行、WASM Sandbox、跨平台 OS Sandbox 全覆盖、自动修改自身代码或安全策略。这里不排斥未来把独立 Tool Worker 编译成 `.wasm`；只是当前不提供 WASM Runtime。
 
 ## 7. 建议目录结构
 
@@ -198,4 +204,19 @@ tools/rust-agent/
 - 当前不引入 Wasmtime、Wasmer 或任何其他 WASM Runtime，不实现 WASM 动态加载、WASM 模块执行或 WASM Sandbox。仅保留 Worker 接口边界，避免未来接入时改动 Agent Runtime。
 - `.wasm` 文件本身不是可执行程序；没有 Runtime / Host 就不能在本机直接运行。编译成 WASM 也不会自动获得安全隔离，实际能力仍由执行宿主提供的 Host Interface 和权限控制决定。
 
-因此，当前可以开始创建 Native Rust Cargo 工程和基础模块；WASM 先作为后续可选的构建产物，不进入当前执行链路。
+因此，当前 Native Rust Cargo 工程和基础模块已经创建。WASM 仍只是后续可选的构建产物，不进入当前执行链路。
+
+## 9. 本地构建与运行
+
+要求安装 Rust 1.100.0（rustup 会根据 `rust-toolchain.toml` 选择工具链）。在 `tools/rust-agent` 目录执行：
+
+```bash
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+
+export OPENAI_API_KEY="..."
+cargo run -- --model "<your-model-id>" --workspace .
+```
+
+可通过 `--base-url` 指定兼容 OpenAI Chat Completions 的 API Base URL，通过 `--api-key-env` 指定密钥环境变量名。不要把 API Key 写入命令行参数、配置文件或仓库。当前代码尚未在远端执行构建验证；首次本地构建应检查依赖解析、编译和测试结果。
