@@ -1051,7 +1051,7 @@ impl AgentRuntime {
         };
 
         {
-            let controls = self.background_task_controls
+            let mut controls = self.background_task_controls
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             if controls.contains_key(&task_id) {
