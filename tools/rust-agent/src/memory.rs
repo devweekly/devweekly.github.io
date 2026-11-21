@@ -757,18 +757,62 @@ impl MemoryStore {
         Self::validate_id(id)?;
         let mut connection = self.conn()?;
         let transaction = connection.transaction()?;
-        let exists: bool = transaction.query_row(
-            "SELECT EXISTS(SELECT 1 FROM memories WHERE id=?1)",
-            [id],
-            |row| row.get(0),
-        )?;
-        if !exists {
-            return Err(AgentError::InvalidAction(format!("memory record not found: {id}")));
-        }
+        let before = load_memory(&transaction, id)?
+            .ok_or_else(|| AgentError::InvalidAction(format!("memory record not found: {id}")))?;
         transaction.execute("DELETE FROM memory_revisions WHERE memory_id=?1", [id])?;
         transaction.execute("DELETE FROM memories WHERE id=?1", [id])?;
+        for reference in &before.source_refs {
+            let Some(transcript_id) = reference.strip_prefix("transcript:") else { continue; };
+            let transcript_id = transcript_id.parse::<i64>().map_err(|_| {
+                AgentError::InvalidAction(format!("invalid transcript evidence reference: {reference}"))
+            })?;
+            if !transcript_is_referenced_in_transaction(&transaction, reference)? {
+                transaction.execute("DELETE FROM transcripts WHERE id=?1", [transcript_id])?;
+            }
+        }
         transaction.commit()?;
         Ok(())
+    }
+
+    /// Remove old transcript rows that are no longer referenced by any live or
+    /// revisioned memory/page. The newest 1,000 transcript rows are always retained.
+    /// This is explicit maintenance; Runtime startup never deletes user history.
+    pub fn prune_transcripts(&self, older_than_ms: u128, max_delete: usize) -> Result<usize, AgentError> {
+        if max_delete == 0 { return Ok(0); }
+        let cutoff = to_i64(older_than_ms)?;
+        let mut connection = self.conn()?;
+        let transaction = connection.transaction()?;
+        let oldest_retained: Option<i64> = transaction.query_row(
+            "SELECT id FROM transcripts ORDER BY id DESC LIMIT 1 OFFSET 999",
+            [],
+            |row| row.get(0),
+        ).optional()?;
+        let Some(oldest_retained) = oldest_retained else {
+            transaction.commit()?;
+            return Ok(0);
+        };
+        let candidates = {
+            let mut statement = transaction.prepare(
+                "SELECT id FROM transcripts
+                 WHERE created_at_ms<?1 AND id<?2
+                 ORDER BY id ASC LIMIT ?3"
+            )?;
+            statement.query_map(
+                params![cutoff, oldest_retained, i64::try_from(max_delete.saturating_mul(20)).unwrap_or(i64::MAX)],
+                |row| row.get::<_, i64>(0),
+            )?.collect::<Result<Vec<_>, _>>()?
+        };
+        let mut deleted = 0usize;
+        for id in candidates {
+            if deleted >= max_delete { break; }
+            let reference = format!("transcript:{id}");
+            if !transcript_is_referenced_in_transaction(&transaction, &reference)? {
+                transaction.execute("DELETE FROM transcripts WHERE id=?1", [id])?;
+                deleted += 1;
+            }
+        }
+        transaction.commit()?;
+        Ok(deleted)
     }
 
     pub fn list(&self) -> Result<Vec<MemoryRecord>, AgentError> {
@@ -1673,6 +1717,49 @@ fn markdown_page_links(content: &str) -> Vec<String> {
         .collect()
 }
 
+fn transcript_is_referenced_in_transaction(
+    transaction: &Transaction<'_>,
+    reference: &str,
+) -> Result<bool, AgentError> {
+    for sql in [
+        "SELECT source_refs_json FROM memories",
+        "SELECT source_refs_json FROM memory_pages",
+        "SELECT evidence_refs_json FROM memory_revisions",
+    ] {
+        let values = {
+            let mut statement = transaction.prepare(sql)?;
+            let mapped = statement.query_map([], |row| row.get::<_, String>(0))?;
+            mapped.collect::<Result<Vec<_>, _>>()?
+        };
+        for encoded in values {
+            let refs: Vec<String> = serde_json::from_str(&encoded)?;
+            if refs.iter().any(|item| item == reference) { return Ok(true); }
+        }
+    }
+
+    let revision_snapshots = {
+        let mut statement = transaction.prepare(
+            "SELECT before_json,after_json FROM memory_revisions
+             UNION ALL
+             SELECT before_json,after_json FROM memory_page_revisions"
+        )?;
+        statement.query_map([], |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    for (before, after) in revision_snapshots {
+        for snapshot in [before, after].into_iter().flatten() {
+            let value: Value = serde_json::from_str(&snapshot)?;
+            if value.get("source_refs")
+                .and_then(Value::as_array)
+                .is_some_and(|refs| refs.iter().any(|item| item.as_str() == Some(reference)))
+            {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
 fn validate_memory_input(input: &MemoryInput) -> Result<(), AgentError> {
     if input.content.trim().is_empty()
         || input.content.len() > MAX_TEXT
@@ -2152,6 +2239,63 @@ mod tests {
             delete_pages: vec![],
         };
         assert!(store.apply_dreaming(output).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn forgetting_last_memory_source_removes_its_transcript_but_keeps_shared_evidence() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let shared = store.record_transcript("s1", None, None, "user", "Shared source").unwrap();
+        let exclusive = store.record_transcript("s1", None, None, "user", "Exclusive source").unwrap();
+
+        let first = store.remember({
+            let mut value = input(MemoryScope::Global, None, "Memory with shared evidence");
+            value.source_refs = vec![format!("transcript:{shared}")];
+            value
+        }).unwrap();
+        let second = store.remember({
+            let mut value = input(MemoryScope::Global, None, "Memory with exclusive evidence");
+            value.source_refs = vec![format!("transcript:{exclusive}")];
+            value
+        }).unwrap();
+        let third = store.remember({
+            let mut value = input(MemoryScope::Project, Some("project-a"), "Another use of shared evidence");
+            value.source_refs = vec![format!("transcript:{shared}")];
+            value
+        }).unwrap();
+
+        store.forget(&first.id).unwrap();
+        assert!(store.get_transcript(shared).is_ok());
+        store.forget(&second.id).unwrap();
+        assert!(store.get_transcript(exclusive).is_err());
+        store.forget(&third.id).unwrap();
+        assert!(store.get_transcript(shared).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn transcript_retention_prunes_only_old_unreferenced_rows_and_keeps_recent_floor() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let mut old_ids = Vec::new();
+        for index in 0..1_005 {
+            old_ids.push(store.record_transcript(
+                &format!("s{index}"), None, None, "user", &format!("old transcript {index}")
+            ).unwrap());
+        }
+        let protected = old_ids[0];
+        let referenced = old_ids[4];
+        store.remember({
+            let mut value = input(MemoryScope::Global, None, "Retained source");
+            value.source_refs = vec![format!("transcript:{referenced}")];
+            value
+        }).unwrap();
+        let deleted = store.prune_transcripts(now_ms().saturating_add(1), 20).unwrap();
+        assert_eq!(deleted, 4);
+        assert!(store.get_transcript(protected).is_ok());
+        assert!(store.get_transcript(referenced).is_ok());
+        assert_eq!(store.transcripts_after(0, 2_000).unwrap().len(), 1_001);
         let _ = fs::remove_dir_all(root);
     }
 
