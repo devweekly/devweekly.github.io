@@ -11,7 +11,7 @@ tags:
   - Security
   - Sandbox
   - Architecture
-description: "面向 TypeScript/Node.js Agent Runtime，比较 Anthropic Sandbox Runtime、OpenAI Codex Sandbox、just-bash、OpenHands Runtime 和 MCP Filesystem Server，厘清工具权限、资源授权与操作系统隔离的边界，并给出可落地的分层架构。"
+description: "面向 TypeScript Agent Runtime 和 Copilot SDK 桌面应用，比较开源 Sandbox 与受控 Shell，分析 Windows/macOS 的执行隔离、工具权限和原生 Helper 取舍。"
 ---
 
 # Agent Runtime 的安全执行边界：开源 Sandbox、受控 Shell 与 Tool Permission 怎么选
@@ -367,7 +367,118 @@ MCP 只是工具协议，不是安全容器。一个 MCP Server 可以在启动�
 
 **文件写入最好默认可恢复。** 草稿写入、正式覆盖和删除应分开处理。通过临时文件、原子替换、版本快照和 Diff 审查，降低模型误操作的影响。对正式业务系统则优先提供有明确语义的 API，而不是开放数据库连接或通用 HTTP 写入。
 
-## 7. 结论：复用 OS Sandbox，自己实现策略控制面
+## 7. 如果基于 Copilot SDK 自己实现桌面端安全防护
+
+如果 Agent Runtime 基于 GitHub Copilot SDK，桌面端同时支持 Windows 和 macOS，我不建议把安全层整体改写成 Rust。更合理的边界是：TypeScript 实现 Agent 控制面和工具服务，操作系统负责强制执行隔离策略；只有在某个平台缺少可靠的 Node.js API、需要调用原生安全接口时，才增加一个很小的原生 Helper。
+
+Copilot SDK 提供的 `onPreToolUse` Hook 可以在工具执行前返回 `allow`、`deny` 或 `ask`，也可以修改工具参数。这适合作为统一策略入口，但 Hook 本身不是 Sandbox：它不能阻止已经启动的进程访问未授权文件，也不能约束绕过该 Hook 的其他进程或 MCP Server。官方文档还提供 `skipPermission`，适用于应用自有、参数已经被应用约束的可信工具；它不应被用来跳过应用自己的 Policy Engine。参考：[Copilot SDK Pre-tool use Hook](https://docs.github.com/en/copilot/how-tos/copilot-sdk/hooks/pre-tool-use)。
+
+### 7.1 推荐的职责划分
+
+| 组件 | 推荐实现 | 职责 |
+| --- | --- | --- |
+| Copilot SDK 集成 | TypeScript | Session、Agent、Hook、工具调用生命周期 |
+| Tool Registry | TypeScript | 只注册应用控制的 Read、Write、Bash 等工具 |
+| Policy Engine | TypeScript | Agent / Task / Workspace / Resource / Action 授权，默认拒绝 |
+| Approval Service | TypeScript + Desktop UI | 展示具体动作和影响范围，记录一次性批准 |
+| Read / Write Service | TypeScript | 资源 ID 解析、路径授权、文件操作、ChangeSet 和回滚 |
+| Execution Service | TypeScript | 创建 Sandbox Session、传递受限参数、收集输出、取消和清理 |
+| OS Sandbox Backend | OS 原生机制或成熟项目 | 强制文件、网络、进程和资源限制 |
+| Native Helper（可选） | Rust / C++ / Swift / C# | 仅封装 TS 无法可靠完成的系统 API 或安装配置 |
+
+TypeScript 不只是 UI 层。它完全可以承担策略计算、审批、工具参数校验、资源引用解析、审计和执行生命周期管理。真正不能只靠 TypeScript 完成的是对任意子进程的强制隔离；这必须落到操作系统安全机制或独立虚拟化边界。
+
+### 7.2 Copilot SDK Hook 应该怎样接
+
+建议在 Session 创建时统一注册 `onPreToolUse`，但不要在 Hook 中堆积所有业务逻辑。Hook 只负责把 SDK 的调用转换为内部标准请求，再交给 Policy Engine。工具 Handler 内部还要进行资源级二次校验，执行后端也要再次校验 Profile 和实际资源范围。
+
+```typescript
+const session = await client.createSession({
+  hooks: {
+    onPreToolUse: async (input, invocation) => {
+      const decision = await policy.evaluate({
+        sessionId: invocation.sessionId,
+        toolName: input.toolName,
+        arguments: input.toolArgs,
+      });
+
+      return {
+        permissionDecision: decision.kind, // allow | ask | deny
+        permissionDecisionReason: decision.reason,
+        ...(decision.modifiedArgs
+          ? { modifiedArgs: decision.modifiedArgs }
+          : {}),
+      };
+    },
+  },
+});
+```
+
+不要把 `onPreToolUse` 当成唯一检查点。应用自定义工具的 Handler 必须自己验证 `ResourceRef`、Workspace 归属和操作权限；Bash Handler 则只能调用 Execution Service，不能直接 `child_process.exec()` 在桌面宿主进程里运行模型给出的命令。对于 MCP Server 和其他执行入口，也必须确保它们不能绕过同一套资源与执行边界。
+
+另外，SDK 的 `ask` 只是请求交互式批准的机制。产品仍需明确处理非交互模式、用户拒绝、超时、会话取消和批准后参数变化。审批记录应绑定工具名、规范化参数摘要、资源范围、Profile、Session / Task 和有效期，不能只记一个“用户同意过 Bash”。
+
+### 7.3 macOS 与 Windows 的 Sandbox 后端
+
+跨平台策略模型可以统一，但底层不能假设两个系统提供相同的隔离能力。
+
+| 平台 | 可评估的隔离机制 | 需要特别验证的部分 |
+| --- | --- | --- |
+| macOS | Seatbelt / Sandbox Profile；可评估 Anthropic Sandbox Runtime | 文件读写规则、网络限制、子进程继承、系统服务和 IPC 边界、不同 macOS 版本行为 |
+| Windows | Restricted Token、ACL、Job Object、Windows Filtering Platform；进一步评估 AppContainer | 文件访问是否真正受限、网络出口是否覆盖、进程树是否完整受控、安装时是否需要 UAC |
+
+macOS 上可以优先评估 [Anthropic Sandbox Runtime](https://github.com/anthropics/sandbox-runtime)，避免自己从头维护 Seatbelt Profile。Windows 也可以评估其 Windows 实现，但要把它当前的成熟度、安装方式和权限要求纳入产品决策，不能假设与 macOS 行为完全等价。
+
+Windows 上尤其不要把 Job Object 误认为完整 Sandbox。Job Object 适合限制进程树、生命周期和资源使用；它本身不提供完整的文件系统与网络访问控制。Restricted Token、ACL、AppContainer 和网络过滤各自解决不同问题，需要组合并验证。若产品要求普通用户安装后无需 UAC，就必须单独验证隔离方案是否能在该部署约束下成立；不能为了绕过 UAC 而静默退化成宿主机直接执行。
+
+### 7.4 统一 Sandbox Backend 接口，不统一底层实现
+
+Runtime 可以定义统一接口，让上层不感知平台差异；但每个平台 Backend 必须声明自己实际支持的能力。不能因为接口里有 `network: deny`，就假设某个后端真的能够可靠阻断所有网络路径。
+
+```typescript
+type SandboxProfile = {
+  filesystem: { read: string[]; write: string[]; deny: string[] };
+  network: { mode: "deny" | "allowlist"; allowedDomains?: string[] };
+  limits: { timeoutMs: number; memoryMb?: number; maxProcesses?: number };
+};
+
+interface SandboxBackend {
+  readonly platform: "darwin" | "win32";
+  capabilities(): Promise<{
+    filesystemIsolation: boolean;
+    networkIsolation: boolean;
+    processTreeControl: boolean;
+  }>;
+  execute(input: {
+    script: string;
+    workingDirectory: ResourceRef;
+    profile: SandboxProfile;
+  }): Promise<ExecutionResult>;
+  terminate(executionId: string): Promise<void>;
+}
+```
+
+启动执行前，Execution Service 应检查 Backend 能力是否满足 Profile 的要求；不满足就拒绝执行，而不是忽略不支持的限制。执行完成、超时或取消时，要清理整个进程树、临时目录和短期凭证。宿主机环境变量、SSH Agent Socket、浏览器 Profile、Docker Socket 和长期 Token 默认都不应进入 Sandbox。
+
+### 7.5 Rust 什么时候才值得引入
+
+Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runner，仍然可能以当前用户身份读取文件、访问网络和启动子进程。反过来，TypeScript 通过受控 IPC 调用 Seatbelt、Restricted Token 或其他 OS Sandbox，也可以建立真实的执行边界。
+
+只有出现明确的原生需求时才引入 Rust，例如：需要一个小型、独立于 Node Runtime 的进程管理器；需要调用现有 Rust 安全库；或需要封装某些平台 API，而现有 Node API 和成熟工具无法可靠覆盖。即使如此，也应把 Rust Helper 的职责限制在 Sandbox 创建、进程启动 / 终止和必要的系统调用封装。Policy Engine、审批、Tool Registry 和 Agent Session 仍留在 TypeScript。
+
+对桌面产品而言，额外引入 Rust 还会增加 Windows / macOS 双平台构建、签名、公证、升级、崩溃诊断和 IPC 协议维护成本。没有明确的原生能力缺口时，这些成本并不会自动换来更强的安全性。
+
+### 7.6 建议的落地顺序
+
+1. 先在 TypeScript 中收敛工具入口：Read、Write、Bash 独立注册；拒绝无法识别的工具；不要让 Agent 直接获得宿主机 Shell。
+2. 实现统一 Policy Engine、ResourceRef、审批和审计；工具 Handler 对资源和动作进行二次校验。
+3. 把真实命令执行迁移到独立 Execution Service；先接入成熟 Sandbox Runtime，不要自己实现操作系统隔离原语。
+4. 分别建立 macOS 和 Windows 测试矩阵，验证路径穿越、符号链接、敏感目录、网络出口、子进程继承、进程树终止、环境变量泄露和 Sandbox 启动失败。
+5. 只有当某个平台确实无法通过现有 Sandbox 或 Node.js 接口满足要求时，再增加最小化的原生 Helper；Rust 是可选实现语言，不是架构前提。
+
+对于 Copilot SDK 桌面应用，最终推荐是 **TypeScript 控制面 + OS Sandbox 执行面**。Copilot Hook 负责拦截和决策，应用自己的 Tool Handler 负责资源授权，Sandbox Backend 负责让操作系统强制执行批准范围。不要把 Hook、命令白名单或 Rust 语言本身误认为安全边界。
+
+## 8. 结论：复用 OS Sandbox，自己实现策略控制面
 
 如果是 TypeScript / Node.js Agent Runtime，我会按以下方式落地：
 
