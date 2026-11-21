@@ -112,8 +112,7 @@ Agent trajectory 能说明调用了哪些工具、得到什么结果、何时失
 
 **失败无法归因。** 最终判断错误，究竟是源数据缺失、检索错误、事实抽取错误、政策解释错误、规则实现错误、模型变化，还是审批流程失效？只保存答案，无法形成有效的故障分类和持续改进依据。
 
-
-### 3.1 Chain-of-Thought 不能直接当成模型真实决策过程
+### 3.1 Chain-of-Thought 的解释不等于忠实的决策记录
 
 Turpin 等人的 NeurIPS 2023 论文 [Language Models Don't Always Say What They Think: Unfaithful Explanations in Chain-of-Thought Prompting](https://papers.neurips.cc/paper_files/paper/2023/hash/ed3fea9033a80fea1376299fa7863f4a-Abstract-Conference.html) 展示了关键问题：LLM 的逐步解释可能系统性地没有提及真正影响答案的因素，甚至会为受偏置信号影响的错误答案生成看似合理的解释。解释文本看起来完整，并不能保证它忠实反映了导致模型输出的因素。
 
@@ -121,15 +120,19 @@ Fayyaz 等人的 [Evaluating Human Alignment and Model Faithfulness of LLM Ratio
 
 对金融 Decision Model 的含义很直接：可以要求模型输出简明理由，但不能把“模型自己写出来的理由”当成决策过程已透明化的证明。应使用**能回到原始材料核验的证据引用、明确的规则条件、字段级输出与独立验证结果**，而不是依赖公开或保存一长串 CoT 来替代审计设计。
 
-### 3.2 增加解释未必能纠正自动化偏差
+Lanham 等人的 [Measuring Faithfulness in Chain-of-Thought Reasoning](https://arxiv.org/abs/2307.13702) 通过对模型给出的推理链进行干预，例如插入错误或改写推理内容，观察最终答案对这些变化有多敏感。研究发现，不同任务和模型对所展示推理链的依赖程度不同；生成了较长的推理链，并不表示它就是答案成因的忠实记录。Turpin 等人则通过引入偏置信号，展示模型可能仍受该信号影响，却在解释里没有提及它。
+
+2026 年 ICML 论文 [Monitoring Monitorability](https://proceedings.mlr.press/v306/guan26h.html) 提供了更细致的边界：在当前某些推理模型中，Chain-of-Thought 监测可能比只观察动作更容易发现部分错误行为，但监测能力并非完美，而且可能随训练方法、数据来源和模型规模变化而变得脆弱。
+
+这两类研究并不矛盾。CoT 可以是一种研究或运行期风险信号，却不能代替可以复核的决策证据。金融系统应记录可观察的中间产物、引用、规则校验、工具调用与最终处置；不要把完整的模型自述推理链设为唯一审计材料，也不要声称它揭示了模型的真实内部决策过程。
+
+### 3.2 解释和人工监督都需要实证验证
 
 Vered 等人在 [The Effects of Explanations on Automation Bias](https://www.sciencedirect.com/science/article/pii/S000437022300098X) 中研究了决策支持系统里的解释对自动化偏差的影响。研究发现，解释并没有稳定地减少人们对自动化系统的过度依赖，在部分条件下甚至会增加这种依赖；解释对任务速度和准确率的影响取决于具体情境。
 
 发表于 *Scientific Reports* 的研究 [Explainability does not mitigate the negative impact of incorrect AI advice in a personnel selection task](https://www.nature.com/articles/s41598-024-60220-5) 发现，当 AI 建议错误时，参与者仍可能未能否决它；增加解释对减少这种过度依赖的作用有限。Westphal 等人在 [Decision control and explanations in human-AI collaboration](https://doi.org/10.1016/j.chb.2023.107714) 中也报告，决策控制与解释的作用并不相同，解释在其实验条件下没有普遍改善用户结果。
 
 这些研究不能直接证明每个金融岗位都会出现同样效果，但足以说明：**人工在环（Human-in-the-loop）不是一个架构标签，而是一种需要验证的控制能力。** 有人点击审批不自动意味着有意义的监督；更多解释文字也不自动意味着更好的判断。
-
-### 3.3 监管研究同样不把“提供了解释”视为终点
 
 国际清算银行金融稳定学院（BIS FSI）2025 年论文 [Managing explanations: how regulators can address AI explainability](https://www.bis.org/publications/fsi-paper-24-managing-explanations-how-regulators-can-address-ai-explainability) 指出，可解释性对透明度、问责、合规和信任很重要，但复杂模型（包括 LLM）的解释方法存在不准确、不稳定、可能误导等限制。不能只问“是否提供解释”，还要问解释是否适合具体用途，以及能否支持相应的风险管理和监督需要。
 
@@ -142,34 +145,21 @@ NIST 的 [Artificial Intelligence Risk Management Framework: Generative Artifici
 | 可靠性依赖具体任务和使用方式 | 只引用供应商的通用 benchmark | 用本机构代表性案例，测试 Prompt、数据、规则、角色权限与实际工作流 |
 | 系统会随模型、数据和上下文变化 | 只记录某次运行的最终文本 | 版本化 Prompt、模型、检索材料、工具、政策与测试集，持续监控并做回归验证 |
 
-
-### 3.4 CoT 忠实度可以被实验检验，但不能靠阅读一段解释来保证
-
-Lanham 等人的 [Measuring Faithfulness in Chain-of-Thought Reasoning](https://arxiv.org/abs/2307.13702) 通过对模型给出的推理链进行干预，例如插入错误或改写推理内容，观察最终答案对这些变化有多敏感。研究发现，不同任务和模型对所展示推理链的依赖程度不同；生成了较长的推理链，并不表示它就是答案成因的忠实记录。Turpin 等人则通过引入偏置信号，展示模型可能仍受该信号影响，却在解释里没有提及它。
-
-2026 年 ICML 论文 [Monitoring Monitorability](https://proceedings.mlr.press/v306/guan26h.html) 提供了更细致的边界：在当前某些推理模型中，Chain-of-Thought 监测可能比只观察动作更容易发现部分错误行为，但监测能力并非完美，而且可能随训练方法、数据来源和模型规模变化而变得脆弱。
-
-这两类研究并不矛盾。CoT 可以是一种研究或运行期风险信号，却不能代替可以复核的决策证据。金融系统应记录可观察的中间产物、引用、规则校验、工具调用与最终处置；不要把完整的模型自述推理链设为唯一审计材料，也不要声称它揭示了模型的真实内部决策过程。
-
-### 3.5 谄媚、确认偏差与“顺着提问者说”也是决策风险
+### 3.3 迎合、幻觉与自动评分会带来新的判断偏差
 
 Sharma 等人的 [Towards Understanding Sycophancy in Language Models](https://arxiv.org/abs/2310.13548) 研究发现，多个经过人类反馈训练的助手在不同任务中会表现出迎合用户观点的倾向；研究还指出，人类偏好评价可能在某些条件下偏爱说服力强、符合用户既有想法的回答，即使它并非更正确。
 
 应用到金融决策中，风险并不只来自模型捏造事实。如果输入已经带有结论，例如“这家客户显然有问题，请找出理由”，模型可能倾向于收集支持该结论的材料，而没有充分挑战它。对应控制应包括：中性的问题模板、明确要求同时列出支持和反对证据、在测试集里加入方向相反但证据相同的案例，以及测量提示措辞变化是否导致判断不合理地变化。
 
-### 3.6 幻觉与不确定性：不能把“猜一个答案”当作业务能力
-
 Kalai 等人的 [Why Language Models Hallucinate](https://arxiv.org/abs/2509.04664) 从统计学习和评测激励角度分析，模型在不确定时仍可能选择猜测，而常见的评分机制可能奖励猜对却惩罚承认不确定的行为。它是对幻觉产生机制的研究分析，不代表每一次幻觉都有同一原因，但对高影响系统的设计有直接启示：如果输出契约强迫模型必须选择一个结论，系统就可能把不确定性转化为自信的错误输出。
 
 因此，需要把 abstain / insufficient evidence / conflict / escalation 作为真正的合法状态，并把“无证据时不作结论”纳入评测的正向目标。衡量的不只是拒答率，也要衡量该拒答时是否拒答、可以判断时是否过度拒答。
-
-### 3.7 LLM Reviewer 与自动评分本身也有系统性偏差
 
 Shi 等人的 IJCNLP-AACL 2025 论文 [Judging the Judges](https://aclanthology.org/2025.ijcnlp-long.18/) 在超过 150,000 次评价中研究了多个 LLM judge 的位置偏差，发现评判会受到候选答案先后次序与任务条件影响。Chen 与 Goldfarb-Tarrant 的 [Safer or Luckier? LLMs as Safety Evaluators Are Not Robust to Artifacts](https://aclanthology.org/2025.acl-long.970/) 则指出，安全评价模型可能受到歉意措辞、冗长或其他输入表面特征影响；其报告的偏差幅度与特定实验任务、模型和比较设置有关，不应泛化成所有评测的固定比例。
 
 这说明独立 Reviewer 并不自动等于独立真理来源。实践上应当为 Reviewer 做校准集和盲测，比较人工标注一致性；对成对比较随机化候选顺序，检查重复运行稳定性；避免让被评测模型与评分模型共享相同的偏见；对关键规则和引用采用程序化断言而不是 LLM 打分。高风险放行决策不能只由一个 LLM Judge 给出总分。
 
-### 3.8 研究结果怎样转化成工程控制？
+### 3.4 把研究结果转成工程控制
 
 | 研究发现 | 在 Decision Model 中应该增加的控制 |
 | --- | --- |
@@ -178,7 +168,6 @@ Shi 等人的 IJCNLP-AACL 2025 论文 [Judging the Judges](https://aclanthology.
 | 模型可能迎合提问者 | 对称测试支持/反对假设；对提示措辞和信息顺序做反事实测试 |
 | 模型在不确定时可能猜测 | 设计缺证/冲突/拒答的正式状态；将错误接受和漏升级作为单独的高风险指标 |
 | LLM Judge 可能受到排序和表面风格影响 | 使用人工校准、顺序翻转、重复测试、独立规则断言及多来源的评测证据 |
-
 
 ## 四、金融服务业的监管要求与风险框架
 
@@ -298,7 +287,7 @@ DBS 的 2025 年 CRO 报告说明，生成式 AI 被用于员工客户对话总�
 | 评测、回归、运行监控结合 | 在模型、Prompt、数据和检索变化后发现退化 | 不能把某次离线评测结果当作永久上线保证 |
 
 
-## 六、参考架构：把模型判断放进受控流程
+## 六、目标架构：把模型判断放进受控流程
 
 对于高影响用例，更稳健的做法通常不只是把“一次 Prompt”改成“更长的 Prompt”，而是把决策流程拆成多个可验证步骤。下面是供金融决策场景参考的目标架构，不是所有 Decision Model 都必须采用的固定形态：底层可以是通用 LLM、Jev 这样的专用模型，也可以是两者混合；工作流可以由普通程序控制，也可以在 Agent 框架中编排。应由业务风险、任务形态和实测结果决定架构复杂度，而不是先选定某种模型类别再强行套用。
 
@@ -1026,7 +1015,6 @@ flowchart TD
 
 这些路径可以组合使用。例如，专用决策模型负责大量低成本的初筛，通用 LLM 处理少量复杂案例，确定性代码执行硬规则，人工负责高影响或证据冲突案件。是否值得采用这种混合架构，要由同一业务基准上的端到端结果决定，不应只比较某个模型的单次推理价格或厂商演示数据。
 
-这些路径可以组合使用。例如，专用决策模型负责大量低成本的初筛，通用 LLM 处理少量复杂案例，确定性代码执行硬规则，人工负责高影响或证据冲突案件。是否值得采用这种混合架构，要由同一业务基准上的端到端结果决定，不应只比较某个模型的单次推理价格或厂商演示数据。
 
 ### 第一阶段：给当前模型建立基线
 
@@ -1088,8 +1076,6 @@ flowchart LR
 如果以 DBS 2025 年报告中披露的“信用评估资料抽取/验证”和“由员工审核的信用评估备忘录”为业务场景，可以把最初的目标限制在提高资料完整性与审核效率：先在影子模式评估字段抽取、证据链接与冲突识别，不影响信用决定；之后以员工审核的备忘录草稿进入受限试点；只有在关键错误、漏升级、引用可靠性和人工复核质量都有持续证据时，才考虑扩大使用范围。
 
 这与公开材料中“员工审核”的方向相符，但上述影子模式、指标和各阶段门槛是本文提出的落地方案，**不是 DBS 公开披露的内部实施步骤**。可参见 [DBS 2025 年 CRO 报告](https://www.dbs.com/annualreports/2025/cro-statement.html) 与 [DBS 2025 年 CIO 报告](https://www.dbs.com/annualreports/2025/cio-statement.html)。
-
-
 
 
 ## 十二、结论：模型选择不是治理方案
