@@ -14,6 +14,7 @@ pub struct ChatMessage {
 pub struct OpenAiCompatibleProvider {
     client: Client,
     endpoint: String,
+    models_endpoint: String,
     model: String,
     fallback_model: Option<String>,
     api_key: String,
@@ -47,6 +48,7 @@ impl OpenAiCompatibleProvider {
         }
 
         let endpoint = format!("{base_url}/chat/completions");
+        let models_endpoint = format!("{base_url}/models");
         let client = Client::builder()
             .user_agent(concat!("rust-agent/", env!("CARGO_PKG_VERSION")))
             .build()?;
@@ -54,6 +56,7 @@ impl OpenAiCompatibleProvider {
         Ok(Self {
             client,
             endpoint,
+            models_endpoint,
             model,
             fallback_model,
             api_key,
@@ -70,6 +73,18 @@ impl OpenAiCompatibleProvider {
         }
         self.model = model;
         Ok(())
+    }
+
+    pub async fn list_models(&self) -> Result<Vec<String>, AgentError> {
+        let response: Value = self.client
+            .get(&self.models_endpoint)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        Ok(parse_model_ids(&response))
     }
 
     pub async fn complete(&self, messages: &[ChatMessage]) -> Result<String, AgentError> {
@@ -121,6 +136,18 @@ impl OpenAiCompatibleProvider {
     }
 }
 
+fn parse_model_ids(response: &Value) -> Vec<String> {
+    let mut models = response["data"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| item["id"].as_str().map(ToOwned::to_owned))
+        .collect::<Vec<_>>();
+    models.sort();
+    models.dedup();
+    models
+}
+
 fn is_retryable(error: &AgentError) -> bool {
     match error {
         AgentError::Http(error) => {
@@ -139,4 +166,30 @@ struct ChatCompletionRequest<'a> {
     model: &'a str,
     messages: &'a [ChatMessage],
     stream: bool,
+}
+
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::parse_model_ids;
+
+    #[test]
+    fn model_listing_extracts_sorts_and_deduplicates_ids() {
+        let models = parse_model_ids(&json!({
+            "data": [
+                {"id": "z-model"},
+                {"id": "a-model"},
+                {"id": "z-model"},
+                {"name": "missing-id"}
+            ]
+        }));
+        assert_eq!(models, vec!["a-model", "z-model"]);
+    }
+
+    #[test]
+    fn model_listing_handles_missing_data() {
+        assert!(parse_model_ids(&json!({})).is_empty());
+    }
 }

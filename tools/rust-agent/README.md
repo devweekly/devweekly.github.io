@@ -35,7 +35,7 @@ No npm install or CodeBuddy login is required.
 
 ## Sessions and context
 
-Sessions are stored as JSON files under `.rust-agent/sessions/` in the configured workspace. The `latest` pointer supports `--continue`; use `--session-id` to resume a specific session. Use `/new`, `/session`, `/resume <id>`, and `/fork` in the interactive CLI.
+Sessions are stored as JSON files under `.rust-agent/sessions/` in the configured workspace. The `latest` pointer supports `--continue`; use `--session-id` to resume a specific session. Use `/new`, `/session`, `/resume <id>`, and `/fork` in the interactive CLI. `/models` queries the provider's OpenAI-compatible GET /models endpoint. `/mode plan` blocks writes; `/mode default` restores per-write approval. `/context` displays the retained message count and `/compact` applies the configured sliding-window limit. When the model returns an ask_user action, the CLI presents structured choices or a free-text question and sends the answer back into the current turn.
 
 ```bash
 cargo run -- --model <model-id> --workspace /path/to/workspace --continue
@@ -53,7 +53,10 @@ The runtime bounds the conversation history to the most recent 80 non-system mes
 | Agent loop | Rust runtime with a bounded tool-call loop |
 | Session lifecycle | Create, resume, continue latest, fork |
 | Context management | Configurable sliding message window with whole-turn pruning |
-| Permission control | Deterministic Rust Policy Gate and per-write approval |
+| Permission control | Deterministic Rust Policy Gate, default/plan modes, and per-write approval |
+| User interaction | Structured ask-user questions with single/multiple choice or free text |
+| Model discovery | OpenAI-compatible /models endpoint |
+| Runtime controls | Interactive model/mode switching, context inspection and manual window compaction |
 | Lifecycle hooks | Native `RuntimeHook` callbacks plus JSONL audit events; hooks can deny a tool call but cannot grant permissions |
 | Workspace tools | Rust read, list, search, and write operations |
 | MCP | Standalone Rust stdio server with tools, resources, and prompts |
@@ -85,7 +88,9 @@ No Shell, process execution, arbitrary network tool, or workspace-external file 
 
 ## Current limitations
 
-- The provider currently uses non-streaming OpenAI-compatible Chat Completions.
+- The provider currently uses non-streaming OpenAI-compatible Chat Completions. Streaming and in-flight cancellation are not implemented yet.
+- Model discovery requires the provider to expose the OpenAI-compatible GET /models endpoint.
+- Permission modes intentionally omit automatic edit approval: default always asks before writes, while plan blocks writes.
 - Context management uses a sliding window; semantic summarization is not implemented yet.
 - Runtime hooks are synchronous callbacks. Long-running hook work should be delegated by the embedding host rather than blocking the Agent loop.
 - Subagent orchestration, background task management, and task handoff are not implemented in the native runtime.

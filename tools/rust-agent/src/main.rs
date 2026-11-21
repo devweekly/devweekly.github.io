@@ -7,7 +7,7 @@ use std::{
 
 use rust_agent::{
     provider::OpenAiCompatibleProvider,
-    runtime::{AgentRuntime, RuntimeOptions},
+    runtime::{AgentRuntime, PermissionMode, RuntimeOptions},
 };
 use tracing_subscriber::EnvFilter;
 
@@ -163,7 +163,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Rust Agent ready. Workspace: {}", runtime.workspace().display());
     println!("Session: {}", runtime.session_id());
-    println!("Commands: /new, /session, /resume <id>, /fork, /model <id>, /exit");
+    println!("Commands: /help, /new, /session, /resume <id>, /fork, /model <id>, /models, /mode <default|plan>, /context, /compact, /exit");
 
     let stdin = io::stdin();
     loop {
@@ -180,6 +180,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         if input == "/exit" || input == "/quit" {
             break;
+        }
+        if input == "/help" {
+            println!(" /new                 Start a new session");
+            println!(" /session             Show the active session ID");
+            println!(" /resume <id>         Resume a session");
+            println!(" /fork                Fork the current session");
+            println!(" /model <id>          Change the active model");
+            println!(" /models              List models exposed by the provider");
+            println!(" /mode default|plan   Change write permission behavior");
+            println!(" /context             Show retained context message count");
+            println!(" /compact             Apply the configured sliding-window limit");
+            println!(" /exit                Exit");
+            continue;
         }
         if input == "/new" {
             runtime.start_new_session()?;
@@ -198,6 +211,41 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if let Some(model) = input.strip_prefix("/model ") {
             runtime.set_model(model.trim().to_owned())?;
             println!("Active model: {}", runtime.model());
+            continue;
+        }
+        if input == "/models" {
+            match runtime.list_models().await {
+                Ok(models) if models.is_empty() => println!("The provider returned no model IDs."),
+                Ok(models) => {
+                    for model in models {
+                        println!(" {model}{}", if model == runtime.model() { "  [active]" } else { "" });
+                    }
+                }
+                Err(error) => eprintln!("Could not list provider models: {error}"),
+            }
+            continue;
+        }
+        if let Some(mode) = input.strip_prefix("/mode ") {
+            match mode.trim() {
+                "default" => runtime.set_permission_mode(PermissionMode::Default),
+                "plan" => runtime.set_permission_mode(PermissionMode::Plan),
+                _ => {
+                    println!("Mode must be 'default' or 'plan'. Writes always require approval in default mode and are blocked in plan mode.");
+                    continue;
+                }
+            }
+            println!("Permission mode: {}", mode.trim());
+            continue;
+        }
+        if input == "/context" {
+            println!("Retained messages: {}", runtime.context_message_count());
+            println!("Session: {}", runtime.session_id());
+            println!("Model: {}", runtime.model());
+            continue;
+        }
+        if input == "/compact" {
+            let removed = runtime.compact_context()?;
+            println!("Removed {removed} older messages; retained {}.", runtime.context_message_count());
             continue;
         }
         if let Some(session_id) = input.strip_prefix("/resume ") {
