@@ -96,13 +96,14 @@ impl ToolExecutor {
         if !path.is_file() {
             return Err(AgentError::InvalidAction("read_file target is not a regular file".into()));
         }
-        let metadata = fs::metadata(&path)?;
-        if metadata.len() > MAX_READ_FILE_BYTES {
+        let mut file = fs::File::open(path)?;
+        let mut content = String::new();
+        file.by_ref().take(MAX_READ_FILE_BYTES + 1).read_to_string(&mut content)?;
+        if content.len() as u64 > MAX_READ_FILE_BYTES {
             return Err(AgentError::InvalidAction(format!(
                 "read_file is limited to {MAX_READ_FILE_BYTES} bytes"
             )));
         }
-        let content = fs::read_to_string(path)?;
         Ok(ToolResult { ok: true, output: content })
     }
 
@@ -373,7 +374,19 @@ fn optional_usize(value: &Value, key: &str, default: usize) -> Result<usize, Age
 
 #[cfg(test)]
 mod tests {
-    use super::validate_relative_path;
+    use super::{validate_relative_path, ToolExecutor};
+    use crate::action::ToolAction;
+    use serde_json::json;
+    use std::{fs, path::PathBuf, sync::atomic::{AtomicU64, Ordering}};
+
+    fn workspace() -> PathBuf {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let path = std::env::temp_dir().join(format!(
+            "rust-agent-tools-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
 
     #[test]
     fn rejects_parent_traversal_and_absolute_paths() {
@@ -386,5 +399,32 @@ mod tests {
     fn accepts_workspace_relative_paths() {
         assert!(validate_relative_path("docs/architecture.md").is_ok());
         assert!(validate_relative_path("./README.md").is_ok());
+    }
+
+    #[test]
+    fn low_level_tool_executor_cannot_bypass_write_approval() {
+        let root = workspace();
+        let executor = ToolExecutor::new(root.clone());
+        let action = ToolAction {
+            name: "write_file".into(),
+            arguments: json!({"path":"must-not-exist.txt","content":"blocked"}),
+        };
+        assert!(executor.execute(&action).is_err());
+        assert!(!root.join("must-not-exist.txt").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn read_file_enforces_a_hard_byte_limit() {
+        let root = workspace();
+        let content = vec![b'a'; 1024 * 1024 + 1];
+        fs::write(root.join("large.txt"), content).unwrap();
+        let executor = ToolExecutor::new(root.clone());
+        let action = ToolAction {
+            name: "read_file".into(),
+            arguments: json!({"path":"large.txt"}),
+        };
+        assert!(executor.execute(&action).is_err());
+        fs::remove_dir_all(root).unwrap();
     }
 }
