@@ -1,0 +1,35 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent Runtime 端到端安全执行链路</title><style>*{box-sizing:border-box}body{margin:0;background:#F9F6EF;color:#241E18;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif}main{max-width:1480px;margin:20px auto;padding:16px}svg{display:block;width:100%;height:auto}</style></head><body><main><svg xmlns="http://www.w3.org/2000/svg" width="1440" height="760" viewBox="0 0 1440 760" role="img" aria-labelledby="title desc">
+<title id="title">Agent Runtime 端到端安全执行链路</title><desc id="desc">从用户任务、模型规划、工具授权、资源策略、审批到隔离执行、数据出口和审计的完整链路。</desc>
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L9 3L0 6" fill="#67594C"/></marker><style>
+text{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;fill:#241E18}
+.title{font-size:29px;font-weight:700}.sub{font-size:14px;fill:#67594C}.h{font-size:17px;font-weight:650}.b{font-size:13px;fill:#5F554B}.sm{font-size:11px;fill:#756A60}
+.zone{fill:#F0ECE4;stroke:#CFC5B8;stroke-width:1.3}.card{fill:#FFFEFA;stroke:#C9BFB2;stroke-width:1.4}.policy{fill:#E3EBDD;stroke:#8BA07C;stroke-width:1.5}.exec{fill:#EADFEB;stroke:#9B7D9A;stroke-width:1.5}.data{fill:#DCEBED;stroke:#789BA4;stroke-width:1.5}.warn{fill:#F4E6D2;stroke:#B58A50;stroke-width:1.5}.line{fill:none;stroke:#67594C;stroke-width:2;marker-end:url(#a)}.dash{fill:none;stroke:#8B5A2B;stroke-width:1.8;stroke-dasharray:7 5}
+</style></defs>
+<rect width="1440" height="760" fill="#F9F6EF"/>
+<text x="48" y="54" class="title">Agent Runtime：从请求到副作用的安全执行链路</text>
+<text x="48" y="82" class="sub">模型负责提出动作；策略控制面决定是否允许；隔离后端约束进程真正能做什么。</text>
+<rect x="48" y="112" width="1344" height="130" rx="14" class="zone"/><text x="72" y="142" class="h">控制面（可信执行边界之外）</text>
+<rect x="76" y="160" width="180" height="58" rx="9" class="card"/><text x="166" y="184" text-anchor="middle" class="h">用户 / Task</text><text x="166" y="204" text-anchor="middle" class="sm">目标、范围、时限</text>
+<rect x="292" y="160" width="190" height="58" rx="9" class="card"/><text x="387" y="184" text-anchor="middle" class="h">Model / Planner</text><text x="387" y="204" text-anchor="middle" class="sm">提出 Tool Call</text>
+<rect x="518" y="160" width="190" height="58" rx="9" class="policy"/><text x="613" y="184" text-anchor="middle" class="h">Tool Registry</text><text x="613" y="204" text-anchor="middle" class="sm">工具入口授权</text>
+<rect x="744" y="160" width="190" height="58" rx="9" class="policy"/><text x="839" y="184" text-anchor="middle" class="h">Policy Engine</text><text x="839" y="204" text-anchor="middle" class="sm">主体 / 动作 / 资源 / 目的地</text>
+<rect x="970" y="160" width="170" height="58" rx="9" class="warn"/><text x="1055" y="184" text-anchor="middle" class="h">Approval</text><text x="1055" y="204" text-anchor="middle" class="sm">高风险动作按需确认</text>
+<rect x="1176" y="160" width="188" height="58" rx="9" class="card"/><text x="1270" y="184" text-anchor="middle" class="h">Credential Broker</text><text x="1270" y="204" text-anchor="middle" class="sm">短期、窄范围凭证</text>
+<path d="M256 189H292 M482 189H518 M708 189H744 M934 189H970 M1140 189H1176" class="line"/>
+<rect x="48" y="282" width="1344" height="272" rx="14" class="zone"/><text x="72" y="312" class="h">执行面（不可信代码与工具必须受操作系统 / VM 强制约束）</text>
+<rect x="80" y="350" width="220" height="150" rx="10" class="data"/><text x="190" y="380" text-anchor="middle" class="h">Resource Gateway</text><text x="190" y="408" text-anchor="middle" class="b">Capability / ResourceRef</text><text x="190" y="432" text-anchor="middle" class="b">路径、对象、数据分类</text><text x="190" y="466" text-anchor="middle" class="sm">不接受任意宿主机路径</text>
+<rect x="360" y="350" width="220" height="150" rx="10" class="exec"/><text x="470" y="380" text-anchor="middle" class="h">Execution Service</text><text x="470" y="408" text-anchor="middle" class="b">Execution Profile</text><text x="470" y="432" text-anchor="middle" class="b">env / timeout / quota</text><text x="470" y="466" text-anchor="middle" class="sm">进程树统一受限</text>
+<rect x="640" y="338" width="430" height="176" rx="12" class="warn"/><text x="855" y="370" text-anchor="middle" class="h">OS Sandbox / Container / microVM</text>
+<rect x="666" y="390" width="112" height="82" rx="8" class="card"/><text x="722" y="420" text-anchor="middle" class="h">Process</text><text x="722" y="444" text-anchor="middle" class="sm">子进程</text>
+<rect x="798" y="390" width="112" height="82" rx="8" class="card"/><text x="854" y="420" text-anchor="middle" class="h">FS</text><text x="854" y="444" text-anchor="middle" class="sm">只读 / 可写</text>
+<rect x="930" y="390" width="112" height="82" rx="8" class="card"/><text x="986" y="420" text-anchor="middle" class="h">Network</text><text x="986" y="444" text-anchor="middle" class="sm">Egress Policy</text>
+<rect x="1130" y="350" width="220" height="150" rx="10" class="data"/><text x="1240" y="380" text-anchor="middle" class="h">External Systems</text><text x="1240" y="408" text-anchor="middle" class="b">API / Browser / DB</text><text x="1240" y="432" text-anchor="middle" class="b">业务系统 / 文件资源</text><text x="1240" y="466" text-anchor="middle" class="sm">仅允许策略批准的目标</text>
+<path d="M300 425H360 M580 425H640 M1070 425H1130" class="line"/>
+<path d="M839 218V260H470V350" class="dash"/><text x="650" y="254" class="sm">授权后的执行请求</text>
+<rect x="48" y="590" width="1344" height="112" rx="14" class="zone"/><text x="72" y="620" class="h">数据与审计回路</text>
+<rect x="82" y="642" width="300" height="42" rx="8" class="card"/><text x="232" y="668" text-anchor="middle" class="b">Trace：身份、Task、Policy Version、审批</text>
+<rect x="418" y="642" width="300" height="42" rx="8" class="card"/><text x="568" y="668" text-anchor="middle" class="b">副作用：文件、网络、API、进程状态</text>
+<rect x="754" y="642" width="260" height="42" rx="8" class="warn"/><text x="884" y="668" text-anchor="middle" class="b">Emergency Stop / Credential Revoke</text>
+<rect x="1050" y="642" width="300" height="42" rx="8" class="card"/><text x="1200" y="668" text-anchor="middle" class="b">保留证据，清理任务与临时资源</text>
+<path d="M470 500V570H232V642 M855 514V642 M1240 500V570H568V642" class="dash"/>
+</svg></main></body></html>
