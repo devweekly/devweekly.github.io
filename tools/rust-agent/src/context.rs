@@ -92,8 +92,11 @@ impl ContextManager {
         let mut used = 0usize;
         let start = if messages.first().is_some_and(|message| message.role == "system") {
             let mut system = messages[0].clone();
-            let allowance = budget.saturating_sub(4);
-            if estimate_tokens(&system.content).saturating_add(4) > budget {
+            // System instructions are necessary, but must not consume the entire
+            // input window and silently discard the user's current request.
+            let system_budget = (budget / 3).max(32).min(budget);
+            let allowance = system_budget.saturating_sub(4);
+            if estimate_tokens(&system.content).saturating_add(4) > system_budget {
                 system.content = truncate_to_token_budget(&system.content, allowance);
             }
             used = estimate_tokens(&system.content).saturating_add(4);
