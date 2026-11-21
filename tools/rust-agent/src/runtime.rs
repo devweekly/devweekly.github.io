@@ -2955,9 +2955,72 @@ fn write_private_file(path: &Path, bytes: &[u8], append: bool) -> Result<(), Age
 mod tests {
     use super::{
         AgentProfile, AgentProfileStore, BackgroundTaskRecord, BackgroundTaskStatus,
-        BackgroundTaskStore, CancellationHandle, ChatMessage, CompletionUsage, UsageTotals, UserQuestion,
-        MAX_AGENT_PROFILE_STEPS, SessionStore, is_custom_agent_read_tool, new_session_id, now_ms,
+        BackgroundTaskStore, CancellationHandle, ChatMessage, CompletionUsage, SessionRecord,
+        UsageTotals, UserQuestion, MAX_AGENT_PROFILE_STEPS, SESSION_SCHEMA_VERSION,
+        SessionStore, is_custom_agent_read_tool, new_session_id, now_ms,
     };
+
+    #[test]
+    fn forgetting_transcript_sources_redacts_session_files_without_changing_latest_pointer() {
+        let directory = std::env::temp_dir().join(format!(
+            "rust-agent-session-redact-{}", new_session_id(now_ms())
+        ));
+        let store = SessionStore::new(directory.clone());
+        let now = now_ms();
+        let source_session = SessionRecord {
+            schema_version: SESSION_SCHEMA_VERSION,
+            session_id: "source-session".into(),
+            parent_session_id: None,
+            project_id: Some("project-a".into()),
+            created_at_ms: now,
+            updated_at_ms: now,
+            messages: vec![
+                ChatMessage { role: "system".into(), content: "system prompt".into() },
+                ChatMessage { role: "user".into(), content: "private source text".into() },
+                ChatMessage { role: "assistant".into(), content: "unrelated response".into() },
+            ],
+        };
+        let latest_session = SessionRecord {
+            session_id: "latest-session".into(),
+            ..source_session.clone()
+        };
+        store.save(&source_session).unwrap();
+        store.save(&latest_session).unwrap();
+        let source = TranscriptEntry {
+            id: 1,
+            session_id: "source-session".into(),
+            project_id: Some("project-a".into()),
+            task_id: None,
+            role: "tool".into(),
+            content: "private source text".into(),
+            created_at_ms: now,
+        };
+
+        assert_eq!(store.redact_transcript_sources(&[source]).unwrap(), 1);
+        assert_eq!(fs::read_to_string(directory.join("latest")).unwrap(), "latest-session");
+        let loaded = store.load("source-session").unwrap();
+        assert!(loaded.messages.iter().all(|message| message.content != "private source text"));
+        assert!(loaded.messages.iter().any(|message| message.content == "unrelated response"));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn session_store_rejects_a_symlinked_state_directory() {
+        use std::os::unix::fs::symlink;
+        let root = std::env::temp_dir().join(format!(
+            "rust-agent-session-symlink-{}", new_session_id(now_ms())
+        ));
+        let outside = root.with_extension("outside");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        let session_dir = root.join("sessions");
+        symlink(&outside, &session_dir).unwrap();
+        let store = SessionStore::new(session_dir);
+        assert!(store.load("session-1").is_err());
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(outside);
+    }
 
     #[test]
     fn host_question_answers_must_match_declared_questions_and_options() {
