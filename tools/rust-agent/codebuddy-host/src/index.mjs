@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { randomBytes } from "node:crypto";
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout, stderr, env, cwd } from "node:process";
 import { resolve, dirname } from "node:path";
@@ -206,8 +206,7 @@ function buildOptions(args, workspace, approvalToken, audit, agents, sessionStat
     permissionMode: args.permissionMode,
     settingSources: args.settingSources,
     persistSession: args.persistSession,
-    includePartialMessages: true,
-    allowedTools: TOOL_NAMES,
+    allowedTools: agents ? [...TOOL_NAMES, "Agent"] : TOOL_NAMES,
     mcpServers: {
       rust_workspace: rustServerConfig(workspace, approvalToken)
     },
@@ -217,7 +216,7 @@ function buildOptions(args, workspace, approvalToken, audit, agents, sessionStat
       if (toolName.endsWith("__read_file")
           || toolName.endsWith("__list_dir")
           || toolName.endsWith("__search_files")) {
-        audit("permission.allow", { tool: toolName, toolUseID });
+        audit("permission.allow", { tool: toolName, toolUseID, agentId: permissionOptions.agentID });
         return { behavior: "allow", updatedInput: input, toolUseID };
       }
 
@@ -229,14 +228,14 @@ function buildOptions(args, workspace, approvalToken, audit, agents, sessionStat
         )).trim().toLowerCase();
 
         if (answer === "yes") {
-          audit("permission.approve", { tool: toolName, path, toolUseID });
+          audit("permission.approve", { tool: toolName, path, toolUseID, agentId: permissionOptions.agentID });
           return {
             behavior: "allow",
             updatedInput: { ...input, _approval_token: approvalToken },
             toolUseID
           };
         }
-        audit("permission.deny", { tool: toolName, path, toolUseID });
+        audit("permission.deny", { tool: toolName, path, toolUseID, agentId: permissionOptions.agentID });
         return {
           behavior: "deny",
           message: "User denied this write operation.",
@@ -244,7 +243,7 @@ function buildOptions(args, workspace, approvalToken, audit, agents, sessionStat
         };
       }
 
-      audit("permission.deny", { tool: toolName, toolUseID, reason: "not in Rust tool allow-list" });
+      audit("permission.deny", { tool: toolName, toolUseID, agentId: permissionOptions.agentID, reason: "not in Rust tool allow-list" });
       return {
         behavior: "deny",
         message: `Tool is not permitted by the Rust Agent host: ${toolName}`,
@@ -297,7 +296,7 @@ async function main() {
   console.log(`Workspace: ${workspace}`);
   console.log(`Audit: ${auditFile}`);
   console.log("CodeBuddy manages model orchestration; Rust enforces local tool policy.");
-  console.log("Commands: /exit, /new, /session, /model <id>, /mode <default|plan|acceptEdits>");
+  console.log("Commands: /exit, /new, /session, /resume <id>, /fork, /model <id>, /mode <default|plan|acceptEdits>");
   if (sessionId) console.log(`Resuming session: ${sessionId}`);
 
   let activeSessionId = sessionId;
@@ -318,11 +317,34 @@ async function main() {
         args.sessionId = undefined;
         args.continueSession = false;
         args.forkSession = false;
+        try { unlinkSync(sessionFile); } catch {}
         console.log("Started a new session on the next prompt.");
         continue;
       }
       if (prompt === "/session") {
         console.log(activeSessionId ? `Session: ${activeSessionId}` : "No session ID received yet.");
+        continue;
+      }
+      if (prompt.startsWith("/resume ")) {
+        const requestedSessionId = prompt.slice(8).trim();
+        if (!requestedSessionId) {
+          console.log("Usage: /resume <session-id>");
+        } else {
+          activeSessionId = requestedSessionId;
+          sessionState.sessionId = requestedSessionId;
+          hasSession = true;
+          args.continueSession = false;
+          args.forkSession = false;
+          console.log(`Will resume session ${requestedSessionId} on the next turn.`);
+        }
+        continue;
+      }
+      if (prompt === "/fork") {
+        if (!activeSessionId) console.log("There is no active session to fork.");
+        else {
+          args.forkSession = true;
+          console.log("The next turn will fork the active session.");
+        }
         continue;
       }
       if (prompt.startsWith("/model ")) {
