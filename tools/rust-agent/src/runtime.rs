@@ -478,6 +478,17 @@ impl BackgroundTaskStore {
         Ok(())
     }
 
+    fn remove(&self, task_id: &str) -> Result<(), AgentError> {
+        ensure_real_directory(&self.directory)?;
+        let path = self.path_for(task_id)?;
+        ensure_regular_file_or_missing(&path)?;
+        match fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
+        }
+    }
+
     fn list(&self) -> Result<Vec<BackgroundTaskRecord>, AgentError> {
         ensure_real_directory(&self.directory)?;
         let mut records = Vec::new();
@@ -1160,19 +1171,6 @@ impl AgentRuntime {
             task_provider.set_model(model.to_owned())?;
         }
 
-        let records = self.background_task_store.list()?;
-        let active_count = records.iter()
-            .filter(|record| matches!(
-                record.status,
-                BackgroundTaskStatus::Queued | BackgroundTaskStatus::Running | BackgroundTaskStatus::Cancelling
-            ))
-            .count();
-        if active_count >= MAX_ACTIVE_BACKGROUND_TASKS {
-            return Err(AgentError::InvalidAction(format!(
-                "at most {MAX_ACTIVE_BACKGROUND_TASKS} background tasks may be active"
-            )));
-        }
-
         let now = now_ms();
         let task_id = new_session_id(now);
         let record = BackgroundTaskRecord {
@@ -1199,7 +1197,12 @@ impl AgentRuntime {
             ],
         };
         self.background_task_store.save(&record)?;
-        self.spawn_background_task(record)?;
+        if !self.spawn_background_task(record)? {
+            self.background_task_store.remove(&task_id)?;
+            return Err(AgentError::InvalidAction(format!(
+                "background task capacity is full ({MAX_ACTIVE_BACKGROUND_TASKS}) or another worker owns this task"
+            )));
+        }
         self.audit("background_task.started", Some("start_background_task"), json!({
             "task_id": task_id,
             "name": name,
@@ -1210,7 +1213,7 @@ impl AgentRuntime {
         Ok(task_id)
     }
 
-    /// Requeues durable tasks left queued or running by a previous process.
+    /// Resumes durable queued tasks and tasks whose worker lease has expired.
     pub fn resume_background_tasks(&self) -> Result<usize, AgentError> {
         if tokio::runtime::Handle::try_current().is_err() {
             return Err(AgentError::InvalidAction(
@@ -1222,33 +1225,28 @@ impl AgentRuntime {
         let mut resumed = 0usize;
         for mut record in records {
             if record.status == BackgroundTaskStatus::Cancelling {
-                record.status = BackgroundTaskStatus::Cancelled;
-                record.updated_at_ms = now_ms();
-                self.background_task_store.save(&record)?;
+                let owner_id = new_session_id(now_ms());
+                if self.memory_store.acquire_background_task_lease(
+                    &record.task_id, &owner_id, 120_000, MAX_ACTIVE_BACKGROUND_TASKS
+                )? {
+                    record.status = BackgroundTaskStatus::Cancelled;
+                    record.updated_at_ms = now_ms();
+                    self.background_task_store.save(&record)?;
+                    self.memory_store.release_background_task_lease(&record.task_id, &owner_id)?;
+                }
                 continue;
             }
             if !matches!(record.status, BackgroundTaskStatus::Queued | BackgroundTaskStatus::Running) {
                 continue;
             }
-            let already_active = self.background_task_controls
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .contains_key(&record.task_id);
-            if already_active {
-                continue;
+            if self.spawn_background_task(record)? {
+                resumed += 1;
             }
-            if record.status == BackgroundTaskStatus::Running {
-                record.status = BackgroundTaskStatus::Queued;
-                record.updated_at_ms = now_ms();
-                self.background_task_store.save(&record)?;
-            }
-            self.spawn_background_task(record)?;
-            resumed += 1;
         }
         Ok(resumed)
     }
 
-    fn spawn_background_task(&self, mut record: BackgroundTaskRecord) -> Result<(), AgentError> {
+    fn spawn_background_task(&self, mut record: BackgroundTaskRecord) -> Result<bool, AgentError> {
         if tokio::runtime::Handle::try_current().is_err() {
             return Err(AgentError::InvalidAction(
                 "background tasks must be started from inside a Tokio runtime".into(),
@@ -1260,6 +1258,7 @@ impl AgentRuntime {
             .unwrap_or_else(AgentProfile::default_background);
         profile.validate()?;
         let task_id = record.task_id.clone();
+        let lease_owner = new_session_id(now_ms());
         let cancellation = CancellationHandle::new();
         let notify = Arc::new(Notify::new());
         let control = BackgroundTaskControl {
@@ -1272,11 +1271,16 @@ impl AgentRuntime {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             if controls.contains_key(&task_id) {
-                return Ok(());
+                return Ok(false);
             }
             let current = self.background_task_store.load(&task_id)?;
             if current.status.is_terminal() || current.status == BackgroundTaskStatus::Cancelling {
-                return Ok(());
+                return Ok(false);
+            }
+            if !self.memory_store.acquire_background_task_lease(
+                &task_id, &lease_owner, 120_000, MAX_ACTIVE_BACKGROUND_TASKS
+            )? {
+                return Ok(false);
             }
             record = current;
             controls.insert(task_id.clone(), control);
@@ -1284,14 +1288,35 @@ impl AgentRuntime {
             record.updated_at_ms = now_ms();
             if let Err(error) = self.background_task_store.save(&record) {
                 controls.remove(&task_id);
+                let _ = self.memory_store.release_background_task_lease(&task_id, &lease_owner);
                 return Err(error);
             }
         }
 
         let executor = self.executor.clone();
         let store = self.background_task_store.clone();
+        let memory_store = self.memory_store.clone();
         let controls = Arc::clone(&self.background_task_controls);
         tokio::spawn(async move {
+            let heartbeat_store = memory_store.clone();
+            let heartbeat_task_id = task_id.clone();
+            let heartbeat_owner = lease_owner.clone();
+            let heartbeat_cancellation = cancellation.clone();
+            let heartbeat = tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+                    match heartbeat_store.renew_background_task_lease(
+                        &heartbeat_task_id, &heartbeat_owner, 120_000
+                    ) {
+                        Ok(true) => {}
+                        _ => {
+                            heartbeat_cancellation.cancel();
+                            break;
+                        }
+                    }
+                }
+            });
+
             let outcome = execute_background_task(
                 &mut record,
                 &provider,
@@ -1301,6 +1326,7 @@ impl AgentRuntime {
                 &controls,
                 &profile,
             ).await;
+            heartbeat.abort();
 
             let mut active_controls = controls
                 .lock()
@@ -1338,8 +1364,11 @@ impl AgentRuntime {
             } else {
                 notify.notify_waiters();
             }
+            if let Err(error) = memory_store.release_background_task_lease(&task_id, &lease_owner) {
+                warn!(task_id = %task_id, %error, "failed to release background task lease");
+            }
         });
-        Ok(())
+        Ok(true)
     }
 
     pub fn cancel_background_task(&self, task_id: &str) -> Result<bool, AgentError> {
@@ -1356,6 +1385,12 @@ impl AgentRuntime {
             record.updated_at_ms = now_ms();
             self.background_task_store.save(&record)?;
             control.cancellation.cancel();
+        } else if self.memory_store.has_active_background_task_lease(task_id)? {
+            // A different Runtime owns this worker. Persist cancellation intent; the
+            // worker observes it after the current provider request and exits safely.
+            record.status = BackgroundTaskStatus::Cancelling;
+            record.updated_at_ms = now_ms();
+            self.background_task_store.save(&record)?;
         } else {
             record.status = BackgroundTaskStatus::Cancelled;
             record.updated_at_ms = now_ms();
@@ -1392,13 +1427,17 @@ impl AgentRuntime {
             .get(task_id)
             .map(|control| Arc::clone(&control.notify));
         let Some(notify) = notify else {
-            let current = self.background_task_store.load(task_id)?;
-            if current.status.is_terminal() {
-                return Ok(current);
+            loop {
+                let current = self.background_task_store.load(task_id)?;
+                if current.status.is_terminal() {
+                    return Ok(current);
+                }
+                tokio::select! {
+                    biased;
+                    _ = cancellation.cancelled() => return Err(AgentError::Cancelled),
+                    _ = tokio::time::sleep(Duration::from_millis(250)) => {}
+                }
             }
-            return Err(AgentError::InvalidAction(
-                "background task has no active worker; call resume_background_tasks".into(),
-            ));
         };
 
         loop {
@@ -2328,6 +2367,11 @@ async fn execute_background_task(
             None => return Err(AgentError::Cancelled),
             Some(result) => result?,
         };
+        if cancellation.is_cancelled()
+            || store.load(&record.task_id)?.status == BackgroundTaskStatus::Cancelling
+        {
+            return Err(AgentError::Cancelled);
+        }
         record.usage.add_completion(&completion.usage, completion.duration_ms);
         record.updated_at_ms = now_ms();
         store.save(record)?;
