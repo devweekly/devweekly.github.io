@@ -135,6 +135,9 @@ Return exactly one JSON object, no Markdown fences:
 Use the exact reviewed_through value supplied in the input. Use at most 32 note operations and 16 pages. Use valid evidence IDs only. If there is nothing worth preserving, return empty notes and pages while still advancing reviewed_through."#;
 
 const SESSION_SCHEMA_VERSION: u32 = 1;
+const MAX_USAGE_LOG_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_AUDIT_LOG_BYTES: u64 = 32 * 1024 * 1024;
+const LOG_BACKUP_COUNT: usize = 3;
 
 #[derive(Debug, Clone)]
 pub struct DreamingOptions {
@@ -1198,6 +1201,7 @@ impl AgentRuntime {
     fn record_tool_call(&self, tool: &str) {
         let result = (|| -> Result<(), AgentError> {
             if let Some(parent) = self.usage_file.parent() { ensure_real_directory(parent)?; }
+            rotate_private_log(&self.usage_file, MAX_USAGE_LOG_BYTES, LOG_BACKUP_COUNT)?;
             ensure_regular_file_or_missing(&self.usage_file)?;
             let mut options = OpenOptions::new();
             options.create(true).append(true);
@@ -2341,6 +2345,7 @@ impl AgentRuntime {
     fn record_usage(&self, agent_type: &str, profile_id: Option<&str>, model: &str, usage: &CompletionUsage, duration_ms: u64) {
         let result = (|| -> Result<(), AgentError> {
             if let Some(parent) = self.usage_file.parent() { ensure_real_directory(parent)?; }
+            rotate_private_log(&self.usage_file, MAX_USAGE_LOG_BYTES, LOG_BACKUP_COUNT)?;
             ensure_regular_file_or_missing(&self.usage_file)?;
             let mut options = OpenOptions::new();
             options.create(true).append(true);
@@ -2385,6 +2390,7 @@ impl AgentRuntime {
             if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
                 ensure_real_directory(parent)?;
             }
+            rotate_private_log(path, MAX_AUDIT_LOG_BYTES, LOG_BACKUP_COUNT)?;
             ensure_regular_file_or_missing(path)?;
             let mut options = OpenOptions::new();
             options.create(true).append(true);
@@ -2898,6 +2904,38 @@ fn new_session_id(now: u128) -> String {
     format!("{now}-{}-{sequence}", std::process::id())
 }
 
+fn rotate_private_log(path: &Path, max_bytes: u64, backups: usize) -> Result<(), AgentError> {
+    ensure_regular_file_or_missing(path)?;
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if metadata.len() < max_bytes { return Ok(()); }
+    let extension = path.extension().and_then(|value| value.to_str()).unwrap_or("log");
+    for generation in (1..=backups).rev() {
+        let source = if generation == 1 {
+            path.to_path_buf()
+        } else {
+            path.with_extension(format!("{extension}.{}", generation - 1))
+        };
+        let destination = path.with_extension(format!("{extension}.{generation}"));
+        ensure_regular_file_or_missing(&source)?;
+        ensure_regular_file_or_missing(&destination)?;
+        match fs::remove_file(&destination) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        match fs::rename(&source, &destination) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
+}
+
 fn ensure_real_directory(path: &Path) -> Result<(), AgentError> {
     if let Some(parent) = path.parent() {
         match fs::symlink_metadata(parent) {
@@ -2960,6 +2998,24 @@ mod tests {
         SessionStore, is_custom_agent_read_tool, new_session_id, now_ms,
     };
     use std::fs;
+
+    #[test]
+    fn runtime_jsonl_logs_rotate_with_bounded_generations() {
+        let root = std::env::temp_dir().join(format!(
+            "rust-agent-log-rotation-{}", new_session_id(now_ms())
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("usage.jsonl");
+        fs::write(&path, vec![b'a'; 64]).unwrap();
+        super::rotate_private_log(&path, 32, 2).unwrap();
+        assert!(!path.exists());
+        assert_eq!(fs::metadata(root.join("usage.jsonl.1")).unwrap().len(), 64);
+        fs::write(&path, vec![b'b'; 64]).unwrap();
+        super::rotate_private_log(&path, 32, 2).unwrap();
+        assert_eq!(fs::read(root.join("usage.jsonl.1")).unwrap(), vec![b'b'; 64]);
+        assert_eq!(fs::read(root.join("usage.jsonl.2")).unwrap(), vec![b'a'; 64]);
+        let _ = fs::remove_dir_all(root);
+    }
 
     #[test]
     fn forgetting_transcript_sources_redacts_session_files_without_changing_latest_pointer() {
