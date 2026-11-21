@@ -345,7 +345,7 @@ impl SessionStore {
         self.load(session_id.trim())
     }
 
-    fn save(&self, record: &SessionRecord) -> Result<(), AgentError> {
+    fn save_record(&self, record: &SessionRecord) -> Result<(), AgentError> {
         ensure_real_directory(&self.directory)?;
         let path = self.path_for(&record.session_id)?;
         ensure_regular_file_or_missing(&path)?;
@@ -353,8 +353,52 @@ impl SessionStore {
         let bytes = serde_json::to_vec_pretty(record)?;
         write_private_file(&temporary, &bytes, false)?;
         fs::rename(&temporary, &path)?;
+        Ok(())
+    }
+
+    fn save(&self, record: &SessionRecord) -> Result<(), AgentError> {
+        self.save_record(record)?;
+        ensure_regular_file_or_missing(&self.latest_pointer)?;
         write_private_file(&self.latest_pointer, record.session_id.as_bytes(), false)?;
         Ok(())
+    }
+
+    /// Redact source transcript messages from persisted sessions without changing
+    /// the current-session pointer. Tool evidence can have been stored as a user
+    /// protocol message, so matching uses the exact message content.
+    fn redact_transcript_sources(&self, sources: &[TranscriptEntry]) -> Result<usize, AgentError> {
+        if sources.is_empty() { return Ok(0); }
+        ensure_real_directory(&self.directory)?;
+        let mut processed_sessions: Vec<String> = Vec::new();
+        let mut removed = 0usize;
+        for source in sources {
+            if processed_sessions.iter().any(|session_id| session_id == &source.session_id) {
+                continue;
+            }
+            processed_sessions.push(source.session_id.clone());
+            let path = self.path_for(&source.session_id)?;
+            match fs::symlink_metadata(&path) {
+                Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+                    return Err(AgentError::InvalidAction("session file must be a regular file".into()));
+                }
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error.into()),
+            }
+            let mut record = self.load(&source.session_id)?;
+            let previous = record.messages.len();
+            record.messages.retain(|message| {
+                !sources.iter().any(|item|
+                    item.session_id == record.session_id && item.content == message.content
+                )
+            });
+            let count = previous.saturating_sub(record.messages.len());
+            if count > 0 {
+                self.save_record(&record)?;
+                removed = removed.saturating_add(count);
+            }
+        }
+        Ok(removed)
     }
 }
 
@@ -980,7 +1024,15 @@ impl AgentRuntime {
     pub fn update_memory(&self, id: &str, content: &str, source: Option<&str>, confidence: Option<u8>) -> Result<MemoryRecord, AgentError> {
         self.memory_store.update(id, content, source, confidence)
     }
-    pub fn forget_memory(&self, id: &str) -> Result<(), AgentError> { self.memory_store.forget(id) }
+    pub fn forget_memory(&mut self, id: &str) -> Result<(), AgentError> {
+        let sources = self.memory_store.forget_with_sources(id)?;
+        self.store.redact_transcript_sources(&sources)?;
+        if !sources.is_empty() {
+            self.messages.retain(|message| !sources.iter().any(|source| source.content == message.content));
+            self.persist()?;
+        }
+        Ok(())
+    }
 
     /// Explicitly prune unreferenced transcript rows older than the requested age.
     /// A recent 1,000-row floor and all evidence-referenced rows are preserved.
