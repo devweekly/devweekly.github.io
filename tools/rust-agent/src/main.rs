@@ -182,7 +182,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Rust Agent ready. Workspace: {}", runtime.workspace().display());
     println!("Session: {}", runtime.session_id());
-    println!("Commands: /help, /new, /session, /resume <id>, /fork, /model <id>, /models, /mode <default|plan>, /context, /compact, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
+    println!("Commands: /help, /new, /session, /resume <id>, /fork, /model <id>, /models, /agents, /agent <id>, /mode <default|plan>, /context, /compact, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
 
     loop {
         print!("you> ");
@@ -210,6 +210,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!(" /fork                Fork the current session");
             println!(" /model <id>          Change the active model");
             println!(" /models              List models exposed by the provider");
+            println!(" /agents              List configured Custom Agent profiles");
+            println!(" /agent <id>          Show a Custom Agent profile");
             println!(" /mode default|plan   Change write permission behavior");
             println!(" /context             Show retained context message count");
             println!(" /compact             Apply the configured sliding-window limit");
@@ -253,6 +255,37 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             continue;
         }
+        if input == "/agents" {
+            match runtime.list_agent_profiles() {
+                Ok(profiles) if profiles.is_empty() => {
+                    println!("No custom Agent profiles. Add JSON profiles under .rust-agent/agents/.");
+                }
+                Ok(profiles) => {
+                    for profile in profiles {
+                        println!(
+                            "{}  {}  model={}  tools={}  steps={}",
+                            profile.id,
+                            profile.name,
+                            profile.model.as_deref().unwrap_or("inherit"),
+                            profile.allowed_tools.join(","),
+                            profile.max_steps
+                        );
+                    }
+                }
+                Err(error) => eprintln!("Could not list Agent profiles: {error}"),
+            }
+            continue;
+        }
+        if let Some(profile_id) = input.strip_prefix("/agent ") {
+            match runtime.get_agent_profile(profile_id.trim()) {
+                Ok(profile) => match serde_json::to_string_pretty(&profile) {
+                    Ok(json) => println!("{json}"),
+                    Err(error) => eprintln!("Could not serialize Agent profile: {error}"),
+                },
+                Err(error) => eprintln!("Could not load Agent profile: {error}"),
+            }
+            continue;
+        }
         if let Some(mode) = input.strip_prefix("/mode ") {
             match mode.trim() {
                 "default" => runtime.set_permission_mode(PermissionMode::Default),
@@ -288,11 +321,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 Ok(tasks) => {
                     for task in tasks {
                         println!(
-                            "{}  {}  step {}/12  {}",
+                            "{}  {}  step {}/{}  {}  agent={}",
                             task.task_id,
                             task.status.as_str(),
                             task.step,
-                            task.name
+                            task.agent_profile.as_ref().map_or(12, |profile| profile.max_steps),
+                            task.name,
+                            task.agent_profile.as_ref().map_or("default", |profile| profile.id.as_str())
                         );
                     }
                 }
@@ -306,9 +341,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     println!("Task: {}", task.task_id);
                     println!("Name: {}", task.name);
                     println!("Status: {}", task.status.as_str());
-                    println!("Progress: {}/12 steps", task.step);
+                    println!(
+                        "Progress: {}/{} steps",
+                        task.step,
+                        task.agent_profile.as_ref().map_or(12, |profile| profile.max_steps)
+                    );
                     println!("Parent session: {}", task.parent_session_id);
                     println!("Model: {}", task.model);
+                    if let Some(profile) = task.agent_profile.as_ref() {
+                        println!("Agent profile: {} ({})", profile.name, profile.id);
+                        println!("Allowed tools: {}", profile.allowed_tools.join(", "));
+                    }
                     if let Some(error) = task.error.as_deref() {
                         println!("Error: {error}");
                     }

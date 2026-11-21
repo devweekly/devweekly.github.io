@@ -37,9 +37,9 @@ or
 or
 {"type":"ask_user","questions":[{"question":"...","header":"...","options":[{"label":"...","description":"..."}],"multi_select":false}]}
 or
-{"type":"tool_call","tool":"delegate_task","arguments":{"name":"reviewer","task":"Inspect the authentication implementation for security and correctness issues."}}
+{"type":"tool_call","tool":"delegate_task","arguments":{"name":"reviewer","task":"Inspect the authentication implementation for security and correctness issues.","agent":"profile-id-from-available-list"}}
 or
-{"type":"tool_call","tool":"start_background_task","arguments":{"name":"repository audit","task":"Inspect the repository architecture and identify the highest-risk design issues."}}
+{"type":"tool_call","tool":"start_background_task","arguments":{"name":"repository audit","task":"Inspect the repository architecture and identify the highest-risk design issues.","agent":"profile-id-from-available-list"}}
 
 Tool rules:
 - Paths are relative to the configured workspace.
@@ -47,8 +47,8 @@ Tool rules:
 - search_files searches workspace files natively, respects hidden-file and Git ignore rules, and supports literal or regular-expression matching.
 - write_file changes a workspace file and always requires explicit user approval.
 - Use ask_user when a material requirement or decision is ambiguous. Ask concise questions and provide useful options when possible.
-- delegate_task runs a bounded read-only subagent in the current turn.
-- start_background_task starts independent, durable read-only work when an investigation can run while you continue the current task. It returns a task ID immediately; the user can inspect, wait for, cancel, or deliver its result later.
+- delegate_task runs a bounded read-only subagent in the current turn. The optional agent argument selects a configured Custom Agent profile.
+- start_background_task starts independent, durable read-only work when an investigation can run while you continue the current task. It returns a task ID immediately; the optional agent argument selects a configured Custom Agent profile.
 - Background tasks cannot write files, ask the user questions, delegate, or start additional tasks.
 - There is no shell, process execution, arbitrary network tool, or access outside the workspace.
 - Never claim a tool succeeded unless its result says it succeeded.
@@ -263,6 +263,8 @@ pub struct BackgroundTaskRecord {
     pub result: Option<String>,
     pub error: Option<String>,
     pub delivered_at_ms: Option<u128>,
+    #[serde(default)]
+    pub agent_profile: Option<AgentProfile>,
     messages: Vec<ChatMessage>,
 }
 
@@ -347,6 +349,260 @@ impl BackgroundTaskStore {
     }
 }
 
+
+const MAX_AGENT_PROFILE_STEPS: usize = 12;
+const MAX_AGENT_PROFILE_PROMPT_BYTES: usize = 20_000;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentProfile {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub model: Option<String>,
+    pub system_prompt: String,
+    pub allowed_tools: Vec<String>,
+    pub max_steps: usize,
+}
+
+impl AgentProfile {
+    fn validate(&self) -> Result<(), AgentError> {
+        AgentProfileStore::validate_id(&self.id)?;
+        if self.name.trim().is_empty() || self.name.len() > 80 {
+            return Err(AgentError::InvalidAction("agent profile name must contain 1–80 bytes".into()));
+        }
+        if self.description.len() > 1_000 {
+            return Err(AgentError::InvalidAction("agent profile description must not exceed 1000 bytes".into()));
+        }
+        if self.system_prompt.trim().is_empty() || self.system_prompt.len() > MAX_AGENT_PROFILE_PROMPT_BYTES {
+            return Err(AgentError::InvalidAction(format!(
+                "agent profile system_prompt must contain 1–{MAX_AGENT_PROFILE_PROMPT_BYTES} bytes"
+            )));
+        }
+        if self.model.as_deref().is_some_and(|model| model.trim().is_empty() || model.len() > 200) {
+            return Err(AgentError::InvalidAction("agent profile model must contain 1–200 bytes when specified".into()));
+        }
+        if !(1..=MAX_AGENT_PROFILE_STEPS).contains(&self.max_steps) {
+            return Err(AgentError::InvalidAction(format!(
+                "agent profile max_steps must be between 1 and {MAX_AGENT_PROFILE_STEPS}"
+            )));
+        }
+        if self.allowed_tools.len() > 3 {
+            return Err(AgentError::InvalidAction("agent profile may allow at most three read-only tools".into()));
+        }
+        let mut unique = std::collections::HashSet::new();
+        for tool in &self.allowed_tools {
+            if !is_custom_agent_read_tool(tool) || !unique.insert(tool) {
+                return Err(AgentError::InvalidAction(format!(
+                    "agent profile contains an unsupported or duplicate tool: {tool}"
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn allows_tool(&self, tool: &str) -> bool {
+        self.allowed_tools.iter().any(|allowed| allowed == tool)
+    }
+
+    fn default_subagent() -> Self {
+        Self {
+            id: "default-subagent".into(),
+            name: "Read-only subagent".into(),
+            description: "A bounded read-only delegated investigation.".into(),
+            model: None,
+            system_prompt: "You are a delegated read-only subagent. Complete the assigned task and cite relevant file paths.".into(),
+            allowed_tools: default_read_only_tools(),
+            max_steps: 6,
+        }
+    }
+
+    fn default_background() -> Self {
+        Self {
+            id: "default-background".into(),
+            name: "Background researcher".into(),
+            description: "A durable, bounded read-only background investigation.".into(),
+            model: None,
+            system_prompt: "You are an independent background research agent. Complete the assigned task and cite relevant file paths.".into(),
+            allowed_tools: default_read_only_tools(),
+            max_steps: MAX_BACKGROUND_TASK_STEPS,
+        }
+    }
+
+    fn system_message(&self) -> ChatMessage {
+        ChatMessage {
+            role: "system".into(),
+            content: compose_agent_system_prompt(self),
+        }
+    }
+}
+
+fn default_read_only_tools() -> Vec<String> {
+    vec!["read_file".into(), "list_dir".into(), "search_files".into()]
+}
+
+fn is_custom_agent_read_tool(name: &str) -> bool {
+    matches!(name, "read_file" | "list_dir" | "search_files")
+}
+
+fn compose_agent_system_prompt(profile: &AgentProfile) -> String {
+    let mut specifications = Vec::new();
+    for tool in &profile.allowed_tools {
+        let specification = match tool.as_str() {
+            "read_file" => r#"{"type":"tool_call","tool":"read_file","arguments":{"path":"relative/path"}}"#,
+            "list_dir" => r#"{"type":"tool_call","tool":"list_dir","arguments":{"path":"relative/path"}}"#,
+            "search_files" => r#"{"type":"tool_call","tool":"search_files","arguments":{"path":"relative/path","query":"text","regex":false,"case_sensitive":true,"glob":"*","max_results":100}}"#,
+            _ => continue,
+        };
+        specifications.push(specification);
+    }
+    format!(
+        "{}\n\nAgent protocol:\n\
+         Return exactly one JSON object, without Markdown fences:\n\
+         {{\"type\":\"final\",\"content\":\"...\"}}\n\
+         or one of these tool calls:\n{}\n\
+         Paths must be relative to the configured workspace. You may use only the tools listed above. \
+         Do not write files, ask the user questions, delegate, start background tasks, execute commands, \
+         or access arbitrary network resources.",
+        profile.system_prompt,
+        specifications.join("\n")
+    )
+}
+
+#[derive(Clone)]
+struct AgentProfileStore {
+    directory: PathBuf,
+}
+
+impl AgentProfileStore {
+    fn new(directory: PathBuf) -> Self {
+        Self { directory }
+    }
+
+    fn validate_id(id: &str) -> Result<(), AgentError> {
+        if id.is_empty() || id.len() > 64
+            || !id.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+        {
+            return Err(AgentError::InvalidAction(
+                "agent profile ID must use 1–64 ASCII letters, digits, '-' or '_'".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn path_for(&self, id: &str) -> Result<PathBuf, AgentError> {
+        Self::validate_id(id)?;
+        Ok(self.directory.join(format!("{id}.json")))
+    }
+
+    fn ensure_safe_directories(&self, create: bool) -> Result<bool, AgentError> {
+        let state_directory = self.directory.parent().ok_or_else(|| {
+            AgentError::InvalidAction("agent profile directory has no parent".into())
+        })?;
+        let workspace = state_directory.parent().ok_or_else(|| {
+            AgentError::InvalidAction("agent profile directory is outside a workspace".into())
+        })?;
+
+        for path in [state_directory, self.directory.as_path()] {
+            match fs::symlink_metadata(path) {
+                Ok(metadata) => {
+                    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                        return Err(AgentError::InvalidAction(
+                            "agent profile directories must be real directories, not symbolic links".into(),
+                        ));
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound && create => {
+                    fs::create_dir(path)?;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+                Err(error) => return Err(error.into()),
+            }
+        }
+
+        let canonical_workspace = workspace.canonicalize()?;
+        let canonical_directory = self.directory.canonicalize()?;
+        if !canonical_directory.starts_with(&canonical_workspace) {
+            return Err(AgentError::InvalidAction(
+                "agent profile directory resolves outside the configured workspace".into(),
+            ));
+        }
+        Ok(true)
+    }
+
+    fn load(&self, id: &str) -> Result<AgentProfile, AgentError> {
+        if !self.ensure_safe_directories(false)? {
+            return Err(AgentError::InvalidAction("agent profile directory does not exist".into()));
+        }
+        let path = self.path_for(id)?;
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(AgentError::InvalidAction(
+                "agent profile files must be regular files, not symbolic links".into(),
+            ));
+        }
+        let bytes = fs::read(&path)?;
+        let profile: AgentProfile = serde_json::from_slice(&bytes)?;
+        if profile.id != id {
+            return Err(AgentError::InvalidAction("agent profile ID does not match its file name".into()));
+        }
+        profile.validate()?;
+        Ok(profile)
+    }
+
+    fn save(&self, profile: &AgentProfile) -> Result<(), AgentError> {
+        profile.validate()?;
+        self.ensure_safe_directories(true)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&self.directory, fs::Permissions::from_mode(0o700))?;
+        }
+        let path = self.path_for(&profile.id)?;
+        let temporary = path.with_extension(format!("json.tmp-{}", std::process::id()));
+        let bytes = serde_json::to_vec_pretty(profile)?;
+        write_private_file(&temporary, &bytes, false)?;
+        fs::rename(&temporary, &path)?;
+        Ok(())
+    }
+
+    fn remove(&self, id: &str) -> Result<(), AgentError> {
+        if !self.ensure_safe_directories(false)? {
+            return Err(AgentError::InvalidAction("agent profile directory does not exist".into()));
+        }
+        let path = self.path_for(id)?;
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(AgentError::InvalidAction(
+                "agent profile files must be regular files, not symbolic links".into(),
+            ));
+        }
+        fs::remove_file(path)?;
+        Ok(())
+    }
+
+    fn list(&self) -> Result<Vec<AgentProfile>, AgentError> {
+        if !self.ensure_safe_directories(false)? {
+            return Ok(Vec::new());
+        }
+        let mut profiles = Vec::new();
+        for entry in fs::read_dir(&self.directory)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_file() || entry.path().extension().and_then(|value| value.to_str()) != Some("json") {
+                continue;
+            }
+            let path = entry.path();
+            let id = path.file_stem()
+                .and_then(|value| value.to_str())
+                .ok_or_else(|| AgentError::InvalidAction("agent profile file name is not valid UTF-8".into()))?;
+            profiles.push(self.load(id)?);
+        }
+        profiles.sort_by(|left, right| left.id.cmp(&right.id));
+        Ok(profiles)
+    }
+}
+
 #[derive(Clone)]
 struct BackgroundTaskControl {
     cancellation: CancellationHandle,
@@ -370,6 +626,7 @@ pub struct AgentRuntime {
     hooks: Vec<Box<dyn RuntimeHook>>,
     background_task_store: BackgroundTaskStore,
     background_task_controls: SharedTaskControls,
+    agent_profile_store: AgentProfileStore,
 }
 
 impl AgentRuntime {
@@ -410,6 +667,9 @@ impl AgentRuntime {
             workspace.join(".rust-agent").join("tasks"),
         );
         let background_task_controls = Arc::new(Mutex::new(HashMap::new()));
+        let agent_profile_store = AgentProfileStore::new(
+            workspace.join(".rust-agent").join("agents"),
+        );
         let mut runtime = Self {
             provider,
             executor: ToolExecutor::new(workspace.clone()),
@@ -425,6 +685,7 @@ impl AgentRuntime {
             hooks,
             background_task_store,
             background_task_controls,
+            agent_profile_store,
         };
         runtime.persist()?;
         runtime.audit("session.start", None, json!({"resumed": options.session_id.is_some() || options.continue_session}));
@@ -457,6 +718,69 @@ impl AgentRuntime {
     }
 
 
+
+    fn messages_with_agent_catalog(&self) -> Vec<ChatMessage> {
+        let mut messages = self.messages.clone();
+        let Ok(profiles) = self.agent_profile_store.list() else {
+            return messages;
+        };
+        if profiles.is_empty() {
+            return messages;
+        }
+        let catalog = profiles.iter().map(|profile| {
+            format!(
+                "- {}: {} — {} (model={}, tools={}, max_steps={})",
+                profile.id,
+                profile.name,
+                profile.description,
+                profile.model.as_deref().unwrap_or("inherit"),
+                profile.allowed_tools.join(","),
+                profile.max_steps
+            )
+        }).collect::<Vec<_>>().join("\n");
+
+        if let Some(system) = messages.first_mut().filter(|message| message.role == "system") {
+            system.content.push_str(
+                "\n\nAvailable custom agent profiles. Pass one of these IDs as the optional \
+                 agent argument to delegate_task or start_background_task:\n"
+            );
+            system.content.push_str(&catalog);
+        }
+        messages
+    }
+
+    pub fn list_agent_profiles(&self) -> Result<Vec<AgentProfile>, AgentError> {
+        self.agent_profile_store.list()
+    }
+
+    pub fn get_agent_profile(&self, profile_id: &str) -> Result<AgentProfile, AgentError> {
+        self.agent_profile_store.load(profile_id)
+    }
+
+    pub fn save_agent_profile(&self, profile: &AgentProfile) -> Result<(), AgentError> {
+        self.agent_profile_store.save(profile)?;
+        self.audit("agent_profile.saved", None, json!({
+            "profile_id": profile.id,
+            "name": profile.name,
+            "allowed_tools": profile.allowed_tools,
+            "max_steps": profile.max_steps
+        }));
+        Ok(())
+    }
+
+    pub fn delete_agent_profile(&self, profile_id: &str) -> Result<(), AgentError> {
+        self.agent_profile_store.remove(profile_id)?;
+        self.audit("agent_profile.deleted", None, json!({"profile_id": profile_id}));
+        Ok(())
+    }
+
+    fn resolve_agent_profile(&self, profile_id: Option<&str>, default: AgentProfile) -> Result<AgentProfile, AgentError> {
+        match profile_id.map(str::trim).filter(|id| !id.is_empty()) {
+            Some(id) => self.agent_profile_store.load(id),
+            None => Ok(default),
+        }
+    }
+
     pub fn list_background_tasks(&self) -> Result<Vec<BackgroundTaskRecord>, AgentError> {
         self.background_task_store.list()
     }
@@ -466,6 +790,15 @@ impl AgentRuntime {
     }
 
     pub fn start_background_task(&self, name: &str, task: &str) -> Result<String, AgentError> {
+        self.start_background_task_with_profile(name, task, None)
+    }
+
+    pub fn start_background_task_with_profile(
+        &self,
+        name: &str,
+        task: &str,
+        profile_id: Option<&str>,
+    ) -> Result<String, AgentError> {
         if tokio::runtime::Handle::try_current().is_err() {
             return Err(AgentError::InvalidAction(
                 "background tasks must be started from inside a Tokio runtime".into(),
@@ -477,6 +810,13 @@ impl AgentRuntime {
             return Err(AgentError::InvalidAction(
                 "background task requires a 1–80 byte name and a 1–10000 byte task".into(),
             ));
+        }
+
+        let profile = self.resolve_agent_profile(profile_id, AgentProfile::default_background())?;
+        profile.validate()?;
+        let mut task_provider = self.provider.clone();
+        if let Some(model) = profile.model.as_deref() {
+            task_provider.set_model(model.to_owned())?;
         }
 
         let records = self.background_task_store.list()?;
@@ -499,7 +839,7 @@ impl AgentRuntime {
             task_id: task_id.clone(),
             name: name.to_owned(),
             parent_session_id: self.session.session_id.clone(),
-            model: self.provider.model().to_owned(),
+            model: task_provider.model().to_owned(),
             status: BackgroundTaskStatus::Queued,
             step: 0,
             created_at_ms: now,
@@ -507,11 +847,9 @@ impl AgentRuntime {
             result: None,
             error: None,
             delivered_at_ms: None,
+            agent_profile: Some(profile.clone()),
             messages: vec![
-                ChatMessage {
-                    role: "system".into(),
-                    content: BACKGROUND_TASK_SYSTEM_PROMPT.to_owned(),
-                },
+                profile.system_message(),
                 ChatMessage {
                     role: "user".into(),
                     content: task.to_owned(),
@@ -523,6 +861,8 @@ impl AgentRuntime {
         self.audit("background_task.started", Some("start_background_task"), json!({
             "task_id": task_id,
             "name": name,
+            "agent_profile_id": profile.id,
+            "model": task_provider.model(),
             "task_length": task.len()
         }));
         Ok(task_id)
@@ -574,6 +914,9 @@ impl AgentRuntime {
         }
         let mut provider = self.provider.clone();
         provider.set_model(record.model.clone())?;
+        let profile = record.agent_profile.clone()
+            .unwrap_or_else(AgentProfile::default_background);
+        profile.validate()?;
         let task_id = record.task_id.clone();
         let cancellation = CancellationHandle::new();
         let notify = Arc::new(Notify::new());
@@ -614,6 +957,7 @@ impl AgentRuntime {
                 &store,
                 &cancellation,
                 &controls,
+                &profile,
             ).await;
 
             let mut active_controls = controls
@@ -891,13 +1235,14 @@ impl AgentRuntime {
 
         for step in 0..self.max_tool_calls_per_turn {
             let provider = &self.provider;
+            let request_messages = self.messages_with_agent_catalog();
             let hooks = &self.hooks;
             let session_id = self.session.session_id.clone();
             let mut streamed_bytes = 0usize;
             let stream_result = tokio::select! {
                 biased;
                 _ = cancellation.cancelled() => None,
-                result = provider.complete_streaming(&self.messages, |delta| {
+                result = provider.complete_streaming(&request_messages, |delta| {
                     streamed_bytes = streamed_bytes.saturating_add(delta.len());
                     let event = RuntimeEvent {
                         session_id: session_id.clone(),
@@ -986,7 +1331,8 @@ impl AgentRuntime {
                     } else if action.name == "start_background_task" {
                         let name = action.arguments.get("name").and_then(Value::as_str).unwrap_or("background task");
                         let task = action.arguments.get("task").and_then(Value::as_str).unwrap_or("");
-                        match self.start_background_task(name, task) {
+                        let profile_id = action.arguments.get("agent").and_then(Value::as_str);
+                        match self.start_background_task_with_profile(name, task, profile_id) {
                             Ok(task_id) => self.push_tool_result(true, &format!("Background task started. Task ID: {task_id}. Use /tasks and /wait {task_id} to inspect and collect its result.")),
                             Err(error) => self.push_tool_result(false, &error.to_string()),
                         }
@@ -1062,30 +1408,43 @@ impl AgentRuntime {
         action: &ToolAction,
         cancellation: &CancellationHandle,
     ) -> Result<String, AgentError> {
-        let name = action.arguments.get("name").and_then(Value::as_str).unwrap_or("subagent");
         let task = action.arguments.get("task").and_then(Value::as_str)
             .filter(|task| !task.trim().is_empty())
             .ok_or_else(|| AgentError::InvalidAction("delegate_task requires a non-empty task".into()))?;
-        if task.len() > 10_000 || name.len() > 80 {
+        let requested_name = action.arguments.get("name").and_then(Value::as_str);
+        if task.len() > 10_000 || requested_name.is_some_and(|name| name.len() > 80) {
             return Err(AgentError::InvalidAction("subagent name or task exceeds the configured limit".into()));
+        }
+
+        let profile_id = action.arguments.get("agent").and_then(Value::as_str);
+        let profile = self.resolve_agent_profile(profile_id, AgentProfile::default_subagent())?;
+        profile.validate()?;
+        let name = requested_name.unwrap_or(&profile.name);
+
+        let mut provider = self.provider.clone();
+        if let Some(model) = profile.model.as_deref() {
+            provider.set_model(model.to_owned())?;
         }
 
         self.audit("subagent.start", Some("delegate_task"), json!({
             "name": name,
+            "agent_profile_id": profile.id,
+            "model": provider.model(),
             "task_length": task.len(),
-            "max_turns": 6
+            "max_turns": profile.max_steps,
+            "allowed_tools": profile.allowed_tools
         }));
 
         let mut messages = vec![
-            ChatMessage { role: "system".into(), content: SUBAGENT_SYSTEM_PROMPT.to_owned() },
+            profile.system_message(),
             ChatMessage { role: "user".into(), content: task.to_owned() },
         ];
 
-        for step in 0..6 {
+        for step in 0..profile.max_steps {
             let completion = tokio::select! {
                 biased;
                 _ = cancellation.cancelled() => None,
-                result = self.provider.complete(&messages) => Some(result),
+                result = provider.complete(&messages) => Some(result),
             };
             let raw = match completion {
                 None => {
@@ -1116,7 +1475,10 @@ impl AgentRuntime {
             match turn {
                 ModelTurn::Final { content } => {
                     self.audit("subagent.complete", Some("delegate_task"), json!({
-                        "name": name, "tool_calls": step, "result_length": content.len()
+                        "name": name,
+                        "agent_profile_id": profile.id,
+                        "tool_calls": step,
+                        "result_length": content.len()
                     }));
                     return Ok(content.chars().take(12_000).collect());
                 }
@@ -1131,18 +1493,31 @@ impl AgentRuntime {
                     let hook_denial = self.hooks.iter()
                         .find_map(|hook| hook.before_tool(&sub_action).err());
                     let result = if let Some(reason) = hook_denial {
-                        crate::action::ToolResult { ok: false, output: format!("Denied by runtime hook: {reason}") }
-                    } else if !is_subagent_read_tool(&sub_action.name)
+                        crate::action::ToolResult {
+                            ok: false,
+                            output: format!("Denied by runtime hook: {reason}"),
+                        }
+                    } else if !profile.allows_tool(&sub_action.name)
+                        || !is_subagent_read_tool(&sub_action.name)
                         || !matches!(policy::evaluate(&sub_action), PolicyDecision::Allow) {
-                        crate::action::ToolResult { ok: false, output: "Subagents are restricted to read-only workspace tools".into() }
+                        crate::action::ToolResult {
+                            ok: false,
+                            output: "Tool is not included in this Agent profile's read-only allow-list".into(),
+                        }
                     } else {
                         match self.executor.execute(&sub_action) {
                             Ok(result) => result,
-                            Err(error) => crate::action::ToolResult { ok: false, output: error.to_string() },
+                            Err(error) => crate::action::ToolResult {
+                                ok: false,
+                                output: error.to_string(),
+                            },
                         }
                     };
                     self.audit("subagent.tool", Some(&sub_action.name), json!({
-                        "name": name, "ok": result.ok, "step": step + 1
+                        "name": name,
+                        "agent_profile_id": profile.id,
+                        "ok": result.ok,
+                        "step": step + 1
                     }));
                     let output: String = result.output.chars().take(12_000).collect();
                     messages.push(ChatMessage {
@@ -1164,8 +1539,15 @@ impl AgentRuntime {
             self.audit("subagent.cancelled", Some("delegate_task"), json!({"name": name}));
             return Err(AgentError::Cancelled);
         }
-        self.audit("subagent.limit_reached", Some("delegate_task"), json!({"name": name}));
-        Ok("Subagent stopped after reaching its six-step limit.".into())
+        self.audit("subagent.limit_reached", Some("delegate_task"), json!({
+            "name": name,
+            "agent_profile_id": profile.id,
+            "limit": profile.max_steps
+        }));
+        Ok(format!(
+            "Subagent stopped after reaching its {}-step limit.",
+            profile.max_steps
+        ))
     }
 
     fn compact_history(&mut self) -> usize {
@@ -1344,18 +1726,6 @@ impl AgentRuntime {
 }
 
 
-const BACKGROUND_TASK_SYSTEM_PROMPT: &str = r#"You are an independent background research task. Work only on the assigned task.
-Return exactly one JSON object:
-{"type":"final","content":"..."}
-or
-{"type":"tool_call","tool":"read_file","arguments":{"path":"relative/path"}}
-or
-{"type":"tool_call","tool":"list_dir","arguments":{"path":"relative/path"}}
-or
-{"type":"tool_call","tool":"search_files","arguments":{"path":"relative/path","query":"text","regex":false,"case_sensitive":true,"glob":"*","max_results":100}}
-You may use only read_file, list_dir, and search_files within the configured workspace.
-Do not write files, ask the user questions, delegate, or start more background tasks. Cite relevant file paths and findings. Keep the result focused."#;
-
 async fn execute_background_task(
     record: &mut BackgroundTaskRecord,
     provider: &OpenAiCompatibleProvider,
@@ -1363,8 +1733,9 @@ async fn execute_background_task(
     store: &BackgroundTaskStore,
     cancellation: &CancellationHandle,
     controls: &SharedTaskControls,
+    profile: &AgentProfile,
 ) -> Result<String, AgentError> {
-    for step in record.step..MAX_BACKGROUND_TASK_STEPS {
+    for step in record.step..profile.max_steps {
         if cancellation.is_cancelled() {
             return Err(AgentError::Cancelled);
         }
@@ -1401,7 +1772,7 @@ async fn execute_background_task(
             }
             ModelTurn::ToolCall { tool, arguments } => {
                 let action = ToolAction { name: tool, arguments };
-                let tool_result = if is_subagent_read_tool(&action.name)
+                let tool_result = if profile.allows_tool(&action.name) && is_custom_agent_read_tool(&action.name)
                     && matches!(policy::evaluate(&action), PolicyDecision::Allow)
                 {
                     match executor.execute(&action) {
@@ -1446,25 +1817,14 @@ async fn execute_background_task(
     }
 
     Err(AgentError::InvalidAction(format!(
-        "background task reached its {MAX_BACKGROUND_TASK_STEPS}-step limit"
+        "background task reached its {}-step limit",
+        profile.max_steps
     )))
 }
 
 fn is_subagent_read_tool(name: &str) -> bool {
     matches!(name, "read_file" | "list_dir" | "search_files")
 }
-
-const SUBAGENT_SYSTEM_PROMPT: &str = r#"You are a delegated read-only subagent. Complete only the assigned task.
-Return exactly one JSON object:
-{"type":"final","content":"..."}
-or
-{"type":"tool_call","tool":"read_file","arguments":{"path":"relative/path"}}
-or
-{"type":"tool_call","tool":"list_dir","arguments":{"path":"relative/path"}}
-or
-{"type":"tool_call","tool":"search_files","arguments":{"path":"relative/path","query":"text","regex":false,"case_sensitive":true,"glob":"*","max_results":100}}
-You may use only read_file, list_dir, and search_files within the configured workspace.
-Do not write files, ask the user questions, or delegate further tasks. Cite relevant file paths and findings. Keep the result focused."#;
 
 fn system_message(custom: Option<&str>) -> ChatMessage {
     ChatMessage {
@@ -1500,8 +1860,9 @@ fn write_private_file(path: &Path, bytes: &[u8], append: bool) -> Result<(), Age
 #[cfg(test)]
 mod tests {
     use super::{
-        BackgroundTaskRecord, BackgroundTaskStatus, BackgroundTaskStore, CancellationHandle,
-        ChatMessage, SessionStore, new_session_id, now_ms,
+        AgentProfile, AgentProfileStore, BackgroundTaskRecord, BackgroundTaskStatus,
+        BackgroundTaskStore, CancellationHandle, ChatMessage, MAX_AGENT_PROFILE_STEPS,
+        SessionStore, is_custom_agent_read_tool, new_session_id, now_ms,
     };
 
     #[test]
@@ -1533,6 +1894,63 @@ mod tests {
         cancellation.cancel();
         cancellation.cancelled().await;
         assert!(cancellation.is_cancelled());
+    }
+
+
+    #[test]
+    fn default_agent_profiles_are_valid_and_read_only() {
+        let subagent = AgentProfile::default_subagent();
+        let background = AgentProfile::default_background();
+        assert!(subagent.validate().is_ok());
+        assert!(background.validate().is_ok());
+        let mut tool_free = AgentProfile::default_subagent();
+        tool_free.id = "reasoning-only".into();
+        tool_free.allowed_tools.clear();
+        assert!(tool_free.validate().is_ok());
+        assert!(subagent.allowed_tools.iter().all(|tool| is_custom_agent_read_tool(tool)));
+        assert!(background.allowed_tools.iter().all(|tool| is_custom_agent_read_tool(tool)));
+    }
+
+    #[test]
+    fn custom_agent_profiles_reject_write_tools_and_invalid_limits() {
+        let mut profile = AgentProfile::default_subagent();
+        profile.id = "security-reviewer".into();
+        profile.allowed_tools = vec!["read_file".into(), "write_file".into()];
+        assert!(profile.validate().is_err());
+
+        let mut profile = AgentProfile::default_subagent();
+        profile.id = "too-many-steps".into();
+        profile.max_steps = MAX_AGENT_PROFILE_STEPS + 1;
+        assert!(profile.validate().is_err());
+
+        let mut profile = AgentProfile::default_subagent();
+        profile.id = "../outside".into();
+        assert!(profile.validate().is_err());
+    }
+
+    #[test]
+    fn agent_profile_store_round_trips_profiles() {
+        let directory = std::env::temp_dir().join(format!(
+            "rust-agent-profile-store-{}",
+            new_session_id(now_ms())
+        ));
+        let store = AgentProfileStore::new(directory.clone());
+        let mut profile = AgentProfile::default_subagent();
+        profile.id = "security-reviewer".into();
+        profile.name = "Security reviewer".into();
+        profile.allowed_tools = vec!["read_file".into(), "search_files".into()];
+        profile.max_steps = 9;
+
+        store.save(&profile).expect("profile should save");
+        let loaded = store.load("security-reviewer").expect("profile should load");
+        assert_eq!(loaded.id, profile.id);
+        assert_eq!(loaded.allowed_tools, profile.allowed_tools);
+        assert_eq!(loaded.max_steps, 9);
+        assert_eq!(store.list().expect("profiles should list").len(), 1);
+
+        store.remove("security-reviewer").expect("profile should delete");
+        assert!(store.list().expect("empty list should load").is_empty());
+        std::fs::remove_dir_all(directory).expect("test directory should be removed");
     }
 
     #[test]
@@ -1580,6 +1998,7 @@ mod tests {
             result: None,
             error: None,
             delivered_at_ms: None,
+            agent_profile: Some(AgentProfile::default_background()),
             messages: vec![
                 ChatMessage { role: "system".into(), content: "system".into() },
                 ChatMessage { role: "user".into(), content: "task".into() },
@@ -1592,7 +2011,17 @@ mod tests {
         assert_eq!(loaded.parent_session_id, record.parent_session_id);
         assert_eq!(loaded.status, BackgroundTaskStatus::Queued);
         assert_eq!(loaded.step, 2);
+        assert_eq!(
+            loaded.agent_profile.as_ref().map(|profile| profile.id.as_str()),
+            Some("default-background")
+        );
         assert_eq!(store.list().expect("tasks should list").len(), 1);
+
+        let mut legacy_value = serde_json::to_value(&record).expect("task should serialize");
+        legacy_value.as_object_mut().expect("task object").remove("agent_profile");
+        let legacy: BackgroundTaskRecord =
+            serde_json::from_value(legacy_value).expect("legacy task without profile should load");
+        assert!(legacy.agent_profile.is_none());
 
         std::fs::remove_dir_all(directory).expect("test task directory should be removed");
     }

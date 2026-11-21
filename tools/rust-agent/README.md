@@ -61,7 +61,32 @@ Use these CLI commands to manage tasks:
 /deliver-task <id>     Add a completed result to its original parent session
 ```
 
-A result can only be delivered to the parent session that created the task. Delivery is idempotent. Cancellation first persists a `cancelling` state before signalling the worker; a process restart completes that cancellation instead of requeueing the task. Background tasks are limited to eight active tasks and twelve model steps per task. They can only read, list, and search workspace files; they cannot write files, ask questions, start nested tasks, or use arbitrary network or process tools.
+A result can only be delivered to the parent session that created the task. Delivery is idempotent. Cancellation first persists a `cancelling` state before signalling the worker; a process restart completes that cancellation instead of requeueing the task. Background tasks are limited to eight active tasks and twelve model steps per task; a selected profile can lower that step budget. They can only read, list, and search workspace files; they cannot write files, ask questions, start nested tasks, or use arbitrary network or process tools.
+
+
+## Custom Agents
+
+Custom Agent profiles are JSON files stored under .rust-agent/agents/. Each profile defines a role-specific system prompt, an optional model override, an explicit read-only tool allow-list, and a bounded step budget. The primary Agent receives the available profile IDs in its request context and can select one through the optional agent argument on delegate_task or start_background_task.
+
+Example .rust-agent/agents/security-reviewer.json:
+
+```json
+{
+  "id": "security-reviewer",
+  "name": "Security reviewer",
+  "description": "Reviews local code for authorization, trust-boundary, and secret-handling issues.",
+  "model": null,
+  "system_prompt": "You are a senior application security reviewer. Prioritize exploitable issues, trace each finding to the relevant code, explain impact, and distinguish confirmed defects from hypotheses.",
+  "allowed_tools": ["read_file", "list_dir", "search_files"],
+  "max_steps": 9
+}
+```
+
+The profile ID must match the file name. The model is inherited from the current runtime when it is null. The allowed tool set can contain any subset of read_file, list_dir, and search_files, including an empty set for a reasoning-only Agent; write tools are deliberately excluded from delegated and background Agents. max_steps is between 1 and 12. Profile files and directories are created with restrictive Unix permissions.
+
+A profile can be saved or removed through the host API using save_agent_profile, get_agent_profile, list_agent_profiles, and delete_agent_profile. The CLI provides /agents to list profiles and /agent <id> to inspect one. A task snapshots its profile and selected model when it starts, so editing or deleting the source profile does not change already-running or recoverable tasks. The snapshot is persisted with the task record.
+
+The built-in defaults remain available when no profile ID is supplied: foreground delegated tasks use a six-step read-only profile, while background tasks use a twelve-step read-only profile. Custom profiles may select fewer tools and fewer steps, and can override the model, but cannot expand the tool boundary beyond the read-only workspace tools.
 
 ## Runtime controls
 
@@ -70,6 +95,7 @@ A result can only be delivered to the parent session that created the task. Deli
 | Agent loop | Rust runtime with a bounded tool-call loop |
 | Subagents | In-process delegated Agent with a six-step limit and read-only tool allow-list |
 | Background tasks | Durable, independently scheduled read-only tasks with status, wait, cancel, restart recovery, and parent-session result delivery |
+| Custom Agents | JSON profiles with independent prompts, optional model overrides, read-only tool allow-lists, and bounded step budgets |
 | Session lifecycle | Create, resume, continue latest, fork |
 | Context management | Configurable sliding message window with whole-turn pruning |
 | Permission control | Deterministic Rust Policy Gate, default/plan modes, and per-write approval |
@@ -115,6 +141,7 @@ No Shell, process execution, arbitrary network tool, or workspace-external file 
 - Context management uses a sliding window; semantic summarization is not implemented yet.
 - Runtime hooks are synchronous callbacks. Long-running hook work should be delegated by the embedding host rather than blocking the Agent loop.
 - Delegated subagents still run sequentially in the parent turn and are not independently resumable. Background tasks are separate, read-only workers; after a process crash, the last persisted checkpoint is resumed. A model request that was in flight at the time of the crash can be repeated, so task execution is at-least-once across crashes rather than exactly-once. Concurrent writers to the same workspace task directory are not coordinated across separate Rust Agent processes.
+- Custom Agent profiles currently expose only read-only workspace tools. They cannot add write approval workflows, network access, process execution, nested delegation, or background task creation. Profile configuration is local JSON rather than a separate profile-management UI.
 - Fallback routing is deliberately limited to transient transport, rate-limit, and server failures. Authentication, invalid-request, and malformed-response failures are not retried.
 - Terminal approval is synchronous. A desktop host will need an approval channel, but must retain the Rust policy check.
 - Session storage is local JSON and is not designed for concurrent writers to the same session.
