@@ -2201,6 +2201,78 @@ mod tests {
     }
 
     #[test]
+    fn dreaming_rejects_missing_markdown_only_wiki_targets() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript("s1", None, None, "user", "Link knowledge pages").unwrap();
+        let output = DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![],
+            pages: vec![DreamingPage {
+                id: "source-page".into(),
+                title: "Source".into(),
+                summary: "Page with a Markdown link".into(),
+                content: "See [missing](missing-target.md).".into(),
+                scope: MemoryScope::Global,
+                scope_id: None,
+                evidence: vec![format!("transcript:{transcript}")],
+                links: vec![],
+            }],
+            delete_pages: vec![],
+        };
+        assert!(store.apply_dreaming(output).is_err());
+        assert!(store.get_page("source-page").is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn dreaming_cannot_delete_page_referenced_only_by_markdown() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript("s1", None, None, "user", "Preserve Markdown references").unwrap();
+        let first = DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![],
+            pages: vec![
+                DreamingPage {
+                    id: "source-page".into(),
+                    title: "Source".into(),
+                    summary: "Source page".into(),
+                    content: "See [child](child-page.md).".into(),
+                    scope: MemoryScope::Global,
+                    scope_id: None,
+                    evidence: vec![format!("transcript:{transcript}")],
+                    links: vec![],
+                },
+                DreamingPage {
+                    id: "child-page".into(),
+                    title: "Child".into(),
+                    summary: "Child page".into(),
+                    content: "Child content".into(),
+                    scope: MemoryScope::Global,
+                    scope_id: None,
+                    evidence: vec![format!("transcript:{transcript}")],
+                    links: vec![],
+                },
+            ],
+            delete_pages: vec![],
+        };
+        store.apply_dreaming(first).unwrap();
+        let deletion = DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![],
+            pages: vec![],
+            delete_pages: vec![DreamingPageDeletion {
+                id: "child-page".into(),
+                evidence: vec![format!("transcript:{transcript}")],
+            }],
+        };
+        assert!(store.apply_dreaming(deletion).is_err());
+        assert!(store.get_page("child-page").is_ok());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn background_task_leases_are_exclusive_across_sqlite_connections_and_limit_capacity() {
         let root = workspace();
         let first = MemoryStore::new(&root).unwrap();
