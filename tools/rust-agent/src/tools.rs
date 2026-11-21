@@ -4,7 +4,6 @@ use std::{
 };
 
 use ignore::WalkBuilder;
-use rayon::prelude::*;
 use regex::{Regex, RegexBuilder};
 use serde_json::Value;
 
@@ -124,7 +123,7 @@ impl ToolExecutor {
         let search_root = self.resolve_existing(relative)?;
         let files = self.collect_search_files(&search_root, glob)?;
         let mut matches = files
-            .par_iter()
+            .iter()
             .map(|path| search_one_file(path, &self.workspace, &matcher))
             .collect::<Vec<_>>()
             .into_iter()
