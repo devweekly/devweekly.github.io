@@ -163,8 +163,8 @@ fn truncate_to_token_budget(text: &str, token_budget: usize) -> String {
     let mut non_ascii_chars = 0usize;
     let mut end = 0usize;
     for (index, character) in text.char_indices() {
-        let next_ascii = ascii_bytes + usize::from(character.is_ascii());
-        let next_non_ascii = non_ascii_chars + usize::from(!character.is_ascii());
+        let next_ascii = ascii_bytes + if character.is_ascii() { 1 } else { 0 };
+        let next_non_ascii = non_ascii_chars + if character.is_ascii() { 0 } else { 1 };
         let estimate = next_ascii.saturating_add(3) / 4 + next_non_ascii;
         if estimate > token_budget { break; }
         ascii_bytes = next_ascii;
