@@ -32,7 +32,7 @@ function parseArgs(argv) {
 }
 
 function rustServerConfig(workspace, approvalToken) {
-  const binary = env.RUST_AGENT_MCP_BIN;
+  const binary = env.RUST_AGENT_MCP_BIN ? resolve(env.RUST_AGENT_MCP_BIN) : undefined;
   const command = binary || "cargo";
   const args = binary
     ? ["--workspace", workspace]
@@ -102,8 +102,9 @@ async function main() {
 
           if (toolName.endsWith("__write_file")) {
             const path = typeof input.path === "string" ? input.path : "<invalid path>";
+            stdout.write(`\nRequested write operation:\n${JSON.stringify({ path, content: input.content }, null, 2)}\n`);
             const answer = (await rl.question(
-              `Approve write_file to "${path}" with ${String(input.content ?? "").length} characters? Type yes: `
+              `Approve this exact write to "${path}"? Type yes: `
             )).trim().toLowerCase();
 
             if (answer === "yes") {
