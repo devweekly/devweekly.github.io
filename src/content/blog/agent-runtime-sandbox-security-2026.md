@@ -1076,13 +1076,13 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 对于 Copilot SDK 桌面应用，最终推荐是 **TypeScript 控制面 + OS Sandbox 执行面**。Copilot Hook 负责拦截和决策，应用自己的 Tool Handler 负责资源授权，Sandbox Backend 负责让操作系统强制执行批准范围。不要把 Hook、命令白名单或 Rust 语言本身误认为安全边界。
 
-## 10. 方案比较与选型：每种 Sandbox 到底能保证什么
+## 9. 方案比较与选型：每种 Sandbox 到底能保证什么
 
 讨论 Sandbox 时，经常会听到“Docker 不安全”“VM 才安全”“放到远端就安全”这类结论。这些说法把不同的安全目标混在了一起。容器、进程沙箱和 VM 的关键差异，是攻击者要突破哪一层边界才能影响宿主机；本机和远端的关键差异，是谁控制底层机器、谁能接触数据，以及失陷后的影响范围。
 
 先明确一个前提：**不存在能够保证任意恶意程序绝对安全的通用 Sandbox。**任何隔离机制都依赖一个可信计算基（Trusted Computing Base，TCB），包括硬件、内核或 Hypervisor、Sandbox 实现、管理面和配置。TCB 中存在可利用漏洞，或者管理员本身恶意，隔离承诺就可能失效。工程上能够做的是缩小 TCB、减少暴露接口、降低权限、隔离故障域、控制数据出口，并通过独立安全边界叠加防护，而不是宣称某种技术“彻底安全”。
 
-### 10.1 不同执行形态的安全边界和根本限制
+### 9.1 不同执行形态的安全边界和根本限制
 
 | 执行形态 | 实际隔离边界 | 主要能防住什么 | 无法从根本上消除的风险 / 必须信任什么 | 适合的信任等级 |
 | --- | --- | --- | --- | --- |
@@ -1109,7 +1109,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 参考实现和威胁模型：[Docker Engine Security](https://docs.docker.com/engine/security/)、[Docker Rootless Mode](https://docs.docker.com/engine/security/rootless/)、[gVisor Security Model](https://gvisor.dev/docs/architecture_guide/security/)、[Kata Containers Threat Model](https://github.com/kata-containers/kata-containers/blob/main/docs/threat-model/threat-model.md)、[NIST SP 800-190: Application Container Security Guide](https://doi.org/10.6028/NIST.SP.800-190)、[Apple App Sandbox](https://developer.apple.com/documentation/security/app-sandbox)、[Windows AppContainer Isolation](https://learn.microsoft.com/en-us/windows/win32/secauthz/appcontainer-isolation)、[Linux Confidential Computing Threat Model](https://docs.kernel.org/security/snp-tdx-threat-model.html)、[AWS Nitro System Security Design](https://docs.aws.amazon.com/whitepapers/latest/security-design-of-aws-nitro-system/security-design-of-aws-nitro-system.html)。
 
-### 10.2 真正不可能靠 Sandbox 解决的问题
+### 9.2 真正不可能靠 Sandbox 解决的问题
 
 以下不是某一种产品的缺陷，而是执行隔离本身解决不了的问题。换成 Docker、VM、远端 VM，甚至 Confidential VM，也不会自动消失。
 
@@ -1128,7 +1128,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 因此，“不可能解决”应当准确理解为：**不能仅靠 Sandbox 这一层给出保证。**有些风险可以通过独立控制显著降低，例如专用宿主机降低跨租户侧信道风险；有些风险只能通过组织、合同和运营治理管理，例如云服务商和模型 Provider 的数据处理；还有一些风险只能通过最小化权限和可恢复设计降低损失，而无法证明 Agent 永远不会做错事。
 
-### 10.3 从架构上选择，而不是按产品名称判断
+### 9.3 从架构上选择，而不是按产品名称判断
 
 对 Agent Runtime，我建议把方案选择归纳为三个问题：
 
@@ -1146,7 +1146,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 - 每个任务使用独立 Workspace、快照和可销毁执行环境。把文件修改、外部 API 调用和最终提交拆成不同权限阶段，确保失败后能审计、回滚或补偿。
 
 最终应当比较的是**攻击者必须突破多少个独立信任边界，以及每次突破后还能访问多少数据和权限**，而不是简单比较“容器、VM、云端哪个更安全”。
-## 11. 按风险选择部署形态
+## 10. 按风险选择部署形态
 
 不需要把所有 Agent 都放进最重的 VM，也不应该让所有 Agent 共用一个普通 Node.js 进程。隔离强度应由数据敏感性、工具权限、租户信任、执行代码来源和可能的副作用决定。
 
@@ -1166,9 +1166,9 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 这才是可扩展的 Agent Runtime 安全架构：策略统一，身份可追溯，执行隔离按平台实现，数据流受控，失败可终止，安全效果通过真实副作用测试验证。
 
-## 12. 安全验证、上线 Checklist 与参考资料
+## 11. 安全验证、上线 Checklist 与参考资料
 
-### 12.1 安全验证：检查真实副作用
+### 11.1 安全验证：检查真实副作用
 
 安全测试不能只看模型有没有拒绝恶意指令。需要验证工具调用、文件、网络和业务系统中的实际状态是否符合授权。
 
@@ -1187,7 +1187,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 验收时同时看四件事：任务是否正常完成、未授权操作是否被拒绝、执行边界是否生效、外部系统是否出现未授权状态变化。
 
-### 12.2 Agent Runtime Security Checklist
+### 11.2 Agent Runtime Security Checklist
 
 以下清单用于架构评审和上线验收。P0 是上线阻断项；P1 应完成，或有明确的风险接受记录。
 
@@ -1222,7 +1222,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 - [ ] 正向和负向测试覆盖越权读写、跨租户访问、数据外传、取消和故障恢复。
 - [ ] 每次执行可关联 User、Agent、Task、Policy Version、审批、Sandbox Backend 和最终 Artifact。
 
-### 12.3 业界实践、标准和研究资料
+### 11.3 业界实践、标准和研究资料
 
 下面的资料按用途整理。标准和官方工程文档用于建立控制基线；研究论文用于理解攻击路径、验证方法和现有防御的局限。论文中的实验结果不等于生产环境安全保证。
 
@@ -1253,7 +1253,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 | [Windows Application Isolation](https://learn.microsoft.com/en-us/windows/security/book/application-security-application-isolation) | AppContainer、Windows Sandbox、应用隔离与系统控制。 |
 
 
-## 13. 落地建议
+## 12. 落地建议
 
 对 TypeScript / Node.js Agent Runtime，建议把控制面留在 TypeScript，把真正的进程隔离交给操作系统或虚拟化层：
 
