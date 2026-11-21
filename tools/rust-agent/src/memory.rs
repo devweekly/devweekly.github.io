@@ -37,6 +37,17 @@ pub struct MemoryRecord {
 }
 
 #[derive(Debug, Clone)]
+pub struct MemoryInput {
+    pub kind: MemoryKind,
+    pub scope: MemoryScope,
+    pub scope_id: Option<String>,
+    pub content: String,
+    pub source: String,
+    pub confidence: u8,
+    pub expires_at_ms: Option<u128>,
+}
+
+#[derive(Debug, Clone)]
 pub struct MemoryQuery {
     pub query: String,
     pub session_id: Option<String>,
@@ -98,34 +109,26 @@ impl MemoryStore {
         Ok(self.directory.join(format!("{id}.json")))
     }
 
-    pub fn remember(
-        &self,
-        kind: MemoryKind,
-        scope: MemoryScope,
-        scope_id: Option<String>,
-        content: &str,
-        source: &str,
-        confidence: u8,
-        expires_at_ms: Option<u128>,
-    ) -> Result<MemoryRecord, AgentError> {
-        let content = content.trim();
-        let source = source.trim();
+    pub fn remember(&self, input: MemoryInput) -> Result<MemoryRecord, AgentError> {
+        let content = input.content.trim();
+        let source = input.source.trim();
         if content.is_empty() || content.len() > MAX_MEMORY_TEXT
-            || source.len() > MAX_MEMORY_SOURCE || confidence > 100 {
+            || source.len() > MAX_MEMORY_SOURCE || input.confidence > 100 {
             return Err(AgentError::InvalidAction("memory content/source/confidence is outside configured limits".into()));
         }
-        if matches!(scope, MemoryScope::Global) && scope_id.is_some() {
+        if matches!(input.scope, MemoryScope::Global) && input.scope_id.is_some() {
             return Err(AgentError::InvalidAction("global memory must not have a scope ID".into()));
         }
-        if !matches!(scope, MemoryScope::Global) && scope_id.as_deref().is_none_or(str::is_empty) {
+        if !matches!(input.scope, MemoryScope::Global) && input.scope_id.as_deref().is_none_or(str::is_empty) {
             return Err(AgentError::InvalidAction("non-global memory requires a scope ID".into()));
         }
         let now = now_ms();
         let id = new_id(now);
         let record = MemoryRecord {
-            schema_version: MEMORY_SCHEMA_VERSION, id: id.clone(), kind, scope, scope_id,
-            content: content.to_owned(), source: source.to_owned(), confidence,
-            created_at_ms: now, updated_at_ms: now, expires_at_ms,
+            schema_version: MEMORY_SCHEMA_VERSION, id: id.clone(), kind: input.kind,
+            scope: input.scope, scope_id: input.scope_id,
+            content: content.to_owned(), source: source.to_owned(), confidence: input.confidence,
+            created_at_ms: now, updated_at_ms: now, expires_at_ms: input.expires_at_ms,
         };
         self.save(&record)?;
         Ok(record)
@@ -252,8 +255,11 @@ mod tests {
     fn persists_retrieves_updates_and_forgets_scoped_memory() {
         let root = workspace();
         let store = MemoryStore::new(&root).unwrap();
-        let record = store.remember(MemoryKind::LongTerm, MemoryScope::Global, None,
-            "Prefers Rust implementations and minimal dependencies", "explicit user preference", 95, None).unwrap();
+        let record = store.remember(MemoryInput {
+            kind: MemoryKind::LongTerm, scope: MemoryScope::Global, scope_id: None,
+            content: "Prefers Rust implementations and minimal dependencies".into(),
+            source: "explicit user preference".into(), confidence: 95, expires_at_ms: None,
+        }).unwrap();
         let results = store.retrieve(&MemoryQuery { query: "Rust minimal dependencies".into(), session_id: None, project_id: None, limit: 5 }).unwrap();
         assert_eq!(results[0].id, record.id);
         assert!(store.update(&record.id, "Prefers Rust with few dependencies", None, Some(90)).is_ok());
@@ -266,8 +272,11 @@ mod tests {
     fn expired_memories_are_not_retrieved() {
         let root = workspace();
         let store = MemoryStore::new(&root).unwrap();
-        let record = store.remember(MemoryKind::Session, MemoryScope::Session, Some("s1".into()),
-            "temporary context phrase", "test", 100, Some(now_ms().saturating_sub(Duration::from_secs(1).as_millis()))).unwrap();
+        let record = store.remember(MemoryInput {
+            kind: MemoryKind::Session, scope: MemoryScope::Session, scope_id: Some("s1".into()),
+            content: "temporary context phrase".into(), source: "test".into(),
+            confidence: 100, expires_at_ms: Some(now_ms().saturating_sub(Duration::from_secs(1).as_millis())),
+        }).unwrap();
         let results = store.retrieve(&MemoryQuery { query: "temporary context".into(), session_id: Some("s1".into()), project_id: None, limit: 5 }).unwrap();
         assert!(results.is_empty());
         let _ = store.forget(&record.id);

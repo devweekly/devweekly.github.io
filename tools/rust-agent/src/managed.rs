@@ -3,7 +3,7 @@ use std::{path::PathBuf, sync::Arc};
 use crate::{
     context::{ContextManager, ContextReport},
     error::AgentError,
-    memory::{MemoryKind, MemoryQuery, MemoryRecord, MemoryScope, MemoryStore},
+    memory::{MemoryInput, MemoryQuery, MemoryRecord, MemoryStore},
     provider::OpenAiCompatibleProvider,
     runtime::{AgentRuntime, CancellationHandle, RuntimeEvent, RuntimeHook, RuntimeOptions},
     trace::{TraceHook, TraceStore},
@@ -67,11 +67,8 @@ impl ManagedRuntime {
 
     /// Persisting memory is explicit. The runtime never silently promotes model output
     /// or tool results into durable user memory.
-    pub fn remember(
-        &self, kind: MemoryKind, scope: MemoryScope, scope_id: Option<String>,
-        content: &str, source: &str, confidence: u8, expires_at_ms: Option<u128>,
-    ) -> Result<MemoryRecord, AgentError> {
-        self.memory.remember(kind, scope, scope_id, content, source, confidence, expires_at_ms)
+    pub fn remember(&self, input: MemoryInput) -> Result<MemoryRecord, AgentError> {
+        self.memory.remember(input)
     }
 
     pub fn update_memory(&self, id: &str, content: &str, source: Option<&str>, confidence: Option<u8>) -> Result<MemoryRecord, AgentError> {
