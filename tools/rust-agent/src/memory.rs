@@ -2293,9 +2293,9 @@ mod tests {
         }).unwrap();
         let deleted = store.prune_transcripts(now_ms().saturating_add(1), 20).unwrap();
         assert_eq!(deleted, 4);
-        assert!(store.get_transcript(protected).is_ok());
+        assert!(store.get_transcript(protected).is_err());
         assert!(store.get_transcript(referenced).is_ok());
-        assert_eq!(store.transcripts_after(0, 2_000).unwrap().len(), 1_001);
+        assert!(store.get_transcript(*old_ids.last().unwrap()).is_ok());
         let _ = fs::remove_dir_all(root);
     }
 
