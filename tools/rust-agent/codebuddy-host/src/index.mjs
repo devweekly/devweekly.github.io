@@ -37,7 +37,6 @@ function parseArgs(argv) {
   };
   for (let index = 0; index < argv.length; index += 1) {
     const [key, inline] = argv[index].split(/=(.*)/s, 2);
-    const value = inline ?? argv[++index];
     if (key === "--help" || key === "-h") {
       console.log(`Usage: npm start -- [options]
 
@@ -64,6 +63,18 @@ General:
   --workspace PATH     Workspace accessible to Rust tools [default: current directory]`);
       process.exit(0);
     }
+    const booleanFlags = {
+      "--continue": "continueSession",
+      "--fork": "forkSession",
+      "--no-persist": "persistSession"
+    };
+    if (Object.hasOwn(booleanFlags, key)) {
+      if (inline !== undefined) throw new Error(`${key} does not accept a value`);
+      result[booleanFlags[key]] = key === "--no-persist" ? false : true;
+      continue;
+    }
+    const value = inline ?? argv[++index];
+    if (value === undefined) throw new Error(`Missing value for ${key}`);
     if (key === "--workspace") result.workspace = resolve(value);
     else if (key === "--model") result.model = value;
     else if (key === "--fallback-model") result.fallbackModel = value;
@@ -72,9 +83,6 @@ General:
     else if (key === "--max-turns") result.maxTurns = Number(value);
     else if (key === "--permission-mode") result.permissionMode = value;
     else if (key === "--session-id") result.sessionId = value;
-    else if (key === "--continue") result.continueSession = true;
-    else if (key === "--fork") result.forkSession = true;
-    else if (key === "--no-persist") result.persistSession = false;
     else if (key === "--setting-source") result.settingSources.push(value);
     else if (key === "--agents-file") result.agentsFile = resolve(value);
     else if (key === "--audit-file") result.auditFile = resolve(value);
