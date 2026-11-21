@@ -729,11 +729,11 @@ Google 在 2026 年的 [GKE AI Agent Workloads 架构文档](https://docs.cloud.
 
 参考：[Pi SDK](https://docs.pi.dev/latest/sdk)、[Pi RPC](https://docs.pi.dev/latest/rpc)、[Pi MCP](https://docs.pi.dev/latest/mcp)。
 
-**Copilot SDK：已有比较直接的服务端部署模式。** 官方 Backend Services 文档支持将 Copilot CLI 作为 Headless Server 独立运行，SDK 通过 TCP 连接；多用户场景使用 `mode: "empty"`，按 Session 注入用户凭证并显式指定可用工具。Multi-tenancy 文档还提供 `sessionFs`，用于将 Session 级文件 I/O 路由到应用自己的存储提供者。需要注意，官方文档明确指出 SDK 与 Headless CLI 之间没有内置认证；不要把它直接暴露到不可信网络，应放在受控网络内，并在外层 API Gateway 完成身份验证和授权。CLI Session 状态文件也必须持久化，并在多实例部署时使用共享存储或明确的 Session 路由策略。
+**Copilot SDK：已有比较直接的服务端部署模式。** 官方 Backend Services 文档支持将 Copilot CLI 作为 Headless Server 独立运行，SDK 通过 TCP 连接；多用户场景使用 `mode: "empty"`，按 Session 注入用户凭证并显式指定可用工具。Multi-tenancy 文档还提供 `sessionFs`，用于将 Session 级文件 I/O 路由到应用自己的存储提供者。这里有两个不能忽略的边界：Shell Tool 不经过 SessionFS；如果 Shell 或其他任意代码能访问 Provider 的底层存储，宿主必须另外保护这些文件。SessionFS 中的持久化授权记录也会按 Provider Namespace 共享，要求 Session 隔离时必须使用不同 Namespace。官方文档明确指出 SDK 与 Headless CLI 之间没有内置认证；不要把它直接暴露到不可信网络，应放在受控网络内，并在外层 API Gateway 完成身份验证和授权。CLI Session 状态文件也必须持久化，并在多实例部署时使用共享存储或明确的 Session 路由策略。
 
 参考：[Backend Services](https://docs.github.com/en/copilot/how-tos/copilot-sdk/setup/backend-services)、[Multi-tenancy and Server Deployments](https://docs.github.com/en/copilot/how-tos/copilot-sdk/setup/multi-tenancy)、[Scaling](https://docs.github.com/en/copilot/how-tos/copilot-sdk/setup/scaling)。
 
-**LangChain Deep Agents：最贴近远端 Workspace + 远端 Agent 的抽象。** Deep Agents 的 BackendProtocol 将文件工具与底层存储解耦：StateBackend 适合线程内状态，StoreBackend 适合跨线程长期存储，FilesystemBackend 面向本地磁盘，CompositeBackend 可按虚拟路径路由不同后端。Sandbox Backend 除文件工具外还提供 `execute`，把命令运行放到独立 Sandbox。LangSmith Agent Server 还可以将 Agent 作为 MCP Tool 暴露，并通过自定义认证中间件实现用户级授权。对于本场景，可以在远端实现一个 Workspace Backend，把路径操作映射到对象存储、数据库或专用文件服务，再把执行能力交给独立 Sandbox Backend。
+**LangChain Deep Agents：最贴近远端 Workspace + 远端 Agent 的抽象。** Deep Agents 的 BackendProtocol 将文件工具与底层存储解耦：StateBackend 适合线程内状态，StoreBackend 适合跨线程长期存储，FilesystemBackend 面向本地磁盘，CompositeBackend 可按虚拟路径路由不同后端。要特别注意，FilesystemBackend 的 `root_dir` 本身不构成安全边界；需要路径限制时必须启用 `virtual_mode=True`，但这仍不能限制 Shell。LocalShellBackend 会以宿主机权限执行命令，没有 Sandbox 隔离，不适合生产多租户服务。真正需要执行命令时应使用 Sandbox Backend。StateBackend 的状态在同一 Thread 的 Supervisor 与 Subagent 间共享；StoreBackend 则必须显式设置 Namespace Factory，按用户或租户隔离。LangSmith Agent Server 还可以将 Agent 作为 MCP Tool 暴露，并通过自定义认证中间件实现用户级授权。对于本场景，可以在远端实现一个 Workspace Backend，把路径操作映射到对象存储、数据库或专用文件服务，再把执行能力交给独立 Sandbox Backend。
 
 参考：[Deep Agents Backends](https://docs.langchain.com/oss/python/deepagents/backends)、[Deep Agents Sandboxes](https://docs.langchain.com/oss/python/deepagents/sandboxes)、[Deep Agents Overview](https://docs.langchain.com/oss/python/deepagents/overview)、[Agent Server MCP](https://docs.langchain.com/langsmith/server-mcp)。
 
