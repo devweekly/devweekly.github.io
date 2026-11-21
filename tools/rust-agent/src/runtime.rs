@@ -1711,6 +1711,7 @@ impl AgentRuntime {
                 }));
             }
             let output_token_limit = self.context_manager.reserved_output_tokens();
+            let max_output_tokens = (output_token_limit > 0).then_some(output_token_limit);
             let hooks = &self.hooks;
             let session_id = self.session.session_id.clone();
             let mut streamed_bytes = 0usize;
@@ -1718,7 +1719,7 @@ impl AgentRuntime {
                 biased;
                 _ = cancellation.cancelled() => None,
                 result = provider.complete_streaming_with_usage_and_limit(
-                    &request_messages, Some(output_token_limit), |delta| {
+                    &request_messages, max_output_tokens, |delta| {
                     streamed_bytes = streamed_bytes.saturating_add(delta.len());
                     let event = RuntimeEvent {
                         session_id: session_id.clone(),
@@ -2403,7 +2404,7 @@ fn validate_host_answers(questions: &[UserQuestion], answers: &Value) -> Result<
 fn request_user_answers_interactive(questions: &[UserQuestion]) -> Result<Value, AgentError> {
     let mut answers = serde_json::Map::new();
     for (index, question) in questions.iter().enumerate() {
-        println!("\\n{}. {}: {}", index + 1,
+        println!("\n{}. {}: {}", index + 1,
             question.header.as_deref().unwrap_or("Question"), question.question);
         for (option_index, option) in question.options.iter().enumerate() {
             let description = option.description.as_deref()
