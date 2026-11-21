@@ -303,6 +303,8 @@ mod tests {
         let response = handle_request(&request, &executor, "").expect("request response");
         assert_eq!(response["result"]["serverInfo"]["name"], "rust-agent");
         assert_eq!(response["result"]["capabilities"]["tools"]["listChanged"], false);
+        assert_eq!(response["result"]["capabilities"]["resources"]["listChanged"], false);
+        assert_eq!(response["result"]["capabilities"]["prompts"]["listChanged"], false);
     }
 
     #[test]

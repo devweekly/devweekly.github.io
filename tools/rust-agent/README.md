@@ -61,7 +61,7 @@ The host records lifecycle, permission, tool, session, and turn-usage metadata i
 | Lifecycle hooks | Session, prompt, tool, task, compaction, and permission events |
 | Usage and result events | Turn result metadata written to audit JSONL |
 | Custom Agents | Explicit `--agents-file`; Agent tools are restricted to Rust MCP tools |
-| MCP integration | Rust stdio server with the four Workspace tools |
+| MCP integration | Rust stdio server with four Workspace tools, a read-only policy resource, and reusable inspect/review/implement prompts |
 | Configuration isolation | No settings loaded unless explicitly selected |
 
 Example custom Agent file:
@@ -110,7 +110,7 @@ The CodeBuddy path uses CodeBuddy's Agent Loop. The standalone Rust path uses th
 - The host uses CodeBuddy's `query()` API. It supports resumable sessions, but does not yet expose the V2 Session continuous-stream API required for reliable background-task completion events across turns.
 - SDK Hooks currently write structured audit metadata; they do not execute arbitrary user-provided hook scripts.
 - Custom Agents are supplied as an explicit JSON file. No project or global Agent configuration is loaded implicitly.
-- MCP transport is stdio and currently implements the initialize, ping, tools/list, and tools/call methods.
+- MCP transport is stdio and currently implements initialize, ping, tools/list/call, resources/list/read, and prompts/list/get. The exposed resource is a static policy description; it does not expose arbitrary workspace files.
 - Approval is interactive terminal approval. A GUI host will need an approval UI and a stronger host-to-tool approval channel.
 - Audit records omit prompt and file content by design. A future audit backend may add configurable redaction and retention.
 - Isolated Worker processes, OS sandboxing, and cancellation propagation into an already-running filesystem operation are not implemented.
