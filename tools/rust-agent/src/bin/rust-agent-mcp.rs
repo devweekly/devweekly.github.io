@@ -198,3 +198,58 @@ fn call_tool(
         "isError": !result.ok
     }))
 }
+
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{call_tool, handle_request, tool_definitions};
+    use rust_agent::tools::ToolExecutor;
+
+    #[test]
+    fn advertises_only_the_four_workspace_tools() {
+        let tools = tool_definitions();
+        assert_eq!(tools.as_array().map(Vec::len), Some(4));
+    }
+
+    #[test]
+    fn initialize_returns_mcp_server_metadata() {
+        let executor = ToolExecutor::new(std::env::current_dir().expect("current directory"));
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": { "protocolVersion": "2024-11-05" }
+        });
+
+        let response = handle_request(&request, &executor, "").expect("request response");
+        assert_eq!(response["result"]["serverInfo"]["name"], "rust-agent");
+        assert_eq!(response["result"]["capabilities"]["tools"]["listChanged"], false);
+    }
+
+    #[test]
+    fn write_is_rejected_without_a_host_approval_token() {
+        let executor = ToolExecutor::new(std::env::current_dir().expect("current directory"));
+        let params = json!({
+            "name": "write_file",
+            "arguments": { "path": "must-not-be-created.txt", "content": "blocked" }
+        });
+
+        let result = call_tool(&params, &executor, "");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("per-action approval"));
+    }
+
+    #[test]
+    fn unknown_tools_are_rejected_by_the_rust_policy() {
+        let executor = ToolExecutor::new(std::env::current_dir().expect("current directory"));
+        let params = json!({
+            "name": "run_shell",
+            "arguments": { "command": "whoami" }
+        });
+
+        let result = call_tool(&params, &executor, "not-used");
+        assert!(result.unwrap_err().contains("policy denied"));
+    }
+}
