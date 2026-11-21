@@ -73,13 +73,8 @@ fn handle_request(
     executor: &ToolExecutor,
     approval_token: &str,
 ) -> Option<Value> {
-    let id = request.get("id").cloned();
+    let id = request.get("id").cloned()?;
     let method = request.get("method").and_then(Value::as_str).unwrap_or_default();
-
-    if id.is_none() {
-        return None;
-    }
-    let id = id.unwrap_or(Value::Null);
 
     let result = match method {
         "initialize" => Ok(json!({
