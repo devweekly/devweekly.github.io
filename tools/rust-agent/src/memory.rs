@@ -272,6 +272,35 @@ pub struct DreamingReport {
     pub reviewed_through: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DreamingRunRecord {
+    pub id: i64,
+    pub trigger: String,
+    pub status: String,
+    pub cursor_from: i64,
+    pub cursor_to: Option<i64>,
+    pub transcript_count: usize,
+    pub model: Option<String>,
+    pub prompt_tokens: Option<u64>,
+    pub completion_tokens: Option<u64>,
+    pub total_tokens: Option<u64>,
+    pub duration_ms: Option<u64>,
+    pub started_at_ms: u128,
+    pub completed_at_ms: Option<u128>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DreamingStatus {
+    pub transcript_cursor: i64,
+    pub pending_transcripts: usize,
+    pub active_run_id: Option<i64>,
+    pub lease_until_ms: Option<u128>,
+    pub next_retry_at_ms: Option<u128>,
+    pub consecutive_failures: u64,
+    pub last_error: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct MemoryStore {
     connection: Arc<Mutex<Connection>>,
@@ -1006,10 +1035,44 @@ impl MemoryStore {
     }
 
     pub fn pending_transcript_count(&self) -> Result<usize, AgentError> {
+        Ok(self.dreaming_status()?.pending_transcripts)
+    }
+
+    pub fn dreaming_status(&self) -> Result<DreamingStatus, AgentError> {
         let connection = self.conn()?;
         let cursor = last_dreamed_cursor(&connection)?;
-        let count: i64 = connection.query_row("SELECT COUNT(*) FROM transcripts WHERE id>?1", [cursor], |row| row.get(0))?;
-        usize::try_from(count).map_err(|_| AgentError::InvalidAction("transcript count out of range".into()))
+        let pending: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM transcripts WHERE id>?1", [cursor], |row| row.get(0)
+        )?;
+        let (active_run_id, lease_until, next_retry, failures, last_error):
+            (Option<i64>,Option<i64>,Option<i64>,i64,Option<String>) = connection.query_row(
+                "SELECT current_run_id,lease_until_ms,next_retry_at_ms,failure_count,last_error
+                 FROM dreaming_control WHERE id=1",
+                [],
+                |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?)),
+            )?;
+        Ok(DreamingStatus {
+            transcript_cursor: cursor,
+            pending_transcripts: usize::try_from(pending)
+                .map_err(|_| AgentError::InvalidAction("transcript count out of range".into()))?,
+            active_run_id,
+            lease_until_ms: lease_until.map(|value| from_i64(value, 1)).transpose()?,
+            next_retry_at_ms: next_retry.map(|value| from_i64(value, 2)).transpose()?,
+            consecutive_failures: u64::try_from(failures)
+                .map_err(|_| AgentError::InvalidAction("Dreaming failure count out of range".into()))?,
+            last_error,
+        })
+    }
+
+    pub fn list_dreaming_runs(&self, limit: usize) -> Result<Vec<DreamingRunRecord>, AgentError> {
+        let connection = self.conn()?;
+        let mut statement = connection.prepare(
+            "SELECT id,trigger,status,cursor_from,cursor_to,transcript_count,model,prompt_tokens,
+                    completion_tokens,total_tokens,duration_ms,started_at_ms,completed_at_ms,error
+             FROM dreaming_runs ORDER BY id DESC LIMIT ?1"
+        )?;
+        Ok(statement.query_map([i64::try_from(limit.clamp(1, 100)).unwrap_or(100)], row_dreaming_run)?
+            .collect::<Result<Vec<_>, _>>()?)
     }
 
     /// Apply an offline consolidation pass as one SQLite transaction.
@@ -1041,11 +1104,19 @@ impl MemoryStore {
         }
         let mut connection = self.conn()?;
         let transaction = connection.transaction()?;
-        let previous_cursor = transaction.query_row(
-            "SELECT value FROM memory_meta WHERE key='last_dreamed_transcript_id'",
-            [],
-            |row| row.get::<_, String>(0),
-        ).optional()?.and_then(|value| value.parse::<i64>().ok()).unwrap_or(0);
+        let previous_cursor = last_dreamed_cursor(&transaction)?;
+        if let Some((run_id, ..)) = run {
+            let active_run: Option<i64> = transaction.query_row(
+                "SELECT current_run_id FROM dreaming_control WHERE id=1",
+                [],
+                |row| row.get(0),
+            )?;
+            if active_run != Some(run_id) {
+                return Err(AgentError::InvalidAction(
+                    "Dreaming lease was lost before the consolidation result could be committed".into(),
+                ));
+            }
+        }
         let max_transcript: i64 = transaction.query_row(
             "SELECT COALESCE(MAX(id),0) FROM transcripts",
             [],
@@ -1132,6 +1203,11 @@ impl MemoryStore {
                         MemoryStore::validate_id(id)?;
                         let before = load_memory(&transaction, id)?
                             .ok_or_else(|| AgentError::InvalidAction(format!("dreaming update references missing memory: {id}")))?;
+                        if before.scope != scope || before.scope_id != note.scope_id {
+                            return Err(AgentError::InvalidAction(
+                                "Dreaming cannot move an existing memory across scopes; create a scoped note instead".into(),
+                            ));
+                        }
                         let mut merged_refs = before.source_refs.clone();
                         for reference in &note.evidence {
                             if !merged_refs.contains(reference) {
@@ -1560,6 +1636,29 @@ fn write_memory_record(transaction: &Transaction<'_>, record: &MemoryRecord) -> 
     Ok(())
 }
 
+fn row_dreaming_run(row: &Row<'_>) -> rusqlite::Result<DreamingRunRecord> {
+    let started: i64 = row.get(11)?;
+    let completed: Option<i64> = row.get(12)?;
+    let transcript_count: i64 = row.get(5)?;
+    Ok(DreamingRunRecord {
+        id: row.get(0)?,
+        trigger: row.get(1)?,
+        status: row.get(2)?,
+        cursor_from: row.get(3)?,
+        cursor_to: row.get(4)?,
+        transcript_count: usize::try_from(transcript_count)
+            .map_err(|error| conversion_error(5, rusqlite::types::Type::Integer, error.to_string()))?,
+        model: row.get(6)?,
+        prompt_tokens: row.get(7)?,
+        completion_tokens: row.get(8)?,
+        total_tokens: row.get(9)?,
+        duration_ms: row.get(10)?,
+        started_at_ms: from_i64(started, 11)?,
+        completed_at_ms: completed.map(|value| from_i64(value, 12)).transpose()?,
+        error: row.get(13)?,
+    })
+}
+
 fn row_memory_revision(row: &Row<'_>) -> rusqlite::Result<MemoryRevision> {
     let before: Option<String> = row.get(4)?;
     let after: Option<String> = row.get(5)?;
@@ -1775,7 +1874,7 @@ mod tests {
     fn transcripts_are_searchable_and_cursor_is_monotonic() {
         let root = workspace();
         let store = MemoryStore::new(&root).unwrap();
-        let first = store.record_transcript("s1", "user", "Use a bounded context window").unwrap();
+        let first = store.record_transcript("s1", None, None, "user", "Use a bounded context window").unwrap();
         store.record_transcript("s2", None, None, "assistant", "The database uses SQLite").unwrap();
         assert_eq!(store.transcripts_after(0, 10).unwrap().len(), 2);
         assert_eq!(store.search_transcripts("bounded context", Some("s1"), None, None, 5).unwrap()[0].id, first);
@@ -1874,7 +1973,7 @@ mod tests {
     }
 
     #[test]
-    fn dreaming_requires_valid_evidence_and_builds_linked_pages() {
+    fn dreaming_builds_linked_pages_and_records_page_history() {
         let root = workspace();
         let store = MemoryStore::new(&root).unwrap();
         let transcript = store.record_transcript("s1", None, None, "user", "The team prefers explicit approval for writes").unwrap();

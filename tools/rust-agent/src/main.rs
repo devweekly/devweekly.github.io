@@ -19,6 +19,7 @@ struct Args {
     fallback_model: Option<String>,
     api_key_env: String,
     session_id: Option<String>,
+    project_id: Option<String>,
     continue_session: bool,
     session_dir: Option<PathBuf>,
     audit_file: Option<PathBuf>,
@@ -37,6 +38,7 @@ impl Args {
             fallback_model: None,
             api_key_env: "OPENAI_API_KEY".into(),
             session_id: None,
+            project_id: None,
             continue_session: false,
             session_dir: None,
             audit_file: None,
@@ -87,6 +89,7 @@ impl Args {
                 "--fallback-model" => parsed.fallback_model = Some(value),
                 "--api-key-env" => parsed.api_key_env = value,
                 "--session-id" => parsed.session_id = Some(value),
+                "--project-id" => parsed.project_id = Some(value),
                 "--session-dir" => parsed.session_dir = Some(PathBuf::from(value)),
                 "--audit-file" => parsed.audit_file = Some(PathBuf::from(value)),
                 "--max-tool-calls" => parsed.max_tool_calls = value.parse()?,
@@ -123,6 +126,7 @@ impl Args {
              --workspace <PATH>       Workspace accessible to file tools [default: .]\n\
              Session:\n\
              --session-id <ID>        Resume an existing session\n\
+             --project-id <ID>        Scope this CLI session to a project\n\
              --continue               Resume the most recently used session\n\
              --session-dir <PATH>     Session storage directory [default: <workspace>/.rust-agent/sessions]\n\
              --audit-file <PATH>      Append lifecycle and policy events as JSONL\n\
@@ -171,7 +175,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         hooks: Vec::new(),
         approval_handler: None,
         context_manager: rust_agent::context::ContextManager::default(),
-        project_id: None,
+        project_id: args.project_id,
         dreaming: rust_agent::runtime::DreamingOptions {
             auto_enabled: args.auto_dreaming,
             ..rust_agent::runtime::DreamingOptions::default()
@@ -199,7 +203,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Rust Agent ready. Workspace: {}", runtime.workspace().display());
     println!("Session: {}", runtime.session_id());
-    println!("Commands: /help, /attach <workspace-relative-path>, /new, /session, /resume <id>, /fork, /model <id>, /models, /agents, /agent <id>, /mode <default|plan>, /context, /compact, /usage, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
+    println!("Commands: /help, /attach <workspace-relative-path>, /new, /session, /resume <id>, /fork, /model <id>, /models, /agents, /agent <id>, /mode <default|plan>, /context, /compact, /usage, /dream, /dream-status, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
 
     loop {
         print!("you> ");
@@ -234,6 +238,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!(" /context             Show retained context message count");
             println!(" /compact             Apply the configured sliding-window limit");
             println!(" /usage               Show cumulative model and tool usage");
+            println!(" /dream               Consolidate pending memory now");
+            println!(" /dream-status        Show pending transcripts, lease, retries and recent runs");
             println!(" /dream               Consolidate transcripts into evidence-backed memory");
             println!(" /tasks               List background tasks");
             println!(" /task <id>           Show task status and result");
@@ -356,6 +362,35 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     report.reviewed_through
                 ),
                 Err(error) => eprintln!("Memory dreaming failed: {error}"),
+            }
+            continue;
+        }
+        if input == "/dream-status" {
+            match runtime.memory_store().dreaming_status() {
+                Ok(status) => {
+                    println!("Transcript cursor: {}", status.transcript_cursor);
+                    println!("Pending transcripts: {}", status.pending_transcripts);
+                    println!("Active run: {}", status.active_run_id.map_or_else(|| "none".into(), |id| id.to_string()));
+                    println!("Lease until (Unix ms): {}", status.lease_until_ms.map_or_else(|| "none".into(), |value| value.to_string()));
+                    println!("Next retry (Unix ms): {}", status.next_retry_at_ms.map_or_else(|| "none".into(), |value| value.to_string()));
+                    println!("Consecutive failures: {}", status.consecutive_failures);
+                    if let Some(error) = status.last_error.as_deref() {
+                        println!("Last error: {error}");
+                    }
+                    if let Ok(runs) = runtime.memory_store().list_dreaming_runs(5) {
+                        for run in runs {
+                            println!(
+                                "Run {}: {} / {} / {} transcripts / {}",
+                                run.id, run.trigger, run.status, run.transcript_count,
+                                run.model.as_deref().unwrap_or("no model")
+                            );
+                            if let Some(error) = run.error.as_deref() {
+                                println!("  {error}");
+                            }
+                        }
+                    }
+                }
+                Err(error) => eprintln!("Could not read Dreaming status: {error}"),
             }
             continue;
         }
