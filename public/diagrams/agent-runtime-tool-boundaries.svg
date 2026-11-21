@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="820" viewBox="0 0 1280 820" role="img" aria-labelledby="title desc">
+<title id="title">Agent Runtime Read Write Bash 独立安全边界</title>
+<desc id="desc">Read、Write 和 Bash/Script 通过不同工具接口、策略检查和后端能力访问资源；Bash 运行于 OS Sandbox。</desc>
+<defs>
+ <marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L9 3L0 6" fill="#66594F"/></marker>
+ <style>
+ text{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;fill:#241D17}
+ .title{font-size:27px;font-weight:650}.sub{font-size:13px;fill:#685D52}
+ .zone{fill:#F0ECE4;stroke:#CEC4B7;stroke-width:1.2}.card{fill:#FFFEFA;stroke:#CFC5B8;stroke-width:1.3}
+ .read{fill:#DDEBEF;stroke:#789BA8;stroke-width:1.5}.write{fill:#F4E8D6;stroke:#B28A55;stroke-width:1.5}
+ .exec{fill:#EADFEA;stroke:#9C7E9B;stroke-width:1.5}.policy{fill:#E4EBDD;stroke:#8DA17D;stroke-width:1.5}
+ .h{font-size:17px;font-weight:650}.b{font-size:13px;fill:#5D554D}.sm{font-size:11px;fill:#756A60}
+ .line{fill:none;stroke:#66594F;stroke-width:1.8}.dash{fill:none;stroke:#8B5A2B;stroke-width:1.7;stroke-dasharray:6 5}
+ </style>
+</defs>
+<rect width="1280" height="820" fill="#F9F6EF"/>
+<text x="52" y="54" class="title">Read、Write、Bash：三个独立的 Tool 安全边界</text>
+<text x="52" y="80" class="sub">Separate the authority to observe, mutate, and execute. Never infer one permission from another.</text>
+
+<rect x="48" y="112" width="1184" height="110" rx="14" class="zone"/>
+<text x="72" y="141" class="h">Agent Runtime</text>
+<rect x="80" y="158" width="250" height="48" rx="8" class="card"/>
+<text x="205" y="187" text-anchor="middle" class="h">Agent / Task Identity</text>
+<rect x="430" y="158" width="370" height="48" rx="8" class="policy"/>
+<text x="615" y="187" text-anchor="middle" class="h">Policy Engine · PDP / Approval</text>
+<rect x="900" y="158" width="300" height="48" rx="8" class="card"/>
+<text x="1050" y="187" text-anchor="middle" class="h">Audit · ChangeSet · Trace</text>
+<path d="M330 182H422M800 182H892" class="line" marker-end="url(#arr)"/>
+
+<rect x="48" y="254" width="1184" height="205" rx="14" class="zone"/>
+<text x="72" y="283" class="h">Three distinct Tool contracts</text>
+<rect x="80" y="306" width="330" height="128" rx="10" class="read"/>
+<text x="245" y="337" text-anchor="middle" class="h">READ</text>
+<text x="245" y="364" text-anchor="middle" class="b">list · stat · read · search</text>
+<text x="245" y="389" text-anchor="middle" class="sm">No mutation · data classification</text>
+<text x="245" y="410" text-anchor="middle" class="sm">Path capability · bounded output</text>
+<rect x="475" y="306" width="330" height="128" rx="10" class="write"/>
+<text x="640" y="337" text-anchor="middle" class="h">WRITE / EDIT</text>
+<text x="640" y="364" text-anchor="middle" class="b">create · patch · replace · delete</text>
+<text x="640" y="389" text-anchor="middle" class="sm">Diff · version / ETag · approval</text>
+<text x="640" y="410" text-anchor="middle" class="sm">Staging · atomic commit · rollback</text>
+<rect x="870" y="306" width="330" height="128" rx="10" class="exec"/>
+<text x="1035" y="337" text-anchor="middle" class="h">BASH / SCRIPT</text>
+<text x="1035" y="364" text-anchor="middle" class="b">executeScript(script, profile)</text>
+<text x="1035" y="389" text-anchor="middle" class="sm">Untrusted code · exact approval</text>
+<text x="1035" y="410" text-anchor="middle" class="sm">No host path / no ambient credentials</text>
+<path d="M615 206V238H245V298M615 238H640V298M615 238H1035V298" class="line" marker-end="url(#arr)"/>
+
+<rect x="48" y="492" width="1184" height="254" rx="14" class="zone"/>
+<text x="72" y="521" class="h">Enforcement backends and resource boundaries</text>
+<rect x="80" y="550" width="330" height="112" rx="10" class="card"/>
+<text x="245" y="579" text-anchor="middle" class="h">Capability Filesystem</text>
+<text x="245" y="604" text-anchor="middle" class="b">Root-scoped handles · safe path resolution</text>
+<text x="245" y="628" text-anchor="middle" class="sm">Read-only view · deny secrets · bounded reads</text>
+<rect x="475" y="550" width="330" height="112" rx="10" class="card"/>
+<text x="640" y="579" text-anchor="middle" class="h">ChangeSet Service</text>
+<text x="640" y="604" text-anchor="middle" class="b">Staging area · diff · version check</text>
+<text x="640" y="628" text-anchor="middle" class="sm">Atomic commit · recoverable history</text>
+<rect x="870" y="550" width="330" height="112" rx="10" class="exec"/>
+<text x="1035" y="579" text-anchor="middle" class="h">OS Sandbox / Execution Service</text>
+<text x="1035" y="604" text-anchor="middle" class="b">Seatbelt · Bubblewrap · container / VM</text>
+<text x="1035" y="628" text-anchor="middle" class="sm">Process tree · network · IPC · CPU / memory / time</text>
+<path d="M245 434V542M640 434V542M1035 434V542" class="line" marker-end="url(#arr)"/>
+
+<rect x="80" y="686" width="1120" height="38" rx="8" class="policy"/>
+<text x="640" y="710" text-anchor="middle" class="b">Host resources: approved workspace · secrets broker · network destinations · audit sink</text>
+<path d="M245 662V678M640 662V678M1035 662V678" class="dash" marker-end="url(#arr)"/>
+<text x="52" y="786" class="sm">Tool-level authorization decides intent; backend enforcement constrains actual effects. A written script is data until separately executed.</text>
+</svg>
