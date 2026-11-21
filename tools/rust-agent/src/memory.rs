@@ -16,7 +16,7 @@ use crate::{
     provider::ChatMessage,
 };
 
-const SCHEMA_VERSION: u32 = 2;
+const SCHEMA_VERSION: u32 = 3;
 const MAX_TEXT: usize = 16_000;
 const MAX_SOURCE: usize = 1_000;
 const MAX_EVIDENCE_REFS: usize = 32;
@@ -168,6 +168,8 @@ pub struct MemoryQuery {
 pub struct TranscriptEntry {
     pub id: i64,
     pub session_id: String,
+    pub project_id: Option<String>,
+    pub task_id: Option<String>,
     pub role: String,
     pub content: String,
     pub created_at_ms: u128,
@@ -301,6 +303,8 @@ impl MemoryStore {
             CREATE TABLE IF NOT EXISTS transcripts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT NOT NULL,
+                project_id TEXT,
+                task_id TEXT,
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
                 created_at_ms INTEGER NOT NULL
@@ -330,6 +334,8 @@ impl MemoryStore {
         ensure_memory_column(&connection, "source_refs_json", "TEXT NOT NULL DEFAULT '[]'")?;
         ensure_memory_column(&connection, "access_count", "INTEGER NOT NULL DEFAULT 0")?;
         ensure_memory_column(&connection, "last_accessed_at_ms", "INTEGER")?;
+        ensure_column(&connection, "transcripts", "project_id", "TEXT")?;
+        ensure_column(&connection, "transcripts", "task_id", "TEXT")?;
         connection.execute(
             "UPDATE memories SET schema_version = ?1 WHERE schema_version < ?1",
             [SCHEMA_VERSION],
@@ -600,6 +606,8 @@ impl MemoryStore {
     pub fn record_transcript(
         &self,
         session_id: &str,
+        project_id: Option<&str>,
+        task_id: Option<&str>,
         role: &str,
         content: &str,
     ) -> Result<i64, AgentError> {
@@ -612,8 +620,9 @@ impl MemoryStore {
         let content = content.chars().take(12_000).collect::<String>();
         let connection = self.conn()?;
         connection.execute(
-            "INSERT INTO transcripts(session_id,role,content,created_at_ms) VALUES (?1,?2,?3,?4)",
-            params![session_id, role, content, to_i64(now_ms())?],
+            "INSERT INTO transcripts(session_id,project_id,task_id,role,content,created_at_ms)
+             VALUES (?1,?2,?3,?4,?5,?6)",
+            params![session_id, project_id, task_id, role, content, to_i64(now_ms())?],
         )?;
         Ok(connection.last_insert_rowid())
     }
@@ -622,6 +631,7 @@ impl MemoryStore {
     pub fn backfill_transcript(
         &self,
         session_id: &str,
+        project_id: Option<&str>,
         messages: &[ChatMessage],
     ) -> Result<usize, AgentError> {
         let existing: i64 = self.conn()?.query_row(
@@ -635,7 +645,7 @@ impl MemoryStore {
         let mut inserted = 0;
         for message in messages.iter().filter(|message| message.role != "system") {
             if !message.content.is_empty() {
-                self.record_transcript(session_id, &message.role, &message.content)?;
+                self.record_transcript(session_id, project_id, None, &message.role, &message.content)?;
                 inserted += 1;
             }
         }
@@ -653,7 +663,7 @@ impl MemoryStore {
     pub fn transcripts_after(&self, cursor: i64, limit: usize) -> Result<Vec<TranscriptEntry>, AgentError> {
         let connection = self.conn()?;
         let mut statement = connection.prepare(
-            "SELECT id,session_id,role,content,created_at_ms
+            "SELECT id,session_id,project_id,task_id,role,content,created_at_ms
              FROM transcripts WHERE id>?1 ORDER BY id LIMIT ?2",
         )?;
         Ok(statement.query_map(
@@ -666,6 +676,8 @@ impl MemoryStore {
         &self,
         query: &str,
         session_id: Option<&str>,
+        project_id: Option<&str>,
+        task_id: Option<&str>,
         limit: usize,
     ) -> Result<Vec<TranscriptEntry>, AgentError> {
         let query_terms = terms(query);
@@ -674,10 +686,13 @@ impl MemoryStore {
         }
         let connection = self.conn()?;
         let mut statement = connection.prepare(
-            "SELECT id,session_id,role,content,created_at_ms FROM transcripts
-             WHERE (?1 IS NULL OR session_id=?1) ORDER BY id DESC LIMIT 1000",
+            "SELECT id,session_id,project_id,task_id,role,content,created_at_ms FROM transcripts
+             WHERE session_id=?1
+                OR (?2 IS NOT NULL AND project_id=?2
+                    AND ((?3 IS NULL AND task_id IS NULL) OR task_id=?3))
+             ORDER BY id DESC LIMIT 1000",
         )?;
-        let records = statement.query_map([session_id], row_transcript)?
+        let records = statement.query_map(params![session_id, project_id, task_id], row_transcript)?
             .collect::<Result<Vec<_>, _>>()?;
         let mut ranked = records.into_iter().filter_map(|entry| {
             let content_terms = terms(&entry.content);
@@ -690,10 +705,27 @@ impl MemoryStore {
 
     pub fn get_transcript(&self, id: i64) -> Result<TranscriptEntry, AgentError> {
         self.conn()?.query_row(
-            "SELECT id,session_id,role,content,created_at_ms FROM transcripts WHERE id=?1",
+            "SELECT id,session_id,project_id,task_id,role,content,created_at_ms FROM transcripts WHERE id=?1",
             [id],
             row_transcript,
         ).optional()?.ok_or_else(|| AgentError::InvalidAction(format!("transcript entry not found: {id}")))
+    }
+
+    pub fn get_transcript_scoped(
+        &self,
+        id: i64,
+        session_id: &str,
+        project_id: Option<&str>,
+        task_id: Option<&str>,
+    ) -> Result<TranscriptEntry, AgentError> {
+        let entry = self.get_transcript(id)?;
+        let visible = entry.session_id == session_id
+            || (project_id.is_some() && entry.project_id.as_deref() == project_id
+                && ((task_id.is_none() && entry.task_id.is_none()) || entry.task_id.as_deref() == task_id));
+        if !visible {
+            return Err(AgentError::InvalidAction("transcript entry is outside the current scope".into()));
+        }
+        Ok(entry)
     }
 
     pub fn last_dreamed_transcript_id(&self) -> Result<i64, AgentError> {
@@ -921,11 +953,15 @@ const MEMORY_SELECT_BY_ID: &str = "SELECT schema_version,id,kind,scope,scope_id,
     source_refs_json,access_count,last_accessed_at_ms FROM memories WHERE id=?1";
 
 fn ensure_memory_column(connection: &Connection, name: &str, definition: &str) -> Result<(), AgentError> {
-    let mut statement = connection.prepare("PRAGMA table_info(memories)")?;
+    ensure_column(connection, "memories", name, definition)
+}
+
+fn ensure_column(connection: &Connection, table: &str, name: &str, definition: &str) -> Result<(), AgentError> {
+    let mut statement = connection.prepare(&format!("PRAGMA table_info({table})"))?;
     let columns = statement.query_map([], |row| row.get::<_, String>(1))?
         .collect::<Result<Vec<_>, _>>()?;
     if !columns.iter().any(|column| column == name) {
-        connection.execute_batch(&format!("ALTER TABLE memories ADD COLUMN {name} {definition}"))?;
+        connection.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {name} {definition}"))?;
     }
     Ok(())
 }
@@ -1033,9 +1069,11 @@ fn row_transcript(row: &Row<'_>) -> rusqlite::Result<TranscriptEntry> {
     Ok(TranscriptEntry {
         id: row.get(0)?,
         session_id: row.get(1)?,
-        role: row.get(2)?,
-        content: row.get(3)?,
-        created_at_ms: from_i64(row.get(4)?, 4)?,
+        project_id: row.get(2)?,
+        task_id: row.get(3)?,
+        role: row.get(4)?,
+        content: row.get(5)?,
+        created_at_ms: from_i64(row.get(6)?, 6)?,
     })
 }
 
@@ -1176,7 +1214,7 @@ mod tests {
     fn proposed_notes_are_not_retrieved_until_consolidated() {
         let root = workspace();
         let store = MemoryStore::new(&root).unwrap();
-        let transcript_id = store.record_transcript("session-1", "user", "Please use Rust for this tool").unwrap();
+        let transcript_id = store.record_transcript("session-1", None, None, "user", "Please use Rust for this tool").unwrap();
         let proposed = store.propose(
             input(MemoryScope::Global, None, "Use Rust for this tool"),
             80,
@@ -1194,9 +1232,9 @@ mod tests {
         let root = workspace();
         let store = MemoryStore::new(&root).unwrap();
         let first = store.record_transcript("s1", "user", "Use a bounded context window").unwrap();
-        store.record_transcript("s2", "assistant", "The database uses SQLite").unwrap();
+        store.record_transcript("s2", None, None, "assistant", "The database uses SQLite").unwrap();
         assert_eq!(store.transcripts_after(0, 10).unwrap().len(), 2);
-        assert_eq!(store.search_transcripts("bounded context", None, 5).unwrap()[0].id, first);
+        assert_eq!(store.search_transcripts("bounded context", Some("s1"), None, None, 5).unwrap()[0].id, first);
         let _ = fs::remove_dir_all(root);
     }
 
@@ -1204,7 +1242,7 @@ mod tests {
     fn dreaming_requires_valid_evidence_and_builds_linked_pages() {
         let root = workspace();
         let store = MemoryStore::new(&root).unwrap();
-        let transcript = store.record_transcript("s1", "user", "The team prefers explicit approval for writes").unwrap();
+        let transcript = store.record_transcript("s1", None, None, "user", "The team prefers explicit approval for writes").unwrap();
         let output = DreamingOutput {
             reviewed_through: transcript,
             notes: vec![DreamingNote {

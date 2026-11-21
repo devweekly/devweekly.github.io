@@ -93,15 +93,69 @@ pub fn estimate_tokens(text: &str) -> usize {
 
 /// Tokenize for lightweight lexical memory retrieval without external dependencies.
 pub(crate) fn terms(text: &str) -> HashSet<String> {
-    text.split(|ch: char| !ch.is_alphanumeric())
-        .filter(|part| part.chars().count() >= 2)
-        .map(str::to_lowercase)
-        .collect()
+    fn is_cjk(ch: char) -> bool {
+        matches!(ch as u32,
+            0x3040..=0x30ff | 0x3400..=0x4dbf | 0x4e00..=0x9fff
+            | 0xac00..=0xd7af | 0xf900..=0xfaff | 0x20000..=0x2fa1f
+        )
+    }
+
+    let mut result = HashSet::new();
+    let mut latin = String::new();
+    let mut cjk_run = Vec::new();
+    let flush_latin = |token: &mut String, output: &mut HashSet<String>| {
+        if token.chars().count() >= 2 {
+            output.insert(token.to_lowercase());
+        }
+        token.clear();
+    };
+    let flush_cjk = |run: &mut Vec<char>, output: &mut HashSet<String>| {
+        if run.len() == 1 {
+            output.insert(run[0].to_string());
+        } else {
+            for pair in run.windows(2) {
+                output.insert(pair.iter().collect::<String>());
+            }
+        }
+        run.clear();
+    };
+
+    for ch in text.chars() {
+        if is_cjk(ch) {
+            flush_latin(&mut latin, &mut result);
+            cjk_run.push(ch);
+        } else {
+            flush_cjk(&mut cjk_run, &mut result);
+            if ch.is_alphanumeric() {
+                latin.push(ch);
+            } else {
+                flush_latin(&mut latin, &mut result);
+            }
+        }
+    }
+    flush_latin(&mut latin, &mut result);
+    flush_cjk(&mut cjk_run, &mut result);
+    result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chinese_and_japanese_queries_use_character_ngrams() {
+        let chinese = terms("用户偏好使用 Rust 和 SQLite");
+        assert!(chinese.contains("用户"));
+        assert!(chinese.contains("偏好"));
+        assert!(chinese.contains("使用"));
+        assert!(chinese.contains("rust"));
+        assert!(chinese.contains("sqlite"));
+
+        let japanese = terms("日本語の文章を検索する");
+        assert!(japanese.contains("日本"));
+        assert!(japanese.contains("本語"));
+        assert!(japanese.contains("検索"));
+    }
 
     #[test]
     fn memory_is_marked_as_untrusted_reference_material() {

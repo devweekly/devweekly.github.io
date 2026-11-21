@@ -791,7 +791,7 @@ impl AgentRuntime {
         );
         let usage_file = workspace.join(".rust-agent").join("usage.jsonl");
         let memory_store = MemoryStore::new(&workspace)?;
-        memory_store.backfill_transcript(&session.session_id, &messages)?;
+        memory_store.backfill_transcript(&session.session_id, options.project_id.as_deref(), &messages)?;
         let trace_store = TraceStore::new(workspace.join(".rust-agent").join("traces.jsonl"), session.session_id.clone(), new_trace_id())?;
         hooks.push(Box::new(TraceHook::new(trace_store)));
         let mut runtime = Self {
@@ -849,6 +849,8 @@ impl AgentRuntime {
             "id": entry.id,
             "evidence_ref": format!("transcript:{}", entry.id),
             "session_id": entry.session_id,
+            "project_id": entry.project_id,
+            "task_id": entry.task_id,
             "role": entry.role,
             "content": entry.content.chars().take(1_800).collect::<String>()
         })).collect::<Vec<_>>();
@@ -1444,7 +1446,7 @@ impl AgentRuntime {
         let record = self.store.load(session_id)?;
         self.messages = record.messages.clone();
         self.session = record;
-        self.memory_store.backfill_transcript(&self.session.session_id, &self.messages)?;
+        self.memory_store.backfill_transcript(&self.session.session_id, self.project_id.as_deref(), &self.messages)?;
         self.persist()?;
         self.audit("session.resume", None, json!({}));
         Ok(())
@@ -1461,7 +1463,7 @@ impl AgentRuntime {
             updated_at_ms: now,
             messages: self.messages.clone(),
         };
-        self.memory_store.backfill_transcript(&self.session.session_id, &self.messages)?;
+        self.memory_store.backfill_transcript(&self.session.session_id, self.project_id.as_deref(), &self.messages)?;
         self.persist()?;
         self.audit("session.fork", None, json!({"parent_session_id": parent_id}));
         Ok(())
@@ -1967,7 +1969,13 @@ impl AgentRuntime {
             .filter(|page| self.can_access_memory_scope(page.scope, page.scope_id.as_deref()))
             .map(|page| json!({"id": page.id, "title": page.title, "summary": page.summary, "links": page.links}))
             .collect::<Vec<_>>();
-        let transcripts = self.memory_store.search_transcripts(query, None, limit)?.into_iter()
+        let transcripts = self.memory_store.search_transcripts(
+            query,
+            Some(&self.session.session_id),
+            self.project_id.as_deref(),
+            self.task_scope.as_deref(),
+            limit,
+        )?.into_iter()
             .map(|entry| json!({
                 "id": format!("transcript:{}", entry.id), "session_id": entry.session_id,
                 "role": entry.role, "excerpt": entry.content.chars().take(1_200).collect::<String>()
@@ -1982,7 +1990,12 @@ impl AgentRuntime {
         if let Some(transcript_id) = id.strip_prefix("transcript:") {
             let parsed = transcript_id.parse::<i64>()
                 .map_err(|_| AgentError::InvalidAction("invalid transcript ID".into()))?;
-            return Ok(serde_json::to_string_pretty(&self.memory_store.get_transcript(parsed)?)?);
+            return Ok(serde_json::to_string_pretty(&self.memory_store.get_transcript_scoped(
+                parsed,
+                &self.session.session_id,
+                self.project_id.as_deref(),
+                self.task_scope.as_deref(),
+            )?)?);
         }
         if let Ok(page) = self.memory_store.get_page(id) {
             if !self.can_access_memory_scope(page.scope, page.scope_id.as_deref()) {
@@ -1998,7 +2011,13 @@ impl AgentRuntime {
     }
 
     fn record_transcript(&self, role: &str, content: &str) {
-        if let Err(error) = self.memory_store.record_transcript(&self.session.session_id, role, content) {
+        if let Err(error) = self.memory_store.record_transcript(
+            &self.session.session_id,
+            self.project_id.as_deref(),
+            self.task_scope.as_deref(),
+            role,
+            content,
+        ) {
             warn!(%error, role, "failed to append agent transcript to memory database");
         }
     }
