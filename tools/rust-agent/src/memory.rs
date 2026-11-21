@@ -212,6 +212,7 @@ pub struct MemoryPageRevision {
     pub before: Option<MemoryPage>,
     pub after: Option<MemoryPage>,
     pub reason: String,
+    pub evidence_refs: Vec<String>,
     pub created_at_ms: u128,
 }
 
@@ -423,6 +424,7 @@ impl MemoryStore {
                 before_json TEXT,
                 after_json TEXT,
                 reason TEXT NOT NULL,
+                evidence_refs_json TEXT NOT NULL DEFAULT '[]',
                 created_at_ms INTEGER NOT NULL,
                 UNIQUE(page_id, revision)
             );
@@ -471,6 +473,7 @@ impl MemoryStore {
         ensure_memory_column(&connection, "last_accessed_at_ms", "INTEGER")?;
         ensure_column(&connection, "transcripts", "project_id", "TEXT")?;
         ensure_column(&connection, "transcripts", "task_id", "TEXT")?;
+        ensure_column(&connection, "memory_page_revisions", "evidence_refs_json", "TEXT NOT NULL DEFAULT '[]'")?;
         connection.execute(
             "UPDATE memories SET schema_version = ?1 WHERE schema_version < ?1",
             [SCHEMA_VERSION],
@@ -920,7 +923,7 @@ impl MemoryStore {
         validate_page_id(page_id)?;
         let connection = self.conn()?;
         let mut statement = connection.prepare(
-            "SELECT revision_id,page_id,revision,action,before_json,after_json,reason,created_at_ms
+            "SELECT revision_id,page_id,revision,action,before_json,after_json,reason,evidence_refs_json,created_at_ms
              FROM memory_page_revisions WHERE page_id=?1 ORDER BY revision DESC LIMIT ?2"
         )?;
         Ok(statement.query_map(params![page_id, limit.clamp(1, 200)], row_memory_page_revision)?
@@ -945,7 +948,7 @@ impl MemoryStore {
         write_page_record(&transaction, &restored)?;
         let current = load_page(&transaction, page_id)?.expect("restored page must exist");
         insert_page_revision(&transaction, page_id, "restored", previous.as_ref(), Some(&current),
-            &format!("restored revision {revision}"))?;
+            &format!("restored revision {revision}"), &current.source_refs)?;
         transaction.commit()?;
         Ok(current)
     }
@@ -1597,7 +1600,7 @@ impl MemoryStore {
             let after = load_page(&transaction, &page.id)?.expect("upserted page must exist");
             insert_page_revision(&transaction, &page.id,
                 if exists { "updated" } else { "created" },
-                before.as_ref(), Some(&after), "dreaming wiki maintenance")?;
+                before.as_ref(), Some(&after), "dreaming wiki maintenance", &page.evidence)?;
             pending_page_links.push((page.id.clone(), page.scope, page.scope_id.clone(), validated_links));
             if exists { report.pages_updated += 1; } else { report.pages_created += 1; }
         }
@@ -1652,7 +1655,7 @@ impl MemoryStore {
                 )));
             }
             insert_page_revision(&transaction, &deletion.id, "deleted", Some(&before), None,
-                "dreaming removed an obsolete knowledge page")?;
+                "dreaming removed an obsolete knowledge page", &deletion.evidence)?;
             transaction.execute("DELETE FROM memory_pages WHERE id=?1", [&deletion.id])?;
         }
 
@@ -1743,6 +1746,7 @@ fn transcript_is_referenced_in_transaction(
         "SELECT source_refs_json FROM memories",
         "SELECT source_refs_json FROM memory_pages",
         "SELECT evidence_refs_json FROM memory_revisions",
+        "SELECT evidence_refs_json FROM memory_page_revisions",
     ] {
         let values = {
             let mut statement = transaction.prepare(sql)?;
@@ -1815,6 +1819,103 @@ fn validate_evidence_refs(refs: &[String]) -> Result<(), AgentError> {
     Ok(())
 }
 
+
+fn scope_matches(scope: MemoryScope, scope_id: Option<&str>, query: &MemoryQuery) -> bool {
+    match scope {
+        MemoryScope::Global => true,
+        MemoryScope::Project => query.project_id.as_deref() == scope_id,
+        MemoryScope::Session => query.session_id.as_deref() == scope_id,
+        MemoryScope::Task => query.task_id.as_deref() == scope_id,
+    }
+}
+
+fn last_dreamed_cursor(connection: &Connection) -> Result<i64, AgentError> {
+    let value: Option<String> = connection.query_row(
+        "SELECT value FROM memory_meta WHERE key='last_dreamed_transcript_id'",
+        [],
+        |row| row.get(0),
+    ).optional()?;
+    Ok(value.and_then(|value| value.parse().ok()).unwrap_or(0))
+}
+
+fn load_page(connection: &Connection, id: &str) -> Result<Option<MemoryPage>, AgentError> {
+    Ok(connection.query_row(
+        "SELECT id,title,summary,content,scope,scope_id,source_refs_json,links_json,updated_at_ms,revision
+         FROM memory_pages WHERE id=?1",
+        [id],
+        row_page,
+    ).optional()?)
+}
+
+fn write_page_record(transaction: &Transaction<'_>, page: &MemoryPage) -> Result<(), AgentError> {
+    transaction.execute(
+        "INSERT INTO memory_pages (
+            id,title,summary,content,scope,scope_id,source_refs_json,links_json,updated_at_ms,revision
+         ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+         ON CONFLICT(id) DO UPDATE SET title=excluded.title,summary=excluded.summary,
+            content=excluded.content,scope=excluded.scope,scope_id=excluded.scope_id,
+            source_refs_json=excluded.source_refs_json,links_json=excluded.links_json,
+            updated_at_ms=excluded.updated_at_ms,revision=excluded.revision",
+        params![page.id,page.title,page.summary,page.content,page.scope.as_str(),page.scope_id,
+            serde_json::to_string(&page.source_refs)?,serde_json::to_string(&page.links)?,
+            to_i64(page.updated_at_ms)?,page.revision],
+    )?;
+    Ok(())
+}
+
+fn next_page_revision(transaction: &Transaction<'_>, page_id: &str) -> Result<u64, AgentError> {
+    let revision: i64 = transaction.query_row(
+        "SELECT COALESCE(MAX(revision),0)+1 FROM memory_page_revisions WHERE page_id=?1",
+        [page_id],
+        |row| row.get(0),
+    )?;
+    u64::try_from(revision)
+        .map_err(|_| AgentError::InvalidAction("knowledge page revision out of range".into()))
+}
+
+fn insert_page_revision(
+    transaction: &Transaction<'_>,
+    page_id: &str,
+    action: &str,
+    before: Option<&MemoryPage>,
+    after: Option<&MemoryPage>,
+    reason: &str,
+    evidence_refs: &[String],
+) -> Result<(), AgentError> {
+    let revision: i64 = transaction.query_row(
+        "SELECT COALESCE(MAX(revision),0)+1 FROM memory_page_revisions WHERE page_id=?1",
+        [page_id],
+        |row| row.get(0),
+    )?;
+    transaction.execute(
+        "INSERT INTO memory_page_revisions(page_id,revision,action,before_json,after_json,reason,evidence_refs_json,created_at_ms)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+        params![page_id,revision,action,before.map(serde_json::to_string).transpose()?,
+            after.map(serde_json::to_string).transpose()?,reason,
+            serde_json::to_string(evidence_refs)?,to_i64(now_ms())?],
+    )?;
+    Ok(())
+}
+
+fn row_memory_page_revision(row: &Row<'_>) -> rusqlite::Result<MemoryPageRevision> {
+    let before: Option<String> = row.get(4)?;
+    let after: Option<String> = row.get(5)?;
+    let evidence: String = row.get(7)?;
+    Ok(MemoryPageRevision {
+        revision_id: row.get(0)?,
+        page_id: row.get(1)?,
+        revision: row.get(2)?,
+        action: row.get(3)?,
+        before: before.map(|value| serde_json::from_str(&value)).transpose()
+            .map_err(|error| conversion_error(4, rusqlite::types::Type::Text, error.to_string()))?,
+        after: after.map(|value| serde_json::from_str(&value)).transpose()
+            .map_err(|error| conversion_error(5, rusqlite::types::Type::Text, error.to_string()))?,
+        reason: row.get(6)?,
+        evidence_refs: serde_json::from_str(&evidence)
+            .map_err(|error| conversion_error(7, rusqlite::types::Type::Text, error.to_string()))?,
+        created_at_ms: from_i64(row.get(8)?, 8)?,
+    })
+}
 
 fn validate_evidence_scope_in_transaction(
     transaction: &Connection,
