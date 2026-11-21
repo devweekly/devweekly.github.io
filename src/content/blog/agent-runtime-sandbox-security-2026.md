@@ -14,6 +14,8 @@ tags:
 description: "从实际执行边界出发，比较本机进程、OS Sandbox、Docker、gVisor、VM 和远端 Agent 的安全能力与工程取舍。"
 ---
 
+# Agent Runtime 安全设计：本机、容器、VM 与远端执行
+
 Agent 一旦能读写文件、运行命令、操作浏览器或调用 MCP，模型输出就可能产生真实副作用。安全设计要回答的不是“模型会不会听话”，而是它做错事或被恶意内容诱导后，最多能影响哪些资源。
 
 这需要分清三件事：Tool Permission 决定 Agent 能调用什么；Resource Permission 决定操作哪些文件和业务对象；Sandbox 限制进程实际能访问的系统资源。三者不能互相替代。
@@ -1290,13 +1292,4 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 - **远端执行**：本地保留 UI 和明确授权的浏览器能力；远端拥有独立 Agent Loop、Workspace 和 Sandbox。Agent 间委托用 A2A，工具调用用 MCP。
 - **数据流**：明确哪些内容进入本地模型、远端模型、工具日志和 Artifact。远端执行不代表数据不会交给模型 Provider 或服务运营方。
 
-不必为了安全把所有任务都放进 VM，也不能因为使用 Docker 或远端服务就认为已经隔离。先明确威胁对象，再选择执行边界；同时限制凭证、文件和网络权限。真正的验收标准是：Agent 即使犯错或执行恶意代码，也只能影响当前任务明确获准的资源。
-对 TypeScript / Node.js Runtime，职责边界可以收敛为三件事：
-
-- 文件操作走独立的 Capability Filesystem。Read、Write、Delete 分开授权；写入通过 ChangeSet、Patch 和版本检查提交，不能因为能写文件就能执行文件。
-- Shell 和脚本执行走独立 Execution Service。轻量、受限命令可用 just-bash；需要真实进程时再调用经过验证的 OS Sandbox，例如 Anthropic Sandbox Runtime 或 Microsoft Execution Containers（MXC）。需要完整开发环境时才引入 Docker；面对高风险不可信代码，再考虑 VM 或 microVM。
-- Tool Registry、Policy Engine、审批、Execution Profile 和 Audit Log 由 Runtime 自己管理。策略模型可以统一，底层执行后端按操作系统和部署环境分别实现。
-
-这套设计不要求 Runtime 重写 Seatbelt、AppContainer、seccomp 或 VM Monitor。Runtime 负责回答谁在执行、请求操作什么资源、凭什么允许；OS Sandbox 负责把这些限制落实到进程和资源访问上。
-
-Sandbox 也不是 Prompt Injection 的解决方案。它无法判断数据是否应该发给某个 SaaS，也不能替代身份治理、供应链管理和用户审批。它的价值是限制失误或失陷后的影响范围：模型可以提出动作，但不能自行扩大权限。
+不必为了安全把所有任务都放进 VM，也不能因为使用 Docker 或远端服务就认为已经隔离。先明确威胁对象，再选择执行边界；同时限制凭证、文件和网络权限。验收标准是：Agent 即使犯错或执行恶意代码，也只能影响当前任务明确获准的资源。
