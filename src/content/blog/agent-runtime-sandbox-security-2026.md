@@ -1,7 +1,7 @@
 ---
 author: SW
 pubDatetime: 2026-11-21T00:00:00Z
-title: "Agent Runtime 安全设计：本机、容器、VM 与远端执行"
+title: "Agent Runtime 安全防护与治理：威胁模型、执行隔离和运行时控制"
 featured: false
 draft: false
 tags:
@@ -11,10 +11,10 @@ tags:
   - Security
   - Sandbox
   - Architecture
-description: "从实际执行边界出发，比较本机进程、OS Sandbox、Docker、gVisor、VM 和远端 Agent 的安全能力与工程取舍。"
+description: "围绕 Agent Runtime 的威胁模型、权限控制、执行隔离、运行时防护与审计治理，分析本机、容器、VM 和远端执行的安全边界及工程实践。"
 ---
 
-# Agent Runtime 安全设计：本机、容器、VM 与远端执行
+# Agent Runtime 安全防护与治理：威胁模型、执行隔离和运行时控制
 
 Agent 一旦能读写文件、运行命令、操作浏览器或调用 MCP，模型输出就可能产生真实副作用。安全设计要回答的不是“模型会不会听话”，而是它做错事或被恶意内容诱导后，最多能影响哪些资源。
 
@@ -85,7 +85,7 @@ Sandbox 是最后一道执行边界。它限制进程及其子进程能够访问
 
 三层之间的关系可以概括为：Tool Permission 决定入口，Resource Permission 决定目标，Sandbox 限制执行能力。它们应该纵深叠加，而不是互相替代。
 
-## 3. 一个适合 TypeScript Agent Runtime 的分层设计
+## 3. Agent Runtime 安全防护架构与治理控制面
 
 对于本地桌面 Agent，我倾向于把策略和执行机制分开：Runtime 自己掌握 Tool Registry、Policy Engine、审批和审计；底层通过成熟的 OS Sandbox 执行真实进程，不自己重写操作系统隔离机制。
 
@@ -241,6 +241,30 @@ Human Approval 应由 Orchestrator 强制执行，而不是寄希望于模型在
 审计至少记录：User / Agent / Task Identity、Session、Tool Name、规范化参数摘要、策略版本、决策结果、审批人、Sandbox Backend、镜像 / 代码版本、资源范围、网络目的地、开始结束时间、退出码、产物引用和异常事件。日志不应直接复制全部 Prompt、文件内容、Token、Cookie 或截图；需要保留证据时应使用独立加密存储、访问控制和保留策略。
 
 必须有独立于 Agent 自身的 Emergency Stop。停止按钮不能只发送一个取消消息给模型；它应该能取消任务、终止完整进程树、停止 Sandbox、撤销短期凭证、断开出站网络、冻结相关队列，并保留审计证据。云端还应支持按 Tenant、Agent、Task、Worker Pool 和工具供应商分别熔断。
+
+
+### 3.3 安全治理：把策略变成可执行、可审计的运行机制
+
+安全治理不是在架构图里增加一个 Policy Engine 就算完成。策略需要有明确的制定者、适用范围、执行位置、变更流程和例外处理机制，并且能够证明 Runtime 在每次执行时确实应用了正确版本。
+
+建议把治理过程覆盖到任务生命周期：
+
+| 阶段 | 治理要求 | Runtime 应提供的能力 |
+| --- | --- | --- |
+| 设计与注册 | 定义 Agent 的用途、数据分类、允许工具、执行环境和风险等级 | Agent / Tool Registry、权限声明、风险评审记录 |
+| 授权与启动 | 将用户身份、任务目标和资源范围转换成短期权限 | Policy Evaluation、Capability Grant、Credential Broker |
+| 执行中 | 对每次工具调用和资源访问重新检查策略；检测偏离任务目标的行为 | Enforcement Point、Runtime Detection、Egress Control、Approval |
+| 变更与例外 | 策略、模型、工具、镜像或权限变化必须经过审查；临时例外需要负责人和到期时间 | Policy Versioning、签名发布、例外登记、自动过期 |
+| 结束与撤销 | 回收任务权限、凭证、网络连接和临时资源 | Revocation、Sandbox Teardown、Workspace 清理 |
+| 复盘与改进 | 将越权尝试、误拦截、数据外传和业务副作用转化为回归用例 | Audit、Incident Record、Security Regression Suite |
+
+策略本身应作为受控资产管理，而不是散落在 Prompt、Tool Handler 和各个平台 Sandbox 配置中。一个策略版本至少要关联适用的 Agent / Task 类型、主体、动作、资源范围、数据分类、网络目的地、审批要求、有效期和执行后端能力。发布时先验证策略能否被目标后端完整实施，再进行灰度；后端不支持关键约束时必须拒绝启动，不能为了兼容而静默放宽。
+
+责任也要与控制点对应。平台或 Runtime 团队负责身份、策略执行、隔离后端、审计和应急停止；业务或 Agent Owner 负责用途、数据范围、工具需求和业务风险接受；安全团队负责威胁模型、基线、例外审查和攻击测试；系统或数据 Owner 负责资源授权及外部副作用边界。高风险动作的审批人不能同时成为唯一的策略维护者和审计记录管理员。
+
+治理效果不能只用“拦截了多少次”衡量。至少要持续观察越权尝试及成功率、Prompt Injection 测试通过率、策略误拦截率、审批覆盖率、凭证撤销耗时、跨租户隔离测试结果、异常出站流量、任务清理完整率和审计关联完整率。每次模型、工具、MCP Server、Sandbox Backend 或策略升级，都应触发对应的安全回归测试。生产事件应能定位到具体 User、Agent、Task、Policy Version、Tool Version、Execution Backend 和外部副作用。
+
+这套治理机制的关键不是增加审批步骤，而是让安全要求在执行前可验证、执行中可强制、执行后可追溯，并且在策略或组件发生变化时仍然成立。
 
 ## 4. Read、Write、Bash 应该是三个独立的 Tool 边界
 
@@ -1166,7 +1190,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 这才是可扩展的 Agent Runtime 安全架构：策略统一，身份可追溯，执行隔离按平台实现，数据流受控，失败可终止，安全效果通过真实副作用测试验证。
 
-## 11. 安全验证、上线 Checklist 与参考资料
+## 11. 安全验证、持续治理与参考资料
 
 ### 11.1 安全验证：检查真实副作用
 
@@ -1253,7 +1277,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 | [Windows Application Isolation](https://learn.microsoft.com/en-us/windows/security/book/application-security-application-isolation) | AppContainer、Windows Sandbox、应用隔离与系统控制。 |
 
 
-## 12. 落地建议
+## 12. 实施路径：先建立治理控制面，再强化执行隔离
 
 对 TypeScript / Node.js Agent Runtime，建议把控制面留在 TypeScript，把真正的进程隔离交给操作系统或虚拟化层：
 
