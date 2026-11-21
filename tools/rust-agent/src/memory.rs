@@ -889,6 +889,43 @@ impl MemoryStore {
         )?)
     }
 
+    /// Capture evidence produced by the current user turn, excluding assistant-generated claims.
+    pub fn latest_turn_evidence_refs(
+        &self,
+        session_id: &str,
+        project_id: Option<&str>,
+        task_id: Option<&str>,
+        include_tool_results: bool,
+    ) -> Result<Vec<String>, AgentError> {
+        let connection = self.conn()?;
+        let latest_user_id: Option<i64> = connection.query_row(
+            "SELECT MAX(id) FROM transcripts
+             WHERE session_id=?1
+               AND ((?2 IS NULL AND project_id IS NULL) OR project_id=?2)
+               AND ((?3 IS NULL AND task_id IS NULL) OR task_id=?3)
+               AND role='user'",
+            params![session_id,project_id,task_id],
+            |row| row.get(0),
+        )?;
+        let Some(latest_user_id) = latest_user_id else {
+            return Ok(Vec::new());
+        };
+        let mut statement = connection.prepare(
+            "SELECT id FROM transcripts
+             WHERE id>=?1 AND session_id=?2
+               AND ((?3 IS NULL AND project_id IS NULL) OR project_id=?3)
+               AND ((?4 IS NULL AND task_id IS NULL) OR task_id=?4)
+               AND (role='user' OR (?5=1 AND role='tool'))
+             ORDER BY id DESC LIMIT 16"
+        )?;
+        let mut ids = statement.query_map(
+            params![latest_user_id,session_id,project_id,task_id,include_tool_results],
+            |row| row.get::<_, i64>(0),
+        )?.collect::<Result<Vec<_>, _>>()?;
+        ids.reverse();
+        Ok(ids.into_iter().map(|id| format!("transcript:{id}")).collect())
+    }
+
     pub fn transcripts_after(&self, cursor: i64, limit: usize) -> Result<Vec<TranscriptEntry>, AgentError> {
         let connection = self.conn()?;
         let mut statement = connection.prepare(
@@ -1934,6 +1971,23 @@ mod tests {
         assert!(store.retrieve(&query).unwrap().is_empty());
         store.set_status(&proposed.id, MemoryStatus::Consolidated).unwrap();
         assert_eq!(store.retrieve(&query).unwrap().len(), 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn turn_evidence_uses_user_and_tool_records_but_not_assistant_claims() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        store.record_transcript("s1", Some("p1"), None, "user", "An older request").unwrap();
+        store.record_transcript("s1", Some("p1"), None, "assistant", "An old assistant answer").unwrap();
+        let current_user = store.record_transcript("s1", Some("p1"), None, "user", "Keep the write approval requirement").unwrap();
+        store.record_transcript("s1", Some("p1"), None, "assistant", "I think approval is needed").unwrap();
+        let tool = store.record_transcript("s1", Some("p1"), None, "tool", "Tool result: write was denied without approval").unwrap();
+        store.record_transcript("s2", Some("p1"), None, "tool", "Another session tool result").unwrap();
+        let refs = store.latest_turn_evidence_refs("s1", Some("p1"), None, true).unwrap();
+        assert_eq!(refs, vec![format!("transcript:{current_user}"), format!("transcript:{tool}")]);
+        let user_only = store.latest_turn_evidence_refs("s1", Some("p1"), None, false).unwrap();
+        assert_eq!(user_only, vec![format!("transcript:{current_user}")]);
         let _ = fs::remove_dir_all(root);
     }
 

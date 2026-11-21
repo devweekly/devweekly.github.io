@@ -2008,8 +2008,12 @@ impl AgentRuntime {
             .map_err(|_| AgentError::InvalidAction("memory confidence must be between 0 and 100".into()))?;
         let importance = u8::try_from(importance)
             .map_err(|_| AgentError::InvalidAction("memory importance must be between 0 and 100".into()))?;
-        let evidence = self.memory_store.latest_transcript_id(&self.session.session_id)?
-            .map(|id| vec![format!("transcript:{id}")]).unwrap_or_default();
+        let evidence = self.memory_store.latest_turn_evidence_refs(
+            &self.session.session_id,
+            self.project_id.as_deref(),
+            self.task_scope.as_deref(),
+            scope != MemoryScope::Global,
+        )?;
         self.memory_store.propose(MemoryInput {
             kind, scope, scope_id, content: content.to_owned(), source: "agent observation".into(),
             confidence, expires_at_ms: None,
