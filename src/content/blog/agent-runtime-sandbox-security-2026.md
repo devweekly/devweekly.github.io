@@ -173,7 +173,115 @@ mcp-server-filesystem \
 
 Filesystem Server 的安全实现也需要持续审查。路径解析、符号链接、目录移动和协议 Roots 的行为都会影响真实授权范围。建议将命令行目录作为管理员或宿主侧确定的上限；客户端提供的工作区只能缩小范围，不能扩大范围。即使使用只读目录，也应在 OS 文件权限或容器只读挂载层再加一道保护。
 
-## 3. 这些方案到底如何选择
+## 3. Read、Write、Bash 应该是三个独立的 Tool 边界
+
+前面讨论的是 Tool Permission、Resource Permission 和 Runtime Sandbox 三个安全层次。落到 Agent 的实际工具设计，还需要再做一次拆分：不要把文件读取、文件写入和脚本执行包装成一个通用的 `filesystem` 或 `terminal` 能力。
+
+这三种操作的权限语义不同。Read 是信息披露风险，Write 是数据完整性风险，Bash 则是通用代码执行风险。一个 Agent 获得读取权限，不应该因此获得写入权限；获得写入权限，也不应该自动获得执行刚写入脚本的权限。
+
+### 3.1 Read Tool：把读取做成只读、可审计的资源访问
+
+Read Tool 只负责读取已经授权的资源，不应提供任何执行或修改能力。建议把它拆成几个语义明确的操作：`list_directory`、`stat_file`、`read_file`、`search_files`。如果需要读取大文件，使用 offset、limit 或分页，不要一次把整个目录或文件树塞进上下文。
+
+权限判断至少包含主体、资源、操作和数据分类。比如某个 Agent 可以读取项目文档，却不能读取 `.env`、SSH Key、浏览器 Profile、云凭证或其他客户目录。目录列表本身也可能泄露文件名和项目结构，因此 `list` 不是天然无风险的操作。
+
+不要仅靠字符串前缀判断路径是否在工作区内。路径规范化后仍要处理符号链接、硬链接、挂载点和路径替换竞态。Linux 上可以研究 `openat2` 的 `RESOLVE_BENEATH`、`RESOLVE_NO_MAGICLINKS` 等约束；跨平台实现则应采用经过审查的目录句柄 / capability 文件访问层，或让文件服务本身运行在 OS Sandbox 内。Node.js 的普通 `realpath()` 后再 `readFile()` 并不能单独消除 TOCTOU 风险。
+
+另一个值得研究的方向是 [AgentFense](https://github.com/AjaxZhan/AgentFense)。它使用 FUSE 把真实文件系统投影成 Agent 可访问的视图，并区分 `none`、`view`、`read` 和 `write`：例如可以允许 Agent 看到目录结构，却不能读取文件内容；也可以让它读取代码，但不能修改。这个模型比简单的目录 Allowlist 更细，尤其适合需要把真实代码库暴露给 Agent、同时隐藏密钥和敏感目录的场景。项目目前规模较小，应把它视为值得验证的设计参考，而不是未经测试就直接采用的安全基座。
+
+### 3.2 Write / Edit Tool：写入不是执行，修改应该可回滚
+
+Write Tool 不应和 Bash 共用执行权限。它只允许对授权工作区执行明确的文件操作。建议至少区分：
+
+| 操作 | 建议语义 |
+| --- | --- |
+| `create_file` | 仅创建不存在的文件，默认不覆盖 |
+| `replace_file` | 替换已存在文件，要求版本 / ETag 匹配 |
+| `apply_patch` | 应用明确的 Diff，返回实际变更 |
+| `delete_file` | 单独授权，通常需要确认 |
+| `move_file` | 源和目标分别检查权限，不允许借移动绕过目录边界 |
+
+尤其要避免一个常见设计：提供 `write_file(path, content)`，然后把覆盖、创建、删除、目录创建等全部隐含在一个接口里。工具调用越通用，Policy Engine 越难判断实际影响。
+
+对于重要文件，推荐先写入任务级 staging area，再通过 Diff / Preview 展示变更。提交时检查目标路径权限和原文件版本，使用临时文件加原子替换，保留可恢复版本。审批应绑定目标路径、操作类型、内容摘要、任务 ID 和有效期；如果模型在审批后改变了内容或目标，必须重新审批。
+
+还要明确区分“写入脚本文件”和“执行脚本文件”。`write_file("cleanup.sh", ...)` 只产生一个文件，不应触发 Shell。脚本执行必须经过独立的 `execute_script` Tool 和独立的 Sandbox Policy。这样，文档 Agent 即使能够生成自动化脚本，也不会因此获得运行脚本的能力。
+
+### 3.3 Bash / Script Tool：把它当作不可信代码执行服务
+
+Bash 的能力远超普通 Tool。即使只允许一个 `bash` Tool，模型也可能通过 Shell、解释器、管道、重定向、子进程和系统命令访问大量宿主资源。因此，不能把命令黑名单或正则表达式当作主要安全机制。
+
+推荐把执行入口设计成一个独立的 Execution Service：
+
+- 输入是脚本内容、工作目录的资源标识、参数和明确的 Execution Profile，而不是任意宿主机路径。
+- 执行时创建独立进程或 Sandbox Session，不能在 Agent Runtime 主进程中执行任意脚本。
+- Sandbox 显式配置只读目录、可写目录、临时目录、网络策略、环境变量和进程限制。
+- 所有子进程继承相同或更严格的隔离策略。
+- 进程超时后终止整个进程组 / Job Object，而不是只结束最外层 Shell。
+- 限制 CPU、内存、PID 数、文件大小、输出字节数、并发数和执行时长。
+- 默认不注入宿主机环境变量、长期 Token、SSH Agent Socket、浏览器 Profile 和 Docker Socket。
+- 执行结果返回 stdout、stderr、exitCode 和产物引用；不要无限制地把所有输出写回模型上下文。
+
+对于桌面 Runtime，macOS 可以评估 Seatbelt，Linux 可以评估 Bubblewrap、Landlock 和 seccomp；需要跨平台统一管理时，可以研究 Anthropic Sandbox Runtime。需要完整 Linux 环境或运行不可信依赖时，再考虑 Docker、gVisor 或 microVM。
+
+如果脚本由模型生成，审批不应只显示“允许执行 Bash”。应展示脚本内容或 Diff、工作目录、读写范围、网络权限和执行限制。审批绑定脚本内容摘要及 Execution Profile；脚本内容、参数或权限发生变化时，之前的批准失效。
+
+### 3.4 有哪些项目值得对照
+
+| 项目 | 对 Read / Write 的设计 | 对 Bash / Script 的设计 | 适合借鉴的部分 |
+| --- | --- | --- | --- |
+| [AgentFense](https://github.com/AjaxZhan/AgentFense) | FUSE 文件视图，none / view / read / write | 通过受限文件系统配合普通 Shell 工作流 | 文件级能力授权、隐藏敏感资源 |
+| [easy-agent](https://github.com/ConardLi/easy-agent) | Read、Write、Edit、MultiEdit 等独立工具 | Bash / PowerShell 配合 allow / ask / deny 和 OS Sandbox | Tool 拆分、审批策略和执行隔离的组合 |
+| [Deep Agents](https://github.com/langchain-ai/deepagents) | Virtual Filesystem、声明式 read / write path permissions | 可插拔 Sandbox Backend 的 execute Tool | 文件权限和执行后端的职责分离 |
+| [Anthropic Sandbox Runtime](https://github.com/anthropics/sandbox-runtime) | 不负责 Agent 级文件 Tool 语义 | 对任意进程实施 OS 级文件和网络限制 | 作为真实 Shell / MCP 进程的隔离层 |
+| [just-bash](https://github.com/vercel-labs/just-bash) | 虚拟文件系统上的受控读写 | TypeScript 实现的 Shell 语义，不启动真实宿主 Shell | 低风险任务的受限命令环境 |
+
+这里有两个容易误读的地方。第一，Deep Agents 的文件权限规则并不自动约束 Sandbox Backend 中的任意代码执行；其文档明确要求 Sandbox Backend 自己承担执行侧策略。第二，AgentFense 的 FUSE 文件视图能把文件访问权限落实到文件系统层，但它不能替代网络隔离、进程限制和凭证保护。工具权限和执行权限仍需分别配置。
+
+[easy-agent](https://github.com/ConardLi/easy-agent) 是一个更完整的 Agent Harness 参考：它把 Read / Write / Edit / Bash 做成不同工具，并组合权限规则、OS Sandbox、MCP 和子 Agent。它适合研究工具注册、授权和执行路径如何在一个 TypeScript Agent 中协作，但仍需按目标平台审查其 Sandbox 覆盖范围；项目文档列出的 Windows Shell Sandbox 能力与 macOS / Linux 并不相同。
+
+### 3.5 推荐的 Tool Contract
+
+可以把 Agent 暴露的接口收敛成以下几类。这里是 Runtime 的逻辑接口，不代表某个项目的现成 API：
+
+```typescript
+type ResourceRef = {
+  workspaceId: string;
+  resourceId: string; // Runtime 解析，不接受任意宿主机绝对路径
+};
+
+interface ReadTools {
+  listDirectory(ref: ResourceRef): Promise<DirectoryEntry[]>;
+  readFile(ref: ResourceRef, range?: { offset: number; limit: number }): Promise<FileContent>;
+  searchFiles(query: SearchQuery): Promise<SearchResult[]>;
+}
+
+interface WriteTools {
+  createFile(ref: ResourceRef, content: string): Promise<ChangeSet>;
+  applyPatch(ref: ResourceRef, patch: string, expectedVersion: string): Promise<ChangeSet>;
+  deleteFile(ref: ResourceRef, expectedVersion: string): Promise<ChangeSet>;
+  commitChangeSet(changeSetId: string, approval?: ApprovalRef): Promise<CommitResult>;
+}
+
+interface ExecutionTools {
+  executeScript(input: {
+    script: string;
+    workingDirectory: ResourceRef;
+    profile: "read-only" | "workspace-write" | "network-enabled";
+    timeoutSeconds?: number;
+  }): Promise<ExecutionResult>;
+}
+```
+
+这套接口刻意不提供 `execute(path)`，也不允许模型传入任意宿主机绝对路径。脚本执行可以使用临时脚本文件，也可以通过标准输入传给固定的 Shell 入口；无论哪种方式，执行目录、挂载范围和权限都由 Runtime 决定。
+
+权限策略应该在 Tool 层和执行后端各检查一次：Tool 层判断这个 Agent 是否能对这个资源发起这个动作；执行后端判断实际进程是否能访问该文件、网络或系统资源。不能把前一层的授权结果当成后一层的隔离保证。
+
+![Read、Write、Bash 三类 Tool 的独立安全边界](/diagrams/agent-runtime-tool-boundaries.svg)
+
+[查看 Read / Write / Bash 架构图（HTML）](/diagrams/agent-runtime-tool-boundaries.html)
+
+## 4. 这些方案到底如何选择
 
 | 方案 | 主要隔离方式 | 适合场景 | 不能替代什么 |
 | --- | --- | --- | --- |
@@ -185,7 +293,7 @@ Filesystem Server 的安全实现也需要持续审查。路径解析、符号�
 
 这里没有一个项目能够单独解决 Agent 的全部安全问题。选择时首先看执行对象：如果只需要读写文件，优先提供受限文件服务；如果需要有限的 Shell 语义，考虑虚拟 Shell；如果要执行真实命令或 MCP Server，就需要 OS Sandbox；如果需要完整、可复现的开发环境，再考虑容器或 VM。
 
-## 4. 一个适合 TypeScript Agent Runtime 的分层设计
+## 5. 一个适合 TypeScript Agent Runtime 的分层设计
 
 对于本地桌面 Agent，我倾向于把策略和执行机制分开：Runtime 自己掌握 Tool Registry、Policy Engine、审批和审计；底层通过成熟的 OS Sandbox 执行真实进程，不自己重写操作系统隔离机制。
 
@@ -247,7 +355,7 @@ MCP 只是工具协议，不是安全容器。一个 MCP Server 可以在启动�
 
 如果审批后模型改变了文件路径、内容或目标对象，就应重新进行策略判断。用户确认不能覆盖组织级拒绝规则，也不能把一次批准扩展为长期授权。
 
-## 5. 容易被忽略的安全问题
+## 6. 容易被忽略的安全问题
 
 **文件授权和数据授权不是一回事。** Agent 可以读取某个客户文件，不代表可以把它上传到任意外部网站。文件系统 Sandbox 只能限制文件访问，不能判断数据是否允许流向某个 SaaS 或模型服务。需要独立的数据分类、目的地策略和网络出口控制。
 
@@ -259,13 +367,13 @@ MCP 只是工具协议，不是安全容器。一个 MCP Server 可以在启动�
 
 **文件写入最好默认可恢复。** 草稿写入、正式覆盖和删除应分开处理。通过临时文件、原子替换、版本快照和 Diff 审查，降低模型误操作的影响。对正式业务系统则优先提供有明确语义的 API，而不是开放数据库连接或通用 HTTP 写入。
 
-## 6. 结论：复用 OS Sandbox，自己实现策略控制面
+## 7. 结论：复用 OS Sandbox，自己实现策略控制面
 
 如果是 TypeScript / Node.js Agent Runtime，我会按以下方式落地：
 
-- 文件读写：自建窄接口的 Capability Filesystem Service，或在明确目录范围内使用 MCP Filesystem Server。
+- Read：使用只读 Capability Filesystem，细分目录列表、元数据、内容读取和搜索权限。\n- Write / Edit：使用独立的 ChangeSet、Patch、版本检查和可回滚提交接口，不与执行能力绑定。
 - 轻量 Shell：使用 just-bash，优先采用内存文件系统；只在确有需要时开放网络、Python 或 JavaScript。
-- 真实命令执行：优先评估 Anthropic Sandbox Runtime，复用 Seatbelt、Bubblewrap 和 Windows 原生安全机制。
+- Bash / Script：通过独立 Execution Service 调用 Anthropic Sandbox Runtime 等 OS Sandbox，脚本写入与脚本执行分别授权。
 - 完整开发环境：需要依赖安装、编译、浏览器和长任务时，再采用 OpenHands 这类 Docker Runtime；高风险任务考虑 VM。
 - 权限与审计：由自己的 Agent Runtime 统一管理 Tool Registry、Policy Engine、审批、Execution Profile 和 Audit Log。
 
