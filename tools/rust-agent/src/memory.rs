@@ -1633,7 +1633,7 @@ fn ensure_column(connection: &Connection, table: &str, name: &str, definition: &
 /// Extract local knowledge-page links from Markdown. External URLs and anchors are not
 /// wiki references; local links must resolve to a valid page ID.
 fn markdown_page_links(content: &str) -> Vec<String> {
-    let Ok(pattern) = regex::Regex::new(r"\\[[^\\]]*\\]\\(([^)]+)\\)") else {
+    let Ok(pattern) = regex::Regex::new(r"\[[^\]]*\]\(([^)]+)\)") else {
         return Vec::new();
     };
     pattern.captures_iter(content)
@@ -2149,7 +2149,7 @@ mod tests {
         assert_eq!(records.iter().map(|record| record.role.as_str()).collect::<Vec<_>>(), vec!["user", "tool", "assistant"]);
         let refs = store.latest_turn_evidence_refs("session-1", Some("project-a"), None, true).unwrap();
         assert_eq!(refs.len(), 2);
-        assert!(refs[1].ends_with(&records[1].id.to_string()));
+        assert_eq!(refs[1], format!("transcript:{}", records[1].id));
         let _ = fs::remove_dir_all(root);
     }
 
