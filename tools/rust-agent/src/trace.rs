@@ -65,7 +65,7 @@ impl TraceStore {
         line.push(b'\n');
         file.write_all(&line)?;
         lock.unlock()?;
-        Ok(record)        Ok(record)
+        Ok(record)
     }
 
     pub fn append_runtime_event(&self, event: &RuntimeEvent) -> Result<TraceRecord, AgentError> {
@@ -86,7 +86,7 @@ impl TraceStore {
         line.push(b'\n');
         file.write_all(&line)?;
         lock.unlock()?;
-        Ok(record)        Ok(record)
+        Ok(record)
     }
 
     pub fn path(&self) -> &Path { &self.path }
