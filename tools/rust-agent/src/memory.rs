@@ -794,11 +794,20 @@ impl MemoryStore {
             .query_map([to_i64(now_ms())?], row_memory)?
             .collect::<Result<Vec<_>, _>>()?;
         drop(statement);
-        drop(connection);
 
         let mut ranked = Vec::new();
         for record in records {
-            if !scope_matches(record.scope, record.scope_id.as_deref(), query) {
+            if !scope_matches(record.scope, record.scope_id.as_deref(), query)
+                || validate_evidence_scope_recursive(
+                    &connection,
+                    &record.source_refs,
+                    record.scope,
+                    record.scope_id.as_deref(),
+                    &mut HashSet::new(),
+                ).is_err()
+            {
+                // A once-consolidated note is no longer retrievable when its evidence
+                // chain has since expired, been disputed, or been removed.
                 continue;
             }
             let record_terms = terms(&record.content);
@@ -1703,7 +1712,7 @@ fn validate_evidence_refs(refs: &[String]) -> Result<(), AgentError> {
 
 
 fn validate_evidence_scope_in_transaction(
-    transaction: &Transaction<'_>,
+    transaction: &Connection,
     refs: &[String],
     target_scope: MemoryScope,
     target_scope_id: Option<&str>,
@@ -1712,7 +1721,7 @@ fn validate_evidence_scope_in_transaction(
 }
 
 fn validate_evidence_scope_recursive(
-    transaction: &Transaction<'_>,
+    transaction: &Connection,
     refs: &[String],
     target_scope: MemoryScope,
     target_scope_id: Option<&str>,
@@ -2143,6 +2152,37 @@ mod tests {
             delete_pages: vec![],
         };
         assert!(store.apply_dreaming(output).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn derived_memories_stop_retrieving_when_their_source_becomes_disputed() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript("s1", None, None, "user", "Original approved fact").unwrap();
+        let source = store.propose(
+            input(MemoryScope::Global, None, "Source policy fact"),
+            90,
+            vec![format!("transcript:{transcript}")],
+        ).unwrap();
+        store.set_status(&source.id, MemoryStatus::Consolidated).unwrap();
+        let derived = store.propose(
+            input(MemoryScope::Global, None, "Derived policy fact"),
+            90,
+            vec![format!("memory:{}", source.id)],
+        ).unwrap();
+        store.set_status(&derived.id, MemoryStatus::Consolidated).unwrap();
+
+        let query = MemoryQuery {
+            query: "Derived policy fact".into(),
+            session_id: None,
+            project_id: None,
+            task_id: None,
+            limit: 5,
+        };
+        assert_eq!(store.retrieve(&query).unwrap().len(), 1);
+        store.set_status(&source.id, MemoryStatus::Disputed).unwrap();
+        assert!(store.retrieve(&query).unwrap().is_empty());
         let _ = fs::remove_dir_all(root);
     }
 
