@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="980" viewBox="0 0 1500 980" role="img" aria-labelledby="title desc">
+<title id="title">Remote-first Agent Runtime：本地与远端双 Agent 架构</title>
+<desc id="desc">本地 Agent Client 连接本地模型，负责 UI 和本地浏览器；它同时作为远端 Agent Service 客户端。远端 Agent Service 连接自己的模型服务，并在远端执行文件、工具和 Sandbox 操作。</desc>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L9 3L0 6" fill="#67594C"/></marker><marker id="blue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L9 3L0 6" fill="#547E8B"/></marker><style>
+text{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;fill:#241E18}.title{font-size:30px;font-weight:700}.sub{font-size:15px;fill:#67594C}.zone{fill:#F0ECE4;stroke:#CFC5B8;stroke-width:1.5}.local{fill:#E6EDF2;stroke:#7C9AA9;stroke-width:1.7}.remote{fill:#E8EDE2;stroke:#8CA07C;stroke-width:1.7}.model{fill:#F2E8D9;stroke:#B58A50;stroke-width:1.6}.tool{fill:#FFFEFA;stroke:#C9BFB2;stroke-width:1.4}.sandbox{fill:#EADFEB;stroke:#9B7D9A;stroke-width:1.6}.h{font-size:19px;font-weight:700}.b{font-size:14px;fill:#51483F}.sm{font-size:12px;fill:#756A60}.arrow{fill:none;stroke:#67594C;stroke-width:2.2;marker-end:url(#arrow)}.stream{fill:none;stroke:#547E8B;stroke-width:2.4;stroke-dasharray:8 6;marker-end:url(#blue)}.red{fill:none;stroke:#A45F4D;stroke-width:2;stroke-dasharray:5 5}.tag{font-size:12px;font-weight:650;fill:#67594C}
+</style></defs>
+<rect width="1500" height="980" fill="#F9F6EF"/>
+<text x="50" y="58" class="title">Remote-first Agent Runtime：本地与远端双 Agent</text>
+<text x="50" y="88" class="sub">本地负责交互与设备能力；远端负责工作区、工具执行和自己的模型调用。两边都可能是 Agent，也都可能是模型客户端。</text>
+<!-- local boundary -->
+<rect x="50" y="130" width="590" height="650" rx="18" class="zone"/>
+<text x="80" y="170" class="h">用户设备 / Local Trust Boundary</text>
+<rect x="90" y="205" width="510" height="330" rx="14" class="local"/>
+<text x="120" y="242" class="h">Local Agent Client</text>
+<text x="120" y="270" class="sm">UI / Conversation / Local Agent Loop / Tool Router</text>
+<rect x="120" y="300" width="210" height="82" rx="10" class="model"/>
+<text x="225" y="332" text-anchor="middle" class="h">Local Model Client</text><text x="225" y="357" text-anchor="middle" class="sm">Local LLM Provider API</text>
+<rect x="360" y="300" width="210" height="82" rx="10" class="tool"/>
+<text x="465" y="332" text-anchor="middle" class="h">Local Capability</text><text x="465" y="357" text-anchor="middle" class="sm">Browser / Screen / UI</text>
+<path d="M330 341H360" class="arrow"/>
+<rect x="120" y="420" width="450" height="78" rx="10" class="tool"/>
+<text x="345" y="451" text-anchor="middle" class="h">Remote Agent Client Adapter</text><text x="345" y="476" text-anchor="middle" class="sm">HTTPS API / WebSocket Stream / MCP Client</text>
+<path d="M345 382V420" class="arrow"/>
+<rect x="90" y="575" width="510" height="160" rx="12" class="tool"/>
+<text x="120" y="610" class="h">Local-only boundary</text>
+<text x="120" y="642" class="b">浏览器 Profile、Cookie、用户交互和本机 UI 不上传为远端文件。</text>
+<text x="120" y="670" class="b">远端需要浏览器操作时，通过本地受控 Broker 发起逐项授权。</text>
+<text x="120" y="704" class="sm">本地文件系统默认不注册为 Agent Tool。</text>
+<!-- remote boundary -->
+<rect x="700" y="130" width="750" height="650" rx="18" class="zone"/>
+<text x="730" y="170" class="h">远端平台 / Remote Trust Boundary</text>
+<rect x="745" y="205" width="660" height="330" rx="14" class="remote"/>
+<text x="775" y="242" class="h">Remote Agent Service</text>
+<text x="775" y="270" class="sm">API Gateway / AuthN / Tenant Router / Agent Runtime / Policy Engine</text>
+<rect x="775" y="300" width="205" height="82" rx="10" class="model"/>
+<text x="877" y="332" text-anchor="middle" class="h">Remote Model Client</text><text x="877" y="357" text-anchor="middle" class="sm">Provider API / BYOK</text>
+<rect x="1010" y="300" width="170" height="82" rx="10" class="tool"/>
+<text x="1095" y="332" text-anchor="middle" class="h">Tool Registry</text><text x="1095" y="357" text-anchor="middle" class="sm">File / Search / API</text>
+<rect x="1210" y="300" width="165" height="82" rx="10" class="sandbox"/>
+<text x="1292" y="332" text-anchor="middle" class="h">Execution</text><text x="1292" y="357" text-anchor="middle" class="sm">Sandbox / Shell</text>
+<path d="M980 341H1010 M1180 341H1210" class="arrow"/>
+<rect x="775" y="420" width="600" height="78" rx="10" class="tool"/>
+<text x="1075" y="451" text-anchor="middle" class="h">Workspace Service</text><text x="1075" y="476" text-anchor="middle" class="sm">Virtual Paths / File API / Object Store or PVC / Version &amp; Lock</text>
+<path d="M1095 382V420 M1292 382V400H1375V459" class="arrow"/>
+<rect x="745" y="575" width="660" height="160" rx="12" class="tool"/>
+<text x="775" y="610" class="h">Remote-only resources</text>
+<text x="775" y="642" class="b">Tenant / User / Workspace / Session / Task 独立命名空间和授权。</text>
+<text x="775" y="670" class="b">远端模型凭证由服务端管理；本地只持有调用远端服务的短期令牌。</text>
+<text x="775" y="704" class="sm">文件工具与 Shell 在远端执行；Sandbox 只挂载当前任务获批的 Workspace。</text>
+<!-- external model providers -->
+<rect x="1110" y="825" width="295" height="90" rx="12" class="model"/>
+<text x="1257" y="860" text-anchor="middle" class="h">Remote LLM Provider</text><text x="1257" y="885" text-anchor="middle" class="sm">Model inference endpoint</text>
+<path d="M877 382V820H1257V825" class="stream"/>
+<text x="1010" y="808" class="tag">服务端自己的模型调用</text>
+<!-- local model provider -->
+<rect x="90" y="825" width="360" height="90" rx="12" class="model"/>
+<text x="270" y="860" text-anchor="middle" class="h">Local LLM Provider</text><text x="270" y="885" text-anchor="middle" class="sm">Local model API / User-selected provider</text>
+<path d="M225 382V825" class="stream"/>
+<!-- cross boundary -->
+<path d="M570 459H745" class="stream"/>
+<text x="655" y="445" text-anchor="middle" class="tag">Local Agent Client → Remote Agent Service</text>
+<path d="M745 490H570" class="stream"/>
+<text x="655" y="516" text-anchor="middle" class="tag">Events / Results / Artifacts</text>
+<path d="M465 382V555H650V620H745" class="red"/>
+<text x="650" y="590" text-anchor="middle" class="tag">可选：远端请求本地浏览器能力</text>
+<text x="50" y="955" class="sm">边界原则：本地 Agent Client 不等于本地执行主机；远端 Agent Service 也不等于无状态 Tool Proxy。</text>
+</svg>
