@@ -908,6 +908,7 @@ impl AgentRuntime {
             &self.dreaming_options,
             1,
             "manual",
+            None,
         ).await? {
             Some(report) => Ok(report),
             None => Ok(DreamingReport {
@@ -1531,6 +1532,9 @@ impl AgentRuntime {
         self.start_dreaming_worker();
         if cancellation.is_cancelled() {
             return Err(AgentError::Cancelled);
+        }
+        if self.dreaming_options.auto_enabled {
+            self.dreaming_signal.signal_activity();
         }
 
         let session_id = self.session.session_id.clone();
@@ -2399,6 +2403,7 @@ async fn run_dreaming_batch(
     options: &DreamingOptions,
     minimum_transcripts: usize,
     trigger: &str,
+    activity_guard: Option<(&DreamingSignal, u64)>,
 ) -> Result<Option<DreamingReport>, AgentError> {
     let lease_duration = options.lease_duration.max(options.model_timeout + Duration::from_secs(30));
     let lease_ms = lease_duration.as_millis().min(u64::MAX as u128) as u64;
@@ -2478,6 +2483,12 @@ async fn run_dreaming_batch(
                 "Dreaming did not acknowledge the supplied transcript batch exactly".into(),
             ));
         }
+        if activity_guard.is_some_and(|(signal, epoch)| {
+            signal.shutdown.load(Ordering::Acquire)
+                || signal.activity.load(Ordering::Acquire) != epoch
+        }) {
+            return Err(AgentError::Cancelled);
+        }
         memory_store.apply_dreaming_run(
             run_id,
             output,
@@ -2493,6 +2504,12 @@ async fn run_dreaming_batch(
 
     match result {
         Ok(report) => Ok(Some(report)),
+        Err(AgentError::Cancelled) if activity_guard.is_some() => {
+            if let Err(error) = memory_store.abort_dreaming_run(run_id, "Dreaming yielded to user activity or shutdown") {
+                warn!(%error, run_id, "failed to persist Dreaming interruption");
+            }
+            Ok(None)
+        }
         Err(error) => {
             let retry_after = 15_000u64;
             if let Err(persist_error) = memory_store.fail_dreaming_run(run_id, &error.to_string(), retry_after) {
@@ -2552,6 +2569,7 @@ async fn dreaming_worker_loop(
                 &options,
                 options.minimum_transcripts,
                 "automatic_idle",
+                Some((&signal, observed_activity)),
             ).await {
                 Ok(Some(_)) => completed_batches += 1,
                 Ok(None) => break,
@@ -2578,6 +2596,7 @@ async fn dreaming_worker_loop(
                             &options,
                             options.minimum_transcripts,
                             "automatic_retry",
+                            Some((&signal, observed_activity)),
                         ).await {
                             Ok(Some(_)) => break,
                             Ok(None) => break,

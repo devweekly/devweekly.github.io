@@ -1108,6 +1108,24 @@ impl MemoryStore {
         Ok(())
     }
 
+    pub fn abort_dreaming_run(&self, run_id: i64, reason: &str) -> Result<(), AgentError> {
+        let mut connection = self.conn()?;
+        let transaction = connection.transaction()?;
+        let now = to_i64(now_ms())?;
+        transaction.execute(
+            "UPDATE dreaming_runs SET status='interrupted',completed_at_ms=?2,error=?3
+             WHERE id=?1 AND status='running'",
+            params![run_id,now,reason.chars().take(2_000).collect::<String>()],
+        )?;
+        transaction.execute(
+            "UPDATE dreaming_control SET current_run_id=NULL,lease_until_ms=NULL,
+                next_retry_at_ms=NULL,last_error=NULL WHERE id=1 AND current_run_id=?1",
+            [run_id],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn pending_transcript_count(&self) -> Result<usize, AgentError> {
         Ok(self.dreaming_status()?.pending_transcripts)
     }
@@ -2092,6 +2110,20 @@ mod tests {
         };
         assert!(store.apply_dreaming(output).is_err());
         assert_eq!(store.last_dreamed_transcript_id().unwrap(), 0);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn dreaming_can_yield_to_user_activity_without_counting_a_failure() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        store.record_transcript("session-a", Some("project-a"), None, "user", "Review this project").unwrap();
+        let run = store.start_dreaming_run(1, 60_000, "test").unwrap().unwrap();
+        store.abort_dreaming_run(run.0, "new user turn started").unwrap();
+        let status = store.dreaming_status().unwrap();
+        assert_eq!(status.consecutive_failures, 0);
+        assert_eq!(status.pending_transcripts, 1);
+        assert!(store.start_dreaming_run(1, 60_000, "resumed").unwrap().is_some());
         let _ = fs::remove_dir_all(root);
     }
 
