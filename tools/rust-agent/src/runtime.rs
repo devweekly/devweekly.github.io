@@ -22,7 +22,7 @@ use crate::{
     attachments::{AttachmentMetadata, AttachmentStore},
     context::{ContextManager, ContextReport},
     error::AgentError,
-    memory::{DreamingOutput, DreamingReport, MemoryInput, MemoryKind, MemoryQuery, MemoryRecord, MemoryScope, MemoryStore},
+    memory::{DreamingOutput, DreamingReport, DreamingRunMetrics, MemoryInput, MemoryKind, MemoryQuery, MemoryRecord, MemoryScope, MemoryStore},
     policy::{self, PolicyDecision},
     provider::{ChatMessage, CompletionUsage, OpenAiCompatibleProvider},
     tools::ToolExecutor,
@@ -90,6 +90,7 @@ Principles:
 - Merge duplicates instead of creating near-identical notes. Preserve important details and provenance when merging.
 - Prefer a small number of useful notes. A compact abstraction is better than a transcript archive.
 - Build knowledge pages only when related facts across sessions benefit from a navigable representation. Pages should be shorter than source material, link only to existing pages or pages created in this batch, and cite source evidence. Keep links within the same scope or point to a global page. Merge duplicate pages, repair broken links, and remove obsolete or redundant pages instead of growing the wiki indefinitely. Do not recreate source documents as a wiki.
+- When a page is obsolete and no longer needed, list its ID in delete_pages and cite evidence from the same scope. Update all incoming links in this batch before deleting it. Never delete the global index page.
 - The global page with ID "index" is preloaded into every turn. Keep its summary and content together under roughly 1,000 characters; use it as a dashboard of high-value guidance and links, not a second copy of the knowledge base.
 - Do not infer external truth from an agent's previous assertion. A transcript proves that something was said or done, not that its underlying factual claim is objectively true.
 - Use global scope only for cross-project user preferences; prefer project scope for project-specific knowledge.
@@ -121,6 +122,12 @@ Return exactly one JSON object, no Markdown fences:
       "scope_id": null,
       "evidence": ["transcript:123"],
       "links": ["related-page-id"]
+    }
+  ],
+  "delete_pages": [
+    {
+      "id": "obsolete-page-id",
+      "evidence": ["transcript:123"]
     }
   ]
 }
@@ -2414,16 +2421,36 @@ async fn run_dreaming_batch(
             "role": entry.role,
             "content": entry.content.chars().take(1_800).collect::<String>()
         })).collect::<Vec<_>>();
-        let existing_notes = memory_store.list()?.into_iter().take(100).map(|note| json!({
-            "id": note.id, "kind": note.kind, "scope": note.scope, "scope_id": note.scope_id,
-            "status": note.status, "confidence": note.confidence, "importance": note.importance,
-            "source_refs": note.source_refs, "content": note.content.chars().take(1_200).collect::<String>()
-        })).collect::<Vec<_>>();
-        let existing_pages = memory_store.list_pages(40)?.into_iter().map(|page| json!({
-            "id": page.id, "title": page.title, "summary": page.summary,
-            "content_excerpt": page.content.chars().take(1_500).collect::<String>(),
-            "scope": page.scope, "scope_id": page.scope_id, "source_refs": page.source_refs, "links": page.links
-        })).collect::<Vec<_>>();
+        let project_scopes = transcripts.iter().filter_map(|entry| entry.project_id.as_deref())
+            .collect::<std::collections::HashSet<_>>();
+        let session_scopes = transcripts.iter().map(|entry| entry.session_id.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        let task_scopes = transcripts.iter().filter_map(|entry| entry.task_id.as_deref())
+            .collect::<std::collections::HashSet<_>>();
+        let existing_notes = memory_store.list()?.into_iter()
+            .filter(|note| match note.scope {
+                MemoryScope::Global => true,
+                MemoryScope::Project => note.scope_id.as_deref().is_some_and(|id| project_scopes.contains(id)),
+                MemoryScope::Session => note.scope_id.as_deref().is_some_and(|id| session_scopes.contains(id)),
+                MemoryScope::Task => note.scope_id.as_deref().is_some_and(|id| task_scopes.contains(id)),
+            })
+            .take(100).map(|note| json!({
+                "id": note.id, "kind": note.kind, "scope": note.scope, "scope_id": note.scope_id,
+                "status": note.status, "confidence": note.confidence, "importance": note.importance,
+                "source_refs": note.source_refs, "content": note.content.chars().take(1_200).collect::<String>()
+            })).collect::<Vec<_>>();
+        let existing_pages = memory_store.list_pages(200)?.into_iter()
+            .filter(|page| match page.scope {
+                MemoryScope::Global => true,
+                MemoryScope::Project => page.scope_id.as_deref().is_some_and(|id| project_scopes.contains(id)),
+                MemoryScope::Session => page.scope_id.as_deref().is_some_and(|id| session_scopes.contains(id)),
+                MemoryScope::Task => page.scope_id.as_deref().is_some_and(|id| task_scopes.contains(id)),
+            })
+            .take(40).map(|page| json!({
+                "id": page.id, "title": page.title, "summary": page.summary,
+                "content_excerpt": page.content.chars().take(1_500).collect::<String>(),
+                "scope": page.scope, "scope_id": page.scope_id, "source_refs": page.source_refs, "links": page.links
+            })).collect::<Vec<_>>();
         let payload = json!({
             "reviewed_through": reviewed_through,
             "transcripts": transcript_payload,
@@ -2450,11 +2477,13 @@ async fn run_dreaming_batch(
         memory_store.apply_dreaming_run(
             run_id,
             output,
-            &completion.model,
-            completion.usage.prompt_tokens,
-            completion.usage.completion_tokens,
-            completion.usage.total_tokens,
-            completion.duration_ms,
+            DreamingRunMetrics {
+                model: completion.model,
+                prompt_tokens: completion.usage.prompt_tokens,
+                completion_tokens: completion.usage.completion_tokens,
+                total_tokens: completion.usage.total_tokens,
+                duration_ms: completion.duration_ms,
+            },
         )
     }.await;
 
@@ -2546,10 +2575,7 @@ async fn dreaming_worker_loop(
                             options.minimum_transcripts,
                             "automatic_retry",
                         ).await {
-                            Ok(Some(_)) => {
-                                completed_batches += 1;
-                                break;
-                            }
+                            Ok(Some(_)) => break,
                             Ok(None) => break,
                             Err(retry_error) => {
                                 warn!(%retry_error, retry, "automatic Dreaming retry failed");

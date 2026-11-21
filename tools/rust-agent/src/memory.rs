@@ -221,6 +221,24 @@ pub struct DreamingOutput {
     pub notes: Vec<DreamingNote>,
     #[serde(default)]
     pub pages: Vec<DreamingPage>,
+    #[serde(default)]
+    pub delete_pages: Vec<DreamingPageDeletion>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DreamingPageDeletion {
+    pub id: String,
+    #[serde(default)]
+    pub evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DreamingRunMetrics {
+    pub model: String,
+    pub prompt_tokens: Option<u64>,
+    pub completion_tokens: Option<u64>,
+    pub total_tokens: Option<u64>,
+    pub duration_ms: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -636,11 +654,16 @@ impl MemoryStore {
         Self::validate_id(id)?;
         let mut connection = self.conn()?;
         let transaction = connection.transaction()?;
-        let before = load_memory(&transaction, id)?
-            .ok_or_else(|| AgentError::InvalidAction(format!("memory record not found: {id}")))?;
+        let exists: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM memories WHERE id=?1)",
+            [id],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            return Err(AgentError::InvalidAction(format!("memory record not found: {id}")));
+        }
+        transaction.execute("DELETE FROM memory_revisions WHERE memory_id=?1", [id])?;
         transaction.execute("DELETE FROM memories WHERE id=?1", [id])?;
-        insert_memory_revision(&transaction, id, "forgotten", Some(&before), None,
-            "host deleted memory", &before.source_refs)?;
         transaction.commit()?;
         Ok(())
     }
@@ -790,10 +813,22 @@ impl MemoryStore {
     }
 
     pub fn delete_expired(&self) -> Result<usize, AgentError> {
-        Ok(self.conn()?.execute(
-            "DELETE FROM memories WHERE expires_at_ms IS NOT NULL AND expires_at_ms<=?1",
-            [to_i64(now_ms())?],
-        )?)
+        let mut connection = self.conn()?;
+        let transaction = connection.transaction()?;
+        let now = to_i64(now_ms())?;
+        let ids = {
+            let mut statement = transaction.prepare(
+                "SELECT id FROM memories WHERE expires_at_ms IS NOT NULL AND expires_at_ms<=?1"
+            )?;
+            statement.query_map([now], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        for id in &ids {
+            transaction.execute("DELETE FROM memory_revisions WHERE memory_id=?1", [id])?;
+            transaction.execute("DELETE FROM memories WHERE id=?1", [id])?;
+        }
+        transaction.commit()?;
+        Ok(ids.len())
     }
 
     /// Append a durable transcript event. Session JSON remains the conversation snapshot.
@@ -1085,33 +1120,29 @@ impl MemoryStore {
         &self,
         run_id: i64,
         output: DreamingOutput,
-        model: &str,
-        prompt_tokens: Option<u64>,
-        completion_tokens: Option<u64>,
-        total_tokens: Option<u64>,
-        duration_ms: u64,
+        metrics: DreamingRunMetrics,
     ) -> Result<DreamingReport, AgentError> {
-        self.apply_dreaming_inner(output, Some((run_id, model, prompt_tokens, completion_tokens, total_tokens, duration_ms)))
+        self.apply_dreaming_inner(output, Some((run_id, metrics)))
     }
 
     fn apply_dreaming_inner(
         &self,
         output: DreamingOutput,
-        run: Option<(i64, &str, Option<u64>, Option<u64>, Option<u64>, u64)>,
+        run: Option<(i64, DreamingRunMetrics)>,
     ) -> Result<DreamingReport, AgentError> {
-        if output.notes.len() > 32 || output.pages.len() > 16 {
+        if output.notes.len() > 32 || output.pages.len() > 16 || output.delete_pages.len() > 16 {
             return Err(AgentError::InvalidAction("dreaming output exceeds operation limits".into()));
         }
         let mut connection = self.conn()?;
         let transaction = connection.transaction()?;
         let previous_cursor = last_dreamed_cursor(&transaction)?;
-        if let Some((run_id, ..)) = run {
+        if let Some((run_id, _)) = run.as_ref() {
             let active_run: Option<i64> = transaction.query_row(
                 "SELECT current_run_id FROM dreaming_control WHERE id=1",
                 [],
                 |row| row.get(0),
             )?;
-            if active_run != Some(run_id) {
+            if active_run != Some(*run_id) {
                 return Err(AgentError::InvalidAction(
                     "Dreaming lease was lost before the consolidation result could be committed".into(),
                 ));
@@ -1127,7 +1158,7 @@ impl MemoryStore {
         }
 
         let mut report = DreamingReport {
-            run_id: run.map(|value| value.0),
+            run_id: run.as_ref().map(|value| value.0),
             reviewed_through: output.reviewed_through,
             ..DreamingReport::default()
         };
@@ -1330,6 +1361,42 @@ impl MemoryStore {
             }
         }
 
+        for deletion in output.delete_pages {
+            validate_page_id(&deletion.id)?;
+            if deletion.id == "index" {
+                return Err(AgentError::InvalidAction("the global knowledge index cannot be deleted".into()));
+            }
+            if deletion.evidence.is_empty() {
+                return Err(AgentError::InvalidAction(format!(
+                    "knowledge page deletion {} requires source evidence", deletion.id
+                )));
+            }
+            let before = load_page(&transaction, &deletion.id)?
+                .ok_or_else(|| AgentError::InvalidAction(format!(
+                    "knowledge page to delete was not found: {}", deletion.id
+                )))?;
+            validate_evidence_scope_in_transaction(
+                &transaction, &deletion.evidence, before.scope, before.scope_id.as_deref()
+            )?;
+            let remaining_pages = {
+                let mut statement = transaction.prepare(
+                    "SELECT id,title,summary,content,scope,scope_id,source_refs_json,links_json,updated_at_ms,revision
+                     FROM memory_pages WHERE id<>?1"
+                )?;
+                statement.query_map([&deletion.id], row_page)?
+                    .collect::<Result<Vec<_>, _>>()?
+            };
+            if remaining_pages.iter().any(|page| page.links.iter().any(|link| link == &deletion.id)) {
+                return Err(AgentError::InvalidAction(format!(
+                    "knowledge page {} is still referenced; update incoming links before deleting it",
+                    deletion.id
+                )));
+            }
+            insert_page_revision(&transaction, &deletion.id, "deleted", Some(&before), None,
+                "dreaming removed an obsolete knowledge page")?;
+            transaction.execute("DELETE FROM memory_pages WHERE id=?1", [&deletion.id])?;
+        }
+
         let reviewed_count: i64 = transaction.query_row(
             "SELECT COUNT(*) FROM transcripts WHERE id>?1 AND id<=?2",
             params![previous_cursor, output.reviewed_through],
@@ -1341,14 +1408,14 @@ impl MemoryStore {
              ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             [output.reviewed_through.to_string()],
         )?;
-        if let Some((run_id, model, prompt_tokens, completion_tokens, total_tokens, duration_ms)) = run {
+        if let Some((run_id, metrics)) = run {
             let now = to_i64(now_ms())?;
             transaction.execute(
                 "UPDATE dreaming_runs SET status='completed',cursor_to=?2,transcript_count=?3,
                     model=?4,prompt_tokens=?5,completion_tokens=?6,total_tokens=?7,duration_ms=?8,
                     completed_at_ms=?9,error=NULL WHERE id=?1 AND status='running'",
-                params![run_id,output.reviewed_through,report.transcripts_reviewed,model,
-                    prompt_tokens,completion_tokens,total_tokens,duration_ms,now],
+                params![run_id,output.reviewed_through,report.transcripts_reviewed,metrics.model,
+                    metrics.prompt_tokens,metrics.completion_tokens,metrics.total_tokens,metrics.duration_ms,now],
             )?;
             transaction.execute(
                 "UPDATE dreaming_control SET current_run_id=NULL,lease_until_ms=NULL,
@@ -1901,6 +1968,7 @@ mod tests {
                 scope: MemoryScope::Global, scope_id: None,
                 evidence: vec![format!("transcript:{transcript}")], links: vec![],
             }],
+            delete_pages: vec![],
         };
         let report = store.apply_dreaming(output).unwrap();
         assert_eq!(report.notes_created, 1);
@@ -1953,6 +2021,7 @@ mod tests {
                 evidence: vec![format!("transcript:{transcript}")],
             }],
             pages: vec![],
+            delete_pages: vec![],
         };
         assert!(store.apply_dreaming(output).is_err());
         assert_eq!(store.last_dreamed_transcript_id().unwrap(), 0);
@@ -2001,6 +2070,7 @@ mod tests {
                     evidence: vec![format!("transcript:{transcript}")], links: vec!["workspace-policy".into()],
                 },
             ],
+            delete_pages: vec![],
         };
         let report = store.apply_dreaming(output).unwrap();
         assert_eq!(report.notes_created, 1);
@@ -2024,10 +2094,125 @@ mod tests {
                 content: "Policy details".into(), scope: MemoryScope::Global, scope_id: None,
                 evidence: vec![format!("transcript:{transcript}")], links: vec!["missing-page".into()],
             }],
+            delete_pages: vec![],
         };
         assert!(store.apply_dreaming(output).is_err());
         assert_eq!(store.last_dreamed_transcript_id().unwrap(), 0);
         assert!(store.get_page("policy").is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn explicit_forget_erases_revision_snapshots() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let created = store.remember(input(MemoryScope::Global, None, "A private preference to forget")).unwrap();
+        store.update(&created.id, "A revised private preference to forget", None, None).unwrap();
+        assert_eq!(store.list_revisions(&created.id, 10).unwrap().len(), 2);
+        store.forget(&created.id).unwrap();
+        assert!(store.get(&created.id).is_err());
+        assert!(store.list_revisions(&created.id, 10).unwrap().is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn expiry_cleanup_erases_expired_memory_revisions() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let mut expiring = input(MemoryScope::Global, None, "A temporary memory that expires");
+        expiring.expires_at_ms = Some(now_ms().saturating_sub(1));
+        let created = store.remember(expiring).unwrap();
+        assert_eq!(store.list_revisions(&created.id, 10).unwrap().len(), 1);
+        assert_eq!(store.delete_expired().unwrap(), 1);
+        assert!(store.get(&created.id).is_err());
+        assert!(store.list_revisions(&created.id, 10).unwrap().is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn dreaming_can_delete_an_obsolete_page_after_incoming_links_are_removed() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript("s1", None, None, "user", "Keep only useful knowledge pages").unwrap();
+        let first = DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![],
+            pages: vec![
+                DreamingPage {
+                    id: "root-policy".into(), title: "Root policy".into(),
+                    summary: "Current root policy".into(), content: "See [obsolete](obsolete-page).".into(),
+                    scope: MemoryScope::Global, scope_id: None,
+                    evidence: vec![format!("transcript:{transcript}")], links: vec!["obsolete-page".into()],
+                },
+                DreamingPage {
+                    id: "obsolete-page".into(), title: "Obsolete page".into(),
+                    summary: "Old material".into(), content: "This can be removed.".into(),
+                    scope: MemoryScope::Global, scope_id: None,
+                    evidence: vec![format!("transcript:{transcript}")], links: vec![],
+                },
+            ],
+            delete_pages: vec![],
+        };
+        store.apply_dreaming(first).unwrap();
+        let cleanup = DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![],
+            pages: vec![DreamingPage {
+                id: "root-policy".into(), title: "Root policy".into(),
+                summary: "Current root policy".into(), content: "Current policy only.".into(),
+                scope: MemoryScope::Global, scope_id: None,
+                evidence: vec![format!("transcript:{transcript}")], links: vec![],
+            }],
+            delete_pages: vec![DreamingPageDeletion {
+                id: "obsolete-page".into(),
+                evidence: vec![format!("transcript:{transcript}")],
+            }],
+        };
+        store.apply_dreaming(cleanup).unwrap();
+        assert!(store.get_page("obsolete-page").is_err());
+        let revisions = store.list_page_revisions("obsolete-page", 10).unwrap();
+        assert_eq!(revisions[0].action, "deleted");
+        assert!(revisions[0].after.is_none());
+        assert_eq!(store.restore_page_revision("obsolete-page", 1).unwrap().title, "Obsolete page");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn dreaming_cannot_delete_pages_with_incoming_links() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript("s1", None, None, "user", "Preserve page references").unwrap();
+        let first = DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![],
+            pages: vec![
+                DreamingPage {
+                    id: "root-policy".into(), title: "Root policy".into(),
+                    summary: "Root policy".into(), content: "Root links to child.".into(),
+                    scope: MemoryScope::Global, scope_id: None,
+                    evidence: vec![format!("transcript:{transcript}")], links: vec!["child-page".into()],
+                },
+                DreamingPage {
+                    id: "child-page".into(), title: "Child page".into(),
+                    summary: "Child".into(), content: "Child page.".into(),
+                    scope: MemoryScope::Global, scope_id: None,
+                    evidence: vec![format!("transcript:{transcript}")], links: vec![],
+                },
+            ],
+            delete_pages: vec![],
+        };
+        store.apply_dreaming(first).unwrap();
+        let deletion = DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![],
+            pages: vec![],
+            delete_pages: vec![DreamingPageDeletion {
+                id: "child-page".into(),
+                evidence: vec![format!("transcript:{transcript}")],
+            }],
+        };
+        assert!(store.apply_dreaming(deletion).is_err());
+        assert!(store.get_page("child-page").is_ok());
         let _ = fs::remove_dir_all(root);
     }
 

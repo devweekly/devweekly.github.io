@@ -118,6 +118,7 @@ Options:
 - `--max-tool-calls N`: maximum tool calls per turn (1–64).
 - `--max-history-messages N`: retained non-system messages (4–2000).
 - `--auto-dreaming`: enable idle-time memory consolidation (disabled by default).
+- `--project-id ID`: associate this CLI session with a project memory scope.
 - `--session-dir PATH`: override session storage.
 - `--audit-file PATH`: override the JSONL audit file.
 
@@ -170,15 +171,15 @@ The design follows a four-layer memory model:
 
 During a turn, the Agent can call `memory_note` to save a proposed observation, `memory_search` to find notes/pages/transcript evidence, and `memory_read` to open a note, page or transcript. Proposed notes are deliberately excluded from future context until reviewed. The Host can explicitly accept a note with `AgentRuntime::set_memory_status(id, MemoryStatus::Consolidated)`; explicit Host `remember` calls create consolidated notes.
 
-**Dreaming** is an offline consolidation worker within the same `AgentRuntime`, not a second runtime. Manual execution is available through `AgentRuntime::dream_memories().await` and CLI `/dream`. Automatic execution is opt-in through `DreamingOptions::auto_enabled` or CLI `--auto-dreaming`; the worker waits for an idle window after activity, then processes bounded transcript batches. It continues across batches while the backlog remains above the configured threshold.
+**Dreaming** is an offline consolidation worker within the same `AgentRuntime`, not a second runtime. Manual execution is available through `AgentRuntime::dream_memories().await` and CLI `/dream`; `/dream-status` reports backlog, cursor, current lease, retry schedule and recent runs. Automatic execution is opt-in through `DreamingOptions::auto_enabled` or CLI `--auto-dreaming`; the worker waits for an idle window after activity, then processes bounded transcript batches. It continues across batches while the backlog remains above the configured threshold.
 
 Dreaming run state is durable in SQLite: each run records its trigger, cursor range, model usage, outcome and error. A database lease prevents two processes from consolidating the same workspace concurrently. If a process exits while holding the lease, another worker can reclaim the run after lease expiry. Failed runs store a retry time and are retried with bounded backoff. Model requests have a timeout. No auto-Dreaming call is made by default, because transcripts are sent to the configured model provider when consolidation runs.
 
-The Rust layer validates evidence existence and scope, verifies page links stay within their scope, and commits the complete note/page update and transcript cursor in one SQLite transaction. Notes and pages retain revision snapshots; hosts can inspect history and restore a prior version. Duplicate notes are merged while retaining recent evidence references. The compact global `index` page is the preloaded map; relevant consolidated notes and page summaries are selected for each request, while full pages and transcripts are loaded on demand.
+The Rust layer validates evidence existence and scope, verifies page links stay within their scope, and commits the complete note/page update and transcript cursor in one SQLite transaction. Notes and pages retain revision snapshots; hosts can inspect history and restore a prior version. Dreaming can retire obsolete pages only after all incoming links are removed, and it records a restorable deletion revision. Explicit memory forget and expiry cleanup remove both the live record and its revision snapshots, rather than leaving deleted content in history. Duplicate notes are merged while retaining recent evidence references. The compact global `index` page is the preloaded map; relevant consolidated notes and page summaries are selected for each request, while full pages and transcripts are loaded on demand.
 
 Transcript entries record `session_id`, `project_id` and `task_id`. Search and read operations are scoped to the active session/project/task, and Dreaming cannot use evidence from another project to create a project-specific memory. Global notes require user-authored transcript evidence; project, session and task memories must match their corresponding source scope.
 
-Embedding Hosts can use `MemoryStore::open(path)` or `AgentRuntime::memory_store()`. The store exposes transcript search, note CRUD/review, note and page revision history, restore operations, page retrieval/search, Dreaming run history, access counts and expiry cleanup. Retrieval uses local lexical ranking with Latin tokenization and CJK character n-grams for Chinese/Japanese text. No embedding model, vector database, ORM or external database service is required.
+Embedding Hosts can use `MemoryStore::open(path)` or `AgentRuntime::memory_store()`. The store exposes transcript search, note CRUD/review, note and page revision history, restore operations, page retrieval/search, Dreaming status/run history, access counts and expiry cleanup. Retrieval uses local lexical ranking with Latin tokenization and CJK character n-grams for Chinese/Japanese text. No embedding model, vector database, ORM or external database service is required.
 
 The built-in `RuntimeHook` covers before-turn, before-tool, runtime events and after-turn callbacks. Hooks can observe or deny operations, but cannot grant permissions or bypass the deterministic Rust Policy Gate.
 
@@ -218,6 +219,9 @@ let answer = runtime.run_turn("Review the repository").await?;
 - Background task file tools are synchronous and cannot be interrupted mid-operation. Cancelling such a task takes effect after the current local tool call returns. Background task recovery is automatic when the runtime is constructed inside an active Tokio runtime; hosts constructing it elsewhere must call `resume_background_tasks()` from their async runtime.
 - Model discovery requires the provider to expose the OpenAI-compatible GET /models endpoint.
 - Permission modes intentionally omit automatic edit approval: default always asks before writes, while plan blocks writes.
+- Memory retrieval uses local lexical matching and CJK n-grams; dense embedding retrieval is not implemented.
+- Dreaming validates evidence identity and scope, but semantic evidence support is still model-judged rather than independently graded.
+- Automatic Dreaming is opt-in and requires an active Tokio runtime. The CLI enables it with `--auto-dreaming`; embedding Hosts configure `DreamingOptions`.
 - Context management uses a sliding window; semantic summarization is not implemented yet.
 - Runtime hooks are synchronous callbacks. Long-running hook work should be delegated by the embedding host rather than blocking the Agent loop.
 - Delegated subagents still run sequentially in the parent turn and are not independently resumable. Background tasks are separate, read-only workers; after a process crash, the last persisted checkpoint is resumed. A model request that was in flight at the time of the crash can be repeated, so task execution is at-least-once across crashes rather than exactly-once. Concurrent writers to the same workspace task directory are not coordinated across separate Rust Agent processes.
