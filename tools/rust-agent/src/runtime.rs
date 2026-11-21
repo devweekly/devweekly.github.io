@@ -1516,10 +1516,10 @@ impl AgentRuntime {
         let mut memory_text = memories.iter().map(|record| {
             format!("[{}; confidence {}; importance {}] {}", record.id, record.confidence, record.importance, record.content)
         }).collect::<Vec<_>>();
-        if let Ok(index) = self.memory_store.get_page("index") {
-            if index.scope == MemoryScope::Global {
-                memory_text.insert(0, format!("[Memory index: {}] {}", index.id, index.summary));
-            }
+        if let Ok(index) = self.memory_store.get_page("index")
+            && index.scope == MemoryScope::Global
+        {
+            memory_text.insert(0, format!("[Memory index: {}] {}", index.id, index.summary));
         }
         for page in self.memory_store.search_pages(input, 4)? {
             if self.can_access_memory_scope(page.scope, page.scope_id.as_deref()) && page.id != "index" {
