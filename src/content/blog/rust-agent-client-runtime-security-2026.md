@@ -409,7 +409,7 @@ Rust Agent 项目逐渐成熟后，工程重点并没有停留在“用 Rust 重
 
 ### 11.1 Rust 更适合承载执行核心，不代表所有层都应该 Rust 化
 
-Goose 把桌面应用、CLI、ACP Server 和可复用的 oi-kit Runtime 组合起来；Moltis 将 Agent Server、Gateway、Tool Runtime 和 Desktop Client 分开；ADK-Rust 则把 Runner、Session、Invocation、Event Stream、State、Checkpoint 和协议适配作为明确的 Runtime 抽象。
+Goose 把桌面应用、CLI、ACP Server 和可复用的 oi-kit Runtime 组合起来；Moltis 将 Agent Server、Gateway、Tool Runtime 和 Desktop Client 分开；ADK-Rust 则把 Runner、Session、Invocation、Event Stream、State、Checkpoint 和协议适配作为明确的 Runtime 抽象。Goose 当前 oi-kit 文档进一步说明了组件边界：Agent State Machine 由 Operations 和 Inference Steps 组成，事件在运行时流出，取消会结束中断步骤并处理未响应的 Tool Request；Session 类型、SessionLoader 和 EffectHandler 由宿主应用提供，持久化也由应用自己的 Runtime 负责，而不是内置数据库。当前 Python/Kotlin Bindings 只暴露 Provider、Streaming 和 Context Compaction 等能力，并没有完整暴露 Rust Agent State Machine。oi-kit 仍处于 Alpha，不能把 Rust 核心的成熟度等同于跨语言 API 已稳定。
 
 这些项目体现出一个共同方向：把高频执行、并发控制、进程管理、工具生命周期和状态转换放在可控的 Runtime 核心中，UI、外部协议和应用集成则通过明确接口连接。它不意味着 UI 必须重写成 Rust，也不意味着所有业务流程都必须编译进一个大型二进制。
 
@@ -429,7 +429,7 @@ Goose 采用 MCP 扩展模式，ADK-Rust 的 MCP 文档也强调：当工具属�
 
 Goose 的公开 issue 中出现过 MCP 工具进入异常 Timeout 状态、后续连即时工具也失败的报告。这是单个 issue，不能据此推断 Goose 普遍存在该缺陷；但它提醒 Runtime 不能把一次调用超时简单等同于底层连接健康状态。连接级状态、请求级状态和 Agent Task 状态应分开管理，超时后需要明确判断是取消、重试、重连还是进入可恢复状态。
 
-参考：[ADK-Rust MCP Tools 文档](https://adk-rust.com/en/docs/tools/mcp-tools)、[Goose MCP timeout issue](https://github.com/aaif-goose/goose/issues/1164)。
+参考：[Goose oi-kit Reference](https://goose-docs.ai/docs/oi-kit/reference/)、[Goose oi-kit Changelog](https://github.com/aaif-goose/goose/blob/main/crates/goose-agent/CHANGELOG.md)、[ADK-Rust MCP Tools 文档](https://adk-rust.com/en/docs/tools/mcp-tools)、[Goose MCP timeout issue](https://github.com/aaif-goose/goose/issues/1164)。
 
 ### 11.3 Async Rust 的关键不是吞吐量，而是取消和资源生命周期
 
