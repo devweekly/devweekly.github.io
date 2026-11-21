@@ -1,6 +1,7 @@
 use std::{
     fs::{self, OpenOptions},
     io::{self, Write},
+    sync::atomic::{AtomicU64, Ordering},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -121,9 +122,9 @@ impl SessionStore {
         let path = self.path_for(&record.session_id)?;
         let temporary = path.with_extension(format!("json.tmp-{}", std::process::id()));
         let bytes = serde_json::to_vec_pretty(record)?;
-        fs::write(&temporary, bytes)?;
+        write_private_file(&temporary, &bytes, false)?;
         fs::rename(&temporary, &path)?;
-        fs::write(&self.latest_pointer, &record.session_id)?;
+        write_private_file(&self.latest_pointer, record.session_id.as_bytes(), false)?;
         Ok(())
     }
 }
@@ -138,6 +139,7 @@ pub struct AgentRuntime {
     audit_file: Option<PathBuf>,
     max_tool_calls_per_turn: usize,
     max_history_messages: usize,
+    system_prompt: String,
 }
 
 impl AgentRuntime {
@@ -151,6 +153,7 @@ impl AgentRuntime {
             .unwrap_or_else(|| workspace.join(".rust-agent").join("sessions"));
         let store = SessionStore::new(session_directory);
 
+        let configured_system_prompt = options.system_prompt.clone().unwrap_or_else(|| SYSTEM_PROMPT.to_owned());
         let session = if let Some(session_id) = options.session_id.as_deref() {
             store.load(session_id)?
         } else if options.continue_session {
@@ -163,7 +166,7 @@ impl AgentRuntime {
                 parent_session_id: None,
                 created_at_ms: now,
                 updated_at_ms: now,
-                messages: vec![system_message(options.system_prompt.as_deref())],
+                messages: vec![system_message(Some(&configured_system_prompt))],
             }
         };
 
@@ -182,6 +185,7 @@ impl AgentRuntime {
             audit_file: options.audit_file,
             max_tool_calls_per_turn: options.max_tool_calls_per_turn.clamp(1, 64),
             max_history_messages: options.max_history_messages.clamp(4, 2_000),
+            system_prompt: configured_system_prompt,
         };
         runtime.persist()?;
         runtime.audit("session.start", None, json!({"resumed": options.session_id.is_some() || options.continue_session}));
@@ -204,7 +208,7 @@ impl AgentRuntime {
             parent_session_id: None,
             created_at_ms: now,
             updated_at_ms: now,
-            messages: vec![system_message(None)],
+            messages: vec![system_message(Some(&self.system_prompt))],
         };
         self.messages = self.session.messages.clone();
         self.persist()?;
@@ -305,16 +309,22 @@ impl AgentRuntime {
     }
 
     fn compact_history(&mut self) {
-        let non_system_count = self.messages.len().saturating_sub(1);
-        if non_system_count <= self.max_history_messages {
-            return;
+        let mut removed_messages = 0usize;
+        while self.messages.len().saturating_sub(1) > self.max_history_messages {
+            let next_turn = self.messages.iter().enumerate().skip(2).find_map(|(index, message)| {
+                (message.role == "user" && !message.content.starts_with("Tool result (ok="))
+                    .then_some(index)
+            });
+            let Some(next_turn) = next_turn else { break };
+            self.messages.drain(1..next_turn);
+            removed_messages = removed_messages.saturating_add(next_turn - 1);
         }
-        let remove_count = non_system_count - self.max_history_messages;
-        self.messages.drain(1..=remove_count);
-        self.audit("context.windowed", None, json!({
-            "removed_messages": remove_count,
-            "retained_messages": self.messages.len().saturating_sub(1)
-        }));
+        if removed_messages > 0 {
+            self.audit("context.windowed", None, json!({
+                "removed_messages": removed_messages,
+                "retained_messages": self.messages.len().saturating_sub(1)
+            }));
+        }
     }
 
     fn execute_and_record(&mut self, action: &ToolAction) {
@@ -366,7 +376,14 @@ impl AgentRuntime {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)?;
             }
-            let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+            let mut options = OpenOptions::new();
+            options.create(true).append(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut file = options.open(path)?;
             let mut record = json!({
                 "timestamp_ms": now_ms(),
                 "session_id": self.session.session_id,
@@ -398,7 +415,23 @@ fn now_ms() -> u128 {
 }
 
 fn new_session_id(now: u128) -> String {
-    format!("{now}-{}", std::process::id())
+    static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
+    let sequence = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
+    format!("{now}-{}-{sequence}", std::process::id())
+}
+
+fn write_private_file(path: &Path, bytes: &[u8], append: bool) -> Result<(), AgentError> {
+    let mut options = OpenOptions::new();
+    options.create(true).write(true);
+    if append { options.append(true); } else { options.truncate(true); }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    file.write_all(bytes)?;
+    Ok(())
 }
 
 #[cfg(test)]

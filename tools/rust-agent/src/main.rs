@@ -55,6 +55,14 @@ impl Args {
                 return Ok(None);
             }
 
+            if name == "--continue" {
+                if inline_value.is_some() {
+                    return Err("--continue does not accept a value".into());
+                }
+                parsed.continue_session = true;
+                continue;
+            }
+
             let value = match inline_value {
                 Some(value) => value,
                 None => args.next().ok_or_else(|| format!("missing value for {name}"))?,
@@ -70,7 +78,6 @@ impl Args {
                 "--audit-file" => parsed.audit_file = Some(PathBuf::from(value)),
                 "--max-tool-calls" => parsed.max_tool_calls = value.parse()?,
                 "--max-history-messages" => parsed.max_history_messages = value.parse()?,
-                "--continue" => return Err("--continue does not accept a value; place it before other options".into()),
                 _ => return Err(format!("unknown argument: {name}").into()),
             }
         }
