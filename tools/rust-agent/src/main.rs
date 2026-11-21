@@ -182,7 +182,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Rust Agent ready. Workspace: {}", runtime.workspace().display());
     println!("Session: {}", runtime.session_id());
-    println!("Commands: /help, /new, /session, /resume <id>, /fork, /model <id>, /models, /mode <default|plan>, /context, /compact, /exit");
+    println!("Commands: /help, /new, /session, /resume <id>, /fork, /model <id>, /models, /mode <default|plan>, /context, /compact, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
 
     loop {
         print!("you> ");
@@ -213,7 +213,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!(" /mode default|plan   Change write permission behavior");
             println!(" /context             Show retained context message count");
             println!(" /compact             Apply the configured sliding-window limit");
-            println!(" Ctrl-C               Cancel the current Agent turn");
+            println!(" /tasks               List background tasks");
+            println!(" /task <id>           Show task status and result");
+            println!(" /wait <id>           Wait for a background task (Ctrl-C stops waiting)");
+            println!(" /cancel-task <id>    Cancel a background task");
+            println!(" /deliver-task <id>   Add a completed result to the current session");
+            println!(" Ctrl-C               Cancel the current turn or wait");
             println!(" /exit                Exit");
             continue;
         }
@@ -277,6 +282,97 @@ async fn main() -> Result<(), Box<dyn Error>> {
             continue;
         }
 
+        if input == "/tasks" {
+            match runtime.list_background_tasks() {
+                Ok(tasks) if tasks.is_empty() => println!("No background tasks."),
+                Ok(tasks) => {
+                    for task in tasks {
+                        println!(
+                            "{}  {}  step {}/12  {}",
+                            task.task_id,
+                            task.status.as_str(),
+                            task.step,
+                            task.name
+                        );
+                    }
+                }
+                Err(error) => eprintln!("Could not list background tasks: {error}"),
+            }
+            continue;
+        }
+        if let Some(task_id) = input.strip_prefix("/task ") {
+            match runtime.get_background_task(task_id.trim()) {
+                Ok(task) => {
+                    println!("Task: {}", task.task_id);
+                    println!("Name: {}", task.name);
+                    println!("Status: {}", task.status.as_str());
+                    println!("Progress: {}/12 steps", task.step);
+                    println!("Parent session: {}", task.parent_session_id);
+                    println!("Model: {}", task.model);
+                    if let Some(error) = task.error.as_deref() {
+                        println!("Error: {error}");
+                    }
+                    if let Some(result) = task.result.as_deref() {
+                        println!("Result:\n{result}");
+                    }
+                    if task.delivered_at_ms.is_some() {
+                        println!("Result delivered to parent session.");
+                    }
+                }
+                Err(error) => eprintln!("Could not load background task: {error}"),
+            }
+            continue;
+        }
+        if let Some(task_id) = input.strip_prefix("/wait ") {
+            let cancellation = CancellationHandle::new();
+            {
+                let mut active = active_cancellation
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                *active = Some(cancellation.clone());
+            }
+            let result = runtime
+                .wait_background_task_with_cancellation(task_id.trim(), &cancellation)
+                .await;
+            {
+                let mut active = active_cancellation
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                *active = None;
+            }
+            match result {
+                Ok(task) => {
+                    println!("Task {}: {}", task.task_id, task.status.as_str());
+                    if let Some(result) = task.result.as_deref() {
+                        println!("Result:\n{result}");
+                        println!("Use /deliver-task {} to add this result to the current session.", task.task_id);
+                    }
+                    if let Some(error) = task.error.as_deref() {
+                        eprintln!("Task failed: {error}");
+                    }
+                }
+                Err(rust_agent::error::AgentError::Cancelled) => {
+                    println!("Stopped waiting. The background task is still running; use /tasks or /cancel-task.");
+                }
+                Err(error) => eprintln!("Could not wait for background task: {error}"),
+            }
+            continue;
+        }
+        if let Some(task_id) = input.strip_prefix("/cancel-task ") {
+            match runtime.cancel_background_task(task_id.trim()) {
+                Ok(true) => println!("Cancellation requested for task {}.", task_id.trim()),
+                Ok(false) => println!("Task {} is already finished.", task_id.trim()),
+                Err(error) => eprintln!("Could not cancel background task: {error}"),
+            }
+            continue;
+        }
+        if let Some(task_id) = input.strip_prefix("/deliver-task ") {
+            match runtime.deliver_background_task(task_id.trim()) {
+                Ok(()) => println!("Delivered task {} to the current session.", task_id.trim()),
+                Err(error) => eprintln!("Could not deliver background task: {error}"),
+            }
+            continue;
+        }
         let cancellation = CancellationHandle::new();
         {
             let mut active = active_cancellation

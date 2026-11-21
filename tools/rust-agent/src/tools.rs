@@ -15,6 +15,7 @@ use crate::{
 const DEFAULT_SEARCH_LIMIT: usize = 200;
 const MAX_SEARCH_LIMIT: usize = 1_000;
 
+#[derive(Clone)]
 pub struct ToolExecutor {
     workspace: PathBuf,
 }

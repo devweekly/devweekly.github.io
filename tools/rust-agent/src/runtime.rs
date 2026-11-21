@@ -1,9 +1,10 @@
 use std::{
     fs::{self, OpenOptions},
     io::{self, Write},
+    collections::HashMap,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -37,6 +38,8 @@ or
 {"type":"ask_user","questions":[{"question":"...","header":"...","options":[{"label":"...","description":"..."}],"multi_select":false}]}
 or
 {"type":"tool_call","tool":"delegate_task","arguments":{"name":"reviewer","task":"Inspect the authentication implementation for security and correctness issues."}}
+or
+{"type":"tool_call","tool":"start_background_task","arguments":{"name":"repository audit","task":"Inspect the repository architecture and identify the highest-risk design issues."}}
 
 Tool rules:
 - Paths are relative to the configured workspace.
@@ -44,7 +47,9 @@ Tool rules:
 - search_files searches workspace files natively, respects hidden-file and Git ignore rules, and supports literal or regular-expression matching.
 - write_file changes a workspace file and always requires explicit user approval.
 - Use ask_user when a material requirement or decision is ambiguous. Ask concise questions and provide useful options when possible.
-- delegate_task runs a bounded read-only subagent. Use it for an independent investigation or review; it cannot write files or delegate again.
+- delegate_task runs a bounded read-only subagent in the current turn.
+- start_background_task starts independent, durable read-only work when an investigation can run while you continue the current task. It returns a task ID immediately; the user can inspect, wait for, cancel, or deliver its result later.
+- Background tasks cannot write files, ask the user questions, delegate, or start additional tasks.
 - There is no shell, process execution, arbitrary network tool, or access outside the workspace.
 - Never claim a tool succeeded unless its result says it succeeded.
 - If a task cannot be completed with these tools, explain the limitation."#;
@@ -210,6 +215,146 @@ impl SessionStore {
     }
 }
 
+
+const BACKGROUND_TASK_SCHEMA_VERSION: u32 = 1;
+const MAX_ACTIVE_BACKGROUND_TASKS: usize = 8;
+const MAX_BACKGROUND_TASK_STEPS: usize = 12;
+const MAX_BACKGROUND_TASK_RESULT_CHARS: usize = 24_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackgroundTaskStatus {
+    Queued,
+    Running,
+    Cancelling,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+impl BackgroundTaskStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Running => "running",
+            Self::Cancelling => "cancelling",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    fn is_terminal(self) -> bool {
+        matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackgroundTaskRecord {
+    schema_version: u32,
+    pub task_id: String,
+    pub name: String,
+    pub parent_session_id: String,
+    pub model: String,
+    pub status: BackgroundTaskStatus,
+    pub step: usize,
+    pub created_at_ms: u128,
+    pub updated_at_ms: u128,
+    pub result: Option<String>,
+    pub error: Option<String>,
+    pub delivered_at_ms: Option<u128>,
+    messages: Vec<ChatMessage>,
+}
+
+#[derive(Clone)]
+struct BackgroundTaskStore {
+    directory: PathBuf,
+}
+
+impl BackgroundTaskStore {
+    fn new(directory: PathBuf) -> Self {
+        Self { directory }
+    }
+
+    fn validate_id(task_id: &str) -> Result<(), AgentError> {
+        if task_id.is_empty()
+            || task_id.len() > 128
+            || !task_id.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+        {
+            return Err(AgentError::InvalidAction("background task ID contains unsupported characters".into()));
+        }
+        Ok(())
+    }
+
+    fn path_for(&self, task_id: &str) -> Result<PathBuf, AgentError> {
+        Self::validate_id(task_id)?;
+        Ok(self.directory.join(format!("{task_id}.json")))
+    }
+
+    fn load(&self, task_id: &str) -> Result<BackgroundTaskRecord, AgentError> {
+        let bytes = fs::read(self.path_for(task_id)?)?;
+        let record: BackgroundTaskRecord = serde_json::from_slice(&bytes)?;
+        if record.schema_version != BACKGROUND_TASK_SCHEMA_VERSION || record.task_id != task_id {
+            return Err(AgentError::InvalidAction(
+                "background task file has an unsupported schema or mismatched ID".into(),
+            ));
+        }
+        Ok(record)
+    }
+
+    fn save(&self, record: &BackgroundTaskRecord) -> Result<(), AgentError> {
+        fs::create_dir_all(&self.directory)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&self.directory, fs::Permissions::from_mode(0o700))?;
+        }
+        let path = self.path_for(&record.task_id)?;
+        let temporary = path.with_extension(format!("json.tmp-{}", std::process::id()));
+        let bytes = serde_json::to_vec_pretty(record)?;
+        write_private_file(&temporary, &bytes, false)?;
+        fs::rename(&temporary, &path)?;
+        Ok(())
+    }
+
+    fn list(&self) -> Result<Vec<BackgroundTaskRecord>, AgentError> {
+        if !self.directory.exists() {
+            return Ok(Vec::new());
+        }
+        let mut records = Vec::new();
+        for entry in fs::read_dir(&self.directory)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_file()
+                || entry.path().extension().and_then(|value| value.to_str()) != Some("json")
+            {
+                continue;
+            }
+            let bytes = fs::read(entry.path())?;
+            let record: BackgroundTaskRecord = serde_json::from_slice(&bytes)?;
+            if record.schema_version != BACKGROUND_TASK_SCHEMA_VERSION {
+                return Err(AgentError::InvalidAction(format!(
+                    "unsupported background task schema in {}",
+                    entry.path().display()
+                )));
+            }
+            Self::validate_id(&record.task_id)?;
+            records.push(record);
+        }
+        records.sort_by(|left, right| {
+            left.created_at_ms.cmp(&right.created_at_ms).then(left.task_id.cmp(&right.task_id))
+        });
+        Ok(records)
+    }
+}
+
+#[derive(Clone)]
+struct BackgroundTaskControl {
+    cancellation: CancellationHandle,
+    notify: Arc<Notify>,
+}
+
+type SharedTaskControls = Arc<Mutex<HashMap<String, BackgroundTaskControl>>>;
+
 pub struct AgentRuntime {
     provider: OpenAiCompatibleProvider,
     workspace: PathBuf,
@@ -223,6 +368,8 @@ pub struct AgentRuntime {
     permission_mode: PermissionMode,
     system_prompt: String,
     hooks: Vec<Box<dyn RuntimeHook>>,
+    background_task_store: BackgroundTaskStore,
+    background_task_controls: SharedTaskControls,
 }
 
 impl AgentRuntime {
@@ -259,6 +406,10 @@ impl AgentRuntime {
         } else {
             session.messages.clone()
         };
+        let background_task_store = BackgroundTaskStore::new(
+            workspace.join(".rust-agent").join("tasks"),
+        );
+        let background_task_controls = Arc::new(Mutex::new(HashMap::new()));
         let mut runtime = Self {
             provider,
             executor: ToolExecutor::new(workspace.clone()),
@@ -272,9 +423,14 @@ impl AgentRuntime {
             permission_mode: PermissionMode::Default,
             system_prompt: configured_system_prompt,
             hooks,
+            background_task_store,
+            background_task_controls,
         };
         runtime.persist()?;
         runtime.audit("session.start", None, json!({"resumed": options.session_id.is_some() || options.continue_session}));
+        if tokio::runtime::Handle::try_current().is_ok() {
+            runtime.resume_background_tasks()?;
+        }
         Ok(runtime)
     }
 
@@ -298,6 +454,333 @@ impl AgentRuntime {
 
     pub async fn list_models(&self) -> Result<Vec<String>, AgentError> {
         self.provider.list_models().await
+    }
+
+
+    pub fn list_background_tasks(&self) -> Result<Vec<BackgroundTaskRecord>, AgentError> {
+        self.background_task_store.list()
+    }
+
+    pub fn get_background_task(&self, task_id: &str) -> Result<BackgroundTaskRecord, AgentError> {
+        self.background_task_store.load(task_id)
+    }
+
+    pub fn start_background_task(&self, name: &str, task: &str) -> Result<String, AgentError> {
+        if tokio::runtime::Handle::try_current().is_err() {
+            return Err(AgentError::InvalidAction(
+                "background tasks must be started from inside a Tokio runtime".into(),
+            ));
+        }
+        let name = name.trim();
+        let task = task.trim();
+        if name.is_empty() || name.len() > 80 || task.is_empty() || task.len() > 10_000 {
+            return Err(AgentError::InvalidAction(
+                "background task requires a 1–80 byte name and a 1–10000 byte task".into(),
+            ));
+        }
+
+        let records = self.background_task_store.list()?;
+        let active_count = records.iter()
+            .filter(|record| matches!(
+                record.status,
+                BackgroundTaskStatus::Queued | BackgroundTaskStatus::Running | BackgroundTaskStatus::Cancelling
+            ))
+            .count();
+        if active_count >= MAX_ACTIVE_BACKGROUND_TASKS {
+            return Err(AgentError::InvalidAction(format!(
+                "at most {MAX_ACTIVE_BACKGROUND_TASKS} background tasks may be active"
+            )));
+        }
+
+        let now = now_ms();
+        let task_id = new_session_id(now);
+        let record = BackgroundTaskRecord {
+            schema_version: BACKGROUND_TASK_SCHEMA_VERSION,
+            task_id: task_id.clone(),
+            name: name.to_owned(),
+            parent_session_id: self.session.session_id.clone(),
+            model: self.provider.model().to_owned(),
+            status: BackgroundTaskStatus::Queued,
+            step: 0,
+            created_at_ms: now,
+            updated_at_ms: now,
+            result: None,
+            error: None,
+            delivered_at_ms: None,
+            messages: vec![
+                ChatMessage {
+                    role: "system".into(),
+                    content: BACKGROUND_TASK_SYSTEM_PROMPT.to_owned(),
+                },
+                ChatMessage {
+                    role: "user".into(),
+                    content: task.to_owned(),
+                },
+            ],
+        };
+        self.background_task_store.save(&record)?;
+        self.spawn_background_task(record)?;
+        self.audit("background_task.started", Some("start_background_task"), json!({
+            "task_id": task_id,
+            "name": name,
+            "task_length": task.len()
+        }));
+        Ok(task_id)
+    }
+
+    /// Requeues durable tasks left queued or running by a previous process.
+    pub fn resume_background_tasks(&self) -> Result<usize, AgentError> {
+        if tokio::runtime::Handle::try_current().is_err() {
+            return Err(AgentError::InvalidAction(
+                "background tasks must be resumed from inside a Tokio runtime".into(),
+            ));
+        }
+
+        let records = self.background_task_store.list()?;
+        let mut resumed = 0usize;
+        for mut record in records {
+            if record.status == BackgroundTaskStatus::Cancelling {
+                record.status = BackgroundTaskStatus::Cancelled;
+                record.updated_at_ms = now_ms();
+                self.background_task_store.save(&record)?;
+                continue;
+            }
+            if !matches!(record.status, BackgroundTaskStatus::Queued | BackgroundTaskStatus::Running) {
+                continue;
+            }
+            let already_active = self.background_task_controls
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .contains_key(&record.task_id);
+            if already_active {
+                continue;
+            }
+            if record.status == BackgroundTaskStatus::Running {
+                record.status = BackgroundTaskStatus::Queued;
+                record.updated_at_ms = now_ms();
+                self.background_task_store.save(&record)?;
+            }
+            self.spawn_background_task(record)?;
+            resumed += 1;
+        }
+        Ok(resumed)
+    }
+
+    fn spawn_background_task(&self, mut record: BackgroundTaskRecord) -> Result<(), AgentError> {
+        if tokio::runtime::Handle::try_current().is_err() {
+            return Err(AgentError::InvalidAction(
+                "background tasks must be started from inside a Tokio runtime".into(),
+            ));
+        }
+        let mut provider = self.provider.clone();
+        provider.set_model(record.model.clone())?;
+        let task_id = record.task_id.clone();
+        let cancellation = CancellationHandle::new();
+        let notify = Arc::new(Notify::new());
+        let control = BackgroundTaskControl {
+            cancellation: cancellation.clone(),
+            notify: notify.clone(),
+        };
+
+        {
+            let mut controls = self.background_task_controls
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if controls.contains_key(&task_id) {
+                return Ok(());
+            }
+            let current = self.background_task_store.load(&task_id)?;
+            if current.status.is_terminal() || current.status == BackgroundTaskStatus::Cancelling {
+                return Ok(());
+            }
+            record = current;
+            controls.insert(task_id.clone(), control);
+            record.status = BackgroundTaskStatus::Running;
+            record.updated_at_ms = now_ms();
+            if let Err(error) = self.background_task_store.save(&record) {
+                controls.remove(&task_id);
+                return Err(error);
+            }
+        }
+
+        let executor = self.executor.clone();
+        let store = self.background_task_store.clone();
+        let controls = Arc::clone(&self.background_task_controls);
+        tokio::spawn(async move {
+            let outcome = execute_background_task(
+                &mut record,
+                &provider,
+                &executor,
+                &store,
+                &cancellation,
+                &controls,
+            ).await;
+
+            let mut active_controls = controls
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let cancellation_requested = store.load(&task_id)
+                .map(|current| current.status == BackgroundTaskStatus::Cancelling)
+                .unwrap_or(false);
+
+            if cancellation_requested || matches!(&outcome, Err(AgentError::Cancelled)) {
+                record.status = BackgroundTaskStatus::Cancelled;
+                record.result = None;
+                record.error = None;
+            } else {
+                match outcome {
+                    Ok(result) => {
+                        record.status = BackgroundTaskStatus::Completed;
+                        record.result = Some(result);
+                        record.error = None;
+                    }
+                    Err(error) => {
+                        record.status = BackgroundTaskStatus::Failed;
+                        record.error = Some(error.to_string());
+                    }
+                }
+            }
+            record.updated_at_ms = now_ms();
+            if let Err(error) = store.save(&record) {
+                warn!(task_id = %task_id, %error, "failed to persist background task result");
+            }
+
+            let completed_control = active_controls.remove(&task_id);
+            drop(active_controls);
+            if let Some(control) = completed_control {
+                control.notify.notify_waiters();
+            } else {
+                notify.notify_waiters();
+            }
+        });
+        Ok(())
+    }
+
+    pub fn cancel_background_task(&self, task_id: &str) -> Result<bool, AgentError> {
+        let mut controls = self.background_task_controls
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut record = self.background_task_store.load(task_id)?;
+        if record.status.is_terminal() {
+            return Ok(false);
+        }
+
+        if let Some(control) = controls.get(task_id) {
+            record.status = BackgroundTaskStatus::Cancelling;
+            record.updated_at_ms = now_ms();
+            self.background_task_store.save(&record)?;
+            control.cancellation.cancel();
+        } else {
+            record.status = BackgroundTaskStatus::Cancelled;
+            record.updated_at_ms = now_ms();
+            record.error = None;
+            self.background_task_store.save(&record)?;
+        }
+        drop(controls);
+        self.audit("background_task.cancel_requested", Some("cancel_background_task"), json!({
+            "task_id": task_id
+        }));
+        Ok(true)
+    }
+
+    pub async fn wait_background_task(
+        &self,
+        task_id: &str,
+    ) -> Result<BackgroundTaskRecord, AgentError> {
+        self.wait_background_task_with_cancellation(task_id, &CancellationHandle::new()).await
+    }
+
+    pub async fn wait_background_task_with_cancellation(
+        &self,
+        task_id: &str,
+        cancellation: &CancellationHandle,
+    ) -> Result<BackgroundTaskRecord, AgentError> {
+        let initial = self.background_task_store.load(task_id)?;
+        if initial.status.is_terminal() {
+            return Ok(initial);
+        }
+
+        let notify = self.background_task_controls
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(task_id)
+            .map(|control| Arc::clone(&control.notify));
+        let Some(notify) = notify else {
+            let current = self.background_task_store.load(task_id)?;
+            if current.status.is_terminal() {
+                return Ok(current);
+            }
+            return Err(AgentError::InvalidAction(
+                "background task has no active worker; call resume_background_tasks".into(),
+            ));
+        };
+
+        loop {
+            let notified = notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+
+            let record = self.background_task_store.load(task_id)?;
+            if record.status.is_terminal() {
+                return Ok(record);
+            }
+            tokio::select! {
+                biased;
+                _ = cancellation.cancelled() => return Err(AgentError::Cancelled),
+                _ = notified => {
+                    let current = self.background_task_store.load(task_id)?;
+                    if current.status.is_terminal() {
+                        return Ok(current);
+                    }
+                    let worker_active = self.background_task_controls
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .contains_key(task_id);
+                    if !worker_active {
+                        return Err(AgentError::InvalidAction(
+                            "background worker stopped before persisting a terminal task status".into(),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn deliver_background_task(&mut self, task_id: &str) -> Result<(), AgentError> {
+        let mut record = self.background_task_store.load(task_id)?;
+        if record.status != BackgroundTaskStatus::Completed {
+            return Err(AgentError::InvalidAction(
+                "only completed background tasks can be delivered".into(),
+            ));
+        }
+        if record.parent_session_id != self.session.session_id {
+            return Err(AgentError::InvalidAction(
+                "background task belongs to a different parent session".into(),
+            ));
+        }
+        let marker = format!("Background task result [{}]", task_id);
+        if self.messages.iter().any(|message| message.content.starts_with(&marker)) {
+            record.delivered_at_ms.get_or_insert_with(now_ms);
+            self.background_task_store.save(&record)?;
+            return Ok(());
+        }
+
+        let result = record.result.as_deref().unwrap_or("Task completed without a result.");
+        self.messages.push(ChatMessage {
+            role: "user".into(),
+            content: format!(
+                "{marker}:\n{}",
+                result.chars().take(MAX_BACKGROUND_TASK_RESULT_CHARS).collect::<String>()
+            ),
+        });
+        self.persist()?;
+        record.delivered_at_ms = Some(now_ms());
+        self.background_task_store.save(&record)?;
+        self.audit("background_task.delivered", Some("deliver_background_task"), json!({
+            "task_id": task_id,
+            "result_length": result.len()
+        }));
+        Ok(())
     }
 
     pub fn set_permission_mode(&mut self, mode: PermissionMode) {
@@ -500,6 +983,13 @@ impl AgentRuntime {
                     if let Some(reason) = hook_denial {
                         self.audit("hook.tool_denied", Some(&action.name), json!({"reason": reason}));
                         self.push_tool_result(false, &format!("Denied by runtime hook: {reason}"));
+                    } else if action.name == "start_background_task" {
+                        let name = action.arguments.get("name").and_then(Value::as_str).unwrap_or("background task");
+                        let task = action.arguments.get("task").and_then(Value::as_str).unwrap_or("");
+                        match self.start_background_task(name, task) {
+                            Ok(task_id) => self.push_tool_result(true, &format!("Background task started. Task ID: {task_id}. Use /tasks and /wait {task_id} to inspect and collect its result.")),
+                            Err(error) => self.push_tool_result(false, &error.to_string()),
+                        }
                     } else if action.name == "delegate_task" {
                         match self.run_subagent(&action, cancellation).await {
                             Ok(output) => self.push_tool_result(true, &output),
@@ -853,6 +1343,113 @@ impl AgentRuntime {
     }
 }
 
+
+const BACKGROUND_TASK_SYSTEM_PROMPT: &str = r#"You are an independent background research task. Work only on the assigned task.
+Return exactly one JSON object:
+{"type":"final","content":"..."}
+or
+{"type":"tool_call","tool":"read_file","arguments":{"path":"relative/path"}}
+or
+{"type":"tool_call","tool":"list_dir","arguments":{"path":"relative/path"}}
+or
+{"type":"tool_call","tool":"search_files","arguments":{"path":"relative/path","query":"text","regex":false,"case_sensitive":true,"glob":"*","max_results":100}}
+You may use only read_file, list_dir, and search_files within the configured workspace.
+Do not write files, ask the user questions, delegate, or start more background tasks. Cite relevant file paths and findings. Keep the result focused."#;
+
+async fn execute_background_task(
+    record: &mut BackgroundTaskRecord,
+    provider: &OpenAiCompatibleProvider,
+    executor: &ToolExecutor,
+    store: &BackgroundTaskStore,
+    cancellation: &CancellationHandle,
+    controls: &SharedTaskControls,
+) -> Result<String, AgentError> {
+    for step in record.step..MAX_BACKGROUND_TASK_STEPS {
+        if cancellation.is_cancelled() {
+            return Err(AgentError::Cancelled);
+        }
+        let completion = tokio::select! {
+            biased;
+            _ = cancellation.cancelled() => None,
+            result = provider.complete(&record.messages) => Some(result),
+        };
+        let raw = match completion {
+            None => return Err(AgentError::Cancelled),
+            Some(result) => result?,
+        };
+        if cancellation.is_cancelled() {
+            return Err(AgentError::Cancelled);
+        }
+        record.messages.push(ChatMessage {
+            role: "assistant".into(),
+            content: raw.clone(),
+        });
+
+        let turn = serde_json::from_str::<ModelTurn>(&raw)
+            .map_err(|error| AgentError::InvalidAction(format!(
+                "background task returned invalid action JSON: {error}"
+            )))?;
+
+        match turn {
+            ModelTurn::Final { content } => {
+                return Ok(content.chars().take(MAX_BACKGROUND_TASK_RESULT_CHARS).collect());
+            }
+            ModelTurn::AskUser { .. } => {
+                return Err(AgentError::InvalidAction(
+                    "background tasks cannot ask the user questions".into(),
+                ));
+            }
+            ModelTurn::ToolCall { tool, arguments } => {
+                let action = ToolAction { name: tool, arguments };
+                let tool_result = if is_subagent_read_tool(&action.name)
+                    && matches!(policy::evaluate(&action), PolicyDecision::Allow)
+                {
+                    match executor.execute(&action) {
+                        Ok(result) => result,
+                        Err(error) => crate::action::ToolResult {
+                            ok: false,
+                            output: error.to_string(),
+                        },
+                    }
+                } else {
+                    crate::action::ToolResult {
+                        ok: false,
+                        output: "Background tasks are restricted to read-only workspace tools".into(),
+                    }
+                };
+                let output: String = tool_result.output.chars().take(12_000).collect();
+                record.messages.push(ChatMessage {
+                    role: "user".into(),
+                    content: format!(
+                        "Tool result (ok={}): {}",
+                        tool_result.ok,
+                        output
+                    ),
+                });
+                record.step = step + 1;
+                record.updated_at_ms = now_ms();
+                {
+                    let _active_controls = controls
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    if cancellation.is_cancelled() {
+                        return Err(AgentError::Cancelled);
+                    }
+                    store.save(record)?;
+                }
+
+                if cancellation.is_cancelled() {
+                    return Err(AgentError::Cancelled);
+                }
+            }
+        }
+    }
+
+    Err(AgentError::InvalidAction(format!(
+        "background task reached its {MAX_BACKGROUND_TASK_STEPS}-step limit"
+    )))
+}
+
 fn is_subagent_read_tool(name: &str) -> bool {
     matches!(name, "read_file" | "list_dir" | "search_files")
 }
@@ -902,7 +1499,10 @@ fn write_private_file(path: &Path, bytes: &[u8], append: bool) -> Result<(), Age
 
 #[cfg(test)]
 mod tests {
-    use super::{CancellationHandle, SessionStore, new_session_id, now_ms};
+    use super::{
+        BackgroundTaskRecord, BackgroundTaskStatus, BackgroundTaskStore, CancellationHandle,
+        ChatMessage, SessionStore, new_session_id, now_ms,
+    };
 
     #[test]
     fn subagents_are_restricted_to_read_only_tools() {
@@ -933,6 +1533,68 @@ mod tests {
         cancellation.cancel();
         cancellation.cancelled().await;
         assert!(cancellation.is_cancelled());
+    }
+
+    #[test]
+    fn background_task_ids_are_safe_file_names() {
+        assert!(BackgroundTaskStore::validate_id("task-123_abc").is_ok());
+        assert!(BackgroundTaskStore::validate_id("../outside").is_err());
+        assert!(BackgroundTaskStore::validate_id("task with spaces").is_err());
+    }
+
+    #[test]
+    fn background_task_statuses_are_stable_snake_case_values() {
+        assert_eq!(
+            serde_json::to_string(&BackgroundTaskStatus::Running).unwrap(),
+            "\"running\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BackgroundTaskStatus::Cancelling).unwrap(),
+            "\"cancelling\""
+        );
+        assert!(BackgroundTaskStatus::Completed.is_terminal());
+        assert!(BackgroundTaskStatus::Failed.is_terminal());
+        assert!(BackgroundTaskStatus::Cancelled.is_terminal());
+        assert!(!BackgroundTaskStatus::Queued.is_terminal());
+        assert!(!BackgroundTaskStatus::Running.is_terminal());
+        assert!(!BackgroundTaskStatus::Cancelling.is_terminal());
+    }
+
+    #[test]
+    fn background_task_store_round_trips_durable_state() {
+        let directory = std::env::temp_dir().join(format!(
+            "rust-agent-task-store-{}",
+            new_session_id(now_ms())
+        ));
+        let store = BackgroundTaskStore::new(directory.clone());
+        let record = BackgroundTaskRecord {
+            schema_version: super::BACKGROUND_TASK_SCHEMA_VERSION,
+            task_id: "task-round-trip".into(),
+            name: "round trip".into(),
+            parent_session_id: "parent-session".into(),
+            model: "test-model".into(),
+            status: BackgroundTaskStatus::Queued,
+            step: 2,
+            created_at_ms: 1,
+            updated_at_ms: 2,
+            result: None,
+            error: None,
+            delivered_at_ms: None,
+            messages: vec![
+                ChatMessage { role: "system".into(), content: "system".into() },
+                ChatMessage { role: "user".into(), content: "task".into() },
+            ],
+        };
+
+        store.save(&record).expect("task should be persisted");
+        let loaded = store.load("task-round-trip").expect("task should load");
+        assert_eq!(loaded.task_id, record.task_id);
+        assert_eq!(loaded.parent_session_id, record.parent_session_id);
+        assert_eq!(loaded.status, BackgroundTaskStatus::Queued);
+        assert_eq!(loaded.step, 2);
+        assert_eq!(store.list().expect("tasks should list").len(), 1);
+
+        std::fs::remove_dir_all(directory).expect("test task directory should be removed");
     }
 
     #[test]

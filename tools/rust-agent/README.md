@@ -13,6 +13,7 @@ flowchart TB
     TOOLS --> WS["Configured Workspace"]
     RUNTIME --> SESSION["Session Store"]
     RUNTIME --> AUDIT["Lifecycle / Policy Audit JSONL"]
+    RUNTIME --> TASKS["Background Task Workers / Durable Task Store"]
     APPROVAL["User Approval"] --> RUNTIME
 ```
 
@@ -48,12 +49,27 @@ Embedding hosts can create a `CancellationHandle`, pass it to `run_turn_with_can
 
 The runtime bounds the conversation history to the most recent 80 non-system messages by default. It removes complete older turns rather than cutting through the middle of a tool exchange. This is a sliding context window, not semantic summarization. The model can delegate a bounded investigation or review through `delegate_task`; the delegated Agent has its own short-lived context and can only read, list, and search workspace files. Its result is returned to the parent conversation.
 
+Longer independent investigations can use `start_background_task`. A task gets its own message history and is stored under `.rust-agent/tasks/<task-id>.json`, separately from its parent session. The task ID is returned immediately, so the foreground Agent turn can continue. Task status and intermediate messages are persisted after each completed tool step. On process startup, queued or previously running tasks are requeued from their last persisted checkpoint; a task persisted in `cancelling` is finalized as `cancelled` instead. The task's selected model is captured when it starts.
+
+Use these CLI commands to manage tasks:
+
+```text
+/tasks                 List background tasks
+/task <id>             Show task status, progress, and result
+/wait <id>             Wait for completion (Ctrl-C stops waiting, not the task)
+/cancel-task <id>      Request task cancellation
+/deliver-task <id>     Add a completed result to its original parent session
+```
+
+A result can only be delivered to the parent session that created the task. Delivery is idempotent. Cancellation first persists a `cancelling` state before signalling the worker; a process restart completes that cancellation instead of requeueing the task. Background tasks are limited to eight active tasks and twelve model steps per task. They can only read, list, and search workspace files; they cannot write files, ask questions, start nested tasks, or use arbitrary network or process tools.
+
 ## Runtime controls
 
 | Capability | Native implementation |
 |---|---|
 | Agent loop | Rust runtime with a bounded tool-call loop |
 | Subagents | In-process delegated Agent with a six-step limit and read-only tool allow-list |
+| Background tasks | Durable, independently scheduled read-only tasks with status, wait, cancel, restart recovery, and parent-session result delivery |
 | Session lifecycle | Create, resume, continue latest, fork |
 | Context management | Configurable sliding message window with whole-turn pruning |
 | Permission control | Deterministic Rust Policy Gate, default/plan modes, and per-write approval |
@@ -93,11 +109,12 @@ No Shell, process execution, arbitrary network tool, or workspace-external file 
 
 - Streaming requires the provider to implement OpenAI-compatible Chat Completions SSE. The primary Agent loop emits `model.output.delta` RuntimeHook events and buffers the complete response before parsing it. Delta events contain fragments of the structured action payload, not display-ready assistant text; hosts must wait for the completed turn before rendering final content or acting on a tool call. Delegated subagent requests still use the buffered completion path. If a primary model fails after emitting partial output, fallback is not attempted to avoid mixing two model responses.
 - Host-triggered cancellation and CLI Ctrl-C abort in-flight provider requests and record a cancelled-turn marker. Cancellation cannot undo a local tool operation that has already completed, and synchronous local tools plus blocking CLI approval/question prompts are not preemptible.
+- Background task file tools are synchronous and cannot be interrupted mid-operation. Cancelling such a task takes effect after the current local tool call returns. Background task recovery is automatic when the runtime is constructed inside an active Tokio runtime; hosts constructing it elsewhere must call `resume_background_tasks()` from their async runtime.
 - Model discovery requires the provider to expose the OpenAI-compatible GET /models endpoint.
 - Permission modes intentionally omit automatic edit approval: default always asks before writes, while plan blocks writes.
 - Context management uses a sliding window; semantic summarization is not implemented yet.
 - Runtime hooks are synchronous callbacks. Long-running hook work should be delegated by the embedding host rather than blocking the Agent loop.
-- Delegated subagents currently run sequentially in the parent turn, are read-only, and are not independently resumable. Parallel agents and background task handoff are not implemented.
+- Delegated subagents still run sequentially in the parent turn and are not independently resumable. Background tasks are separate, read-only workers; after a process crash, the last persisted checkpoint is resumed. A model request that was in flight at the time of the crash can be repeated, so task execution is at-least-once across crashes rather than exactly-once. Concurrent writers to the same workspace task directory are not coordinated across separate Rust Agent processes.
 - Fallback routing is deliberately limited to transient transport, rate-limit, and server failures. Authentication, invalid-request, and malformed-response failures are not retried.
 - Terminal approval is synchronous. A desktop host will need an approval channel, but must retain the Rust policy check.
 - Session storage is local JSON and is not designed for concurrent writers to the same session.

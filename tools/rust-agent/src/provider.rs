@@ -11,6 +11,7 @@ pub struct ChatMessage {
     pub content: String,
 }
 
+#[derive(Clone)]
 pub struct OpenAiCompatibleProvider {
     client: Client,
     endpoint: String,
