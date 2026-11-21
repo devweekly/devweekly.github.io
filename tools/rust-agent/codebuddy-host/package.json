@@ -1,0 +1,15 @@
+{
+  "name": "rust-agent-codebuddy-host",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=18.20"
+  },
+  "scripts": {
+    "start": "node src/index.mjs"
+  },
+  "dependencies": {
+    "@tencent-ai/agent-sdk": "^0.1.24"
+  }
+}
