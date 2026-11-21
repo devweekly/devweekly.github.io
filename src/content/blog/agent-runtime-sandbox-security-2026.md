@@ -22,7 +22,7 @@ Agent Runtime 一旦允许模型读文件、改文件、运行命令或调用 MC
 
 开源生态已经有几种不同取向的实现：Anthropic 把 Claude Code 使用的 OS Sandbox Runtime 开源；OpenAI 公开了 Codex Sandbox 的工程设计；Vercel 的 just-bash 用 TypeScript 实现一个虚拟 Shell；OpenHands 用 Docker Runtime 提供完整执行环境；MCP Filesystem Server 则在文件工具本身实施目录范围控制。它们解决的问题并不相同，不能简单排成一个“沙箱产品排行榜”。
 
-本文重点讨论桌面型和本地型 Agent Runtime，尤其是 Node.js / TypeScript 技术栈。
+本文从 TypeScript / Node.js Agent Runtime 出发，讨论桌面、云端、Kubernetes 和带 GUI 的 VM 执行环境，重点区分 Tool 授权、资源授权与 OS / VM 隔离。
 
 ## 1. 先把三个安全层次分开
 
@@ -931,7 +931,7 @@ Google 在 2026 年的 [GKE AI Agent Workloads 架构文档](https://docs.cloud.
 
 - Read：使用只读 Capability Filesystem，细分目录列表、元数据、内容读取和搜索权限。\n- Write / Edit：使用独立的 ChangeSet、Patch、版本检查和可回滚提交接口，不与执行能力绑定。
 - 轻量 Shell：使用 just-bash，优先采用内存文件系统；只在确有需要时开放网络、Python 或 JavaScript。
-- Bash / Script：通过独立 Execution Service 调用 Anthropic Sandbox Runtime 等 OS Sandbox，脚本写入与脚本执行分别授权。
+- Bash / Script：通过独立 Execution Service 调用 Anthropic Sandbox Runtime、Microsoft Execution Containers（MXC）等经验证的 OS Sandbox，脚本写入与脚本执行分别授权。
 - 完整开发环境：需要依赖安装、编译、浏览器和长任务时，再采用 OpenHands 这类 Docker Runtime；高风险任务考虑 VM。
 - 权限与审计：由自己的 Agent Runtime 统一管理 Tool Registry、Policy Engine、审批、Execution Profile 和 Audit Log。
 
