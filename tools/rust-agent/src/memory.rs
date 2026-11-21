@@ -876,7 +876,16 @@ impl MemoryStore {
         let mut inserted = 0;
         for message in messages.iter().filter(|message| message.role != "system") {
             if !message.content.is_empty() {
-                self.record_transcript(session_id, project_id, None, &message.role, &message.content)?;
+                // Chat Completions represents tool results as user messages. Recover the
+                // original source classification instead of backfilling them as user input.
+                let role = if message.content.starts_with("Tool result (ok=") {
+                    "tool"
+                } else if message.content.starts_with("Background task result [") {
+                    "assistant"
+                } else {
+                    message.role.as_str()
+                };
+                self.record_transcript(session_id, project_id, None, role, &message.content)?;
                 inserted += 1;
             }
         }
@@ -955,9 +964,11 @@ impl MemoryStore {
         let connection = self.conn()?;
         let mut statement = connection.prepare(
             "SELECT id,session_id,project_id,task_id,role,content,created_at_ms FROM transcripts
-             WHERE (session_id=?1 AND ((?3 IS NULL AND task_id IS NULL) OR task_id=?3))
-                OR (?2 IS NOT NULL AND project_id=?2
-                    AND ((?3 IS NULL AND task_id IS NULL) OR task_id=?3))
+             WHERE (
+                    (session_id=?1 AND ((?2 IS NULL AND project_id IS NULL) OR project_id=?2))
+                    OR (?2 IS NOT NULL AND project_id=?2)
+               )
+               AND ((?3 IS NULL AND task_id IS NULL) OR task_id=?3)
              ORDER BY id DESC LIMIT 1000",
         )?;
         let records = statement.query_map(params![session_id, project_id, task_id], row_transcript)?
@@ -987,10 +998,16 @@ impl MemoryStore {
         task_id: Option<&str>,
     ) -> Result<TranscriptEntry, AgentError> {
         let entry = self.get_transcript(id)?;
-        let visible = (entry.session_id == session_id
-            && ((task_id.is_none() && entry.task_id.is_none()) || entry.task_id.as_deref() == task_id))
-            || (project_id.is_some() && entry.project_id.as_deref() == project_id
-                && ((task_id.is_none() && entry.task_id.is_none()) || entry.task_id.as_deref() == task_id));
+        let task_matches = (task_id.is_none() && entry.task_id.is_none())
+            || entry.task_id.as_deref() == task_id;
+        let project_matches = match project_id {
+            Some(project_id) => entry.project_id.as_deref() == Some(project_id),
+            None => entry.project_id.is_none(),
+        };
+        let visible = task_matches
+            && project_matches
+            && (entry.session_id == session_id
+                || (project_id.is_some() && entry.project_id.as_deref() == project_id));
         if !visible {
             return Err(AgentError::InvalidAction("transcript entry is outside the current scope".into()));
         }
@@ -1379,6 +1396,13 @@ impl MemoryStore {
             for link in &page.links {
                 validate_page_id(link)?;
             }
+            let mut validated_links = page.links.clone();
+            validated_links.extend(markdown_page_links(&page.content));
+            validated_links.sort();
+            validated_links.dedup();
+            for link in &validated_links {
+                validate_page_id(link)?;
+            }
             let refs = serde_json::to_string(&page.evidence)?;
             let links = serde_json::to_string(&page.links)?;
             let now = to_i64(now_ms())?;
@@ -1400,7 +1424,7 @@ impl MemoryStore {
             insert_page_revision(&transaction, &page.id,
                 if exists { "updated" } else { "created" },
                 before.as_ref(), Some(&after), "dreaming wiki maintenance")?;
-            pending_page_links.push((page.id.clone(), page.scope, page.scope_id.clone(), page.links.clone()));
+            pending_page_links.push((page.id.clone(), page.scope, page.scope_id.clone(), validated_links));
             if exists { report.pages_updated += 1; } else { report.pages_created += 1; }
         }
         for (source_id, source_scope, source_scope_id, links) in pending_page_links {
@@ -1444,7 +1468,10 @@ impl MemoryStore {
                 statement.query_map([&deletion.id], row_page)?
                     .collect::<Result<Vec<_>, _>>()?
             };
-            if remaining_pages.iter().any(|page| page.links.iter().any(|link| link == &deletion.id)) {
+            if remaining_pages.iter().any(|page| {
+                page.links.iter().any(|link| link == &deletion.id)
+                    || markdown_page_links(&page.content).iter().any(|link| link == &deletion.id)
+            }) {
                 return Err(AgentError::InvalidAction(format!(
                     "knowledge page {} is still referenced; update incoming links before deleting it",
                     deletion.id
@@ -1508,6 +1535,32 @@ fn ensure_column(connection: &Connection, table: &str, name: &str, definition: &
     Ok(())
 }
 
+
+/// Extract local knowledge-page links from Markdown. External URLs and anchors are not
+/// wiki references; local links must resolve to a valid page ID.
+fn markdown_page_links(content: &str) -> Vec<String> {
+    let Ok(pattern) = regex::Regex::new(r"\\[[^\\]]*\\]\\(([^)]+)\\)") else {
+        return Vec::new();
+    };
+    pattern.captures_iter(content)
+        .filter_map(|capture| capture.get(1).map(|value| value.as_str().trim().to_owned()))
+        .filter_map(|target| {
+            if target.is_empty()
+                || target.starts_with('#')
+                || target.starts_with('/')
+                || target.contains("://")
+                || target.starts_with("mailto:")
+            {
+                return None;
+            }
+            let target = target.split('#').next().unwrap_or_default().trim();
+            let target = target.strip_prefix("./").unwrap_or(target);
+            let target = target.strip_suffix(".md").unwrap_or(target);
+            (!target.is_empty()).then(|| target.to_owned())
+        })
+        .collect()
+}
+
 fn validate_memory_input(input: &MemoryInput) -> Result<(), AgentError> {
     if input.content.trim().is_empty()
         || input.content.len() > MAX_TEXT
@@ -1547,6 +1600,7 @@ fn validate_evidence_refs(refs: &[String]) -> Result<(), AgentError> {
 
 fn validate_evidence_in_transaction(transaction: &Transaction<'_>, refs: &[String]) -> Result<(), AgentError> {
     validate_evidence_refs(refs)?;
+    let now = to_i64(now_ms())?;
     for reference in refs {
         let Some((kind, id)) = reference.split_once(':') else {
             return Err(AgentError::InvalidAction(format!("invalid memory evidence reference: {reference}")));
@@ -1558,7 +1612,15 @@ fn validate_evidence_in_transaction(transaction: &Transaction<'_>, refs: &[Strin
             }
             "memory" => {
                 MemoryStore::validate_id(id)?;
-                transaction.query_row("SELECT EXISTS(SELECT 1 FROM memories WHERE id=?1)", [id], |row| row.get::<_, bool>(0))?
+                transaction.query_row(
+                    "SELECT EXISTS(
+                        SELECT 1 FROM memories
+                        WHERE id=?1 AND status='consolidated'
+                          AND (expires_at_ms IS NULL OR expires_at_ms>?2)
+                    )",
+                    params![id, now],
+                    |row| row.get::<_, bool>(0),
+                )?
             }
             _ => return Err(AgentError::InvalidAction(format!("unsupported evidence reference: {reference}"))),
         };
@@ -1962,6 +2024,86 @@ mod tests {
             confidence: 95,
             expires_at_ms: None,
         }
+    }
+
+    #[test]
+    fn transcript_search_and_read_never_cross_project_boundaries() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let a = store.record_transcript("shared-session", Some("project-a"), None, "user", "Project A secret").unwrap();
+        store.record_transcript("shared-session", Some("project-b"), None, "user", "Project B secret").unwrap();
+
+        let found = store.search_transcripts("secret", Some("shared-session"), Some("project-a"), None, 10).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].id, a);
+        assert!(store.get_transcript_scoped(a, "shared-session", Some("project-b"), None).is_err());
+        assert!(store.get_transcript_scoped(a, "another-session", Some("project-a"), None).is_ok());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn transcript_backfill_classifies_tool_and_background_messages_as_non_user() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let messages = vec![
+            ChatMessage { role: "user".into(), content: "Explicit user request".into() },
+            ChatMessage { role: "user".into(), content: "Tool result (ok=true): private file data".into() },
+            ChatMessage { role: "user".into(), content: "Background task result [task-1]: generated summary".into() },
+        ];
+        assert_eq!(store.backfill_transcript("session-1", Some("project-a"), &messages).unwrap(), 3);
+        let records = store.transcripts_after(0, 10).unwrap();
+        assert_eq!(records.iter().map(|record| record.role.as_str()).collect::<Vec<_>>(), vec!["user", "tool", "assistant"]);
+        let refs = store.latest_turn_evidence_refs("session-1", Some("project-a"), None, true).unwrap();
+        assert_eq!(refs.len(), 2);
+        assert!(refs[1].ends_with(&records[1].id.to_string()));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn memory_evidence_must_be_consolidated_and_unexpired() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let proposed = store.propose(
+            input(MemoryScope::Global, None, "Unreviewed observation"),
+            70,
+            Vec::new(),
+        ).unwrap();
+        let transcript = store.record_transcript("s1", None, None, "user", "Evidence source").unwrap();
+        let output = DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![DreamingNote {
+                action: "create".into(), id: None,
+                kind: Some(MemoryKind::LongTerm), scope: Some(MemoryScope::Global),
+                scope_id: None, content: "A derived note".into(), confidence: 80,
+                importance: 60, evidence: vec![format!("memory:{}", proposed.id)],
+            }],
+            pages: vec![], delete_pages: vec![],
+        };
+        assert!(store.apply_dreaming(output).is_err());
+        store.set_status(&proposed.id, MemoryStatus::Consolidated).unwrap();
+        let expired = store.remember({
+            let mut value = input(MemoryScope::Global, None, "Expired evidence");
+            value.expires_at_ms = Some(now_ms().saturating_sub(1));
+            value
+        }).unwrap();
+        let output = DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![DreamingNote {
+                action: "create".into(), id: None,
+                kind: Some(MemoryKind::LongTerm), scope: Some(MemoryScope::Global),
+                scope_id: None, content: "Another derived note".into(), confidence: 80,
+                importance: 60, evidence: vec![format!("memory:{}", expired.id)],
+            }],
+            pages: vec![], delete_pages: vec![],
+        };
+        assert!(store.apply_dreaming(output).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn markdown_wiki_links_are_extracted_without_external_urls() {
+        let links = markdown_page_links("See [Policy](policy-page.md), [Other](./other-page), [external](https://example.com), and [anchor](#top).");
+        assert_eq!(links, vec!["policy-page", "other-page"]);
     }
 
     #[test]
