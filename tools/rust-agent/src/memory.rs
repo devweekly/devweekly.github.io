@@ -7,7 +7,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Row, Transaction, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -453,6 +453,13 @@ impl MemoryStore {
                 failure_count INTEGER NOT NULL DEFAULT 0,
                 last_error TEXT
             );
+            CREATE TABLE IF NOT EXISTS background_task_leases (
+                task_id TEXT PRIMARY KEY NOT NULL,
+                owner_id TEXT NOT NULL,
+                lease_until_ms INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_background_task_leases_expiry
+                ON background_task_leases(lease_until_ms);
             INSERT OR IGNORE INTO dreaming_control(id) VALUES (1);",
         )?;
 
@@ -482,6 +489,93 @@ impl MemoryStore {
 
     pub fn database_path(&self) -> &Path {
         &self.database_path
+    }
+
+    /// Atomically claim a task lease and one of the bounded active-worker slots.
+    /// SQLite's IMMEDIATE transaction serializes claims across Runtime instances/processes.
+    pub fn acquire_background_task_lease(
+        &self,
+        task_id: &str,
+        owner_id: &str,
+        lease_ms: u64,
+        max_active: usize,
+    ) -> Result<bool, AgentError> {
+        if task_id.is_empty() || task_id.len() > 128 || owner_id.is_empty() || owner_id.len() > 128 {
+            return Err(AgentError::InvalidAction("invalid background task lease identity".into()));
+        }
+        let mut connection = self.conn()?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let now = to_i64(now_ms())?;
+        transaction.execute(
+            "DELETE FROM background_task_leases WHERE lease_until_ms<=?1",
+            [now],
+        )?;
+        let already_claimed: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM background_task_leases WHERE task_id=?1)",
+            [task_id],
+            |row| row.get(0),
+        )?;
+        if already_claimed {
+            transaction.commit()?;
+            return Ok(false);
+        }
+        let active: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM background_task_leases WHERE lease_until_ms>?1",
+            [now],
+            |row| row.get(0),
+        )?;
+        if active >= i64::try_from(max_active).unwrap_or(i64::MAX) {
+            transaction.commit()?;
+            return Ok(false);
+        }
+        let lease_duration = lease_ms.clamp(30_000, 300_000);
+        let lease_until = now.saturating_add(i64::try_from(lease_duration).unwrap_or(i64::MAX));
+        transaction.execute(
+            "INSERT INTO background_task_leases(task_id,owner_id,lease_until_ms)
+             VALUES (?1,?2,?3)",
+            params![task_id, owner_id, lease_until],
+        )?;
+        transaction.commit()?;
+        Ok(true)
+    }
+
+    pub fn renew_background_task_lease(
+        &self,
+        task_id: &str,
+        owner_id: &str,
+        lease_ms: u64,
+    ) -> Result<bool, AgentError> {
+        let now = to_i64(now_ms())?;
+        let lease_duration = lease_ms.clamp(30_000, 300_000);
+        let lease_until = now.saturating_add(i64::try_from(lease_duration).unwrap_or(i64::MAX));
+        let changed = self.conn()?.execute(
+            "UPDATE background_task_leases SET lease_until_ms=?3
+             WHERE task_id=?1 AND owner_id=?2 AND lease_until_ms>?4",
+            params![task_id, owner_id, lease_until, now],
+        )?;
+        Ok(changed == 1)
+    }
+
+    pub fn has_active_background_task_lease(&self, task_id: &str) -> Result<bool, AgentError> {
+        let now = to_i64(now_ms())?;
+        Ok(self.conn()?.query_row(
+            "SELECT EXISTS(SELECT 1 FROM background_task_leases
+             WHERE task_id=?1 AND lease_until_ms>?2)",
+            params![task_id, now],
+            |row| row.get(0),
+        )?)
+    }
+
+    pub fn release_background_task_lease(
+        &self,
+        task_id: &str,
+        owner_id: &str,
+    ) -> Result<(), AgentError> {
+        self.conn()?.execute(
+            "DELETE FROM background_task_leases WHERE task_id=?1 AND owner_id=?2",
+            params![task_id, owner_id],
+        )?;
+        Ok(())
     }
 
     fn conn(&self) -> Result<MutexGuard<'_, Connection>, AgentError> {
@@ -2104,6 +2198,22 @@ mod tests {
     fn markdown_wiki_links_are_extracted_without_external_urls() {
         let links = markdown_page_links("See [Policy](policy-page.md), [Other](./other-page), [external](https://example.com), and [anchor](#top).");
         assert_eq!(links, vec!["policy-page", "other-page"]);
+    }
+
+    #[test]
+    fn background_task_leases_are_exclusive_across_sqlite_connections_and_limit_capacity() {
+        let root = workspace();
+        let first = MemoryStore::new(&root).unwrap();
+        let second = MemoryStore::open(&first.database_path().to_path_buf()).unwrap();
+
+        assert!(first.acquire_background_task_lease("task-a", "owner-a", 120_000, 1).unwrap());
+        assert!(!second.acquire_background_task_lease("task-a", "owner-b", 120_000, 1).unwrap());
+        assert!(!second.acquire_background_task_lease("task-b", "owner-b", 120_000, 1).unwrap());
+        assert!(!second.renew_background_task_lease("task-a", "owner-b", 120_000).unwrap());
+        assert!(second.renew_background_task_lease("task-a", "owner-a", 120_000).unwrap());
+        first.release_background_task_lease("task-a", "owner-a").unwrap();
+        assert!(second.acquire_background_task_lease("task-b", "owner-b", 120_000, 1).unwrap());
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
