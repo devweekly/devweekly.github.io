@@ -2019,10 +2019,21 @@ impl AgentRuntime {
         ];
 
         for step in 0..profile.max_steps {
+            let (request_messages, estimated_tokens, omitted_messages) =
+                self.context_manager.fit_messages(&messages);
+            if omitted_messages > 0 {
+                self.audit("subagent.context_trimmed", Some("delegate_task"), json!({
+                    "name": name,
+                    "omitted_messages": omitted_messages,
+                    "estimated_request_tokens": estimated_tokens
+                }));
+            }
+            let output_tokens = self.context_manager.reserved_output_tokens();
+            let max_output_tokens = (output_tokens > 0).then_some(output_tokens);
             let completion = tokio::select! {
                 biased;
                 _ = cancellation.cancelled() => None,
-                result = provider.complete_with_usage(&messages) => Some(result),
+                result = provider.complete_with_usage_and_limit(&request_messages, max_output_tokens) => Some(result),
             };
             let completion = match completion {
                 None => {
@@ -2527,14 +2538,18 @@ async fn execute_background_task(
     controls: &SharedTaskControls,
     profile: &AgentProfile,
 ) -> Result<String, AgentError> {
+    let context_manager = ContextManager::default();
     for step in record.step..profile.max_steps {
         if cancellation.is_cancelled() {
             return Err(AgentError::Cancelled);
         }
+        let (request_messages, _, _) = context_manager.fit_messages(&record.messages);
+        let output_tokens = context_manager.reserved_output_tokens();
+        let max_output_tokens = (output_tokens > 0).then_some(output_tokens);
         let completion = tokio::select! {
             biased;
             _ = cancellation.cancelled() => None,
-            result = provider.complete_with_usage(&record.messages) => Some(result),
+            result = provider.complete_with_usage_and_limit(&request_messages, max_output_tokens) => Some(result),
         };
         let completion = match completion {
             None => return Err(AgentError::Cancelled),
