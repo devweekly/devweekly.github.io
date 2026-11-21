@@ -766,20 +766,229 @@ impl MemoryStore {
         Self::validate_id(id)?;
         let mut connection = self.conn()?;
         let transaction = connection.transaction()?;
-        let before = load_memory(&transaction, id)?
+        load_memory(&transaction, id)?
             .ok_or_else(|| AgentError::InvalidAction(format!("memory record not found: {id}")))?;
-        transaction.execute("DELETE FROM memory_revisions WHERE memory_id=?1", [id])?;
-        transaction.execute("DELETE FROM memories WHERE id=?1", [id])?;
-        let mut removed_sources = Vec::new();
-        let mut seen = HashSet::new();
-        for reference in &before.source_refs {
-            let Some(transcript_id) = reference.strip_prefix("transcript:") else { continue; };
-            let transcript_id = transcript_id.parse::<i64>().map_err(|_| {
-                AgentError::InvalidAction(format!("invalid transcript evidence reference: {reference}"))
-            })?;
-            if !seen.insert(transcript_id) || transcript_is_referenced_in_transaction(&transaction, reference)? {
-                continue;
+
+        let memory_rows = {
+            let mut statement = transaction.prepare("SELECT id,source_refs_json FROM memories")?;
+            statement.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        let memory_revisions = {
+            let mut statement = transaction.prepare(
+                "SELECT memory_id,evidence_refs_json,before_json,after_json FROM memory_revisions"
+            )?;
+            statement.query_map([], |row| Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            )))?.collect::<Result<Vec<_>, _>>()?
+        };
+
+        let snapshot_mentions_memory = |snapshot: &Option<String>, ids: &HashSet<String>| -> Result<bool, AgentError> {
+            let Some(snapshot) = snapshot else { return Ok(false); };
+            let value: Value = serde_json::from_str(snapshot)?;
+            Ok(value.get("source_refs").and_then(Value::as_array).is_some_and(|refs| {
+                refs.iter().filter_map(Value::as_str).any(|reference| {
+                    reference.strip_prefix("memory:").is_some_and(|id| ids.contains(id))
+                })
+            }))
+        };
+
+        let mut deleted_memories = HashSet::from([id.to_owned()]);
+        loop {
+            let mut changed = false;
+            for (memory_id, refs_json) in &memory_rows {
+                if deleted_memories.contains(memory_id) { continue; }
+                let refs: Vec<String> = serde_json::from_str(refs_json)?;
+                if refs.iter().any(|reference| reference.strip_prefix("memory:")
+                    .is_some_and(|source_id| deleted_memories.contains(source_id)))
+                {
+                    changed |= deleted_memories.insert(memory_id.clone());
+                }
             }
+            for (memory_id, evidence_json, before, after) in &memory_revisions {
+                if deleted_memories.contains(memory_id) { continue; }
+                let evidence: Vec<String> = serde_json::from_str(evidence_json)?;
+                let references_deleted_memory = evidence.iter().any(|reference| {
+                    reference.strip_prefix("memory:").is_some_and(|source_id| deleted_memories.contains(source_id))
+                }) || snapshot_mentions_memory(before, &deleted_memories)?
+                    || snapshot_mentions_memory(after, &deleted_memories)?;
+                if references_deleted_memory {
+                    changed |= deleted_memories.insert(memory_id.clone());
+                }
+            }
+            if !changed { break; }
+        }
+
+        let page_rows = {
+            let mut statement = transaction.prepare(
+                "SELECT id,source_refs_json,links_json,content FROM memory_pages"
+            )?;
+            statement.query_map([], |row| Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            )))?.collect::<Result<Vec<_>, _>>()?
+        };
+        let page_revisions = {
+            let mut statement = transaction.prepare(
+                "SELECT page_id,evidence_refs_json,before_json,after_json FROM memory_page_revisions"
+            )?;
+            statement.query_map([], |row| Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            )))?.collect::<Result<Vec<_>, _>>()?
+        };
+
+        let snapshot_links_to_deleted_page = |snapshot: &Option<String>, ids: &HashSet<String>| -> Result<bool, AgentError> {
+            let Some(snapshot) = snapshot else { return Ok(false); };
+            let value: Value = serde_json::from_str(snapshot)?;
+            let mut links = value.get("links").and_then(Value::as_array)
+                .map(|items| items.iter().filter_map(Value::as_str).map(str::to_owned).collect::<Vec<_>>())
+                .unwrap_or_default();
+            if let Some(content) = value.get("content").and_then(Value::as_str) {
+                links.extend(markdown_page_links(content));
+            }
+            Ok(links.iter().any(|link| ids.contains(link)))
+        };
+
+        let mut deleted_pages = HashSet::new();
+        let mut redact_index = false;
+        for (page_id, refs_json, _, _) in &page_rows {
+            let refs: Vec<String> = serde_json::from_str(refs_json)?;
+            let dependent = refs.iter().any(|reference| reference.strip_prefix("memory:")
+                .is_some_and(|source_id| deleted_memories.contains(source_id)));
+            if dependent {
+                if page_id == "index" { redact_index = true; }
+                else { deleted_pages.insert(page_id.clone()); }
+            }
+        }
+        for (page_id, evidence_json, before, after) in &page_revisions {
+            let evidence: Vec<String> = serde_json::from_str(evidence_json)?;
+            let dependent = evidence.iter().any(|reference| reference.strip_prefix("memory:")
+                .is_some_and(|source_id| deleted_memories.contains(source_id)))
+                || snapshot_mentions_memory(before, &deleted_memories)?
+                || snapshot_mentions_memory(after, &deleted_memories)?;
+            if dependent {
+                if page_id == "index" { redact_index = true; }
+                else { deleted_pages.insert(page_id.clone()); }
+            }
+        }
+
+        // Cascading page deletion preserves wiki link integrity. The protected index
+        // is redacted and rebuilt rather than removed.
+        loop {
+            let mut changed = false;
+            for (page_id, _, links_json, content) in &page_rows {
+                if page_id == "index" || deleted_pages.contains(page_id) { continue; }
+                let links: Vec<String> = serde_json::from_str(links_json)?;
+                let points_to_deleted = links.iter().any(|link| deleted_pages.contains(link))
+                    || markdown_page_links(content).iter().any(|link| deleted_pages.contains(link));
+                let historical_link = page_revisions.iter().any(|(revision_page_id, _, before, after)| {
+                    revision_page_id == page_id
+                        && (snapshot_links_to_deleted_page(before, &deleted_pages).unwrap_or(false)
+                            || snapshot_links_to_deleted_page(after, &deleted_pages).unwrap_or(false))
+                });
+                if points_to_deleted || historical_link {
+                    if page_id == "index" { redact_index = true; }
+                    else { changed |= deleted_pages.insert(page_id.clone()); }
+                }
+            }
+            if !changed { break; }
+        }
+        if page_rows.iter().any(|(page_id, _, links_json, content)| {
+            page_id == "index" && (
+                serde_json::from_str::<Vec<String>>(links_json).unwrap_or_default().iter().any(|link| deleted_pages.contains(link))
+                || markdown_page_links(content).iter().any(|link| deleted_pages.contains(link))
+            )
+        }) {
+            redact_index = true;
+        }
+
+        let mut transcript_refs = HashSet::new();
+        let mut collect_transcript_refs = |encoded: &str| -> Result<(), AgentError> {
+            let refs: Vec<String> = serde_json::from_str(encoded)?;
+            for reference in refs {
+                if reference.starts_with("transcript:") {
+                    transcript_refs.insert(reference);
+                }
+            }
+            Ok(())
+        };
+        let mut collect_snapshot_transcripts = |snapshot: &Option<String>| -> Result<(), AgentError> {
+            if let Some(snapshot) = snapshot {
+                let value: Value = serde_json::from_str(snapshot)?;
+                if let Some(refs) = value.get("source_refs").and_then(Value::as_array) {
+                    for reference in refs.iter().filter_map(Value::as_str) {
+                        if reference.starts_with("transcript:") {
+                            transcript_refs.insert(reference.to_owned());
+                        }
+                    }
+                }
+            }
+            Ok(())
+        };
+
+        for (memory_id, refs_json) in &memory_rows {
+            if deleted_memories.contains(memory_id) { collect_transcript_refs(refs_json)?; }
+        }
+        for (memory_id, evidence_json, before, after) in &memory_revisions {
+            if deleted_memories.contains(memory_id) {
+                collect_transcript_refs(evidence_json)?;
+                collect_snapshot_transcripts(before)?;
+                collect_snapshot_transcripts(after)?;
+            }
+        }
+        for (page_id, refs_json, _, _) in &page_rows {
+            if deleted_pages.contains(page_id) || (redact_index && page_id == "index") {
+                collect_transcript_refs(refs_json)?;
+            }
+        }
+        for (page_id, evidence_json, before, after) in &page_revisions {
+            if deleted_pages.contains(page_id) || (redact_index && page_id == "index") {
+                collect_transcript_refs(evidence_json)?;
+                collect_snapshot_transcripts(before)?;
+                collect_snapshot_transcripts(after)?;
+            }
+        }
+
+        for memory_id in &deleted_memories {
+            transaction.execute("DELETE FROM memory_revisions WHERE memory_id=?1", [memory_id])?;
+            transaction.execute("DELETE FROM memories WHERE id=?1", [memory_id])?;
+        }
+        for page_id in &deleted_pages {
+            transaction.execute("DELETE FROM memory_page_revisions WHERE page_id=?1", [page_id])?;
+            transaction.execute("DELETE FROM memory_pages WHERE id=?1", [page_id])?;
+        }
+        if redact_index {
+            if let Some(mut index) = load_page(&transaction, "index")? {
+                transaction.execute("DELETE FROM memory_page_revisions WHERE page_id='index'", [])?;
+                index.title = "Knowledge Index".into();
+                index.summary = "Index of retained knowledge pages".into();
+                index.content = "The knowledge index will be rebuilt from retained pages.".into();
+                index.source_refs.clear();
+                index.links.clear();
+                index.updated_at_ms = now_ms();
+                index.revision = 1;
+                write_page_record(&transaction, &index)?;
+                insert_page_revision(
+                    &transaction, "index", "redacted", None, Some(&index),
+                    "redacted after forgetting a source memory", &[],
+                )?;
+            }
+        }
+
+        let mut removed_sources = Vec::new();
+        for reference in transcript_refs {
+            let transcript_id = reference.strip_prefix("transcript:")
+                .and_then(|value| value.parse::<i64>().ok())
+                .ok_or_else(|| AgentError::InvalidAction(format!("invalid transcript evidence reference: {reference}")))?;
+            if transcript_is_referenced_in_transaction(&transaction, &reference)? { continue; }
             let source = transaction.query_row(
                 "SELECT id,session_id,project_id,task_id,role,content,created_at_ms
                  FROM transcripts WHERE id=?1",
