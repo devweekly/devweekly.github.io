@@ -1,5 +1,6 @@
 use std::{
     fs,
+    io::Read,
     path::{Component, Path, PathBuf},
 };
 
@@ -10,10 +11,17 @@ use serde_json::Value;
 use crate::{
     action::{ToolAction, ToolResult},
     error::AgentError,
+    policy::{self, PolicyDecision},
 };
 
 const DEFAULT_SEARCH_LIMIT: usize = 200;
 const MAX_SEARCH_LIMIT: usize = 1_000;
+const MAX_READ_FILE_BYTES: u64 = 1024 * 1024;
+const MAX_DIRECTORY_ENTRIES: usize = 2_000;
+const MAX_SEARCH_FILES: usize = 10_000;
+const MAX_SEARCH_FILE_BYTES: u64 = 1024 * 1024;
+const MAX_MATCH_LINE_BYTES: usize = 4 * 1024;
+const MAX_TOOL_OUTPUT_BYTES: usize = 256 * 1024;
 
 #[derive(Clone)]
 pub struct ToolExecutor {
@@ -25,7 +33,29 @@ impl ToolExecutor {
         Self { workspace }
     }
 
+    /// Execute only operations allowed without an interactive approval.
     pub fn execute(&self, action: &ToolAction) -> Result<ToolResult, AgentError> {
+        match policy::evaluate(action) {
+            PolicyDecision::Allow => self.execute_action(action),
+            PolicyDecision::RequireApproval => Err(AgentError::InvalidAction(
+                "write_file requires the AgentRuntime approval path".into(),
+            )),
+            PolicyDecision::Deny => Err(AgentError::InvalidAction(
+                "tool is denied by the local policy".into(),
+            )),
+        }
+    }
+
+    pub(crate) fn execute_approved(&self, action: &ToolAction) -> Result<ToolResult, AgentError> {
+        if !matches!(policy::evaluate(action), PolicyDecision::RequireApproval) {
+            return Err(AgentError::InvalidAction(
+                "approved execution is only available for tools requiring approval".into(),
+            ));
+        }
+        self.execute_action(action)
+    }
+
+    fn execute_action(&self, action: &ToolAction) -> Result<ToolResult, AgentError> {
         match action.name.as_str() {
             "read_file" => self.read_file(required_string(&action.arguments, "path")?),
             "read_attachment" => self.read_attachment(required_string(&action.arguments, "id")?),
@@ -66,6 +96,12 @@ impl ToolExecutor {
         if !path.is_file() {
             return Err(AgentError::InvalidAction("read_file target is not a regular file".into()));
         }
+        let metadata = fs::metadata(&path)?;
+        if metadata.len() > MAX_READ_FILE_BYTES {
+            return Err(AgentError::InvalidAction(format!(
+                "read_file is limited to {MAX_READ_FILE_BYTES} bytes"
+            )));
+        }
         let content = fs::read_to_string(path)?;
         Ok(ToolResult { ok: true, output: content })
     }
@@ -76,16 +112,28 @@ impl ToolExecutor {
             return Err(AgentError::InvalidAction("list_dir target is not a directory".into()));
         }
 
-        let mut entries = fs::read_dir(path)?
-            .map(|entry| {
-                let entry = entry?;
-                let kind = if entry.file_type()?.is_dir() { "dir" } else { "file" };
-                Ok(format!("{kind}\t{}", entry.file_name().to_string_lossy()))
-            })
-            .collect::<Result<Vec<_>, std::io::Error>>()?;
+        let mut entries = Vec::new();
+        let mut output_bytes = 0usize;
+        let mut truncated = false;
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            let kind = if entry.file_type()?.is_dir() { "dir" } else { "file" };
+            let line = format!("{kind}\t{}", entry.file_name().to_string_lossy());
+            if entries.len() >= MAX_DIRECTORY_ENTRIES
+                || output_bytes.saturating_add(line.len()).saturating_add(1) > MAX_TOOL_OUTPUT_BYTES
+            {
+                truncated = true;
+                break;
+            }
+            output_bytes = output_bytes.saturating_add(line.len()).saturating_add(1);
+            entries.push(line);
+        }
         entries.sort();
-
-        Ok(ToolResult { ok: true, output: entries.join("\n") })
+        let mut output = entries.join("\n");
+        if truncated {
+            output.push_str("\n[truncated: directory listing limit reached]");
+        }
+        Ok(ToolResult { ok: true, output })
     }
 
     fn write_file(&self, relative: &str, content: &str) -> Result<ToolResult, AgentError> {
@@ -146,20 +194,17 @@ impl ToolExecutor {
 
         let search_root = self.resolve_existing(relative)?;
         let files = self.collect_search_files(&search_root, glob)?;
-        let mut matches = files
-            .iter()
-            .map(|path| search_one_file(path, &self.workspace, &matcher))
-            .collect::<Vec<_>>()
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
-
+        let mut matches = Vec::new();
+        for path in &files {
+            if matches.len() >= max_results { break; }
+            let remaining = max_results.saturating_sub(matches.len());
+            matches.extend(search_one_file(path, &self.workspace, &matcher, remaining));
+        }
         matches.sort_by(|left, right| {
             left.path.cmp(&right.path).then(left.line_number.cmp(&right.line_number))
         });
-        matches.truncate(max_results);
 
-        let output = if matches.is_empty() {
+        let mut output = if matches.is_empty() {
             "No matches found.".to_string()
         } else {
             matches
@@ -168,6 +213,12 @@ impl ToolExecutor {
                 .collect::<Vec<_>>()
                 .join("\n")
         };
+        if output.len() > MAX_TOOL_OUTPUT_BYTES {
+            let mut end = MAX_TOOL_OUTPUT_BYTES;
+            while !output.is_char_boundary(end) { end -= 1; }
+            output.truncate(end);
+            output.push_str("\n[truncated: search output limit reached]");
+        }
         Ok(ToolResult { ok: true, output })
     }
 
@@ -205,6 +256,9 @@ impl ToolExecutor {
                 let path = entry.into_path();
                 if path.starts_with(&self.workspace) {
                     files.push(path);
+                    if files.len() >= MAX_SEARCH_FILES {
+                        break;
+                    }
                 }
             }
         }
@@ -235,22 +289,37 @@ struct SearchMatch {
     line: String,
 }
 
-fn search_one_file(path: &Path, workspace: &Path, matcher: &Regex) -> Vec<SearchMatch> {
-    let Ok(content) = fs::read_to_string(path) else {
-        // Binary files and unreadable files are intentionally skipped.
+fn search_one_file(path: &Path, workspace: &Path, matcher: &Regex, limit: usize) -> Vec<SearchMatch> {
+    let Ok(metadata) = fs::metadata(path) else { return Vec::new(); };
+    if metadata.len() > MAX_SEARCH_FILE_BYTES || limit == 0 {
         return Vec::new();
-    };
+    }
+    let Ok(file) = fs::File::open(path) else { return Vec::new(); };
+    let mut content = String::new();
+    if file.take(MAX_SEARCH_FILE_BYTES).read_to_string(&mut content).is_err() {
+        // Binary, invalid UTF-8, and unreadable files are intentionally skipped.
+        return Vec::new();
+    }
     let relative = path.strip_prefix(workspace).unwrap_or(path).to_string_lossy().into_owned();
-    content
-        .lines()
-        .enumerate()
-        .filter(|(_, line)| matcher.is_match(line))
-        .map(|(index, line)| SearchMatch {
-            path: relative.clone(),
-            line_number: index + 1,
-            line: line.to_string(),
-        })
-        .collect()
+    let mut matches = Vec::new();
+    for (index, line) in content.lines().enumerate() {
+        if matcher.is_match(line) {
+            let mut clipped = line.to_owned();
+            if clipped.len() > MAX_MATCH_LINE_BYTES {
+                let mut end = MAX_MATCH_LINE_BYTES;
+                while !clipped.is_char_boundary(end) { end -= 1; }
+                clipped.truncate(end);
+                clipped.push_str("…[line truncated]");
+            }
+            matches.push(SearchMatch {
+                path: relative.clone(),
+                line_number: index + 1,
+                line: clipped,
+            });
+            if matches.len() >= limit { break; }
+        }
+    }
+    matches
 }
 
 fn validate_relative_path(input: &str) -> Result<&Path, AgentError> {
