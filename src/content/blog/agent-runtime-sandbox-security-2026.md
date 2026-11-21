@@ -1,7 +1,7 @@
 ---
 author: SW
 pubDatetime: 2026-11-21T00:00:00Z
-title: "Agent Runtime 的安全执行边界：开源 Sandbox、受控 Shell 与 Tool Permission 怎么选"
+title: "Agent Runtime 安全架构：桌面、云端、Kubernetes 与 GUI VM 的隔离设计"
 featured: false
 draft: false
 tags:
@@ -11,10 +11,10 @@ tags:
   - Security
   - Sandbox
   - Architecture
-description: "系统梳理 Agent Runtime 在桌面、云端、Kubernetes 和 GUI VM 中的威胁模型、安全架构、Sandbox 选型、业界实践、研究进展与上线安全 Checklist。"
+description: "从工具授权、资源权限和执行隔离出发，分析 Agent Runtime 在桌面、云端、Kubernetes 与 GUI VM 中的安全架构、Sandbox 选型和上线控制。"
 ---
 
-# Agent Runtime 的安全执行边界：开源 Sandbox、受控 Shell 与 Tool Permission 怎么选
+# Agent Runtime 安全架构：桌面、云端、Kubernetes 与 GUI VM 的隔离设计
 
 Agent Runtime 一旦允许模型读文件、改文件、运行命令或调用 MCP，安全问题就不再只是“模型会不会听 Prompt”。真正需要回答的是：即使模型生成了恶意命令，或者某个工具被 Prompt Injection 诱导，它实际能够访问哪些文件、启动哪些进程、连接哪些网络目标？
 
@@ -23,10 +23,6 @@ Agent Runtime 一旦允许模型读文件、改文件、运行命令或调用 MC
 开源生态已经有几种不同取向的实现：Anthropic 把 Claude Code 使用的 OS Sandbox Runtime 开源；OpenAI 公开了 Codex Sandbox 的工程设计；Vercel 的 just-bash 用 TypeScript 实现一个虚拟 Shell；OpenHands 用 Docker Runtime 提供完整执行环境；MCP Filesystem Server 则在文件工具本身实施目录范围控制。它们解决的问题并不相同，不能简单排成一个“沙箱产品排行榜”。
 
 本文从 TypeScript / Node.js Agent Runtime 出发，讨论桌面、云端、Kubernetes 和带 GUI 的 VM 执行环境，重点区分 Tool 授权、资源授权与 OS / VM 隔离。
-
-## 目录与阅读路径
-
-本文先建立 Agent Runtime 的威胁模型和安全边界，再讨论工具与执行后端，最后分别落到桌面、云端、Kubernetes 和 GUI VM。需要快速做架构评审时，可直接查看第 10 章的部署选型和第 11 章的 Checklist。
 
 ## 1. 威胁模型：Agent Runtime 的攻击面已经超出模型输入
 
@@ -139,25 +135,7 @@ limits:
 
 这只是 Runtime 自己的策略模型示例，不是 Anthropic SRT 或 just-bash 的原生配置格式。策略编译器需要把它转换成不同执行后端能够理解的约束，并明确哪些约束由应用层实施、哪些由 OS 强制实施。不能支持某项策略的后端，应拒绝启动该 Profile，不能静默忽略。
 
-### 3.1 不要把“命令白名单”当成完整的执行安全
-
-允许 node、python 或 bash，并不意味着只允许了某种安全操作。它们本身就是通用解释器，可以读取文件、启动子进程、加载模块和访问网络。命令白名单最多是减少入口，不是资源边界。
-
-更有效的控制是：真实进程在 Sandbox 内运行；文件系统和网络权限按 Profile 配置；子进程继承限制；凭证不进入执行环境；执行有时间、内存、CPU、输出和并发上限。对不可信代码，还应限制文件解析器、编译器插件、包安装脚本和本地扩展的执行路径。
-
-### 3.2 MCP Server 也应该被视为执行进程
-
-MCP 只是工具协议，不是安全容器。一个 MCP Server 可以在启动时读取环境变量、访问本地文件、连接网络或启动子进程。Server 的 Tool Schema 只描述模型能看到的调用入口，不代表 Server 运行时的实际权限。
-
-因此，来自第三方或动态安装的 MCP Server，应该以独立进程运行，并使用最小权限身份和独立 Sandbox。对于可信的内置 MCP Server，也应只授予它完成任务所需的目录、网络和凭证范围。不要让所有 MCP Server 共享 Agent Runtime 的主进程权限。
-
-### 3.3 审批应该绑定具体动作，而不是绑定工具名称
-
-“允许调用 write_file”不是一个足够明确的审批对象。审批至少应绑定目标文件、操作类型、内容或 Diff 摘要、任务 ID、执行身份和有效期。对外发送、删除、覆盖、批量移动和业务系统更新等动作，需要单独的风险策略。
-
-如果审批后模型改变了文件路径、内容或目标对象，就应重新进行策略判断。用户确认不能覆盖组织级拒绝规则，也不能把一次批准扩展为长期授权。
-
-### 3.4 通用架构：把身份、策略、执行、数据和观测分开
+### 3.1 通用架构：把身份、策略、执行、数据和观测分开
 
 一个可运营的 Agent Runtime 至少需要五个逻辑平面。它们可以部署在同一个应用中，但不应共享不受约束的权限。
 
@@ -180,7 +158,7 @@ MCP 只是工具协议，不是安全容器。一个 MCP Server 可以在启动�
 - **默认拒绝，能力不足时失败关闭。** 某个后端无法执行必要的文件、网络或 UI 限制时，不允许自动退化为宿主机直接执行。
 - **所有高风险副作用可归因、可中止、可恢复。** 审批、执行、网络访问、身份和产物之间必须有可关联的记录。
 
-### 3.5 通用安全控制：不能只做 Prompt Filter
+### 3.2 通用安全控制：不能只做 Prompt Filter
 
 #### 任务边界和自主程度
 
@@ -266,6 +244,23 @@ Human Approval 应由 Orchestrator 强制执行，而不是寄希望于模型在
 
 必须有独立于 Agent 自身的 Emergency Stop。停止按钮不能只发送一个取消消息给模型；它应该能取消任务、终止完整进程树、停止 Sandbox、撤销短期凭证、断开出站网络、冻结相关队列，并保留审计证据。云端还应支持按 Tenant、Agent、Task、Worker Pool 和工具供应商分别熔断。
 
+### 3.3 不要把“命令白名单”当成完整的执行安全
+
+允许 node、python 或 bash，并不意味着只允许了某种安全操作。它们本身就是通用解释器，可以读取文件、启动子进程、加载模块和访问网络。命令白名单最多是减少入口，不是资源边界。
+
+更有效的控制是：真实进程在 Sandbox 内运行；文件系统和网络权限按 Profile 配置；子进程继承限制；凭证不进入执行环境；执行有时间、内存、CPU、输出和并发上限。对不可信代码，还应限制文件解析器、编译器插件、包安装脚本和本地扩展的执行路径。
+
+### 3.4 MCP Server 也应该被视为执行进程
+
+MCP 只是工具协议，不是安全容器。一个 MCP Server 可以在启动时读取环境变量、访问本地文件、连接网络或启动子进程。Server 的 Tool Schema 只描述模型能看到的调用入口，不代表 Server 运行时的实际权限。
+
+因此，来自第三方或动态安装的 MCP Server，应该以独立进程运行，并使用最小权限身份和独立 Sandbox。对于可信的内置 MCP Server，也应只授予它完成任务所需的目录、网络和凭证范围。不要让所有 MCP Server 共享 Agent Runtime 的主进程权限。
+
+### 3.5 审批应该绑定具体动作，而不是绑定工具名称
+
+“允许调用 write_file”不是一个足够明确的审批对象。审批至少应绑定目标文件、操作类型、内容或 Diff 摘要、任务 ID、执行身份和有效期。对外发送、删除、覆盖、批量移动和业务系统更新等动作，需要单独的风险策略。
+
+如果审批后模型改变了文件路径、内容或目标对象，就应重新进行策略判断。用户确认不能覆盖组织级拒绝规则，也不能把一次批准扩展为长期授权。
 ## 4. Read、Write、Bash 应该是三个独立的 Tool 边界
 
 前面讨论的是 Tool Permission、Resource Permission 和 Runtime Sandbox 三个安全层次。落到 Agent 的实际工具设计，还需要再做一次拆分：不要把文件读取、文件写入和脚本执行包装成一个通用的 `filesystem` 或 `terminal` 能力。
