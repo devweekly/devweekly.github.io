@@ -911,49 +911,27 @@ impl MemoryStore {
         }
 
         let mut transcript_refs = HashSet::new();
-        let mut collect_transcript_refs = |encoded: &str| -> Result<(), AgentError> {
-            let refs: Vec<String> = serde_json::from_str(encoded)?;
-            for reference in refs {
-                if reference.starts_with("transcript:") {
-                    transcript_refs.insert(reference);
-                }
-            }
-            Ok(())
-        };
-        let mut collect_snapshot_transcripts = |snapshot: &Option<String>| -> Result<(), AgentError> {
-            if let Some(snapshot) = snapshot {
-                let value: Value = serde_json::from_str(snapshot)?;
-                if let Some(refs) = value.get("source_refs").and_then(Value::as_array) {
-                    for reference in refs.iter().filter_map(Value::as_str) {
-                        if reference.starts_with("transcript:") {
-                            transcript_refs.insert(reference.to_owned());
-                        }
-                    }
-                }
-            }
-            Ok(())
-        };
 
         for (memory_id, refs_json) in &memory_rows {
-            if deleted_memories.contains(memory_id) { collect_transcript_refs(refs_json)?; }
+            if deleted_memories.contains(memory_id) { collect_transcript_refs_from_json(refs_json, &mut transcript_refs)?; }
         }
         for (memory_id, evidence_json, before, after) in &memory_revisions {
             if deleted_memories.contains(memory_id) {
-                collect_transcript_refs(evidence_json)?;
-                collect_snapshot_transcripts(before)?;
-                collect_snapshot_transcripts(after)?;
+                collect_transcript_refs_from_json(evidence_json, &mut transcript_refs)?;
+                collect_transcript_refs_from_snapshot(before, &mut transcript_refs)?;
+                collect_transcript_refs_from_snapshot(after, &mut transcript_refs)?;
             }
         }
         for (page_id, refs_json, _, _) in &page_rows {
             if deleted_pages.contains(page_id) || (redact_index && page_id == "index") {
-                collect_transcript_refs(refs_json)?;
+                collect_transcript_refs_from_json(refs_json, &mut transcript_refs)?;
             }
         }
         for (page_id, evidence_json, before, after) in &page_revisions {
             if deleted_pages.contains(page_id) || (redact_index && page_id == "index") {
-                collect_transcript_refs(evidence_json)?;
-                collect_snapshot_transcripts(before)?;
-                collect_snapshot_transcripts(after)?;
+                collect_transcript_refs_from_json(evidence_json, &mut transcript_refs)?;
+                collect_transcript_refs_from_snapshot(before, &mut transcript_refs)?;
+                collect_transcript_refs_from_snapshot(after, &mut transcript_refs)?;
             }
         }
 
@@ -1956,6 +1934,30 @@ fn markdown_page_links(content: &str) -> Vec<String> {
             (!target.is_empty()).then(|| target.to_owned())
         })
         .collect()
+}
+
+fn collect_transcript_refs_from_json(
+    encoded: &str,
+    output: &mut HashSet<String>,
+) -> Result<(), AgentError> {
+    let refs: Vec<String> = serde_json::from_str(encoded)?;
+    output.extend(refs.into_iter().filter(|reference| reference.starts_with("transcript:")));
+    Ok(())
+}
+
+fn collect_transcript_refs_from_snapshot(
+    snapshot: &Option<String>,
+    output: &mut HashSet<String>,
+) -> Result<(), AgentError> {
+    if let Some(snapshot) = snapshot {
+        let value: Value = serde_json::from_str(snapshot)?;
+        if let Some(refs) = value.get("source_refs").and_then(Value::as_array) {
+            output.extend(refs.iter().filter_map(Value::as_str)
+                .filter(|reference| reference.starts_with("transcript:"))
+                .map(str::to_owned));
+        }
+    }
+    Ok(())
 }
 
 fn transcript_is_referenced_in_transaction(
