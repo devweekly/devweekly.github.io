@@ -889,11 +889,16 @@ impl MemoryStore {
                 let links: Vec<String> = serde_json::from_str(links_json)?;
                 let points_to_deleted = links.iter().any(|link| deleted_pages.contains(link))
                     || markdown_page_links(content).iter().any(|link| deleted_pages.contains(link));
-                let historical_link = page_revisions.iter().any(|(revision_page_id, _, before, after)| {
-                    revision_page_id == page_id
-                        && (snapshot_links_to_deleted_page(before, &deleted_pages).unwrap_or(false)
-                            || snapshot_links_to_deleted_page(after, &deleted_pages).unwrap_or(false))
-                });
+                let mut historical_link = false;
+                for (revision_page_id, _, before, after) in &page_revisions {
+                    if revision_page_id != page_id { continue; }
+                    if snapshot_links_to_deleted_page(before, &deleted_pages)?
+                        || snapshot_links_to_deleted_page(after, &deleted_pages)?
+                    {
+                        historical_link = true;
+                        break;
+                    }
+                }
                 if points_to_deleted || historical_link {
                     if page_id == "index" { redact_index = true; }
                     else { changed |= deleted_pages.insert(page_id.clone()); }
