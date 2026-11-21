@@ -27,12 +27,12 @@ impl ToolExecutor {
 
     pub fn execute(&self, action: &ToolAction) -> Result<ToolResult, AgentError> {
         match action.name.as_str() {
-            "read_file" => self.read_file(&required_string(&action.arguments, "path")?),
-            "read_attachment" => self.read_attachment(&required_string(&action.arguments, "id")?),
-            "list_dir" => self.list_dir(&required_string(&action.arguments, "path")?),
+            "read_file" => self.read_file(required_string(&action.arguments, "path")?),
+            "read_attachment" => self.read_attachment(required_string(&action.arguments, "id")?),
+            "list_dir" => self.list_dir(required_string(&action.arguments, "path")?),
             "write_file" => self.write_file(
-                &required_string(&action.arguments, "path")?,
-                &required_string(&action.arguments, "content")?,
+                required_string(&action.arguments, "path")?,
+                required_string(&action.arguments, "content")?,
             ),
             "search_files" => self.search_files(action),
             other => Err(AgentError::InvalidAction(format!("tool is not registered: {other}"))),

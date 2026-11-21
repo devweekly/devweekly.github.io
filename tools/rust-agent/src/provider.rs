@@ -194,24 +194,24 @@ impl OpenAiCompatibleProvider {
                 line.pop();
                 if line.last() == Some(&b'\r') { line.pop(); }
                 if let Some(event_usage) = extract_sse_usage(&line) { usage = event_usage; }
-                if let Some(delta) = extract_sse_delta(&line) {
-                    if !delta.is_empty() {
-                        emitted = true;
-                        content.push_str(&delta);
-                        on_delta(&delta);
-                    }
+                if let Some(delta) = extract_sse_delta(&line)
+                    && !delta.is_empty()
+                {
+                    emitted = true;
+                    content.push_str(&delta);
+                    on_delta(&delta);
                 }
             }
         }
 
         if !pending.is_empty() {
             if let Some(event_usage) = extract_sse_usage(&pending) { usage = event_usage; }
-            if let Some(delta) = extract_sse_delta(&pending) {
-                if !delta.is_empty() {
-                    emitted = true;
-                    content.push_str(&delta);
-                    on_delta(&delta);
-                }
+            if let Some(delta) = extract_sse_delta(&pending)
+                && !delta.is_empty()
+            {
+                emitted = true;
+                content.push_str(&delta);
+                on_delta(&delta);
             }
         }
 
