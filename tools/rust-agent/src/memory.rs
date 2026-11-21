@@ -754,6 +754,12 @@ impl MemoryStore {
     }
 
     pub fn forget(&self, id: &str) -> Result<(), AgentError> {
+        self.forget_with_sources(id).map(|_| ())
+    }
+
+    /// Forget a memory and return exclusive transcript source rows so the Runtime
+    /// can redact the corresponding persisted conversation messages as well.
+    pub fn forget_with_sources(&self, id: &str) -> Result<Vec<TranscriptEntry>, AgentError> {
         Self::validate_id(id)?;
         let mut connection = self.conn()?;
         let transaction = connection.transaction()?;
@@ -761,17 +767,29 @@ impl MemoryStore {
             .ok_or_else(|| AgentError::InvalidAction(format!("memory record not found: {id}")))?;
         transaction.execute("DELETE FROM memory_revisions WHERE memory_id=?1", [id])?;
         transaction.execute("DELETE FROM memories WHERE id=?1", [id])?;
+        let mut removed_sources = Vec::new();
+        let mut seen = HashSet::new();
         for reference in &before.source_refs {
             let Some(transcript_id) = reference.strip_prefix("transcript:") else { continue; };
             let transcript_id = transcript_id.parse::<i64>().map_err(|_| {
                 AgentError::InvalidAction(format!("invalid transcript evidence reference: {reference}"))
             })?;
-            if !transcript_is_referenced_in_transaction(&transaction, reference)? {
+            if !seen.insert(transcript_id) || transcript_is_referenced_in_transaction(&transaction, reference)? {
+                continue;
+            }
+            let source = transaction.query_row(
+                "SELECT id,session_id,project_id,task_id,role,content,created_at_ms
+                 FROM transcripts WHERE id=?1",
+                [transcript_id],
+                row_transcript,
+            ).optional()?;
+            if let Some(source) = source {
                 transaction.execute("DELETE FROM transcripts WHERE id=?1", [transcript_id])?;
+                removed_sources.push(source);
             }
         }
         transaction.commit()?;
-        Ok(())
+        Ok(removed_sources)
     }
 
     /// Remove old transcript rows that are no longer referenced by any live or
