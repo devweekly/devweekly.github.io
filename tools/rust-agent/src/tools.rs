@@ -419,6 +419,20 @@ mod tests {
     }
 
     #[test]
+    fn search_reader_respects_remaining_aggregate_scan_budget() {
+        let root = workspace();
+        let file_path = root.join("large-search.txt");
+        fs::write(&file_path, "needle\\n".repeat(100)).unwrap();
+        let matcher = regex::Regex::new("needle").unwrap();
+        let (matches, bytes_read) = super::search_one_file(
+            &file_path, &root, &matcher, 100, 8
+        );
+        assert!(bytes_read <= 8);
+        assert!(!matches.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn low_level_tool_executor_cannot_bypass_write_approval() {
         let root = workspace();
         let executor = ToolExecutor::new(root.clone());
