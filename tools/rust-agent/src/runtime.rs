@@ -770,6 +770,7 @@ impl AgentRuntime {
     pub fn workspace(&self) -> &Path { &self.workspace }
 
     pub fn context_report(&self) -> Option<&ContextReport> { self.context_report.as_ref() }
+    pub fn memory_store(&self) -> &MemoryStore { &self.memory_store }
     pub fn set_task_scope(&mut self, task_id: Option<String>) { self.task_scope = task_id; }
     pub fn remember(&self, input: MemoryInput) -> Result<MemoryRecord, AgentError> { self.memory_store.remember(input) }
     pub fn update_memory(&self, id: &str, content: &str, source: Option<&str>, confidence: Option<u8>) -> Result<MemoryRecord, AgentError> {
