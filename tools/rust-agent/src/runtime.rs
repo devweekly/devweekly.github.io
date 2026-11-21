@@ -173,6 +173,7 @@ pub struct RuntimeOptions {
     pub system_prompt: Option<String>,
     pub hooks: Vec<Box<dyn RuntimeHook>>,
     pub approval_handler: Option<Arc<dyn ApprovalHandler>>,
+    pub user_question_handler: Option<Arc<dyn UserQuestionHandler>>,
     pub context_manager: ContextManager,
     pub project_id: Option<String>,
     pub dreaming: DreamingOptions,
@@ -190,6 +191,7 @@ impl Default for RuntimeOptions {
             system_prompt: None,
             hooks: Vec::new(),
             approval_handler: None,
+            user_question_handler: None,
             context_manager: ContextManager::default(),
             project_id: None,
             dreaming: DreamingOptions::default(),
@@ -264,6 +266,15 @@ pub trait ApprovalHandler: Send + Sync {
         &'a self,
         action: &'a ToolAction,
     ) -> Pin<Box<dyn Future<Output = Result<bool, AgentError>> + Send + 'a>>;
+}
+
+/// Host-owned interaction boundary for model-generated user questions.
+/// Implementations can render forms in a desktop or web UI without using stdin.
+pub trait UserQuestionHandler: Send + Sync {
+    fn request_answers<'a>(
+        &'a self,
+        questions: &'a [UserQuestion],
+    ) -> Pin<Box<dyn Future<Output = Result<Value, AgentError>> + Send + 'a>>;
 }
 
 pub trait RuntimeHook: Send + Sync {
@@ -814,6 +825,7 @@ pub struct AgentRuntime {
     system_prompt: String,
     hooks: Vec<Box<dyn RuntimeHook>>,
     approval_handler: Option<Arc<dyn ApprovalHandler>>,
+    user_question_handler: Option<Arc<dyn UserQuestionHandler>>,
     background_task_store: BackgroundTaskStore,
     background_task_controls: SharedTaskControls,
     agent_profile_store: AgentProfileStore,
@@ -898,6 +910,7 @@ impl AgentRuntime {
             system_prompt: configured_system_prompt,
             hooks,
             approval_handler,
+            user_question_handler: options.user_question_handler,
             background_task_store,
             background_task_controls,
             agent_profile_store,
@@ -1771,7 +1784,11 @@ impl AgentRuntime {
                     if questions.is_empty() {
                         self.push_tool_result(false, "ask_user requires at least one question");
                     } else {
-                        let answers = self.request_user_answers(&questions)?;
+                        let answers = tokio::select! {
+                            biased;
+                            _ = cancellation.cancelled() => return Err(AgentError::Cancelled),
+                            result = self.request_user_answers(&questions) => result?,
+                        };
                         if cancellation.is_cancelled() {
                             self.push_tool_result(false, "Question interaction was cancelled by the host.");
                             return Err(AgentError::Cancelled);
@@ -1780,7 +1797,7 @@ impl AgentRuntime {
                             "question_count": questions.len(),
                             "answer_count": answers.as_object().map_or(0, |object| object.len())
                         }));
-                        self.push_tool_result(true, &format!("User answers: {answers}"));
+                        self.push_user_answer(&answers)?;
                     }
                     self.persist()?;
                 }
@@ -2189,62 +2206,30 @@ impl AgentRuntime {
         });
     }
 
-    fn request_user_answers(&self, questions: &[UserQuestion]) -> Result<Value, AgentError> {
-        if questions.len() > 5 {
-            return Err(AgentError::InvalidAction("ask_user supports at most five questions per turn".into()));
-        }
-        let mut answers = serde_json::Map::new();
-        for (index, question) in questions.iter().enumerate() {
-            if question.question.trim().is_empty() || question.question.len() > 2_000 {
-                return Err(AgentError::InvalidAction("question text must contain 1–2000 bytes".into()));
-            }
-            if question.options.len() > 10 {
-                return Err(AgentError::InvalidAction("each question supports at most ten options".into()));
-            }
-            if question.options.iter().any(|option| option.label.trim().is_empty() || option.label.len() > 200) {
-                return Err(AgentError::InvalidAction("option labels must contain 1–200 bytes".into()));
-            }
-            println!("\n{}. {}: {}", index + 1,
-                question.header.as_deref().unwrap_or("Question"), question.question);
-            for (option_index, option) in question.options.iter().enumerate() {
-                let description = option.description.as_deref()
-                    .map(|value| format!(" — {value}")).unwrap_or_default();
-                println!("  {}. {}{}", option_index + 1, option.label, description);
-            }
+    fn push_user_answer(&mut self, answers: &Value) -> Result<(), AgentError> {
+        let content = format!("User answers: {answers}");
+        self.memory_store.record_transcript(
+            &self.session.session_id,
+            self.project_id.as_deref(),
+            self.task_scope.as_deref(),
+            "user",
+            &content,
+        )?;
+        self.messages.push(ChatMessage { role: "user".into(), content });
+        Ok(())
+    }
 
-            let answer = if question.options.is_empty() {
-                print!("Answer: ");
-                io::stdout().flush()?;
-                let mut input = String::new();
-                io::stdin().read_line(&mut input)?;
-                input.trim().to_owned()
-            } else {
-                let hint = if question.multi_select { "number(s), comma-separated" } else { "number" };
-                print!("Select {hint}: ");
-                io::stdout().flush()?;
-                let mut input = String::new();
-                io::stdin().read_line(&mut input)?;
-                let mut selected = Vec::new();
-                for item in input.trim().split(',') {
-                    let value = item.trim().parse::<usize>().map_err(|_| {
-                        AgentError::InvalidAction("question answer must contain option numbers".into())
-                    })?;
-                    if value == 0 || value > question.options.len() {
-                        return Err(AgentError::InvalidAction("question answer is outside the option range".into()));
-                    }
-                    let label = question.options[value - 1].label.clone();
-                    if !selected.contains(&label) {
-                        selected.push(label);
-                    }
-                }
-                if selected.is_empty() || (!question.multi_select && selected.len() != 1) {
-                    return Err(AgentError::InvalidAction("select exactly one option".into()));
-                }
-                if question.multi_select { selected.join(", ") } else { selected.remove(0) }
-            };
-            answers.insert(question.question.clone(), Value::String(answer));
+    async fn request_user_answers(&self, questions: &[UserQuestion]) -> Result<Value, AgentError> {
+        validate_user_questions(questions)?;
+        if let Some(handler) = &self.user_question_handler {
+            let answers = handler.request_answers(questions).await?;
+            validate_host_answers(questions, &answers)?;
+            return Ok(answers);
         }
-        Ok(Value::Object(answers))
+        let questions = questions.to_vec();
+        tokio::task::spawn_blocking(move || request_user_answers_interactive(&questions))
+            .await
+            .map_err(|error| AgentError::InvalidAction(format!("question prompt task failed: {error}")))?
     }
 
     async fn request_approval(&self, action: &ToolAction) -> Result<bool, AgentError> {
@@ -2360,6 +2345,106 @@ impl AgentRuntime {
     }
 }
 
+
+fn validate_user_questions(questions: &[UserQuestion]) -> Result<(), AgentError> {
+    if questions.is_empty() || questions.len() > 5 {
+        return Err(AgentError::InvalidAction("ask_user supports one to five questions per turn".into()));
+    }
+    let mut identifiers = std::collections::HashSet::new();
+    for question in questions {
+        if question.question.trim().is_empty() || question.question.len() > 2_000 {
+            return Err(AgentError::InvalidAction("question text must contain 1–2000 bytes".into()));
+        }
+        if !identifiers.insert(question.question.as_str()) {
+            return Err(AgentError::InvalidAction("ask_user question identifiers must be unique".into()));
+        }
+        if question.options.len() > 10 {
+            return Err(AgentError::InvalidAction("each question supports at most ten options".into()));
+        }
+        if question.options.iter().any(|option| option.label.trim().is_empty() || option.label.len() > 200) {
+            return Err(AgentError::InvalidAction("option labels must contain 1–200 bytes".into()));
+        }
+        if question.options.iter().any(|option| option.description.as_ref().is_some_and(|value| value.len() > 1_000)) {
+            return Err(AgentError::InvalidAction("option descriptions may not exceed 1000 bytes".into()));
+        }
+    }
+    Ok(())
+}
+
+fn validate_host_answers(questions: &[UserQuestion], answers: &Value) -> Result<(), AgentError> {
+    let object = answers.as_object().ok_or_else(|| {
+        AgentError::InvalidAction("question handler must return an object keyed by question text".into())
+    })?;
+    if object.len() != questions.len() {
+        return Err(AgentError::InvalidAction("question handler returned an incomplete or unexpected answer set".into()));
+    }
+    for question in questions {
+        let answer = object.get(&question.question).and_then(Value::as_str).ok_or_else(|| {
+            AgentError::InvalidAction(format!("question handler did not return a string answer for: {}", question.question))
+        })?;
+        if !question.options.is_empty() {
+            let selected = if question.multi_select {
+                answer.split(", ").collect::<Vec<_>>()
+            } else {
+                vec![answer]
+            };
+            if selected.is_empty()
+                || (!question.multi_select && selected.len() != 1)
+                || selected.iter().any(|item| !question.options.iter().any(|option| option.label == *item))
+                || (!question.multi_select && selected.len() != 1)
+            {
+                return Err(AgentError::InvalidAction(format!(
+                    "question handler returned an invalid option for: {}", question.question
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn request_user_answers_interactive(questions: &[UserQuestion]) -> Result<Value, AgentError> {
+    let mut answers = serde_json::Map::new();
+    for (index, question) in questions.iter().enumerate() {
+        println!("\\n{}. {}: {}", index + 1,
+            question.header.as_deref().unwrap_or("Question"), question.question);
+        for (option_index, option) in question.options.iter().enumerate() {
+            let description = option.description.as_deref()
+                .map(|value| format!(" — {value}")).unwrap_or_default();
+            println!("  {}. {}{}", option_index + 1, option.label, description);
+        }
+
+        let answer = if question.options.is_empty() {
+            print!("Answer: ");
+            io::stdout().flush()?;
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            input.trim().to_owned()
+        } else {
+            let hint = if question.multi_select { "number(s), comma-separated" } else { "number" };
+            print!("Select {hint}: ");
+            io::stdout().flush()?;
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            let mut selected = Vec::new();
+            for item in input.trim().split(',') {
+                let value = item.trim().parse::<usize>().map_err(|_| {
+                    AgentError::InvalidAction("question answer must contain option numbers".into())
+                })?;
+                if value == 0 || value > question.options.len() {
+                    return Err(AgentError::InvalidAction("question answer is outside the option range".into()));
+                }
+                let label = question.options[value - 1].label.clone();
+                if !selected.contains(&label) { selected.push(label); }
+            }
+            if selected.is_empty() || (!question.multi_select && selected.len() != 1) {
+                return Err(AgentError::InvalidAction("select exactly one option".into()));
+            }
+            if question.multi_select { selected.join(", ") } else { selected.remove(0) }
+        };
+        answers.insert(question.question.clone(), Value::String(answer));
+    }
+    Ok(Value::Object(answers))
+}
 
 async fn execute_background_task(
     record: &mut BackgroundTaskRecord,
