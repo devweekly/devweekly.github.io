@@ -84,11 +84,15 @@ fn handle_request(
     let result = match method {
         "initialize" => Ok(json!({
             "protocolVersion": "2024-11-05",
-            "capabilities": { "tools": { "listChanged": false } },
+            "capabilities": { "tools": { "listChanged": false }, "resources": { "listChanged": false }, "prompts": { "listChanged": false } },
             "serverInfo": { "name": SERVER_NAME, "version": SERVER_VERSION }
         })),
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({ "tools": tool_definitions() })),
+        "resources/list" => Ok(json!({ "resources": resource_definitions() })),
+        "resources/read" => read_resource(request.get("params").unwrap_or(&Value::Null)),
+        "prompts/list" => Ok(json!({ "prompts": prompt_definitions() })),
+        "prompts/get" => get_prompt(request.get("params").unwrap_or(&Value::Null)),
         "tools/call" => call_tool(request.get("params").unwrap_or(&Value::Null), executor, approval_token),
         _ => {
             return Some(json!({
@@ -107,6 +111,79 @@ fn handle_request(
             "error": { "code": -32000, "message": error }
         }),
     })
+}
+
+fn resource_definitions() -> Value {
+    json!([
+        {
+            "uri": "rust-agent://policy",
+            "name": "Rust Agent security policy",
+            "description": "The enforced tool allow-list and workspace boundary.",
+            "mimeType": "text/plain"
+        }
+    ])
+}
+
+fn read_resource(params: &Value) -> Result<Value, String> {
+    let uri = params.get("uri").and_then(Value::as_str)
+        .ok_or_else(|| "resources/read requires a resource URI".to_string())?;
+    if uri != "rust-agent://policy" {
+        return Err(format!("resource not found: {uri}"));
+    }
+    Ok(json!({
+        "contents": [{
+            "uri": uri,
+            "mimeType": "text/plain",
+            "text": "Rust Agent policy: read_file, list_dir, and search_files are allowed within the configured workspace. write_file requires explicit host approval for each call. Unknown tools are denied. No shell, process execution, arbitrary network, or workspace-external file access is exposed. These application-level checks are not an OS sandbox."
+        }]
+    }))
+}
+
+fn prompt_definitions() -> Value {
+    json!([
+        {
+            "name": "inspect_workspace",
+            "description": "Inspect the workspace structure and identify the relevant implementation areas.",
+            "arguments": [{ "name": "focus", "description": "Optional area to focus on", "required": false }]
+        },
+        {
+            "name": "review_file",
+            "description": "Review one workspace file for correctness, security, and maintainability.",
+            "arguments": [{ "name": "path", "description": "Workspace-relative file path", "required": true }]
+        },
+        {
+            "name": "implement_change",
+            "description": "Plan and implement a bounded change using only the Rust workspace tools.",
+            "arguments": [{ "name": "task", "description": "Change to implement", "required": true }]
+        }
+    ])
+}
+
+fn get_prompt(params: &Value) -> Result<Value, String> {
+    let name = params.get("name").and_then(Value::as_str)
+        .ok_or_else(|| "prompts/get requires a prompt name".to_string())?;
+    let arguments = params.get("arguments").unwrap_or(&Value::Null);
+    let prompt_text = match name {
+        "inspect_workspace" => {
+            let focus = arguments.get("focus").and_then(Value::as_str).unwrap_or("overall architecture");
+            format!("Inspect the configured workspace with read-only tools. Focus on {focus}. First map the relevant directories and files, then summarize the current design, important dependencies, and concrete risks. Do not modify files.")
+        }
+        "review_file" => {
+            let path = arguments.get("path").and_then(Value::as_str)
+                .ok_or_else(|| "review_file requires the path argument".to_string())?;
+            format!("Review the workspace file {path}. Read the file and directly relevant local context. Identify correctness, security, performance, and maintainability issues. Report findings with severity and exact locations. Do not modify files.")
+        }
+        "implement_change" => {
+            let task = arguments.get("task").and_then(Value::as_str)
+                .ok_or_else(|| "implement_change requires the task argument".to_string())?;
+            format!("Implement this bounded task in the configured workspace: {task}\nFirst inspect the relevant code and explain the intended change briefly. Make the smallest coherent modification. Use only the Rust workspace tools. Every write requires explicit user approval. After editing, reread changed files and report validation limitations.")
+        }
+        _ => return Err(format!("prompt not found: {name}")),
+    };
+    Ok(json!({
+        "description": format!("Built-in Rust Agent prompt: {name}"),
+        "messages": [{ "role": "user", "content": { "type": "text", "text": prompt_text } }]
+    }))
 }
 
 fn tool_definitions() -> Value {
@@ -226,6 +303,23 @@ mod tests {
         let response = handle_request(&request, &executor, "").expect("request response");
         assert_eq!(response["result"]["serverInfo"]["name"], "rust-agent");
         assert_eq!(response["result"]["capabilities"]["tools"]["listChanged"], false);
+    }
+
+    #[test]
+    fn advertises_read_only_policy_resource_and_builtin_prompts() {
+        assert_eq!(resource_definitions().as_array().map(Vec::len), Some(1));
+        assert_eq!(prompt_definitions().as_array().map(Vec::len), Some(3));
+        assert!(read_resource(&json!({ "uri": "rust-agent://policy" })).is_ok());
+        assert!(get_prompt(&json!({
+            "name": "review_file",
+            "arguments": { "path": "src/main.rs" }
+        })).is_ok());
+    }
+
+    #[test]
+    fn rejects_unknown_resources_and_prompts() {
+        assert!(read_resource(&json!({ "uri": "rust-agent://unknown" })).is_err());
+        assert!(get_prompt(&json!({ "name": "unknown" })).is_err());
     }
 
     #[test]
