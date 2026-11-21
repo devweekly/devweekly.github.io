@@ -715,15 +715,115 @@ Google 在 2026 年的 [GKE AI Agent Workloads 架构文档](https://docs.cloud.
 
 这要求 Data Classification 与 Model Routing 成为同一个策略决策，而不是分别由文件工具和模型配置各自处理。
 
-### 7.7 Pi、Copilot SDK、LangChain Deep Agents 应该怎样接入
+### 7.7 Remote Tool、Remote Execution 与 Remote Agent 不是同一种能力
 
-这三个框架都能参与 Remote-first 设计，但扩展点不同，不能把它们当成同一种远端执行方案。
+在比较框架之前，需要先把三个经常被混用的概念拆开。一个框架支持远程 MCP，不代表它支持远程 Agent；能够把 Shell 放进远端 Sandbox，也不代表它提供了远端任务委托和生命周期管理。
 
-| 框架 | 可复用的机制 | Remote-first 接入方式 | 需要特别注意 |
-| --- | --- | --- | --- |
-| Pi | SDK 自定义 Tool / Extension、MCP Streamable HTTP、RPC | 本地 Pi 注册少量 Remote Agent Tool，或者连接远端 MCP Server；远端可独立运行 Pi Agent Runtime | SDK 是进程内集成；RPC 是本地子进程 JSONL 控制协议，不是天然的远程网络协议。SDK 不会自动加载 CLI 的内置 MCP / Codemode / Tool Search Extension，需要显式配置。 |
-| GitHub Copilot SDK | Headless CLI Server、远程 Runtime Connection、Session、MCP、Hooks、sessionFs | 本地 UI 通过服务 API 调用后端 Copilot Runtime；后端以 `mode: "empty"` 创建隔离 Session，并显式配置用户 Token、工具 Allowlist 和 Workspace | SDK 文档明确指出 SDK Client 与 Headless CLI 之间没有内置认证，网络链路必须由部署方保护。`sessionFs` 可把 Session 级文件 I/O 路由到应用存储，但不应未经验证就把它当成所有 Shell / MCP / Workspace 操作的完整隔离后端。 |
-| LangChain Deep Agents | BackendProtocol、CompositeBackend、StoreBackend、Sandbox Backend、LangGraph / Agent Server | 远端 Deep Agent 使用自定义 Backend 或 CompositeBackend 管理 Workspace；Sandbox Backend 提供文件工具和 Execute；Agent Server 可通过 MCP 暴露远端 Agent | Backend 是文件系统抽象，不等于自动提供安全隔离；真正运行命令需要 Sandbox Backend。多用户 Store 必须配置 Namespace Factory，不能把不同用户写入同一 Namespace。 |
+| 层次 | 调用对象 | 常见接口 / 协议 | 调用方拿到什么 | 典型用途 |
+| --- | --- | --- | --- | --- |
+| Remote Tool | 单个工具或业务操作 | MCP、HTTP API、RPC | Tool Result | 查询数据库、访问 SaaS、执行一个受控动作 |
+| Remote Execution | 文件系统、Shell、浏览器或代码执行环境 | Workspace API、Sandbox API、执行 Worker | 文件、进程输出、执行状态、Artifact | 在远端目录中读写文件、运行脚本和测试 |
+| Remote Agent | 一个有独立 Agent Loop、模型调用和 Session 的 Agent | A2A、Agent Protocol、框架自有 Task API | Task ID、状态、消息、Artifact | 将完整任务交给另一套 Agent Runtime |
+
+三者可以组合，但不能互相替代。Remote Tool 通常由调用方负责规划每一步；Remote Execution 负责把动作放到指定环境执行；Remote Agent 则接收目标和约束，由远端 Agent 自己决定调用哪些工具、如何组织步骤以及何时返回结果。
+
+**MCP 与 A2A / Agent Protocol 的定位也不同。** MCP 标准化的是应用向模型或 Agent 暴露工具和上下文的方式；A2A 和 Agent Protocol 面向的是 Agent 与 Agent 之间的任务协作。Agent Protocol 更贴近 LangGraph / Deep Agents 的运行和任务模型；A2A 则强调跨框架、跨组织的 Agent 互操作。它们都不能自动提供 Workspace 隔离、租户授权、凭证委托或 Sandbox。
+
+一个实用的选择原则是：调用一个确定动作，用 Remote Tool；需要在远端执行命令或处理文件，用 Remote Execution；希望远端自己规划并完成一段工作，用 Remote Agent。不要把一个长时间运行的 Agent 伪装成普通 MCP Tool，再把任务状态、取消和恢复全部塞进一次工具调用。
+
+### 7.8 框架如何实现远程工具、执行和 Agent 委托
+
+| 框架 / 平台 | Remote Tool | Remote Execution / Workspace | Remote Agent / Task 委托 | 关键边界 |
+| --- | --- | --- | --- | --- |
+| Pi | MCP Streamable HTTP、自定义 Tool | 由外部执行服务提供 | 需要应用层或独立 Agent 服务实现 | Pi RPC 是本地子进程 JSONL 协议，不是远程 Agent 协议 |
+| GitHub Copilot SDK | MCP Server | Headless CLI Runtime、SessionFS；完整隔离仍需外部 Workspace / Sandbox | 需要应用层编排 | SDK Client 与 Headless CLI 之间没有内置认证；Shell 不经过 SessionFS |
+| LangChain Deep Agents | MCP、普通 Tool | BackendProtocol、CompositeBackend、Sandbox Backend | AsyncSubAgent，通过 Agent Protocol 运行远端异步任务 | 目前这组方案中，远端 Agent 生命周期和远端 Workspace / Sandbox 抽象结合得最直接 |
+| OpenAI Agents SDK | HostedMCPTool、远程 MCP Client | SandboxAgent + 可替换 Sandbox Client，包括托管执行后端 | Agent-as-tool / Handoff 可用于 Agent 委托；远程部署和持久任务仍需结合服务端能力设计 | HostedMCPTool 的调用链运行在 OpenAI Responses API 一侧，不等于本地 Runtime 直接访问远端工具 |
+| Claude Managed Agents | Agent 内连接远程 MCP Server | Anthropic 托管 Sandbox，或通过 Environment Worker 使用自托管 Sandbox | Managed Agent Session 本身就是独立托管 Agent Runtime | 自托管模式下，Anthropic 仍运行 Agent Loop；用户基础设施中的 Worker 执行 Bash 和文件操作 |
+| Google ADK | Function Tool / MCP 等 | 由 Agent 部署环境或外部服务提供 | RemoteA2aAgent + A2A Server | A2A 用于跨服务 Agent 协作，不是文件系统或 Shell Sandbox |
+
+#### 7.8.1 LangChain Deep Agents：AsyncSubAgent 已经覆盖远端异步委托
+
+Deep Agents 不只是提供 Backend 和 Sandbox。它还提供了专门的 Async Subagents 能力：Supervisor 可以把任务交给部署在独立 Agent Server 或其他 Agent Protocol Server 上的 Agent，远端任务立即返回 Task ID，Supervisor 可以继续与用户交互，不必阻塞等待。
+
+远端任务拥有自己的 Thread 和状态。Supervisor 可以检查任务状态、发送后续指令或取消任务。部署在 Agent Server 上时，远端任务还可以在完成、失败或需要输入时主动通知 Supervisor；对没有通知能力的 Agent Protocol Server，Supervisor 可以主动轮询状态。
+
+JavaScript / TypeScript 侧可以直接声明远端 Agent：
+
+```typescript
+import { createDeepAgent, type AsyncSubAgent } from "deepagents";
+
+const remoteAgents: AsyncSubAgent[] = [
+  {
+    name: "researcher",
+    description: "Research and synthesize information",
+    graphId: "researcher",
+    url: "https://research-agent.example.com",
+    headers: {
+      Authorization: `Bearer ${process.env.REMOTE_AGENT_TOKEN}`,
+    },
+  },
+];
+
+const agent = createDeepAgent({
+  model: "openai:gpt-5",
+  subagents: remoteAgents,
+});
+```
+
+具体字段和认证方式应以当前 Deep Agents SDK 版本为准。省略 `url` 时，可以使用同一 Agent Server 部署内的传输；指定 `url` 则连接远端 Agent Protocol Server。它既可以是 LangSmith Agent Server，也可以是自建的 Agent Protocol 服务。
+
+Async SubAgent 不是把远端函数包装成一个同步 Tool。其生命周期包括启动、检查、更新和取消；远端 Agent 在自己的服务端运行模型调用和工具循环。这使它更适合研究、代码分析、文档生成等长任务。
+
+对本文的 Remote-first 架构，Deep Agents 的组合方式可以是：
+
+- AsyncSubAgent 负责跨 Agent 的任务委托和生命周期。
+- 自定义 Backend / CompositeBackend 负责远端 Workspace 的虚拟路径与持久化路由。
+- Sandbox Backend 负责 Shell 和代码执行。
+- Agent Server / LangGraph Checkpoint 负责任务状态、Thread 和恢复。
+
+需要注意，AsyncSubAgent 解决的是远程 Agent 通信和任务协作，不会自动解决远端服务的租户授权、Workspace 访问控制、凭证隔离和 Sandbox 安全。Agent Protocol Server 仍然必须验证调用者身份，并根据可信身份上下文创建 Session 和 Task。
+
+参考：[Async Subagents（JavaScript）](https://docs.langchain.com/oss/javascript/deepagents/async-subagents)、[Async Subagents（Python）](https://docs.langchain.com/oss/python/deepagents/async-subagents)、[Deep Agents Backends](https://docs.langchain.com/oss/python/deepagents/backends)、[Deep Agents Sandboxes](https://docs.langchain.com/oss/python/deepagents/sandboxes)。
+
+#### 7.8.2 OpenAI Agents SDK：Hosted MCP 与 Sandbox 是两条不同的远程路径
+
+OpenAI Agents SDK 支持两种远程 MCP 接入方式：
+
+- 使用 `MCPServerStreamableHttp`，由应用自己的 Agent Runtime 连接本地或远端 MCP Server，工具调用仍经过应用进程。
+- 使用 `HostedMCPTool`，将远端 MCP Server 的连接和工具调用交给 OpenAI Responses API。此时远端 Tool Round-trip 在 OpenAI 基础设施中完成，不需要应用进程逐次转发工具调用。
+
+这两种方式的信任边界不同。Hosted MCP 不只是换了一种传输方式：工具请求、工具结果和相关上下文会经过模型服务侧的远程调用链。数据分类、用户授权和 Provider 数据处理边界必须纳入设计。
+
+Agents SDK 的 Sandbox Agent 则把 Agent 与执行环境分开。Sandbox Client 可以连接不同的执行后端，包括托管 Sandbox Provider。应用仍然可以控制 Agent 定义和运行逻辑，但文件、命令和工作区边界由 Sandbox Client / Provider 决定。
+
+因此，OpenAI 方案可以覆盖 Remote Tool 和 Remote Execution；Agent-as-tool 或 Handoff 可以构成 Agent 委托，但不要仅凭这些接口就认为已经获得了完整的远端异步任务服务。持久任务、断线恢复、跨实例调度和审批等待仍需检查具体部署形态，并由应用或服务端 Runtime 提供相应机制。
+
+参考：[Agents SDK MCP](https://openai.github.io/openai-agents-python/mcp/)、[Sandbox Clients](https://openai.github.io/openai-agents-python/sandbox/clients/)、[Agents SDK Tools](https://openai.github.io/openai-agents-python/tools/)。
+
+#### 7.8.3 Claude Managed Agents：托管 Agent Loop 与自托管执行 Worker 分离
+
+Claude Managed Agents 提供的是完整的托管 Agent Runtime，而不是单独的 MCP Client。Agent 定义模型、指令、工具、MCP Server 和 Skills；Session 在配置的 Environment 中运行。Environment 可以由 Anthropic 托管，也可以使用部署在用户基础设施上的 Self-hosted Sandbox。
+
+自托管模式尤其值得关注：Anthropic 继续运行 Agent Loop 和模型调用；用户基础设施运行 Environment Worker，负责实际执行 Agent 发出的 Bash 和文件操作，再将结果返回 Agent Runtime。文件和进程可以留在用户自己的网络中，而模型调用仍由 Anthropic 承担。
+
+这种模式与本文讨论的 Remote-first 双 Agent 不完全相同。它更接近“云端 Agent Orchestrator + 用户侧远程执行 Worker”，而不是“本地 Agent + 远端独立 Agent”。如果使用 MCP Tunnel，远端 MCP Server 的连接也由 Anthropic 侧建立，网络访问和凭证配置需要单独评估。
+
+因此，选择 Claude Managed Agents 时，应明确区分 Agent 控制面由谁托管、模型请求发往哪里、Bash / 文件操作在哪执行，以及 MCP Server 从哪个网络边界被访问。Self-hosted Sandbox 不代表模型推理也在企业网络内完成。
+
+参考：[Claude Managed Agents Overview](https://platform.claude.com/docs/en/managed-agents/overview)、[Self-hosted Sandboxes](https://platform.claude.com/docs/en/managed-agents/self-hosted-sandboxes)、[MCP Connector](https://platform.claude.com/docs/en/managed-agents/mcp-connector)。
+
+#### 7.8.4 Google ADK 与 A2A：面向跨框架的远程 Agent 协作
+
+Google ADK 提供 `RemoteA2aAgent`，可以把一个远端 A2A Server 当作 Agent 组件接入本地 Agent。远端 Agent 通过 A2A Server 暴露 Agent Card 和能力信息，调用方通过 RemoteA2aAgent 发现并调用它。ADK 也提供将现有 Agent 暴露为 A2A 服务的方式。
+
+A2A 的价值在于远端 Agent 不必使用相同的框架或语言。一个 Python ADK Agent 可以调用由其他框架实现的 A2A Agent。协议支持长时间运行的任务状态和 Artifact 交换，因此比把 Agent 包装成普通 HTTP 函数更适合跨团队、跨服务的任务协作。
+
+但 A2A 仍然是 Agent 间的通信协议，不是 Workspace、Shell 或 Sandbox 标准。远端 Agent 的执行环境和资源访问策略由服务提供方负责。调用方必须校验 Agent Card 的来源、认证要求和目标服务身份；服务端必须按调用者身份执行授权，而不是把 Agent Card 中声明的能力当成安全许可。
+
+参考：[ADK – Introduction to A2A](https://google.github.io/adk-docs/a2a/intro/)、[Exposing an Agent via A2A](https://google.github.io/adk-docs/a2a/quickstart-exposing/)。
+
+#### 7.8.5 Pi 与 Copilot SDK：远程能力主要由 Runtime 组合完成
 
 **Pi：适合做本地 Agent Client 和远端工具适配层。** Pi SDK 可以在本地进程内创建 Agent Session，通过自定义 Tool 将请求转发到远端服务；也可以连接支持 Streamable HTTP 的 MCP Server。若远端需要运行自己的 Pi Agent，应该由远端服务创建独立 Session 和 SessionManager，不能把本地的 `cwd`、Session 文件或 Extension Runtime 当作远端 Workspace。Pi RPC 模式适合把 Pi 隔离为本机子进程，不能直接替代客户端到远端服务的认证、传输和多租户协议。
 
@@ -733,11 +833,7 @@ Google 在 2026 年的 [GKE AI Agent Workloads 架构文档](https://docs.cloud.
 
 参考：[Backend Services](https://docs.github.com/en/copilot/how-tos/copilot-sdk/setup/backend-services)、[Multi-tenancy and Server Deployments](https://docs.github.com/en/copilot/how-tos/copilot-sdk/setup/multi-tenancy)、[Scaling](https://docs.github.com/en/copilot/how-tos/copilot-sdk/setup/scaling)。
 
-**LangChain Deep Agents：最贴近远端 Workspace + 远端 Agent 的抽象。** Deep Agents 的 BackendProtocol 将文件工具与底层存储解耦：StateBackend 适合线程内状态，StoreBackend 适合跨线程长期存储，FilesystemBackend 面向本地磁盘，CompositeBackend 可按虚拟路径路由不同后端。要特别注意，FilesystemBackend 的 `root_dir` 本身不构成安全边界；需要路径限制时必须启用 `virtual_mode=True`，但这仍不能限制 Shell。LocalShellBackend 会以宿主机权限执行命令，没有 Sandbox 隔离，不适合生产多租户服务。真正需要执行命令时应使用 Sandbox Backend。StateBackend 的状态在同一 Thread 的 Supervisor 与 Subagent 间共享；StoreBackend 则必须显式设置 Namespace Factory，按用户或租户隔离。LangSmith Agent Server 还可以将 Agent 作为 MCP Tool 暴露，并通过自定义认证中间件实现用户级授权。对于本场景，可以在远端实现一个 Workspace Backend，把路径操作映射到对象存储、数据库或专用文件服务，再把执行能力交给独立 Sandbox Backend。
-
-参考：[Deep Agents Backends](https://docs.langchain.com/oss/python/deepagents/backends)、[Deep Agents Sandboxes](https://docs.langchain.com/oss/python/deepagents/sandboxes)、[Deep Agents Overview](https://docs.langchain.com/oss/python/deepagents/overview)、[Agent Server MCP](https://docs.langchain.com/langsmith/server-mcp)。
-
-### 7.8 推荐的服务端部署结构
+### 7.9 推荐的服务端部署结构
 
 不要把 API Gateway、Agent Loop、Workspace 和 Sandbox 做成一个长期运行的“万能 Agent 进程”。逻辑上至少划分为：
 
@@ -750,7 +846,7 @@ Google 在 2026 年的 [GKE AI Agent Workloads 架构文档](https://docs.cloud.
 
 Agent API 可以是无状态服务，Agent Session 和长任务状态由持久化层管理；Orchestrator 可以按 Session 粘性路由，也可以通过持久化 Checkpoint 在不同 Worker 恢复。Copilot SDK 的多实例部署文档特别指出，Session 状态需要放在共享存储中，才能由不同 CLI Server 恢复；LangGraph 则提供 Checkpoint / Store 机制支持持久化执行。无论采用哪种框架，都要把运行时进程内状态与可恢复的业务状态区分开。
 
-### 7.9 这类架构上线前要检查什么
+### 7.10 这类架构上线前要检查什么
 
 | 检查项 | 必须满足的条件 |
 | --- | --- |
@@ -763,9 +859,10 @@ Agent API 可以是无状态服务，Agent Session 和长任务状态由持久�
 | 浏览器 | Cookie 和 Profile 留在本地；远端只能通过窄范围 Browser Broker 请求获批操作 |
 | 多租户 | Session、Workspace、Memory、Cache、Artifact、Sandbox 和持久化授权均有租户边界 |
 | 长任务 | 支持断线恢复、事件 Cursor、幂等写操作、取消传播、审批等待和过期清理 |
+| Agent 委托 | 委托目标、输入上下文、输出 Artifact、模型 Provider 和数据处理区域均经过策略检查；不能仅凭远端 Agent 声明的能力授权 |
 | 审计 | 能从一次用户请求追踪到本地模型、远端模型、工具、副作用、审批和最终 Artifact |
 
-### 7.10 选型结论
+### 7.11 选型结论
 
 如果产品本身需要本地 UI、桌面浏览器和本地模型，同时又希望文件与执行全部集中管理，推荐采用**本地薄 Agent + 远端完整 Agent Service**：
 
@@ -774,6 +871,8 @@ Agent API 可以是无状态服务，Agent Session 和长任务状态由持久�
 - 本地与远端之间使用独立的 Agent API 和事件流；远端工具可通过 MCP Streamable HTTP 接入，但 MCP 不替代任务协议和授权体系。
 - 对大文件和敏感数据采用远端 Agent 委托模式，避免文件内容绕回本地模型；对低风险、需要本地模型精细控制的操作才开放远端工具调用模式。
 - 浏览器保持本地能力，通过受控 Broker 暴露给本地 Agent；不要把浏览器 Cookie、Profile 或本地目录复制到远端。
+
+框架选择上，Deep Agents 的 AsyncSubAgent + Backend + Sandbox 组合最接近这一模式的开箱抽象；OpenAI Agents SDK 提供 Hosted MCP 和可插拔 Sandbox；Claude Managed Agents 提供托管 Agent Loop 与自托管执行 Worker；Google ADK / A2A 更适合跨框架、跨团队的 Agent 协作。Copilot SDK 和 Pi 则可以作为 Runtime 组件，通过应用层服务补齐远端任务协议。
 
 这套架构的核心不是“所有工具都远程化”，而是**把 Agent 的规划位置、工具执行位置、数据处理位置和用户交互位置分别定义清楚**。本地与远端可以各自拥有 Agent Loop，但每一个跨边界动作都必须有明确的身份、授权、数据流和审计记录。
 
