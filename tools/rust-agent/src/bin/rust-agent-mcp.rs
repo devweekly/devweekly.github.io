@@ -281,7 +281,7 @@ fn call_tool(
 mod tests {
     use serde_json::json;
 
-    use super::{call_tool, handle_request, tool_definitions};
+    use super::{call_tool, get_prompt, handle_request, prompt_definitions, read_resource, resource_definitions, tool_definitions};
     use rust_agent::tools::ToolExecutor;
 
     #[test]
