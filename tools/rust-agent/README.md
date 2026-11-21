@@ -144,6 +144,40 @@ The runtime appends model-call and tool-call events to `.rust-agent/usage.jsonl`
 
 Background tasks persist cumulative request, token, duration, and tool-call totals in each task record, including across restart recovery. The `/usage` command shows totals across the workspace usage log and stored background tasks; `/task <id>` shows the selected task's usage. Failed or cancelled requests that do not return a usage payload cannot be assigned reliable token counts.
 
+
+## Managed runtime: context, memory, hooks and traces
+
+The optional `ManagedRuntime` facade composes the native AgentRuntime with explicit context budgeting, durable memory, managed lifecycle hooks, and JSONL traces. It does not replace the existing Runtime API.
+
+Memory is stored under `.rust-agent/memory/` as private JSON records. The API supports explicit remember, retrieve, update, list and forget operations. Records carry a kind (working/session/long-term/procedural), scope (global/project/session/task), provenance, confidence, timestamps and optional expiry. Retrieval is currently lightweight lexical matching; there is no embedding model or vector database. Memory writes are explicit host operations: model output and tool results are never automatically promoted to long-term memory. Retrieved memory is inserted as untrusted reference material, never as system instructions.
+
+The ContextManager reserves an output budget and a separate memory budget. Token counts use a conservative UTF-8 byte heuristic (four bytes per token), not the provider's tokenizer. The current user request is preserved before optional memory; the existing AgentRuntime still applies its whole-turn sliding history window. This is a context assembly/budget layer, not semantic conversation summarization.
+
+Managed hooks expose before-turn, runtime-event and after-turn callbacks. The bridge also receives the existing RuntimeHook event stream and tool-denial extension point. Hooks may observe or deny, but cannot grant permissions or bypass the deterministic Rust Policy Gate. Long-running callbacks should not block the runtime thread.
+
+Trace records are appended to `.rust-agent/traces.jsonl` with timestamp, trace ID, sequence, session ID, event name, tool name and metadata. Prompt bodies, model response bodies, file contents and tool arguments are deliberately excluded. The existing `audit_file` remains a separate audit sink. Trace writes are best-effort through the hook adapter; a trace write failure is logged and does not fail an Agent turn.
+
+Example host setup:
+
+```rust
+use std::{path::PathBuf, sync::Arc};
+use rust_agent::{
+    context::ContextManager,
+    managed::ManagedRuntime,
+    runtime::RuntimeOptions,
+};
+
+let runtime = ManagedRuntime::new(
+    provider,
+    PathBuf::from("/workspace"),
+    RuntimeOptions::default(),
+    ContextManager::new(16_000, 2_000, 2_000),
+    Some("my-project".into()),
+    Vec::new(),
+)?;
+let answer = runtime.run_turn("Review the repository").await?;
+```
+
 ## Current limitations
 
 - Streaming requires the provider to implement OpenAI-compatible Chat Completions SSE. The primary Agent loop emits `model.output.delta` RuntimeHook events and buffers the complete response before parsing it. Delta events contain fragments of the structured action payload, not display-ready assistant text; hosts must wait for the completed turn before rendering final content or acting on a tool call. Delegated subagent requests still use the buffered completion path. If a primary model fails after emitting partial output, fallback is not attempted to avoid mixing two model responses.
