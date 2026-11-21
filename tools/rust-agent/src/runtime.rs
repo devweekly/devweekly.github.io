@@ -478,6 +478,10 @@ impl AgentRuntime {
                         self.push_tool_result(false, "ask_user requires at least one question");
                     } else {
                         let answers = self.request_user_answers(&questions)?;
+                        if cancellation.is_cancelled() {
+                            self.push_tool_result(false, "Question interaction was cancelled by the host.");
+                            return Err(AgentError::Cancelled);
+                        }
                         self.audit("user_question.answered", None, json!({
                             "question_count": questions.len(),
                             "answer_count": answers.as_object().map_or(0, |object| object.len())
@@ -524,12 +528,19 @@ impl AgentRuntime {
                                 if self.permission_mode == PermissionMode::Plan {
                                     self.audit("policy.plan_mode_denied", Some(&action.name), json!({}));
                                     self.push_tool_result(false, "Write operations are disabled in plan mode");
-                                } else if self.request_approval(&action)? {
-                                    self.audit("policy.approve", Some(&action.name), json!({}));
-                                    self.execute_and_record(&action);
                                 } else {
-                                    self.audit("policy.user_denied", Some(&action.name), json!({}));
-                                    self.push_tool_result(false, "User declined the operation");
+                                    let approved = self.request_approval(&action)?;
+                                    if cancellation.is_cancelled() {
+                                        self.push_tool_result(false, "Write approval was cancelled by the host.");
+                                        return Err(AgentError::Cancelled);
+                                    }
+                                    if approved {
+                                        self.audit("policy.approve", Some(&action.name), json!({}));
+                                        self.execute_and_record(&action);
+                                    } else {
+                                        self.audit("policy.user_denied", Some(&action.name), json!({}));
+                                        self.push_tool_result(false, "User declined the operation");
+                                    }
                                 }
                             }
                             PolicyDecision::Allow => {

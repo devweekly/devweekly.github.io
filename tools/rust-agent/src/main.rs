@@ -3,6 +3,7 @@ use std::{
     error::Error,
     io::{self, Write},
     path::PathBuf,
+    sync::{Arc, Mutex},
 };
 
 use rust_agent::{
@@ -124,7 +125,7 @@ impl Args {
     }
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
@@ -161,17 +162,38 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     let mut runtime = AgentRuntime::new(provider, workspace, options)?;
 
+    let active_cancellation = Arc::new(Mutex::new(None::<CancellationHandle>));
+    let signal_target = Arc::clone(&active_cancellation);
+    tokio::spawn(async move {
+        loop {
+            if tokio::signal::ctrl_c().await.is_err() {
+                break;
+            }
+            let active = signal_target
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .clone();
+            match active {
+                Some(cancellation) => cancellation.cancel(),
+                None => std::process::exit(130),
+            }
+        }
+    });
+
     println!("Rust Agent ready. Workspace: {}", runtime.workspace().display());
     println!("Session: {}", runtime.session_id());
     println!("Commands: /help, /new, /session, /resume <id>, /fork, /model <id>, /models, /mode <default|plan>, /context, /compact, /exit");
 
-    let stdin = io::stdin();
     loop {
         print!("you> ");
         io::stdout().flush()?;
 
-        let mut input = String::new();
-        if stdin.read_line(&mut input)? == 0 {
+        let (bytes_read, input) = tokio::task::spawn_blocking(|| {
+            let mut input = String::new();
+            let bytes_read = io::stdin().read_line(&mut input)?;
+            Ok::<_, io::Error>((bytes_read, input))
+        }).await??;
+        if bytes_read == 0 {
             break;
         }
         let input = input.trim();
@@ -256,34 +278,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
 
         let cancellation = CancellationHandle::new();
-        let mut turn = Box::pin(runtime.run_turn_with_cancellation(input, &cancellation));
-        tokio::select! {
-            result = &mut turn => match result {
-                Ok(answer) => println!("agent> {answer}"),
-                Err(error) => eprintln!("error> {error}"),
-            },
-            signal = tokio::signal::ctrl_c() => {
-                match signal {
-                    Ok(()) => {
-                        cancellation.cancel();
-                        eprintln!("\nCancelling current turn...");
-                        match turn.await {
-                            Ok(answer) => println!("agent> {answer}"),
-                            Err(rust_agent::error::AgentError::Cancelled) => {
-                                println!("agent> Turn cancelled.");
-                            }
-                            Err(error) => eprintln!("error> {error}"),
-                        }
-                    }
-                    Err(error) => {
-                        eprintln!("Could not listen for Ctrl-C: {error}");
-                        match turn.await {
-                            Ok(answer) => println!("agent> {answer}"),
-                            Err(error) => eprintln!("error> {error}"),
-                        }
-                    }
-                }
+        {
+            let mut active = active_cancellation
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            *active = Some(cancellation.clone());
+        }
+        let result = runtime.run_turn_with_cancellation(input, &cancellation).await;
+        {
+            let mut active = active_cancellation
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            *active = None;
+        }
+        match result {
+            Ok(answer) => println!("agent> {answer}"),
+            Err(rust_agent::error::AgentError::Cancelled) => {
+                println!("agent> Turn cancelled.");
             }
+            Err(error) => eprintln!("error> {error}"),
         }
     }
 
