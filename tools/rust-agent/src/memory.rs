@@ -764,8 +764,10 @@ impl MemoryStore {
         ).optional()?.ok_or_else(|| AgentError::InvalidAction("knowledge page revision not found".into()))?;
         let snapshot = after_json.or(before_json)
             .ok_or_else(|| AgentError::InvalidAction("knowledge page revision has no restorable snapshot".into()))?;
-        let restored: MemoryPage = serde_json::from_str(&snapshot)?;
+        let mut restored: MemoryPage = serde_json::from_str(&snapshot)?;
         let previous = load_page(&transaction, page_id)?;
+        restored.revision = next_page_revision(&transaction, page_id)?;
+        restored.updated_at_ms = now_ms();
         write_page_record(&transaction, &restored)?;
         let current = load_page(&transaction, page_id)?.expect("restored page must exist");
         insert_page_revision(&transaction, page_id, "restored", previous.as_ref(), Some(&current),
@@ -1362,18 +1364,19 @@ impl MemoryStore {
             let refs = serde_json::to_string(&page.evidence)?;
             let links = serde_json::to_string(&page.links)?;
             let now = to_i64(now_ms())?;
+            let revision = next_page_revision(&transaction, &page.id)?;
             let exists = before.is_some();
             transaction.execute(
                 "INSERT INTO memory_pages (
                     id,title,summary,content,scope,scope_id,source_refs_json,links_json,updated_at_ms,revision
-                ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,1)
+                ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
                 ON CONFLICT(id) DO UPDATE SET
                     title=excluded.title,summary=excluded.summary,content=excluded.content,
                     scope=excluded.scope,scope_id=excluded.scope_id,
                     source_refs_json=excluded.source_refs_json,links_json=excluded.links_json,
-                    updated_at_ms=excluded.updated_at_ms,revision=memory_pages.revision+1",
+                    updated_at_ms=excluded.updated_at_ms,revision=excluded.revision",
                 params![page.id,page.title.trim(),page.summary.trim(),page.content.trim(),page.scope.as_str(),
-                    page.scope_id,refs,links,now],
+                    page.scope_id,refs,links,now,revision],
             )?;
             let after = load_page(&transaction, &page.id)?.expect("upserted page must exist");
             insert_page_revision(&transaction, &page.id,
@@ -1589,6 +1592,16 @@ fn write_page_record(transaction: &Transaction<'_>, page: &MemoryPage) -> Result
             to_i64(page.updated_at_ms)?,page.revision],
     )?;
     Ok(())
+}
+
+fn next_page_revision(transaction: &Transaction<'_>, page_id: &str) -> Result<u64, AgentError> {
+    let revision: i64 = transaction.query_row(
+        "SELECT COALESCE(MAX(revision),0)+1 FROM memory_page_revisions WHERE page_id=?1",
+        [page_id],
+        |row| row.get(0),
+    )?;
+    u64::try_from(revision)
+        .map_err(|_| AgentError::InvalidAction("knowledge page revision out of range".into()))
 }
 
 fn insert_page_revision(
@@ -2227,7 +2240,23 @@ mod tests {
         let revisions = store.list_page_revisions("obsolete-page", 10).unwrap();
         assert_eq!(revisions[0].action, "deleted");
         assert!(revisions[0].after.is_none());
-        assert_eq!(store.restore_page_revision("obsolete-page", 1).unwrap().title, "Obsolete page");
+        let restored = store.restore_page_revision("obsolete-page", 1).unwrap();
+        assert_eq!(restored.title, "Obsolete page");
+        assert_eq!(restored.revision, 3);
+        let recreated = DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![],
+            pages: vec![DreamingPage {
+                id: "obsolete-page".into(), title: "Recreated page".into(),
+                summary: "Updated knowledge".into(), content: "Recreated after restoration.".into(),
+                scope: MemoryScope::Global, scope_id: None,
+                evidence: vec![format!("transcript:{transcript}")], links: vec![],
+            }],
+            delete_pages: vec![],
+        };
+        store.apply_dreaming(recreated).unwrap();
+        assert_eq!(store.get_page("obsolete-page").unwrap().revision, 4);
+        assert_eq!(store.list_page_revisions("obsolete-page", 10).unwrap()[0].revision, 4);
         let _ = fs::remove_dir_all(root);
     }
 
