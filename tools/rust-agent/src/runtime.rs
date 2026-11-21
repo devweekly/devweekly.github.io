@@ -387,12 +387,19 @@ impl SessionStore {
     /// Redact source transcript messages from persisted sessions without changing
     /// the current-session pointer. Tool evidence can have been stored as a user
     /// protocol message, so matching uses the exact message content.
-    fn redact_transcript_sources(&self, sources: &[TranscriptEntry]) -> Result<usize, AgentError> {
+    fn redact_transcript_sources(
+        &self,
+        sources: &[TranscriptEntry],
+        skip_session_id: Option<&str>,
+    ) -> Result<usize, AgentError> {
         if sources.is_empty() { return Ok(0); }
         ensure_real_directory(&self.directory)?;
         let mut processed_sessions: Vec<String> = Vec::new();
         let mut removed = 0usize;
         for source in sources {
+            if skip_session_id == Some(source.session_id.as_str()) {
+                continue;
+            }
             if processed_sessions.iter().any(|session_id| session_id == &source.session_id) {
                 continue;
             }
@@ -1051,7 +1058,7 @@ impl AgentRuntime {
     }
     pub fn forget_memory(&mut self, id: &str) -> Result<(), AgentError> {
         let sources = self.memory_store.forget_with_sources(id)?;
-        self.store.redact_transcript_sources(&sources)?;
+        self.store.redact_transcript_sources(&sources, Some(&self.session.session_id))?;
         if !sources.is_empty() {
             self.messages.retain(|message| !sources.iter().any(|source| source.content == message.content));
             self.persist()?;
@@ -3084,7 +3091,7 @@ mod tests {
         ));
         let store = SessionStore::new(directory.clone());
         let now = now_ms();
-        let mut initial = SessionRecord {
+        let initial = SessionRecord {
             schema_version: SESSION_SCHEMA_VERSION,
             session_id: "shared-session".into(),
             parent_session_id: None,
@@ -3109,8 +3116,7 @@ mod tests {
         assert_eq!(persisted.revision, 2);
         assert!(persisted.messages.iter().any(|message| message.content == "writer A"));
         assert!(!persisted.messages.iter().any(|message| message.content == "writer B"));
-        initial.revision = persisted.revision;
-        let _ = initial;
+        let _ = persisted;
         let _ = fs::remove_dir_all(directory);
     }
 
@@ -3126,6 +3132,7 @@ mod tests {
             session_id: "source-session".into(),
             parent_session_id: None,
             project_id: Some("project-a".into()),
+            revision: 1,
             created_at_ms: now,
             updated_at_ms: now,
             messages: vec![
@@ -3150,7 +3157,7 @@ mod tests {
             created_at_ms: now,
         };
 
-        assert_eq!(store.redact_transcript_sources(&[source]).unwrap(), 1);
+        assert_eq!(store.redact_transcript_sources(&[source], None).unwrap(), 1);
         assert_eq!(fs::read_to_string(directory.join("latest")).unwrap(), "latest-session");
         let loaded = store.load("source-session").unwrap();
         assert!(loaded.messages.iter().all(|message| message.content != "private source text"));
