@@ -1680,7 +1680,8 @@ fn validate_evidence_scope_in_transaction(
                         [transcript_id],
                         |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)),
                     )?;
-                match target_scope {
+                let trusted_role = matches!(role.as_str(), "user" | "tool");
+                trusted_role && match target_scope {
                     MemoryScope::Global => role == "user" && task_id.is_none(),
                     MemoryScope::Project => project_id.as_deref() == target_scope_id && task_id.is_none(),
                     MemoryScope::Session => session_id == target_scope_id.unwrap_or_default(),
@@ -2089,6 +2090,31 @@ mod tests {
         let restored = store.restore_revision(&created.id, 1).unwrap();
         assert_eq!(restored.content, "Prefer explicit Rust APIs");
         assert_eq!(store.list_revisions(&created.id, 10).unwrap().len(), 3);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn dreaming_rejects_assistant_only_fact_evidence() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript(
+            "session-a", Some("project-a"), None, "assistant",
+            "The project requires a particular architecture",
+        ).unwrap();
+        let output = DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![DreamingNote {
+                action: "create".into(), id: None, kind: Some(MemoryKind::Procedural),
+                scope: Some(MemoryScope::Project), scope_id: Some("project-a".into()),
+                content: "The project requires a particular architecture".into(),
+                confidence: 99, importance: 90,
+                evidence: vec![format!("transcript:{transcript}")],
+            }],
+            pages: vec![],
+            delete_pages: vec![],
+        };
+        assert!(store.apply_dreaming(output).is_err());
+        assert_eq!(store.last_dreamed_transcript_id().unwrap(), 0);
         let _ = fs::remove_dir_all(root);
     }
 
