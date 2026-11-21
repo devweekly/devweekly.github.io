@@ -33,8 +33,14 @@ pub struct TraceStore {
 
 impl TraceStore {
     pub fn new(path: PathBuf, session_id: impl Into<String>, trace_id: impl Into<String>) -> Result<Self, AgentError> {
-        if let Some(parent) = path.parent() { fs::create_dir_all(parent)?; }
-        Ok(Self { path, trace_id: trace_id.into(), session_id: session_id.into(),
+        if let Some(parent) = path.parent() {
+            ensure_real_directory(parent)?;
+        }
+        ensure_regular_file_or_missing(&path)?;
+        let supplied_trace_id = trace_id.into();
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+        let trace_id = format!("{supplied_trace_id}-{}-{nonce:x}", std::process::id());
+        Ok(Self { path, trace_id, session_id: session_id.into(),
             sequence: Arc::new(AtomicU64::new(1)), write_lock: Arc::new(Mutex::new(())) })
     }
 
@@ -44,15 +50,17 @@ impl TraceStore {
             schema_version: 1, timestamp_ms: now_ms(), trace_id: self.trace_id.clone(),
             sequence: self.sequence.fetch_add(1, Ordering::Relaxed),
             session_id: self.session_id.clone(), event: event.to_owned(),
-            tool: tool.map(str::to_owned), details,
+            tool: tool.map(str::to_owned), details: sanitize_details(&details),
         };
+        ensure_regular_file_or_missing(&self.path)?;
         let mut options = OpenOptions::new();
         options.create(true).append(true);
         #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
         let mut file = options.open(&self.path)?;
-        serde_json::to_writer(&mut file, &record)?;
-        file.write_all(b"\n")?;
-        Ok(record)
+        let mut line = serde_json::to_vec(&record)?;
+        line.push(b'\n');
+        file.write_all(&line)?;
+        Ok(record)        Ok(record)
     }
 
     pub fn append_runtime_event(&self, event: &RuntimeEvent) -> Result<TraceRecord, AgentError> {
@@ -63,13 +71,15 @@ impl TraceStore {
             session_id: event.session_id.clone(), event: event.name.clone(),
             tool: event.tool.clone(), details: sanitize_details(&event.details),
         };
+        ensure_regular_file_or_missing(&self.path)?;
         let mut options = OpenOptions::new();
         options.create(true).append(true);
         #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
         let mut file = options.open(&self.path)?;
-        serde_json::to_writer(&mut file, &record)?;
-        file.write_all(b"\n")?;
-        Ok(record)
+        let mut line = serde_json::to_vec(&record)?;
+        line.push(b'\n');
+        file.write_all(&line)?;
+        Ok(record)        Ok(record)
     }
 
     pub fn path(&self) -> &Path { &self.path }
@@ -88,6 +98,37 @@ impl RuntimeHook for TraceHook {
         if let Err(error) = self.store.append_runtime_event(event) {
             tracing::warn!(%error, "failed to persist runtime trace event");
         }
+    }
+}
+
+fn ensure_real_directory(path: &Path) -> Result<(), AgentError> {
+    if let Some(parent) = path.parent() {
+        if parent.exists() {
+            let metadata = fs::symlink_metadata(parent)?;
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Err(AgentError::InvalidAction("trace directory parent must be a real directory".into()));
+            }
+        }
+    }
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+            return Err(AgentError::InvalidAction("trace directory must be a real directory".into()));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => fs::create_dir_all(path)?,
+        Err(error) => return Err(error.into()),
+    }
+    Ok(())
+}
+
+fn ensure_regular_file_or_missing(path: &Path) -> Result<(), AgentError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            Err(AgentError::InvalidAction("trace file must be a regular file, not a symbolic link".into()))
+        }
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -143,12 +184,19 @@ mod tests {
     fn appends_correlated_jsonl_events_with_sequence_numbers() {
         let path = std::env::temp_dir().join(format!("rust-agent-trace-{}.jsonl", now_ms()));
         let store = TraceStore::new(path.clone(), "session-1", "trace-1").unwrap();
+        let other_store = TraceStore::new(path.clone(), "session-2", "trace-1").unwrap();
         let first = store.append("turn.start", None, json!({"input_length": 10})).unwrap();
         let second = store.append("tool.complete", Some("read_file"), json!({"ok": true})).unwrap();
+        let other = other_store.append("turn.start", None, json!({"input_length": 5})).unwrap();
         assert_eq!(first.sequence, 1);
         assert_eq!(second.sequence, 2);
+        assert_eq!(other.sequence, 1);
+        assert_ne!(first.trace_id, other.trace_id);
         let content = fs::read_to_string(&path).unwrap();
-        assert_eq!(content.lines().count(), 2);
+        assert_eq!(content.lines().count(), 3);
+        for line in content.lines() {
+            serde_json::from_str::<TraceRecord>(line).expect("each trace append must be one valid JSONL record");
+        }
         let _ = fs::remove_file(path);
     }
 }
