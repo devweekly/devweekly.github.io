@@ -1202,12 +1202,17 @@ impl MemoryStore {
 
     pub fn get_page(&self, id: &str) -> Result<MemoryPage, AgentError> {
         validate_page_id(id)?;
-        self.conn()?.query_row(
+        let connection = self.conn()?;
+        let page = connection.query_row(
             "SELECT id,title,summary,content,scope,scope_id,source_refs_json,links_json,updated_at_ms,revision
              FROM memory_pages WHERE id=?1",
             [id],
             row_page,
-        ).optional()?.ok_or_else(|| AgentError::InvalidAction(format!("memory page not found: {id}")))
+        ).optional()?.ok_or_else(|| AgentError::InvalidAction(format!("memory page not found: {id}")))?;
+        validate_evidence_scope_recursive(
+            &connection, &page.source_refs, page.scope, page.scope_id.as_deref(), &mut HashSet::new()
+        )?;
+        Ok(page)
     }
 
     pub fn list_pages(&self, limit: usize) -> Result<Vec<MemoryPage>, AgentError> {
@@ -1216,8 +1221,14 @@ impl MemoryStore {
             "SELECT id,title,summary,content,scope,scope_id,source_refs_json,links_json,updated_at_ms,revision
              FROM memory_pages ORDER BY updated_at_ms DESC,id LIMIT ?1",
         )?;
-        Ok(statement.query_map([limit.clamp(1, 200)], row_page)?
-            .collect::<Result<Vec<_>, _>>()?)
+        let pages = statement.query_map([limit.clamp(1, 200)], row_page)?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(statement);
+        Ok(pages.into_iter().filter(|page| {
+            validate_evidence_scope_recursive(
+                &connection, &page.source_refs, page.scope, page.scope_id.as_deref(), &mut HashSet::new()
+            ).is_ok()
+        }).collect())
     }
 
     pub fn search_pages(&self, query: &str, limit: usize) -> Result<Vec<MemoryPage>, AgentError> {
@@ -2467,6 +2478,77 @@ mod tests {
     fn markdown_wiki_links_are_extracted_without_external_urls() {
         let links = markdown_page_links("See [Policy](policy-page.md), [Other](./other-page), [external](https://example.com), and [anchor](#top).");
         assert_eq!(links, vec!["policy-page", "other-page"]);
+    }
+
+    #[test]
+    fn knowledge_page_revision_records_evidence_for_deletion() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript("s1", None, None, "user", "Remove obsolete page after review").unwrap();
+        let evidence = vec![format!("transcript:{transcript}")];
+        store.apply_dreaming(DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![],
+            pages: vec![DreamingPage {
+                id: "obsolete-page".into(),
+                title: "Obsolete".into(),
+                summary: "No longer needed".into(),
+                content: "Old information".into(),
+                scope: MemoryScope::Global,
+                scope_id: None,
+                evidence: evidence.clone(),
+                links: vec![],
+            }],
+            delete_pages: vec![],
+        }).unwrap();
+        store.apply_dreaming(DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![],
+            pages: vec![],
+            delete_pages: vec![DreamingPageDeletion {
+                id: "obsolete-page".into(),
+                evidence: evidence.clone(),
+            }],
+        }).unwrap();
+
+        let revisions = store.list_page_revisions("obsolete-page", 10).unwrap();
+        let deletion = revisions.iter().find(|revision| revision.action == "deleted").unwrap();
+        assert_eq!(deletion.evidence_refs, evidence);
+        assert!(store.get_page("obsolete-page").is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn pages_with_invalidated_source_memory_are_not_retrievable() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript("s1", None, None, "user", "A source requirement").unwrap();
+        let source = store.propose(
+            input(MemoryScope::Global, None, "A policy requirement"),
+            90,
+            vec![format!("transcript:{transcript}")],
+        ).unwrap();
+        store.set_status(&source.id, MemoryStatus::Consolidated).unwrap();
+        store.apply_dreaming(DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![],
+            pages: vec![DreamingPage {
+                id: "policy-page".into(),
+                title: "Policy".into(),
+                summary: "Policy requirements".into(),
+                content: "The project requires a clear policy.".into(),
+                scope: MemoryScope::Global,
+                scope_id: None,
+                evidence: vec![format!("memory:{}", source.id)],
+                links: vec![],
+            }],
+            delete_pages: vec![],
+        }).unwrap();
+        assert!(store.get_page("policy-page").is_ok());
+        store.set_status(&source.id, MemoryStatus::Disputed).unwrap();
+        assert!(store.get_page("policy-page").is_err());
+        assert!(store.search_pages("policy", 10).unwrap().is_empty());
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
