@@ -10,6 +10,8 @@ use std::{
 
 use crate::{error::AgentError, runtime::{RuntimeEvent, RuntimeHook}};
 
+const MAX_TRACE_LOG_BYTES: u64 = 32 * 1024 * 1024;
+const TRACE_LOG_BACKUPS: usize = 3;
 static NEXT_TRACE_INSTANCE_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +58,7 @@ impl TraceStore {
             tool: tool.map(str::to_owned), details: sanitize_details(&details),
         };
         let lock = lock_trace_file(&self.path)?;
+        rotate_trace_log(&self.path)?;
         ensure_regular_file_or_missing(&self.path)?;
         let mut options = OpenOptions::new();
         options.create(true).append(true);
@@ -77,6 +80,7 @@ impl TraceStore {
             tool: event.tool.clone(), details: sanitize_details(&event.details),
         };
         let lock = lock_trace_file(&self.path)?;
+        rotate_trace_log(&self.path)?;
         ensure_regular_file_or_missing(&self.path)?;
         let mut options = OpenOptions::new();
         options.create(true).append(true);
@@ -106,6 +110,38 @@ impl RuntimeHook for TraceHook {
             tracing::warn!(%error, "failed to persist runtime trace event");
         }
     }
+}
+
+fn rotate_trace_log(path: &Path) -> Result<(), AgentError> {
+    ensure_regular_file_or_missing(path)?;
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if metadata.len() < MAX_TRACE_LOG_BYTES { return Ok(()); }
+    let extension = path.extension().and_then(|value| value.to_str()).unwrap_or("log");
+    for generation in (1..=TRACE_LOG_BACKUPS).rev() {
+        let source = if generation == 1 {
+            path.to_path_buf()
+        } else {
+            path.with_extension(format!("{extension}.{}", generation - 1))
+        };
+        let destination = path.with_extension(format!("{extension}.{generation}"));
+        ensure_regular_file_or_missing(&source)?;
+        ensure_regular_file_or_missing(&destination)?;
+        match fs::remove_file(&destination) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        match fs::rename(&source, &destination) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
 }
 
 fn lock_trace_file(path: &Path) -> Result<fs::File, AgentError> {
@@ -193,6 +229,21 @@ fn now_ms() -> u128 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_def
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn trace_logs_rotate_only_after_the_configured_size_limit() {
+        let path = std::env::temp_dir().join(format!(
+            "rust-agent-trace-rotate-{}.jsonl", std::process::id()
+        ));
+        fs::write(&path, vec![b'x'; (MAX_TRACE_LOG_BYTES + 1) as usize]).unwrap();
+        rotate_trace_log(&path).unwrap();
+        assert!(!path.exists());
+        assert_eq!(
+            fs::metadata(path.with_extension("jsonl.1")).unwrap().len(),
+            MAX_TRACE_LOG_BYTES + 1
+        );
+        let _ = fs::remove_file(path.with_extension("jsonl.1"));
+    }
 
     #[test]
     fn runtime_trace_redacts_freeform_payloads() {
