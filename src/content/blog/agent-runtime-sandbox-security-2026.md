@@ -1111,18 +1111,76 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 **文件写入最好默认可恢复。** 草稿写入、正式覆盖和删除应分开处理。通过临时文件、原子替换、版本快照和 Diff 审查，降低模型误操作的影响。对正式业务系统则优先提供有明确语义的 API，而不是开放数据库连接或通用 HTTP 写入。
 
-## 10. 方案比较与选型
+## 10. 方案比较与选型：每种 Sandbox 到底能保证什么
 
-| 方案 | 主要隔离方式 | 适合场景 | 不能替代什么 |
-| --- | --- | --- | --- |
-| Anthropic Sandbox Runtime | OS 原生 Sandbox + 网络代理 | 包裹 Shell、脚本和 MCP Server | 业务级数据授权、完整 VM |
-| OpenAI Codex Sandbox | OS 原生 Sandbox + Permission Profile | 本机开发环境中的受限命令执行 | 独立 npm Sandbox SDK |
-| just-bash | TypeScript Shell + 虚拟文件系统 | 受控命令、文档和数据处理 | 任意宿主进程的 OS 隔离 |
-| OpenHands Runtime | Docker 容器 | 完整、可复现的 Agent 开发环境 | 独立 Guest Kernel 的 VM 隔离 |
-| MCP Filesystem Server | Tool 级目录授权 | 文件读写能力封装 | Shell、Python 和其他进程的限制 |
+讨论 Sandbox 时，经常会听到“Docker 不安全”“VM 才安全”“放到远端就安全”这类结论。这些说法把不同的安全目标混在了一起。容器、进程沙箱和 VM 的关键差异，是攻击者要突破哪一层边界才能影响宿主机；本机和远端的关键差异，是谁控制底层机器、谁能接触数据，以及失陷后的影响范围。
 
-这里没有一个项目能够单独解决 Agent 的全部安全问题。选择时首先看执行对象：如果只需要读写文件，优先提供受限文件服务；如果需要有限的 Shell 语义，考虑虚拟 Shell；如果要执行真实命令或 MCP Server，就需要 OS Sandbox；如果需要完整、可复现的开发环境，再考虑容器或 VM。
+先明确一个前提：**不存在能够保证任意恶意程序绝对安全的通用 Sandbox。**任何隔离机制都依赖一个可信计算基（Trusted Computing Base，TCB），包括硬件、内核或 Hypervisor、Sandbox 实现、管理面和配置。TCB 中存在可利用漏洞，或者管理员本身恶意，隔离承诺就可能失效。工程上能够做的是缩小 TCB、减少暴露接口、降低权限、隔离故障域、控制数据出口，并通过独立安全边界叠加防护，而不是宣称某种技术“彻底安全”。
 
+### 10.1 不同执行形态的安全边界和根本限制
+
+| 执行形态 | 实际隔离边界 | 主要能防住什么 | 无法从根本上消除的风险 / 必须信任什么 | 适合的信任等级 |
+| --- | --- | --- | --- | --- |
+| 本机普通 Shell / 子进程 | 通常只是进程身份和操作系统权限；与启动它的用户共享权限域 | 能隔离进程地址空间、文件描述符等普通进程资源；程序崩溃通常不会直接破坏其他进程内存 | 如果 Agent 以用户身份启动，子进程通常就能访问该用户可访问的文件、SSH Key、配置、浏览器数据和网络。进程隔离不是权限隔离；同一用户下的恶意程序可以读取或破坏用户数据。不能依赖“只传了一个工作目录”限制它的实际访问范围 | 仅适合可信代码或低风险任务；不适合直接运行不可信模型生成代码 |
+| 本机 OS 进程沙箱 | OS 强制访问控制，例如 macOS App Sandbox / Seatbelt、Windows AppContainer、Linux namespaces + seccomp + AppArmor / SELinux | 可以把文件、网络、进程、IPC、设备等权限收缩到显式授权范围；即使进程被利用，也能限制其后续可访问资源 | 强制策略仍由宿主 OS 内核执行，内核漏洞、错误的 entitlement / ACL / profile、未覆盖的 IPC 和系统服务仍可能导致逃逸或越权。被允许访问的数据仍可被程序读取和外传；沙箱无法判断“合法读取”是否违反业务意图。平台能力和默认策略也不等价 | 本机不可信代码的基础隔离；必须配合最小权限和网络出口策略 |
+| 本机 Docker / OCI 容器（常见 runc） | Linux namespaces、cgroups、capabilities、seccomp、LSM 等；容器与宿主机共享同一个 Linux Kernel | 文件系统视图、PID、网络、挂载和资源配额可以隔离；默认非特权、去掉 capabilities、只读根文件系统、无宿主机敏感挂载时，能显著缩小影响面 | **共享宿主机内核是根本限制。**容器内可达的系统调用仍由宿主机内核处理；内核漏洞、错误的 privileged / capabilities / device / host namespace 配置可能导致容器逃逸。Docker daemon 或容器运行时控制接口本身也是高权限攻击面。把宿主机目录、Docker Socket、设备或凭证挂进去，会主动打穿原本的边界。cgroups 主要限制资源消耗，不提供数据访问隔离 | 可信度一般到中等的任务；经过严格加固后适合开发和 CI，但不能把普通容器等同于独立 VM |
+| 本机 Rootless Docker / Rootless OCI | 用户命名空间把容器 UID 映射到非特权宿主机用户；仍然共享宿主机内核 | 降低容器或 Docker daemon 被攻陷后直接取得宿主机 root 的风险；减少 daemon 以 root 运行带来的高权限影响 | 它没有把共享内核变成独立内核，也不会自动隔离启动用户本身可访问的数据。攻击者仍可能影响该用户权限范围内的文件、进程、网络和凭证；用户命名空间及内核接口仍属于 TCB。Rootless 是降低宿主机权限，不是消除内核攻击面 | 比 rootful 容器更适合本机 Agent 执行，但不能作为多租户强隔离的唯一依据 |
+| 本机 gVisor | 在应用与宿主机内核之间增加用户态 Sentry / 应用内核，减少直接暴露给工作负载的宿主机系统调用面 | 通过实现和代理一部分系统调用，降低恶意程序直接利用宿主机内核接口的机会；相较普通 runc，增加了独立的隔离层 | Sentry、平台后端、宿主机内核和硬件仍然需要可信；gVisor 自身漏洞、未覆盖的系统接口、配置和设备 / 网络通道仍是风险。它不是完整硬件 VM，也不能保证消除侧信道、资源耗尽或经允许的数据外传 | 需要比普通容器更强的隔离、又希望保留容器工作流的场景 |
+| 本机 Kata Containers / Firecracker 类轻量 VM | 每个 Sandbox 由硬件虚拟化支持的 Guest VM 隔离；工作负载使用 Guest Kernel，与 Host Kernel 分离 | 把容器工作负载与宿主机内核隔开；单纯利用 Guest Kernel 漏洞通常还不足以直接控制 Host，必须继续突破 VMM / Hypervisor 或其他宿主接口 | Hypervisor / VMM、虚拟设备模拟、Guest-Host 通信、宿主机管理面和 CPU / 固件仍属于 TCB。VM Escape、Hypervisor 漏洞、共享硬件侧信道、虚拟设备攻击和错误的共享目录 / Socket / 凭证注入仍然存在。VM 内 Agent 仍可滥用被授予的网络和数据权限 | 运行不可信代码、不同任务之间需要更强隔离时，通常比普通容器更合适 |
+| 本机完整 VM（传统 Hypervisor） | Guest OS 与 Host OS 通过 Hypervisor 隔离 | Guest 内核与应用被攻陷后，通常不能直接读取 Host 文件或控制 Host 进程；可以为 Agent 提供独立 OS 和可销毁快照 | 普通 VM 不保护 Guest 免受宿主机管理员、Hypervisor、宿主机恶意软件或物理控制者检查和修改。共享文件夹、剪贴板、USB、网络、Guest Agent、虚拟磁盘和快照会重新建立跨边界通道。VM 也不能阻止 Guest 内部有权限的 Agent 删除自己的数据或外传获准读取的数据 | 本机高风险代码隔离；适合通过快照和重建控制持久化风险 |
+| 远端容器（Remote Container） | 容器运行在远端节点；若使用普通 runc，仍与该节点共享 Host Kernel | 把本机文件、凭证和宿主机故障域移出执行路径；可在服务端统一做身份、网络和生命周期控制 | 远端容器并没有因为“远端”就获得 VM 级隔离。共享内核、容器配置、节点管理面和控制面漏洞仍可能影响同节点工作负载。服务端还新增 API、身份、Workspace、Artifact、日志和凭证服务等攻击面。数据已经交给远端执行环境和其运营方 | 多用户 Agent 服务的基础形态；应按多租户不可信工作负载设计，优先采用更强 RuntimeClass / VM 边界 |
+| 远端 VM / MicroVM | Guest VM 与云主机 Host 通过 Hypervisor 隔离；不同客户通常还有云平台网络、存储和 IAM 边界 | 将 Agent 执行与用户桌面、开发机和业务网络分离；可按 Task 创建、销毁和重建独立执行环境，降低本机被攻陷的影响 | 仍需信任云平台硬件、固件、Hypervisor、控制面、调度、存储和运维流程。传统 VM 通常不能阻止云服务商特权控制面或宿主机访问 Guest 内存 / 磁盘；跨租户侧信道和 Hypervisor 漏洞也不能被数学上排除。应用层凭证、数据出口、模型服务仍可能泄露数据 | 默认推荐的远端不可信代码执行基线；强隔离和运维治理优于把任务放在用户本机 |
+| 远端 Confidential VM（AMD SEV-SNP / Intel TDX 等） | 在 VM 之上增加硬件保护，保护 Guest 内存和执行状态，并通过远程证明验证启动状态 | 在正确配置、验证证明链并保护密钥的前提下，降低 Host / Hypervisor / 云管理员直接读取或篡改 Guest 内存的能力 | TEE / CPU 微码 / 固件 / 安全管理器、远程证明服务、Guest 内核和应用仍需信任。I/O、网络、存储、日志和显式导出数据仍会离开保护域；侧信道、拒绝服务、配置错误、证明验证错误和供应链问题仍然存在。Confidential VM 保护的是运行中 VM 的特定机密性 / 完整性，不等于 Agent 行为安全，也不等于端到端数据不泄露 | 云运营方也不应直接看到运行时敏感内存的高敏感任务；需要额外的证明和密钥治理能力 |
+| 远端托管 Agent / Managed Agent Service | 取决于供应商内部是容器、VM、MicroVM 还是专有执行环境；用户通常只看到服务 API 和控制面 | 减少自建 Runtime、调度、补丁、隔离和运维负担；服务商可能提供更成熟的多租户基础设施和监控 | 用户无法仅凭“托管”判断实际隔离边界。供应商控制面、运维人员、模型 Provider、日志 / Trace、备份、Artifact、第三方工具和数据保留政策都进入信任链。任务内容可能被远端模型处理；除非有可验证的技术机制和合同约束，否则不能假设供应商或模型服务完全不可见 | 接受供应商数据处理边界、合同和合规要求的任务；高敏感数据需要审查数据流、区域、留存、访问和证明机制 |
+
+这里有几个容易被误读的细节：
+
+- **Docker 并非“没有安全隔离”。**它有 namespace、capability、seccomp、LSM 和 cgroups 等多层控制。问题是普通 Linux 容器与宿主机共享内核，因此它的隔离强度不能简单等同于独立 VM。Docker 官方也明确把内核、daemon 攻击面和容器配置列为安全评估重点。
+- **Rootless Docker 解决的是权限等级问题，不是内核共享问题。**它能降低 daemon / container 被攻陷后直接取得宿主机 root 的风险，但容器仍然运行在同一宿主机内核上。
+- **Docker Desktop 与 Linux Server 上的 Docker 不能混为一谈。**macOS / Windows 上的 Docker Desktop 通常先运行一个 Linux VM，容器共享的是该 Linux VM 的内核，而不是直接共享 macOS / Windows 内核；但 Docker Desktop 的文件共享、端口转发、Socket 和管理接口仍然是跨边界通道。
+- **gVisor 和 Kata 不是同一种强化方式。**gVisor 在系统调用层增加用户态内核边界；Kata 通过硬件虚拟化提供 Guest Kernel 边界。前者减少宿主机内核暴露，后者增加 VM 隔离层，各自仍有自己的 TCB。
+- **远端不等于可信。**远端容器可能仍然只是共享内核的容器；远端 VM 解决的是执行与本机、其他租户之间的隔离，不自动解决云运营方、模型 Provider、应用凭证和数据出口问题。
+- **Confidential VM 解决的是特定的 Host / Hypervisor 可见性问题。**它不是普通 VM 的同义词，也不是所有 Agent Runtime 都必须使用的技术。只有在需要降低云平台特权软件读取运行中 Guest 内存的风险时，才值得承担远程证明、密钥释放和兼容性复杂度。
+
+参考实现和威胁模型：[Docker Engine Security](https://docs.docker.com/engine/security/)、[Docker Rootless Mode](https://docs.docker.com/engine/security/rootless/)、[gVisor Security Model](https://gvisor.dev/docs/architecture_guide/security/)、[Kata Containers Threat Model](https://github.com/kata-containers/kata-containers/blob/main/docs/threat-model/threat-model.md)、[NIST SP 800-190: Application Container Security Guide](https://doi.org/10.6028/NIST.SP.800-190)、[Apple App Sandbox](https://developer.apple.com/documentation/security/app-sandbox)、[Windows AppContainer Isolation](https://learn.microsoft.com/en-us/windows/win32/secauthz/appcontainer-isolation)、[Linux Confidential Computing Threat Model](https://docs.kernel.org/security/snp-tdx-threat-model.html)、[AWS Nitro System Security Design](https://docs.aws.amazon.com/whitepapers/latest/security-design-of-aws-nitro-system/security-design-of-aws-nitro-system.html)。
+
+### 10.2 真正不可能靠 Sandbox 解决的问题
+
+以下不是某一种产品的缺陷，而是执行隔离本身解决不了的问题。换成 Docker、VM、远端 VM，甚至 Confidential VM，也不会自动消失。
+
+| 根本问题 | 为什么 Sandbox 解决不了 | 能做的工程控制 |
+| --- | --- | --- |
+| TCB 被攻破 | Sandbox 必须依赖内核、Hypervisor、硬件、固件和自身实现来强制边界；如果这些核心组件被攻破，隔离规则可能被绕过 | 缩小 TCB、及时修补、减少系统调用和虚拟设备、使用成熟实现、分层隔离、独立安全测试；对高敏感场景考虑 Confidential Computing 和远程证明 |
+| 获准权限被滥用 | 如果 Agent 获准读取某份文件、调用某个 API 或发送网络请求，Sandbox 无法判断这次操作是否符合用户真正意图 | 最小权限、短期 Capability、目标资源白名单、金额 / 数量 / 范围限制、审批绑定具体参数、执行后审计 |
+| 通过合法出口外传数据 | 只要执行环境能访问外网、模型 API、MCP Server 或其他获准目标，恶意程序就可能把已读取的数据编码后发送出去。网络隔离只能减少出口，不能在存在合法出口时保证内容安全 | 默认拒绝网络、域名 / IP / 方法级 egress policy、代理强制检查、DLP、数据分类、出口审计；对高敏感任务不提供通用 Internet |
+| Prompt Injection 诱导 Agent 做合法但错误的事 | Prompt Injection 是 Agent 决策和数据流问题，不是进程逃逸。即使代码被完美关在 VM 内，Agent 仍可能按恶意文档指令把内容发给获准的工具 | 不把外部内容当授权指令；工具参数策略、来源标记、上下文隔离、关键动作人工确认、敏感数据流限制 |
+| 模型 / Provider 已经看到的数据 | 如果请求内容发送给远端模型 Provider，执行 Sandbox 无法让 Provider “看不到”这些内容 | 数据最小化、脱敏、区域和留存控制、合同约束、自托管模型或 Confidential Inference；明确模型处理方属于数据信任链 |
+| 运营方和控制面信任 | 普通 VM 的 Host / Hypervisor、远端管理面、备份、日志和调试通道通常由平台方控制。传统 VM 不提供对特权 Host 的完整机密性保护 | 供应商安全审查、最小化运维访问、客户管理密钥、可审计管理操作、Confidential VM + 远程证明；接受无法消除的供应链和硬件信任 |
+| 硬件侧信道和共享资源干扰 | CPU Cache、分支预测、内存总线、功耗和调度等共享资源可能形成侧信道或资源干扰；隔离技术只能针对已知通道缓解，不能承诺所有微架构泄露为零 | 专用宿主机、减少共置、微码 / 固件更新、禁用或限制高风险共享特性、侧信道评估；高保障环境采用物理隔离 |
+| Agent 自己造成的业务破坏 | Agent 可以在授权 Workspace 内误删文件、覆盖结果、执行错误迁移或提交错误交易；这不是 Sandbox Escape | 不可变原始数据、快照、ChangeSet、事务、审批、幂等、回滚和补偿；把执行权限与提交权限分开 |
+| 可用性与资源耗尽 | 被隔离的程序仍可消耗分配给它的 CPU、内存、磁盘、并发和队列资源；单个 Sandbox 的限制不能保证整个服务永不被 DoS | cgroups / VM 配额、任务超时、并发限制、队列隔离、速率限制、成本预算、节点容量保护和熔断 |
+| 供应链和运行时更新 | 镜像、依赖包、模型、MCP Server、Agent Extension、Guest Kernel、Hypervisor 和更新渠道都可能被投毒；Sandbox 只能限制部分后果，不能证明输入软件本身可信 | 镜像签名与来源验证、SBOM、依赖锁定、构建证明、漏洞扫描、分层发布、运行时完整性校验和快速撤销 |
+
+因此，“不可能解决”应当准确理解为：**不能仅靠 Sandbox 这一层给出保证。**有些风险可以通过独立控制显著降低，例如专用宿主机降低跨租户侧信道风险；有些风险只能通过组织、合同和运营治理管理，例如云服务商和模型 Provider 的数据处理；还有一些风险只能通过最小化权限和可恢复设计降低损失，而无法证明 Agent 永远不会做错事。
+
+### 10.3 从架构上选择，而不是按产品名称判断
+
+对 Agent Runtime，我建议把方案选择归纳为三个问题：
+
+1. **需要保护谁？**如果只需要防止 Agent 破坏当前用户桌面，OS Sandbox 或本机 VM 可能足够；如果要保护多租户节点和其他客户，普通容器不能自动提供强隔离，应考虑 gVisor、Kata、MicroVM 或独立节点。
+2. **需要防谁？**如果威胁只来自 Agent 生成的恶意代码，普通 VM / MicroVM 是合理的边界；如果还要防云平台特权 Host 读取运行中数据，就要评估 Confidential VM 和远程证明；如果还要防模型 Provider 看到输入，就必须改变模型部署和数据流，而不是换 Sandbox。
+3. **Agent 被攻陷后还能做什么？**这是最关键的问题。即使它突破不了 VM，只要 VM 内有长期业务 Token、可访问所有 Workspace 文件、可以任意访问公网，它仍然可能造成严重损失。凭证范围、数据范围、网络出口和可提交的副作用必须独立限制。
+
+对本文的 Remote-first 方案，建议采用以下基线：
+
+- 本地 Shell 不直接执行模型生成的任意命令；本地只保留明确授权的 UI、浏览器和用户交互能力。
+- 本机必须执行的任务，使用 OS Sandbox；需要完整 OS 兼容性或更强隔离时，使用独立 VM，而不是只把命令包进一个普通进程。
+- 远端多租户执行优先采用每 Task 独立的 Sandbox 生命周期。普通容器可以作为封装和调度单元，但不应在高风险、多租户不可信代码场景下被默认视为最终隔离边界；根据威胁等级选择 gVisor、Kata / MicroVM 或独立 VM。
+- 高敏感任务如果连云平台特权 Host 也不在信任范围内，再评估 Confidential VM、远程证明和密钥释放。否则不必为了“更安全”而引入不必要的 TEE 复杂度。
+- 不论本地还是远端，都不把业务系统长期 Token、浏览器 Cookie、宿主机 Docker Socket 或整个用户目录交给 Agent。通过 Credential Broker 发放任务级短期权限，网络默认拒绝，Artifact 按资源授权。
+- 每个任务使用独立 Workspace、快照和可销毁执行环境。把文件修改、外部 API 调用和最终提交拆成不同权限阶段，确保失败后能审计、回滚或补偿。
+
+最终应当比较的是**攻击者必须突破多少个独立信任边界，以及每次突破后还能访问多少数据和权限**，而不是简单比较“容器、VM、云端哪个更安全”。
 ## 11. 按风险选择部署形态
 
 不需要把所有 Agent 都放进最重的 VM，也不应该让所有 Agent 共用一个普通 Node.js 进程。隔离强度应由数据敏感性、工具权限、租户信任、执行代码来源和可能的副作用决定。
