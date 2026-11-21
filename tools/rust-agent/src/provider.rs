@@ -103,14 +103,22 @@ impl OpenAiCompatibleProvider {
     }
 
     pub async fn complete_with_usage(&self, messages: &[ChatMessage]) -> Result<CompletionResult, AgentError> {
+        self.complete_with_usage_and_limit(messages, None).await
+    }
+
+    pub async fn complete_with_usage_and_limit(
+        &self,
+        messages: &[ChatMessage],
+        max_tokens: Option<usize>,
+    ) -> Result<CompletionResult, AgentError> {
         let started = Instant::now();
-        let (model, (content, usage)) = match self.complete_with_model(&self.model, messages).await {
+        let (model, (content, usage)) = match self.complete_with_model(&self.model, messages, max_tokens).await {
             Ok(result) => (self.model.clone(), result),
             Err(error) => {
                 let Some(fallback) = self.fallback_model.as_deref() else { return Err(error); };
                 if !is_retryable(&error) { return Err(error); }
                 warn!(primary_model = %self.model, fallback_model = fallback, "primary model failed transiently; trying fallback model");
-                (fallback.to_owned(), self.complete_with_model(fallback, messages).await?)
+                (fallback.to_owned(), self.complete_with_model(fallback, messages, max_tokens).await?)
             }
         };
         Ok(CompletionResult { content, model, usage, duration_ms: started.elapsed().as_millis().min(u64::MAX as u128) as u64 })
@@ -246,9 +254,10 @@ impl OpenAiCompatibleProvider {
         &self,
         model: &str,
         messages: &[ChatMessage],
+        max_tokens: Option<usize>,
     ) -> Result<(String, CompletionUsage), AgentError> {
         let body = ChatCompletionRequest {
-            model, messages, stream: false, max_tokens: None, stream_options: None,
+            model, messages, stream: false, max_tokens, stream_options: None,
         };
         let response: Value = self.client
             .post(&self.endpoint)
