@@ -436,6 +436,8 @@ impl SessionStore {
 
 const BACKGROUND_TASK_SCHEMA_VERSION: u32 = 1;
 const MAX_ACTIVE_BACKGROUND_TASKS: usize = 8;
+const MAX_STORED_BACKGROUND_TASKS: usize = 5_000;
+const MAX_BACKGROUND_TASK_RECORD_BYTES: usize = 16 * 1024 * 1024;
 const MAX_BACKGROUND_TASK_STEPS: usize = 12;
 const MAX_BACKGROUND_TASK_RESULT_CHARS: usize = 24_000;
 
@@ -538,6 +540,10 @@ impl BackgroundTaskStore {
         ensure_real_directory(&self.directory)?;
         let path = self.path_for(task_id)?;
         ensure_regular_file_or_missing(&path)?;
+        let metadata = fs::metadata(&path)?;
+        if metadata.len() as usize > MAX_BACKGROUND_TASK_RECORD_BYTES {
+            return Err(AgentError::InvalidAction("background task record exceeds the 16 MiB limit".into()));
+        }
         let bytes = fs::read(path)?;
         let record: BackgroundTaskRecord = serde_json::from_slice(&bytes)?;
         if record.schema_version != BACKGROUND_TASK_SCHEMA_VERSION || record.task_id != task_id {
@@ -556,23 +562,45 @@ impl BackgroundTaskStore {
             fs::set_permissions(&self.directory, fs::Permissions::from_mode(0o700))?;
         }
         let path = self.path_for(&record.task_id)?;
+        let lock = lock_state_file(&path)?;
         ensure_regular_file_or_missing(&path)?;
+        if let Ok(bytes) = fs::read(&path) {
+            let current: BackgroundTaskRecord = serde_json::from_slice(&bytes)?;
+            if current.status == BackgroundTaskStatus::Cancelling
+                && !matches!(record.status, BackgroundTaskStatus::Cancelling | BackgroundTaskStatus::Cancelled)
+            {
+                return Err(AgentError::Cancelled);
+            }
+            if current.status.is_terminal() && record.status != current.status {
+                return Err(AgentError::InvalidAction(format!(
+                    "background task {} is already terminal ({})",
+                    record.task_id, current.status.as_str()
+                )));
+            }
+        }
         let temporary = path.with_extension(format!("json.tmp-{}-{}", std::process::id(), now_ms()));
         let bytes = serde_json::to_vec_pretty(record)?;
+        if bytes.len() > MAX_BACKGROUND_TASK_RECORD_BYTES {
+            return Err(AgentError::InvalidAction("background task record exceeds the 16 MiB limit".into()));
+        }
         write_private_file(&temporary, &bytes, false)?;
         fs::rename(&temporary, &path)?;
+        lock.unlock()?;
         Ok(())
     }
 
     fn remove(&self, task_id: &str) -> Result<(), AgentError> {
         ensure_real_directory(&self.directory)?;
         let path = self.path_for(task_id)?;
+        let lock = lock_state_file(&path)?;
         ensure_regular_file_or_missing(&path)?;
-        match fs::remove_file(path) {
+        let result = match fs::remove_file(path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error.into()),
-        }
+        };
+        lock.unlock()?;
+        result
     }
 
     fn list(&self) -> Result<Vec<BackgroundTaskRecord>, AgentError> {
@@ -596,10 +624,28 @@ impl BackgroundTaskStore {
             Self::validate_id(&record.task_id)?;
             records.push(record);
         }
+        if records.len() > MAX_STORED_BACKGROUND_TASKS {
+            return Err(AgentError::InvalidAction(format!(
+                "background task store exceeds the {MAX_STORED_BACKGROUND_TASKS} record limit; prune terminal tasks"
+            )));
+        }
         records.sort_by(|left, right| {
             left.created_at_ms.cmp(&right.created_at_ms).then(left.task_id.cmp(&right.task_id))
         });
         Ok(records)
+    }
+
+    fn prune_before(&self, cutoff_ms: u128, max_delete: usize) -> Result<usize, AgentError> {
+        let mut candidates = self.list()?.into_iter()
+            .filter(|record| record.status.is_terminal() && record.updated_at_ms < cutoff_ms)
+            .collect::<Vec<_>>();
+        candidates.sort_by(|left, right| left.updated_at_ms.cmp(&right.updated_at_ms));
+        let mut removed = 0usize;
+        for record in candidates.into_iter().take(max_delete) {
+            self.remove(&record.task_id)?;
+            removed += 1;
+        }
+        Ok(removed)
     }
 }
 
@@ -1248,6 +1294,16 @@ impl AgentRuntime {
         self.background_task_store.list()
     }
 
+    pub fn prune_background_tasks_before_days(&self, days: u64) -> Result<usize, AgentError> {
+        if days == 0 || days > 36_500 {
+            return Err(AgentError::InvalidAction(
+                "background task retention age must be between 1 and 36500 days".into(),
+            ));
+        }
+        let cutoff = now_ms().saturating_sub(u128::from(days).saturating_mul(86_400_000));
+        self.background_task_store.prune_before(cutoff, 1_000)
+    }
+
     pub fn get_background_task(&self, task_id: &str) -> Result<BackgroundTaskRecord, AgentError> {
         self.background_task_store.load(task_id)
     }
@@ -1308,18 +1364,17 @@ impl AgentRuntime {
             ],
         };
         self.background_task_store.save(&record)?;
-        if !self.spawn_background_task(record)? {
-            self.background_task_store.remove(&task_id)?;
-            return Err(AgentError::InvalidAction(format!(
-                "background task capacity is full ({MAX_ACTIVE_BACKGROUND_TASKS}) or another worker owns this task"
-            )));
-        }
-        self.audit("background_task.started", Some("start_background_task"), json!({
+        let worker_started = self.spawn_background_task(record)?;
+        self.audit(
+            if worker_started { "background_task.started" } else { "background_task.queued" },
+            Some("start_background_task"),
+            json!({
             "task_id": task_id,
             "name": name,
             "agent_profile_id": profile.id,
             "model": task_provider.model(),
-            "task_length": task.len()
+            "task_length": task.len(),
+            "worker_started": worker_started
         }));
         Ok(task_id)
     }
