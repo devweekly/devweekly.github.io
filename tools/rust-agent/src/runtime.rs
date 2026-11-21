@@ -2389,9 +2389,7 @@ fn validate_host_answers(questions: &[UserQuestion], answers: &Value) -> Result<
                 vec![answer]
             };
             if selected.is_empty()
-                || (!question.multi_select && selected.len() != 1)
                 || selected.iter().any(|item| !question.options.iter().any(|option| option.label == *item))
-                || (!question.multi_select && selected.len() != 1)
             {
                 return Err(AgentError::InvalidAction(format!(
                     "question handler returned an invalid option for: {}", question.question
@@ -2890,6 +2888,26 @@ mod tests {
         BackgroundTaskStore, CancellationHandle, ChatMessage, CompletionUsage, UsageTotals, MAX_AGENT_PROFILE_STEPS,
         SessionStore, is_custom_agent_read_tool, new_session_id, now_ms,
     };
+
+    #[test]
+    fn host_question_answers_must_match_declared_questions_and_options() {
+        let questions = vec![UserQuestion {
+            question: "Preferred language?".into(),
+            header: Some("Preference".into()),
+            options: vec![
+                crate::action::UserQuestionOption { label: "Rust".into(), description: None },
+                crate::action::UserQuestionOption { label: "TypeScript".into(), description: None },
+            ],
+            multi_select: false,
+        }];
+        let valid = serde_json::json!({"Preferred language?": "Rust"});
+        let invalid = serde_json::json!({"Preferred language?": "Python"});
+        let missing = serde_json::json!({});
+        assert!(super::validate_user_questions(&questions).is_ok());
+        assert!(super::validate_host_answers(&questions, &valid).is_ok());
+        assert!(super::validate_host_answers(&questions, &invalid).is_err());
+        assert!(super::validate_host_answers(&questions, &missing).is_err());
+    }
 
     #[test]
     fn subagents_are_restricted_to_read_only_tools() {
