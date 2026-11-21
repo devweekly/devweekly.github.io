@@ -135,6 +135,7 @@ Return exactly one JSON object, no Markdown fences:
 Use the exact reviewed_through value supplied in the input. Use at most 32 note operations and 16 pages. Use valid evidence IDs only. If there is nothing worth preserving, return empty notes and pages while still advancing reviewed_through."#;
 
 const SESSION_SCHEMA_VERSION: u32 = 1;
+const MAX_SESSION_FILE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_USAGE_LOG_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_AUDIT_LOG_BYTES: u64 = 32 * 1024 * 1024;
 const LOG_BACKUP_COUNT: usize = 3;
@@ -335,6 +336,10 @@ impl SessionStore {
         ensure_real_directory(&self.directory)?;
         let path = self.path_for(session_id)?;
         ensure_regular_file_or_missing(&path)?;
+        let metadata = fs::metadata(&path)?;
+        if metadata.len() as usize > MAX_SESSION_FILE_BYTES {
+            return Err(AgentError::InvalidAction("session file exceeds the 16 MiB limit".into()));
+        }
         let bytes = fs::read(path)?;
         let record: SessionRecord = serde_json::from_slice(&bytes)?;
         if record.schema_version != SESSION_SCHEMA_VERSION || record.session_id != session_id {
@@ -371,6 +376,9 @@ impl SessionStore {
         }
         let temporary = path.with_extension(format!("json.tmp-{}-{}", std::process::id(), now_ms()));
         let bytes = serde_json::to_vec_pretty(record)?;
+        if bytes.len() > MAX_SESSION_FILE_BYTES {
+            return Err(AgentError::InvalidAction("session file exceeds the 16 MiB limit".into()));
+        }
         write_private_file(&temporary, &bytes, false)?;
         fs::rename(&temporary, &path)?;
         lock.unlock()?;
@@ -380,7 +388,9 @@ impl SessionStore {
     fn save(&self, record: &SessionRecord) -> Result<(), AgentError> {
         self.save_record(record)?;
         ensure_regular_file_or_missing(&self.latest_pointer)?;
-        write_private_file(&self.latest_pointer, record.session_id.as_bytes(), false)?;
+        let temporary = self.latest_pointer.with_extension(format!("tmp-{}-{}", std::process::id(), now_ms()));
+        write_private_file(&temporary, record.session_id.as_bytes(), false)?;
+        fs::rename(&temporary, &self.latest_pointer)?;
         Ok(())
     }
 
