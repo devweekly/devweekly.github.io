@@ -120,6 +120,24 @@ fn validate_relative_path(input: &str) -> Result<&Path, AgentError> {
     Ok(path)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::validate_relative_path;
+
+    #[test]
+    fn rejects_parent_traversal_and_absolute_paths() {
+        assert!(validate_relative_path("../outside.txt").is_err());
+        assert!(validate_relative_path("/etc/passwd").is_err());
+        assert!(validate_relative_path("").is_err());
+    }
+
+    #[test]
+    fn accepts_workspace_relative_paths() {
+        assert!(validate_relative_path("docs/architecture.md").is_ok());
+        assert!(validate_relative_path("./README.md").is_ok());
+    }
+}
+
 fn required_string<'a>(value: &'a Value, key: &str) -> Result<&'a str, AgentError> {
     value
         .get(key)
