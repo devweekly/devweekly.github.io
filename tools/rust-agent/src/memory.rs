@@ -63,7 +63,7 @@ impl MemoryStore {
     }
     /// Open a memory database at an explicit path. SQLite is bundled in the executable.
     pub fn open(path: &Path) -> Result<Self, AgentError> {
-        let parent = path.parent().ok_or_else(|| AgentError::InvalidAction("memory database path requires a parent directory".into()))?;
+        let parent = path.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or_else(|| Path::new("."));
         ensure_private_dir(parent)?;
         match std::fs::symlink_metadata(path) {
             Ok(m) if m.file_type().is_symlink() || !m.is_file() => return Err(AgentError::InvalidAction("memory database must be a regular file".into())),
