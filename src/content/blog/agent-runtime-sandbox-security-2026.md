@@ -834,103 +834,102 @@ A2A 的价值在于远端 Agent 不必使用相同的框架或语言。一个 Py
 参考：[Backend Services](https://docs.github.com/en/copilot/how-tos/copilot-sdk/setup/backend-services)、[Multi-tenancy and Server Deployments](https://docs.github.com/en/copilot/how-tos/copilot-sdk/setup/multi-tenancy)、[Scaling](https://docs.github.com/en/copilot/how-tos/copilot-sdk/setup/scaling)。
 
 
-#### 7.8.6 用 Copilot SDK 或 Pi 实现 Deep Agents 风格的远端异步 Subagent
+#### 7.8.6 用 A2A 实现远端异步 Subagent：Copilot SDK 与 Pi 作为本地 Adapter
 
-Copilot SDK 和 Pi 都可以实现与 Deep Agents AsyncSubAgent 类似的交互，不需要修改各自的 Agent Loop。做法是在 SDK 之上增加 Remote Agent Orchestration Layer：本地 Agent 通过少量工具创建和管理远端任务，远端服务运行独立的 Agent Loop、Model Client、Workspace 和 Sandbox。这里复用的是 Deep Agents 的任务委托模式，不是复制它的 Python / JavaScript 实现。
+如果远端服务运行的是一个独立 Agent，而不是单纯提供几个远程工具，那么跨机器委托应优先采用 **A2A（Agent2Agent）**，而不是再设计一套与框架无关的 Remote Task HTTP API。A2A 已经定义了 Agent 能力发现、任务提交、异步任务状态、流式更新、任务取消和 Artifact 交付。内部仍然可以保留自己的 Task Domain Model，但对外协议不必重复实现这些基础能力。
 
-**先区分三种实现目标。**把 MCP Server 注册为 Tool，只能让本地 Agent 调用远端函数；把 Shell 或文件操作交给远端 Sandbox，解决的是执行位置；只有当远端服务拥有独立 Agent Loop，并提供任务创建、状态查询、追加指令、取消和恢复时，才构成真正的 Remote Subagent。三者可以组合，但不能互相替代。
+这里需要把几个协议的职责分开：
 
-建议定义一套与 SDK 无关的 Task API。Copilot 和 Pi 只实现不同的 Tool Adapter，共用同一个 Remote Task Client 和远端服务。
+| 协议 | 主要通信双方 | 解决的问题 | 不负责的事情 |
+| --- | --- | --- | --- |
+| A2A | Agent ↔ Agent | Agent 能力发现、任务委托、异步执行、状态与 Artifact 交换 | Workspace、Sandbox、租户授权、凭证管理 |
+| MCP | Agent ↔ Tool Server | 工具发现、工具调用和资源访问 | Agent 任务生命周期、跨 Agent 委托语义 |
+| ACP（Agent Client Protocol） | Desktop / IDE Client ↔ Coding Agent | Agent Session、Prompt、流式事件、权限请求和取消 | 通用的 Agent-to-Agent 委托与远端 Workspace 安全 |
+ 
+ACP 这个缩写还需要注意语境。本文所说的 ACP 是 Zed 等项目推动的 **Agent Client Protocol**，用于编辑器或桌面 Host 接入 Coding Agent。IBM 曾推动的 Agent Communication Protocol（也简称 ACP）已经并入 A2A 生态，不应把它与仍在使用的 Agent Client Protocol 混为一谈。新建跨 Agent 委托接口时，采用 A2A；桌面应用需要接入兼容 ACP 的 Coding Agent 时，再考虑增加 ACP Adapter。
 
-| 操作 | HTTP API | 语义 |
-| --- | --- | --- |
-| 创建任务 | `POST /v1/tasks` | 提交目标、Workspace 引用和输出约束，返回 Task ID |
-| 查询任务 | `GET /v1/tasks/{taskId}` | 获取状态、摘要和 Artifact 引用 |
-| 订阅事件 | `GET /v1/tasks/{taskId}/events` | 使用 SSE 接收进度、审批请求和完成事件 |
-| 追加指令 | `POST /v1/tasks/{taskId}/instructions` | 向运行中的 Agent 追加指令 |
-| 取消任务 | `POST /v1/tasks/{taskId}/cancel` | 请求取消，并等待执行侧确认 |
-| 列出任务 | `GET /v1/tasks` | 只返回当前调用者有权访问的任务 |
+**推荐的调用结构**是：本地 Copilot 或 Pi 仍然通过自己的 Tool / Extension 接收模型决策；Tool Handler 调用 A2A Client；远端 A2A Server 将请求交给 Agent Orchestrator，再由独立的 Remote Agent Runtime 执行任务。远端 Runtime 拥有自己的 Model Client、Agent Loop、Workspace、Tool Registry 和 Sandbox。这样本地 Agent 不需要知道远端实际使用 Copilot、Pi、Deep Agents 还是自定义 Runtime。
 
-创建请求只包含任务业务参数，不允许模型指定租户、用户、权限或凭证：
+```mermaid
+flowchart LR
+  subgraph Local["本地 Desktop / Agent Client"]
+    UI["UI / Browser"]
+    CA["Copilot SDK 或 Pi Agent"]
+    TA["delegate_remote_agent Tool"]
+    AC["A2A Client Adapter"]
+    CA --> TA --> AC
+  end
 
-```typescript
-interface CreateAgentTask {
-  task: string;
-  workspaceId: string;
-  baseRevision?: string;
-  executionProfile?: {
-    agent: "copilot" | "pi" | "custom";
-    model?: string;
-    sandboxProfile?: string;
-  };
-  output?: {
-    expectedArtifacts?: string[];
-    responseFormat?: "summary" | "structured" | "full";
-  };
-  context?: {
-    conversationSummary?: string;
-    references?: Array<{
-      type: "artifact" | "document" | "workspace_file";
-      id: string;
-    }>;
-  };
-}
+  subgraph Remote["远端 Agent Service"]
+    GW["A2A Server / Gateway"]
+    OR["Agent Orchestrator"]
+    AR["Remote Agent Runtime"]
+    MC["Model Client"]
+    WS["Workspace Service"]
+    SB["Sandbox / Execution"]
+    GW --> OR --> AR
+    AR --> MC
+    AR --> WS
+    AR --> SB
+  end
 
-interface AgentTask {
-  taskId: string;
-  status:
-    | "queued"
-    | "running"
-    | "waiting_for_approval"
-    | "waiting_for_input"
-    | "completed"
-    | "failed"
-    | "cancelled"
-    | "expired";
-  createdAt: string;
-  updatedAt: string;
-  eventCursor?: string;
-}
-
-interface AgentTaskResult {
-  summary: string;
-  artifacts: Array<{
-    artifactId: string;
-    name: string;
-    mediaType: string;
-    uri: string;
-  }>;
-  status: "completed" | "failed";
-}
+  AC <-->|"A2A：Message / Task / Artifact / Stream"| GW
+  UI <-->|"本地交互与浏览器能力"| CA
 ```
 
-服务端必须从经过验证的 Token 和会话上下文中注入 Tenant、User、Session、权限和凭证。不能接受模型通过 Tool 参数传入这些身份字段。对于长任务，创建接口应快速返回 Task ID；Agent 执行、模型调用和工具操作在后台完成，不要让一次 HTTP 请求一直占用连接。
+A2A 不是让 Copilot 或 Pi 的模型自动获得远端 Agent 能力。两个 SDK 仍需要各自的本地 Adapter，把模型发起的委托请求转换成 A2A Client 调用。
 
-**Copilot SDK Adapter。**本地 Copilot Session 注册 `delegate_task`、`check_task`、`update_task` 和 `cancel_task` 四个自定义 Tool。Tool Handler 只调用 Remote Task Client，不直接管理远端 CLI 进程、容器或 Workspace。创建任务后立即返回 Task ID，应用层通过 SSE 订阅事件，并将重要状态交给 UI；只有当远端结果需要本地模型进一步分析时，才把摘要或 Artifact 引用作为后续上下文交给 Copilot。
+**A2A 能覆盖原自定义 Task API 的哪些能力？**
 
-远端 Agent 如果也使用 Copilot SDK，可以由服务端启动独立的 Headless Copilot Runtime 和 Session。SDK Client 到 Headless CLI 的 RuntimeConnection 是 Runtime 连接机制，不应作为桌面客户端面向公网的任务 API。外层仍需 Agent Gateway 负责身份认证、授权、租户隔离、限流和审计；Runtime Server 应留在受控网络内。Session 持久化和多实例路由也由服务端负责。
+| 原自定义接口或能力 | A2A 对应机制 |
+| --- | --- |
+| 创建远端任务 | `message/send`，或需要流式响应时使用 `message/stream` |
+| 任务 ID 与状态 | A2A Task 对象及其状态 |
+| 查询任务 | `tasks/get` |
+| 订阅进度、断线后继续接收 | `message/stream`、`tasks/resubscribe`；也可按部署需要配置 Push Notification |
+| 取消任务 | `tasks/cancel` |
+| 追加上下文或继续交互 | 向既有 Task 发送后续 Message，按任务状态和 Agent 能力处理 |
+| 结果文件与交付物 | Artifact 及其 Parts |
+| Agent 能力发现 | Agent Card |
+| 等待用户输入或授权 | Task 状态与相应的交互流程，例如 `input-required`、`auth-required` |
 
-**Pi Adapter。**Pi 更适合通过 Extension 注册相同的四个工具。Extension 调用 Remote Task Client 创建任务，把 Task ID 和状态写入 Pi Session Entry，并监听 SSE 事件。任务完成时先更新 UI 或 Extension 状态；需要 Pi 模型继续推理时，再显式向当前 Session 注入摘要和 Artifact 引用。不要把每条进度事件都转换成一次模型调用，也不要假设 Tool 返回后 Pi Agent Loop 会自动等待远端任务。
+A2A 的 Task 状态表达的是协议层任务进展，不应直接取代产品内部更细的业务状态。例如内部仍可区分审批等待、执行取消中、清理中、部分完成或补偿失败。A2A 的 `auth-required` 也只表示任务需要额外授权，不代表授权已经完成，更不意味着可以把 Token 交给远端 Agent。
 
-远端 Agent 可以运行独立 Pi Session，由服务端管理 Session 生命周期和工作目录；也可以通过 Pi RPC 管理本机子进程。但 Pi RPC 是本地进程控制协议，不替代跨机器的认证、网络传输、任务恢复和多租户协议。远端访问仍应经过上述 Task API。
+**Copilot SDK Adapter。**本地 Copilot Session 注册一个 `delegate_remote_agent` 自定义 Tool。Tool Handler 负责校验目标 Agent、任务输入和可传递的上下文，再调用 A2A Client。对于长任务，优先采用异步 Task；Tool 可以先返回 Task ID 和状态查询方式，UI 或应用服务继续接收流式事件。任务完成后，把摘要和经过授权的 Artifact 引用交给本地 Agent，而不是把远端 Workspace 的全部文件内容自动带回本地模型。
 
-**更新指令要有明确语义。**至少区分 `interrupt`（请求当前 Agent 中断正在执行的步骤并处理新指令）与 `enqueue`（排队，待当前步骤结束后处理）。取消也不是回滚：停止 Agent Loop、终止 Shell 进程、撤销已提交的外部副作用和恢复 Workspace 文件是不同动作。执行服务应使用任务级取消信号、进程组 / 容器终止、幂等键和 Workspace ChangeSet 分别处理。
+远端 Agent 如果也使用 Copilot SDK，可以由服务端启动独立的 Headless Copilot Runtime 和 Session。SDK Client 到 Headless CLI 的 RuntimeConnection 是 Runtime 连接机制，不是跨组织的 Agent 委托协议，也不应直接暴露为公网任务接口。外层 A2A Gateway 仍需负责身份验证、授权、租户隔离、限流和审计；Headless Runtime 留在受控网络内。Session 持久化和多实例路由由服务端负责。
 
-**事件和恢复不能依赖客户端在线。**Task Store 持久化状态和事件序号；SSE 使用事件 ID / Cursor，客户端断线后通过 `Last-Event-ID` 或显式 Cursor 恢复订阅。任务状态应包括排队、运行、等待审批、等待输入、完成、失败、取消和过期。Worker 崩溃后由 Orchestrator 根据持久化状态决定重试、恢复 Checkpoint 或标记失败；有副作用的 Tool 必须有幂等策略，避免重试重复提交。
+**Pi Adapter。**Pi 可以通过 Extension 注册 `delegate_remote_agent` 工具。Extension 调用 A2A Client，把远端 Task ID 和必要的关联信息写入 Pi Session Entry，并把流式事件映射为 Extension 状态或 UI 更新。任务完成时，再按需向当前 Session 注入摘要和 Artifact 引用。不要把每条进度事件都转换成一次模型调用，也不要假设 Tool 返回后 Pi Agent Loop 会自动等待远端任务。
 
-**建议的公共模块边界：**
+远端 Agent 可以运行独立 Pi Session，由服务端管理 Session 生命周期和工作目录；也可以通过 Pi RPC 管理本机子进程。但 Pi RPC 是本地进程控制协议，不替代跨机器的认证、传输、任务恢复和多租户隔离。跨机器委托仍通过 A2A 完成。
 
-- `RemoteAgentClient`：Task API、认证、超时、重试和 SSE 重连。
-- `RemoteTaskManager`：任务状态、事件 Cursor、更新、取消和本地会话关联。
+**内部 Task Domain Model 仍然有必要。**A2A 统一的是 Agent 间的通信协议，不是应用内部所有任务管理逻辑。建议保留内部模型，承载业务级状态、租户和用户关联、审批记录、执行 Profile、幂等键、Checkpoint、取消传播和清理结果，再由 A2A Adapter 将其映射为协议对象。
+
+建议的内部模块边界：
+
+- `A2AClientAdapter`：封装 Agent Card 获取、认证、任务提交、查询、流式接收、恢复订阅和取消。
+- `A2AServerAdapter`：将入站 A2A Message 转换为内部 Task Command，并将内部状态和结果映射为 A2A Task / Artifact。
+- `RemoteTaskManager`：维护业务任务状态、幂等、Checkpoint、取消传播及本地 Session 关联。
 - `RemoteAgentToolAdapter`：分别包装 Copilot 自定义 Tool 与 Pi Extension Tool。
-- `RemoteEventBridge`：把远端事件映射为 UI 状态或 SDK Session 可消费的通知。
-- `RemoteArtifactResolver`：解析 Artifact 元数据、受控下载和 Workspace 引用。
+- `RemoteEventBridge`：把 A2A 流式事件和内部任务事件映射为 UI 状态或 SDK Session 可消费的通知。
+- `RemoteArtifactResolver`：解析 Artifact 元数据，执行受控下载，并处理 Workspace 引用和访问期限。
 
-这层应放在公共 Agent Library 或应用服务层，而不是塞进某一个 SDK 的 Extension。这样 Copilot、Pi 或未来替换的 Agent Framework 都可以复用同一个远端任务服务。
+**A2A 不会替代 Runtime 的安全边界。**以下能力仍然必须由远端服务实现：
 
-**实施顺序。**第一步只实现 Task API、Task Store、SSE、状态机和一个可运行的远端 Agent，验证创建、查询、取消、断线恢复和结果回传。第二步分别实现 Copilot Tool Adapter 与 Pi Extension，确保两个本地 Runtime 使用相同协议。第三步再接入 Workspace Service、Sandbox、Credential Broker、审批和 Artifact 管理。不要一开始就实现跨框架 Agent 通信标准或复杂的多 Agent 调度；先把单个远端任务的身份、生命周期和副作用边界做可靠。
+- Workspace 的虚拟路径、文件版本、快照、目录授权和并发写入控制。
+- Sandbox 的文件系统、进程、网络出口和资源限制。
+- Tenant、User、Session、Task 的身份绑定及每次请求的授权判断。
+- Credential Broker、短期凭证、凭证撤销和下游资源授权。
+- Task Store、Checkpoint、调度、Worker 崩溃恢复和过期清理。
+- 审批的具体权限语义、批准范围、有效期和执行后审计。
 
-如果只需要远端工具，MCP 更简单；如果需要跨组织、跨框架的 Agent 互操作，可以在 Task API 之外增加 A2A 或 Agent Protocol Adapter。内部仍保留自己的 Task 领域模型，不要把业务状态机完全绑定到某个外部协议。
+Agent Card 是能力声明，不是授权凭据。服务端不能因为某个 Agent Card 声明支持某项能力，就允许调用者访问相应资源；每次请求仍需基于已验证身份和策略进行授权。A2A 消息也不应默认携带敏感文件原文。优先传递经过分类的任务描述、摘要和受控 Artifact 引用；真正读取文件时，由远端 Workspace 根据调用身份和任务权限执行检查。
+
+A2A 与 MCP 可以在远端 Runtime 内组合：Agent 通过 MCP 调用工具，Agent 之间通过 A2A 委托任务。ACP 则是可选的下层接入方式，例如远端 A2A Agent 内部需要启动一个兼容 ACP 的 Coding Agent Session 时，可以由 Runtime 通过 ACP Host 管理该 Session；这不改变外部仍以 A2A 作为 Agent 委托协议的结构。
+
+**实施顺序。**先定义内部 Task Domain Model 和安全授权边界，再实现 A2A Server / Client Adapter，验证 Agent Card、异步 Task、流式更新、断线恢复、取消和 Artifact 交付。随后分别接入 Copilot Tool Adapter 与 Pi Extension。最后再完善 Workspace、Sandbox、Credential Broker、审批和审计。不要同时维护一套自定义 Remote Task API 和一套完整 A2A API；内部模型可以自有，对外协议应尽量标准化。
+
+如果需求只是让本地 Agent 调用远端函数，MCP 通常更简单；如果远端拥有独立 Agent Loop，需要跨框架委托和异步任务管理，优先 A2A；如果桌面或 IDE 需要接入外部 Coding Agent 的交互会话，再增加 ACP。三者解决的是不同层次的问题，不需要为了协议统一而强行只保留一种。
 
 ### 7.9 推荐的服务端部署结构
 
