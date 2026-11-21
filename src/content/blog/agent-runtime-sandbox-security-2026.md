@@ -578,13 +578,212 @@ Google 在 2026 年的 [GKE AI Agent Workloads 架构文档](https://docs.cloud.
 
 还要区分 microVM 和桌面 VM。Firecracker 适合隔离 Linux 进程和服务，但它的设备模型是为轻量虚拟机设计的，不提供完整 Windows Desktop / GPU 桌面体验。需要真实 GUI 的任务，通常要选择支持图形栈和远程桌面的完整 VM / VDI 技术；不要因为“microVM 隔离更强”就把它当成桌面虚拟化方案。
 
-## 7. Copilot SDK 桌面端的安全接入
+## 7. Remote-first Agent Runtime：本地与远端双 Agent 的职责边界
+
+前面讨论的桌面、云端和容器 Sandbox，通常默认 Agent Runtime 与工具执行环境部署在同一侧。另一种常见形态是：桌面应用只保留模型交互、用户界面和少量必须访问本机的能力；文件、目录、Shell、代码执行、MCP 和业务系统工具全部放到远端。用户看到的仍然是桌面 Agent，但真正拥有工作区和执行权限的是远端服务。
+
+这里有一个容易混淆的地方：**本地和远端都可能运行 Agent Loop，也都可能是模型服务的客户端。** 本地 Agent Client 连接本地模型，同时通过 HTTPS / WebSocket / MCP 连接远端 Agent Service；远端 Agent Service 接收任务后，又以自己的身份连接另一个模型 Provider，并调用远端工具。它不是一个简单的文件 API，也不只是 MCP Proxy。
+
+![Remote-first Agent Runtime：本地与远端双 Agent 架构](/diagrams/agent-runtime-remote-first.svg)
+
+[查看双 Agent 架构图（HTML）](/diagrams/agent-runtime-remote-first.html)
+
+### 7.1 两个 Agent Loop，三类职责
+
+建议先把参与者分清楚：
+
+| 组件 | 身份 | 负责的事情 | 不应该负责的事情 |
+| --- | --- | --- | --- |
+| Local Agent Client | 本地 Agent Runtime，同时是远端服务的客户端 | 本地模型调用、UI、会话交互、工具路由、本地浏览器和屏幕能力 | 直接访问远端工作区底层存储；绕过远端策略执行文件和 Shell 操作 |
+| Remote Agent Service | 远端 Agent Runtime，同时是模型 Provider 的客户端 | 远端模型调用、工作区管理、文件工具、Shell、MCP、Sandbox、任务状态和审计 | 访问桌面用户的本地文件、浏览器 Cookie 或桌面凭证 |
+| Remote Workspace / Execution | 远端资源与执行平面 | 提供虚拟文件系统、持久化存储、临时执行环境和资源隔离 | 自己决定用户身份、授权范围或任务目标 |
+
+本地 Agent Client 有自己的 Model Client 和 Agent Loop。远端 Agent Service 也有自己的 Model Client 和 Agent Loop。两者之间不是简单的“本地 SDK 调用远端 SDK”，而是两个独立运行时之间的委托关系。
+
+远端 Agent Service 至少需要区分三种身份：登录用户身份、当前 Agent Session 身份、当前 Task / Execution 身份。不能只用一个 userId 或 sessionId 代替所有授权上下文。一个用户可以有多个工作区，一个会话可以产生多个任务，一个任务也可能创建多个短生命周期的 Sandbox。
+
+### 7.2 先决定谁负责规划：两种调用模式不要混在一起
+
+**模式 A：本地 Agent 规划，远端只执行工具。**
+
+本地模型看到远端文件和业务工具的 Schema，生成工具调用；Local Agent Client 将请求转发给远端服务，远端完成授权、执行并返回结果。本地 Agent Loop 再把结果交给本地模型。
+
+这适合本地模型需要掌握整个对话、频繁决定下一步操作，而且远端工具主要是确定性 API 的场景。代价是工具结果会经过本地进程，通常还会被发送给本地模型 Provider。即使文件原件没有离开远端，文件内容仍然可能离开远端。
+
+**模式 B：本地 Agent 委托任务，远端 Agent 自己规划和执行。**
+
+本地模型只看到一个高层工具，例如 `delegate_remote_task`。本地 Agent 将目标、允许访问的 Workspace 和任务约束交给 Remote Agent Service。远端模型读取文件、调用工具、运行代码并完成任务，最后把摘要、状态和 Artifact 引用返回给本地 Agent。
+
+这更适合大型文件分析、代码仓库操作、长时间运行的研究任务，以及数据不能经过本地模型链路的场景。原始文件内容留在远端，只有摘要、必要的引用和用户批准的片段返回本地。需要注意，远端模型仍然是一个独立的数据出口：远端模型 Provider 能看到它所处理的内容，必须纳入数据驻留、DLP 和模型供应商审查。
+
+实际产品可以同时支持两种模式，但必须显式选择。不要让一个看似普通的远端工具在内部悄悄启动第二个 Agent Loop，否则调用深度、成本、权限、取消和审计都会变得不可预测。
+
+| 比较项 | 模式 A：Remote Tools | 模式 B：Remote Agent |
+| --- | --- | --- |
+| 规划者 | 本地模型 | 本地模型负责委托，远端模型负责子任务规划 |
+| 本地可见工具 | 多个远端工具 Schema | 少量任务级工具 |
+| 文件内容流向 | 可能返回本地并进入本地模型上下文 | 原则上留在远端，只返回摘要和 Artifact |
+| 模型成本 | 主要是本地模型 | 本地与远端模型均有调用 |
+| 适用场景 | 低延迟、细粒度交互、轻量工具 | 长任务、大文件、复杂工作流和数据驻留 |
+| 主要风险 | 内容经过本地模型链路，远端工具授权容易被误当成完整安全 | 双 Agent 权限叠加、委托边界和远端模型数据出口 |
+
+建议默认采用模式 B 作为远端工作区的主要入口；只有确实需要本地模型逐步控制的轻量操作，才开放少量模式 A 工具。
+
+### 7.3 远端文件夹应该是 Workspace，不是本地目录的网络映射
+
+用户界面可以显示一个熟悉的目录树，但这不意味着需要把远端文件系统挂载成本机磁盘。更稳妥的做法是提供一个逻辑 Workspace：
+
+- UI 中的 `/workspace` 是远端虚拟路径，不是本机的绝对路径，也不应该直接映射为服务器宿主机路径。
+- 文件工具通过远端 Workspace API 操作 `list`、`read`、`search`、`write`、`patch`、`delete` 等资源。API 接收 Workspace 内的相对路径或不透明的 Resource ID。
+- Shell / Sandbox 需要真实文件时，由远端 Execution Service 将当前任务获批的 Workspace Snapshot 或受控读写卷挂载进 Sandbox。不要把整个共享存储或宿主机根目录挂进去。
+- 会话历史、Agent Memory、临时文件、用户项目文件和最终 Artifact 应该是不同的存储命名空间。Deep Agents 的 CompositeBackend 就体现了按路径把线程状态、长期 Memory 和真实文件系统分流的思路。
+- 文件更新使用版本号、ETag 或 ChangeSet。并发编辑时检测冲突，而不是依赖“最后一次写入获胜”。对目录扫描、搜索和大文件读取采用分页、流式传输及结果大小限制。
+
+推荐的远端目录语义：
+
+| 虚拟路径 | 存储与生命周期 | 访问规则 |
+| --- | --- | --- |
+| `/workspace` | 用户或项目的持久 Workspace | 按用户、项目和任务授权；Sandbox 仅挂载获批范围 |
+| `/session` | 当前 Agent Session 状态 | 会话隔离；不与其他用户共享 |
+| `/memories` | 跨 Session 的长期记忆 | 单独的 Memory Policy 和租户 Namespace |
+| `/tmp` | 当前执行的临时目录 | 默认任务结束清理 |
+| `/artifacts` | 任务输出和交付物 | 由 Artifact Service 管理版本、下载权限和保留期 |
+
+这里不要把“路径前缀检查”当成文件系统授权的全部。服务端必须做规范化路径解析、符号链接约束、根目录边界校验，并在实际打开文件时防止检查与使用之间的竞态。Workspace 的身份边界应是 `tenant + user + workspace`，执行时再叠加 `session + task`，不能由模型自行传入一个 workspaceId 就获得访问权。
+
+如果某个任务需要运行 Shell，远端 Sandbox 应使用任务专属的执行身份和挂载范围。Workspace 持久数据与执行容器生命周期分离：容器可以随时销毁，工作区的提交和 Artifact 则按策略保留。不要让多个租户的任务共享同一个可写工作目录。
+
+### 7.4 本地 Agent Client 与远端 Agent Service 的通信协议
+
+建议把通信拆成控制、事件流和工具三部分，不要试图用一个长时间不返回的 HTTP 请求承载全部交互。
+
+| 通道 | 建议协议 | 用途 |
+| --- | --- | --- |
+| Client → Agent Service | HTTPS REST | 创建 / 恢复 Session、提交 Task、查询状态、审批、取消、获取 Artifact |
+| Agent Service → Client | WebSocket 或 SSE | Token Stream、工具进度、任务状态、审批请求、Artifact 就绪事件 |
+| Agent Client → Remote Tools | MCP Streamable HTTP 或内部 RPC | 远端工具发现与调用；不暴露 Sandbox 的宿主机接口 |
+| Agent Service → Model Provider | HTTPS Provider API | 远端 Agent 自己的模型调用 |
+| Agent Service → Workspace / Sandbox | 内部 API / 文件后端 / Runtime Adapter | 远端文件操作和受隔离的命令执行 |
+
+如果使用 MCP，推荐把 MCP Streamable HTTP 用于远端工具连接；不要把旧式 SSE 当成新系统默认传输。MCP 的工具协议解决能力发现和调用格式，不自动解决租户隔离、工作区映射、任务生命周期和审批。远端 Agent Service 作为一个完整 Agent，也可以通过 MCP 暴露一个高层 Agent Tool，但这不代表必须把内部所有文件和 Shell 工具都公开给本地模型。
+
+长任务必须有明确的异步语义：
+
+1. 客户端提交请求时携带唯一的 `requestId` / `idempotencyKey`，服务端返回稳定的 `taskId`。
+2. 客户端订阅事件流，事件带单调递增的序号或可恢复 Cursor。断线后从最后确认的位置恢复，不依赖一次性 HTTP 响应。
+3. 任务状态至少区分 `queued`、`running`、`waiting_for_approval`、`completed`、`failed`、`cancelled` 和 `expired`。
+4. 取消必须传播到远端 Agent Loop、正在执行的 Tool、子进程和 Sandbox；不能只关闭本地 UI 的请求。
+5. 写文件、提交变更、调用外部 API 等副作用必须有幂等键或可查询的执行记录。网络超时不代表操作没有发生，不能盲目重试。
+6. 审批请求要携带具体动作、资源、参数摘要、风险和有效期。用户批准的是一次明确的动作，不是给整个 Agent 永久开放权限。
+
+本地 Agent Client 负责把远端事件转换成 UI 状态；远端服务负责事件的事实来源和任务状态机。不能让本地 UI 的 loading 状态成为任务是否完成的唯一依据。
+
+### 7.5 身份与凭证：本地用户身份、远端服务身份和模型凭证分开
+
+这个架构最容易出现的安全问题是把用户登录 Token 当成所有下游服务的通用 Token。正确的做法是分层：
+
+- **用户到远端服务**：本地客户端使用 OIDC / OAuth 登录，拿到 audience 指向 Agent Service 的短期 Access Token。远端 Gateway 校验签名、Issuer、Audience、过期时间、租户和 Scope。
+- **远端服务到 Workspace / Tool**：远端服务根据已验证的用户身份和 Task Policy 生成内部授权上下文，使用独立的服务身份或短期委托凭证访问资源。
+- **远端服务到第三方 API**：需要用户授权时，使用 Token Exchange / On-Behalf-Of 或专用 Credential Broker 获取面向目标资源的 Token。不要把客户端发给 Agent Service 的 Token 原样转发给下游 API。
+- **远端服务到模型 Provider**：由服务端自己的 Model Client 管理 Provider Key、BYOK 凭证和用量配额。用户对 Agent Service 的授权不等于用户授权 Agent 使用任意模型或任意工具。
+- **远端服务到本地浏览器**：默认不开放反向访问。确实需要时，由本地 Browser Broker 建立受控的出站连接，只暴露有限的浏览器操作能力，不导出 Cookie、浏览器 Profile 或通用调试端口。
+
+MCP 2026-07-28 Authorization 规范要求客户端使用 Resource Indicators 将 Token 绑定到目标 MCP Server，服务端验证 Token 的 Audience，并明确禁止 Token Passthrough。远端 Agent Service 收到的 Token 应用于识别调用者和授权本服务；访问其他资源时必须取得面向该资源的凭证。这一点尤其重要，因为 Agent Service 同时是 MCP Server、工具客户端和模型客户端，天然容易变成一个权限过大的 Confused Deputy。
+
+### 7.6 文件内容到底会经过哪一个模型：必须画清楚数据流
+
+双 Agent 并不意味着数据自动留在远端。真正决定数据出口的是模型调用发生在哪里。
+
+**本地模型直接调用远端 Read Tool：**
+
+`Remote Workspace → Remote Tool → Local Agent Client → Local Model Provider`
+
+文件内容会经过本地客户端，并可能发送到本地模型 Provider。远端文件没有下载到用户磁盘，不代表数据没有离开远端信任域。
+
+**本地模型委托远端 Agent：**
+
+`Remote Workspace → Remote Agent → Remote Model Provider → Summary / Artifact Reference → Local Agent`
+
+原始文件内容留在远端，但会进入远端模型 Provider 的处理范围。最终返回的摘要、代码片段和 Artifact 仍需按数据分类控制。
+
+因此，建议在任务创建时根据数据分类决定路由：
+
+- 公开或低敏数据，可以允许 Remote Tools 将必要内容返回本地模型。
+- 内部或受限数据，优先由远端 Agent 完成读取、分析和摘要，本地只接收经过策略批准的输出。
+- 高敏数据，远端模型 Provider 也必须位于批准的处理边界内；否则只能使用获批的私有模型端点，或在远端执行不需要外部模型的确定性处理。
+- 浏览器截图、页面 DOM、剪贴板和用户输入也属于数据。浏览器操作留在本地，并不意味着截图可以无条件发送到远端模型。
+
+这要求 Data Classification 与 Model Routing 成为同一个策略决策，而不是分别由文件工具和模型配置各自处理。
+
+### 7.7 Pi、Copilot SDK、LangChain Deep Agents 应该怎样接入
+
+这三个框架都能参与 Remote-first 设计，但扩展点不同，不能把它们当成同一种远端执行方案。
+
+| 框架 | 可复用的机制 | Remote-first 接入方式 | 需要特别注意 |
+| --- | --- | --- | --- |
+| Pi | SDK 自定义 Tool / Extension、MCP Streamable HTTP、RPC | 本地 Pi 注册少量 Remote Agent Tool，或者连接远端 MCP Server；远端可独立运行 Pi Agent Runtime | SDK 是进程内集成；RPC 是本地子进程 JSONL 控制协议，不是天然的远程网络协议。SDK 不会自动加载 CLI 的内置 MCP / Codemode / Tool Search Extension，需要显式配置。 |
+| GitHub Copilot SDK | Headless CLI Server、远程 Runtime Connection、Session、MCP、Hooks、sessionFs | 本地 UI 通过服务 API 调用后端 Copilot Runtime；后端以 `mode: "empty"` 创建隔离 Session，并显式配置用户 Token、工具 Allowlist 和 Workspace | SDK 文档明确指出 SDK Client 与 Headless CLI 之间没有内置认证，网络链路必须由部署方保护。`sessionFs` 可把 Session 级文件 I/O 路由到应用存储，但不应未经验证就把它当成所有 Shell / MCP / Workspace 操作的完整隔离后端。 |
+| LangChain Deep Agents | BackendProtocol、CompositeBackend、StoreBackend、Sandbox Backend、LangGraph / Agent Server | 远端 Deep Agent 使用自定义 Backend 或 CompositeBackend 管理 Workspace；Sandbox Backend 提供文件工具和 Execute；Agent Server 可通过 MCP 暴露远端 Agent | Backend 是文件系统抽象，不等于自动提供安全隔离；真正运行命令需要 Sandbox Backend。多用户 Store 必须配置 Namespace Factory，不能把不同用户写入同一 Namespace。 |
+
+**Pi：适合做本地 Agent Client 和远端工具适配层。** Pi SDK 可以在本地进程内创建 Agent Session，通过自定义 Tool 将请求转发到远端服务；也可以连接支持 Streamable HTTP 的 MCP Server。若远端需要运行自己的 Pi Agent，应该由远端服务创建独立 Session 和 SessionManager，不能把本地的 `cwd`、Session 文件或 Extension Runtime 当作远端 Workspace。Pi RPC 模式适合把 Pi 隔离为本机子进程，不能直接替代客户端到远端服务的认证、传输和多租户协议。
+
+参考：[Pi SDK](https://docs.pi.dev/latest/sdk)、[Pi RPC](https://docs.pi.dev/latest/rpc)、[Pi MCP](https://docs.pi.dev/latest/mcp)。
+
+**Copilot SDK：已有比较直接的服务端部署模式。** 官方 Backend Services 文档支持将 Copilot CLI 作为 Headless Server 独立运行，SDK 通过 TCP 连接；多用户场景使用 `mode: "empty"`，按 Session 注入用户凭证并显式指定可用工具。Multi-tenancy 文档还提供 `sessionFs`，用于将 Session 级文件 I/O 路由到应用自己的存储提供者。需要注意，官方文档明确指出 SDK 与 Headless CLI 之间没有内置认证；不要把它直接暴露到不可信网络，应放在受控网络内，并在外层 API Gateway 完成身份验证和授权。CLI Session 状态文件也必须持久化，并在多实例部署时使用共享存储或明确的 Session 路由策略。
+
+参考：[Backend Services](https://docs.github.com/en/copilot/how-tos/copilot-sdk/setup/backend-services)、[Multi-tenancy and Server Deployments](https://docs.github.com/en/copilot/how-tos/copilot-sdk/setup/multi-tenancy)、[Scaling](https://docs.github.com/en/copilot/how-tos/copilot-sdk/setup/scaling)。
+
+**LangChain Deep Agents：最贴近远端 Workspace + 远端 Agent 的抽象。** Deep Agents 的 BackendProtocol 将文件工具与底层存储解耦：StateBackend 适合线程内状态，StoreBackend 适合跨线程长期存储，FilesystemBackend 面向本地磁盘，CompositeBackend 可按虚拟路径路由不同后端。Sandbox Backend 除文件工具外还提供 `execute`，把命令运行放到独立 Sandbox。LangSmith Agent Server 还可以将 Agent 作为 MCP Tool 暴露，并通过自定义认证中间件实现用户级授权。对于本场景，可以在远端实现一个 Workspace Backend，把路径操作映射到对象存储、数据库或专用文件服务，再把执行能力交给独立 Sandbox Backend。
+
+参考：[Deep Agents Backends](https://docs.langchain.com/oss/python/deepagents/backends)、[Deep Agents Sandboxes](https://docs.langchain.com/oss/python/deepagents/sandboxes)、[Deep Agents Overview](https://docs.langchain.com/oss/python/deepagents/overview)、[Agent Server MCP](https://docs.langchain.com/langsmith/server-mcp)。
+
+### 7.8 推荐的服务端部署结构
+
+不要把 API Gateway、Agent Loop、Workspace 和 Sandbox 做成一个长期运行的“万能 Agent 进程”。逻辑上至少划分为：
+
+1. **Agent API / Gateway**：处理登录、租户识别、Session 和 Task 创建、流式事件、审批、取消和速率限制。
+2. **Agent Orchestrator**：持有远端 Agent Session，负责模型调用、规划、Tool Registry、上下文管理和子 Agent 委托。
+3. **Workspace Service**：负责目录和文件 API、版本控制、快照、Artifact、持久化和访问策略。
+4. **Execution Service**：为每个 Task 创建受限 Sandbox，挂载批准的 Workspace，执行 Shell / Script / Browser Automation 等远端操作。
+5. **Credential Broker**：按用户、任务和目标资源发放短期凭证；模型 Provider 凭证与业务系统凭证分开管理。
+6. **Audit / Trace**：关联 Local Request、Remote Session、Task、Model Call、Tool Call、Sandbox Execution 和审批记录。
+
+Agent API 可以是无状态服务，Agent Session 和长任务状态由持久化层管理；Orchestrator 可以按 Session 粘性路由，也可以通过持久化 Checkpoint 在不同 Worker 恢复。Copilot SDK 的多实例部署文档特别指出，Session 状态需要放在共享存储中，才能由不同 CLI Server 恢复；LangGraph 则提供 Checkpoint / Store 机制支持持久化执行。无论采用哪种框架，都要把运行时进程内状态与可恢复的业务状态区分开。
+
+### 7.9 这类架构上线前要检查什么
+
+| 检查项 | 必须满足的条件 |
+| --- | --- |
+| 本地权限 | 默认没有本地 Read / Write / Bash Tool；本地只注册 UI、浏览器等明确需要的能力 |
+| 远端身份 | 每个请求都能还原到 Tenant、User、Session、Task；不能信任模型参数提供的身份字段 |
+| Workspace | 虚拟路径映射到服务端授权的 Workspace；路径规范化、符号链接和并发写入均有保护 |
+| Sandbox | 每个任务只挂载获批目录；容器 / VM 不继承平台凭证、宿主机目录和不必要的网络 |
+| 双模型数据流 | 明确哪些内容进入本地模型、远端模型、工具日志和 Trace；有数据分类与路由策略 |
+| 凭证 | 用户 Token、远端服务身份、下游 API Token、模型 Provider Key 分开管理；禁止 Token Passthrough |
+| 浏览器 | Cookie 和 Profile 留在本地；远端只能通过窄范围 Browser Broker 请求获批操作 |
+| 多租户 | Session、Workspace、Memory、Cache、Artifact、Sandbox 和持久化授权均有租户边界 |
+| 长任务 | 支持断线恢复、事件 Cursor、幂等写操作、取消传播、审批等待和过期清理 |
+| 审计 | 能从一次用户请求追踪到本地模型、远端模型、工具、副作用、审批和最终 Artifact |
+
+### 7.10 选型结论
+
+如果产品本身需要本地 UI、桌面浏览器和本地模型，同时又希望文件与执行全部集中管理，推荐采用**本地薄 Agent + 远端完整 Agent Service**：
+
+- 本地 Agent 负责交互、模型调用、浏览器和任务委托，不拥有远端工作区的直接执行权限。
+- 远端 Agent Service 拥有自己的模型客户端、Session、Workspace Backend、Tool Registry、Credential Broker 和 Sandbox。
+- 本地与远端之间使用独立的 Agent API 和事件流；远端工具可通过 MCP Streamable HTTP 接入，但 MCP 不替代任务协议和授权体系。
+- 对大文件和敏感数据采用远端 Agent 委托模式，避免文件内容绕回本地模型；对低风险、需要本地模型精细控制的操作才开放远端工具调用模式。
+- 浏览器保持本地能力，通过受控 Broker 暴露给本地 Agent；不要把浏览器 Cookie、Profile 或本地目录复制到远端。
+
+这套架构的核心不是“所有工具都远程化”，而是**把 Agent 的规划位置、工具执行位置、数据处理位置和用户交互位置分别定义清楚**。本地与远端可以各自拥有 Agent Loop，但每一个跨边界动作都必须有明确的身份、授权、数据流和审计记录。
+
+## 8. Copilot SDK 桌面端的安全接入
 
 如果 Agent Runtime 基于 GitHub Copilot SDK，桌面端同时支持 Windows 和 macOS，我不建议把安全层整体改写成 Rust。更合理的边界是：TypeScript 实现 Agent 控制面和工具服务，操作系统负责强制执行隔离策略；只有在某个平台缺少可靠的 Node.js API、需要调用原生安全接口时，才增加一个很小的原生 Helper。
 
 Copilot SDK 提供的 `onPreToolUse` Hook 可以在工具执行前返回 `allow`、`deny` 或 `ask`，也可以修改工具参数。这适合作为统一策略入口，但 Hook 本身不是 Sandbox：它不能阻止已经启动的进程访问未授权文件，也不能约束绕过该 Hook 的其他进程或 MCP Server。官方文档还提供 `skipPermission`，适用于应用自有、参数已经被应用约束的可信工具；它不应被用来跳过应用自己的 Policy Engine。参考：[Copilot SDK Pre-tool use Hook](https://docs.github.com/en/copilot/how-tos/copilot-sdk/hooks/pre-tool-use)。
 
-### 7.1 推荐的职责划分
+### 8.1 推荐的职责划分
 
 | 组件 | 推荐实现 | 职责 |
 | --- | --- | --- |
@@ -599,7 +798,7 @@ Copilot SDK 提供的 `onPreToolUse` Hook 可以在工具执行前返回 `allow`
 
 TypeScript 不只是 UI 层。它完全可以承担策略计算、审批、工具参数校验、资源引用解析、审计和执行生命周期管理。真正不能只靠 TypeScript 完成的是对任意子进程的强制隔离；这必须落到操作系统安全机制或独立虚拟化边界。
 
-### 7.2 Copilot SDK Hook 应该怎样接
+### 8.2 Copilot SDK Hook 应该怎样接
 
 建议在 Session 创建时统一注册 `onPreToolUse`，但不要在 Hook 中堆积所有业务逻辑。Hook 只负责把 SDK 的调用转换为内部标准请求，再交给 Policy Engine。工具 Handler 内部还要进行资源级二次校验，执行后端也要再次校验 Profile 和实际资源范围。
 
@@ -629,7 +828,7 @@ const session = await client.createSession({
 
 另外，SDK 的 `ask` 只是请求交互式批准的机制。产品仍需明确处理非交互模式、用户拒绝、超时、会话取消和批准后参数变化。审批记录应绑定工具名、规范化参数摘要、资源范围、Profile、Session / Task 和有效期，不能只记一个“用户同意过 Bash”。
 
-### 7.3 macOS 与 Windows 的 Sandbox 后端
+### 8.3 macOS 与 Windows 的 Sandbox 后端
 
 跨平台策略模型可以统一，但底层不能假设两个系统提供相同的隔离能力。
 
@@ -642,7 +841,7 @@ macOS 上可以优先评估 [Anthropic Sandbox Runtime](https://github.com/anthr
 
 Windows 上尤其不要把 Job Object 误认为完整 Sandbox。Job Object 适合限制进程树、生命周期和资源使用；它本身不提供完整的文件系统与网络访问控制。Restricted Token、ACL、AppContainer 和网络过滤各自解决不同问题，需要组合并验证。若产品要求普通用户安装后无需 UAC，就必须单独验证隔离方案是否能在该部署约束下成立；不能为了绕过 UAC 而静默退化成宿主机直接执行。
 
-### 7.4 统一 Sandbox Backend 接口，不统一底层实现
+### 8.4 统一 Sandbox Backend 接口，不统一底层实现
 
 Runtime 可以定义统一接口，让上层不感知平台差异；但每个平台 Backend 必须声明自己实际支持的能力。不能因为接口里有 `network: deny`，就假设某个后端真的能够可靠阻断所有网络路径。
 
@@ -685,7 +884,7 @@ MXC 的策略模型包括只读路径、读写路径、拒绝路径、出站 / �
 
 这也补充了前面的技术选型：桌面端可以同时评估 Anthropic Sandbox Runtime 和 MXC，不应先假设某一个项目覆盖所有平台。优先选择标准化、可验证、部署约束符合产品要求的后端；如果 MXC 某个 backend 的限制不满足目标场景，再单独评估其他 OS Sandbox 或原生 Helper。
 
-### 7.5 Rust 什么时候才值得引入
+### 8.5 Rust 什么时候才值得引入
 
 Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runner，仍然可能以当前用户身份读取文件、访问网络和启动子进程。反过来，TypeScript 通过受控 IPC 调用 Seatbelt、Restricted Token 或其他 OS Sandbox，也可以建立真实的执行边界。
 
@@ -693,7 +892,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 对桌面产品而言，额外引入 Rust 还会增加 Windows / macOS 双平台构建、签名、公证、升级、崩溃诊断和 IPC 协议维护成本。没有明确的原生能力缺口时，这些成本并不会自动换来更强的安全性。
 
-### 7.6 建议的落地顺序
+### 8.6 建议的落地顺序
 
 1. 先在 TypeScript 中收敛工具入口：Read、Write、Bash 独立注册；拒绝无法识别的工具；不要让 Agent 直接获得宿主机 Shell。
 2. 实现统一 Policy Engine、ResourceRef、审批和审计；工具 Handler 对资源和动作进行二次校验。
@@ -703,7 +902,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 对于 Copilot SDK 桌面应用，最终推荐是 **TypeScript 控制面 + OS Sandbox 执行面**。Copilot Hook 负责拦截和决策，应用自己的 Tool Handler 负责资源授权，Sandbox Backend 负责让操作系统强制执行批准范围。不要把 Hook、命令白名单或 Rust 语言本身误认为安全边界。
 
-## 8. 跨层控制中容易遗漏的细节
+## 9. 跨层控制中容易遗漏的细节
 
 **文件授权和数据授权不是一回事。** Agent 可以读取某个客户文件，不代表可以把它上传到任意外部网站。文件系统 Sandbox 只能限制文件访问，不能判断数据是否允许流向某个 SaaS 或模型服务。需要独立的数据分类、目的地策略和网络出口控制。
 
@@ -715,7 +914,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 **文件写入最好默认可恢复。** 草稿写入、正式覆盖和删除应分开处理。通过临时文件、原子替换、版本快照和 Diff 审查，降低模型误操作的影响。对正式业务系统则优先提供有明确语义的 API，而不是开放数据库连接或通用 HTTP 写入。
 
-## 9. 方案比较与选型
+## 10. 方案比较与选型
 
 | 方案 | 主要隔离方式 | 适合场景 | 不能替代什么 |
 | --- | --- | --- | --- |
@@ -727,7 +926,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 这里没有一个项目能够单独解决 Agent 的全部安全问题。选择时首先看执行对象：如果只需要读写文件，优先提供受限文件服务；如果需要有限的 Shell 语义，考虑虚拟 Shell；如果要执行真实命令或 MCP Server，就需要 OS Sandbox；如果需要完整、可复现的开发环境，再考虑容器或 VM。
 
-## 10. 按风险选择部署形态
+## 11. 按风险选择部署形态
 
 不需要把所有 Agent 都放进最重的 VM，也不应该让所有 Agent 共用一个普通 Node.js 进程。隔离强度应由数据敏感性、工具权限、租户信任、执行代码来源和可能的副作用决定。
 
@@ -747,9 +946,9 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 这才是可扩展的 Agent Runtime 安全架构：策略统一，身份可追溯，执行隔离按平台实现，数据流受控，失败可终止，安全效果通过真实副作用测试验证。
 
-## 11. 安全验证、上线 Checklist 与参考资料
+## 12. 安全验证、上线 Checklist 与参考资料
 
-### 11.1 安全验证：用真实副作用和状态变化测试，而不是只看模型回答
+### 12.1 安全验证：用真实副作用和状态变化测试，而不是只看模型回答
 
 安全评估不能只统计模型有没有说出危险的话，也不能只测 Prompt Injection Classifier 的准确率。一个 Agent 可能在文本层面拒绝了攻击，但另一个工具已经完成了数据外传；也可能模型接受了恶意指令，但执行边界成功阻止了真实副作用。
 
@@ -770,7 +969,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 
 每次安全回归都应同时执行正常用例和负向攻击用例。正常用例验证工具仍然可用；负向用例验证越权确实失败。只做负向测试会导致系统通过“全部拒绝”获得虚假的安全成绩。
 
-### 11.2 Agent Runtime Security Checklist
+### 12.2 Agent Runtime Security Checklist
 
 下面的清单适合作为架构评审、PoC 验收和生产上线 Gate。它不是合规认证，也不能替代针对具体数据、行业和司法辖区的威胁建模。建议把 P0 视为上线阻断项，P1 视为生产环境必须完成或有明确风险接受记录的项目。
 
@@ -886,7 +1085,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 - [ ] **P1** 每个平台、每个 Sandbox Backend、每个镜像版本都运行正向与负向测试。
 - [ ] **P1** 定期演练 Agent 失陷、凭证泄露、Sandbox 逃逸、租户越权和紧急停止。
 
-### 11.3 业界实践、标准和研究资料
+### 12.3 业界实践、标准和研究资料
 
 下面的资料按用途整理。标准和官方工程文档用于建立控制基线；研究论文用于理解攻击路径、验证方法和现有防御的局限。论文中的实验结果不等于生产环境安全保证。
 
@@ -928,7 +1127,7 @@ Rust 不是安全边界本身。用 Rust 写一个没有 OS 隔离的 Shell Runn
 | [Your Agent is More Brittle Than You Think: Uncovering Indirect Injection Vulnerabilities in Agentic LLMs](https://arxiv.org/abs/2604.03870), 2026 | 在动态多步工具环境中研究间接注入与多种防御策略，强调单轮静态测试的局限。 |
 | [The Hidden Dangers of Browsing AI Agents](https://arxiv.org/abs/2505.13076), 2025 | 浏览器 Agent 的端到端威胁模型，讨论 Prompt Injection、域名校验绕过、凭证外泄和 Planner / Executor 隔离。 |
 
-## 12. 落地原则：策略由 Runtime 管，隔离交给 OS
+## 13. 落地原则：策略由 Runtime 管，隔离交给 OS
 
 对 TypeScript / Node.js Runtime，职责边界可以收敛为三件事：
 
