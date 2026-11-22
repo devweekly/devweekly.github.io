@@ -604,10 +604,23 @@ impl BackgroundTaskStore {
                     return Err(AgentError::Cancelled);
                 }
                 if current.status.is_terminal() {
-                    return Err(AgentError::InvalidAction(format!(
-                        "background task {} is already terminal ({})",
-                        record.task_id, current.status.as_str()
-                    )));
+                    let mut persisted = current.clone();
+                    let mut requested = record.clone();
+                    // A terminal task is immutable except for its delivery marker.
+                    // This permits idempotent result delivery without allowing a stale
+                    // Runtime to replace the completed result or conversation history.
+                    persisted.delivered_at_ms = None;
+                    requested.delivered_at_ms = None;
+                    persisted.updated_at_ms = 0;
+                    requested.updated_at_ms = 0;
+                    if current.status != record.status
+                        || serde_json::to_value(persisted)? != serde_json::to_value(requested)?
+                    {
+                        return Err(AgentError::InvalidAction(format!(
+                            "background task {} is already terminal ({})",
+                            record.task_id, current.status.as_str()
+                        )));
+                    }
                 }
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -3628,6 +3641,50 @@ mod tests {
         record.status = BackgroundTaskStatus::Completed;
         assert!(store.save(&record).is_err());
         assert_eq!(store.load("task-cancel-guard").unwrap().status, BackgroundTaskStatus::Cancelled);
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn completed_task_allows_only_delivery_metadata_updates() {
+        let directory = std::env::temp_dir().join(format!(
+            "rust-agent-task-delivery-{}", new_session_id(now_ms())
+        ));
+        let store = BackgroundTaskStore::new(directory.clone());
+        let mut record = BackgroundTaskRecord {
+            schema_version: super::BACKGROUND_TASK_SCHEMA_VERSION,
+            task_id: "task-delivery".into(),
+            name: "delivery".into(),
+            parent_session_id: "parent".into(),
+            model: "test-model".into(),
+            status: BackgroundTaskStatus::Queued,
+            step: 0,
+            created_at_ms: now_ms(),
+            updated_at_ms: now_ms(),
+            result: None,
+            error: None,
+            delivered_at_ms: None,
+            agent_profile: Some(AgentProfile::default_background()),
+            usage: UsageTotals::default(),
+            messages: vec![
+                ChatMessage { role: "system".into(), content: "system".into() },
+                ChatMessage { role: "user".into(), content: "task".into() },
+            ],
+        };
+        store.save(&record).unwrap();
+        record.status = BackgroundTaskStatus::Running;
+        store.save(&record).unwrap();
+        record.status = BackgroundTaskStatus::Completed;
+        record.result = Some("stable result".into());
+        store.save(&record).unwrap();
+
+        record.delivered_at_ms = Some(now_ms());
+        record.updated_at_ms = now_ms();
+        store.save(&record).unwrap();
+        assert_eq!(store.load("task-delivery").unwrap().delivered_at_ms, record.delivered_at_ms);
+
+        record.result = Some("stale replacement".into());
+        assert!(store.save(&record).is_err());
+        assert_eq!(store.load("task-delivery").unwrap().result.as_deref(), Some("stable result"));
         let _ = fs::remove_dir_all(directory);
     }
 
