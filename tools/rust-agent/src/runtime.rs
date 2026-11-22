@@ -368,6 +368,9 @@ impl SessionStore {
         ensure_regular_file_or_missing(&path)?;
         let (expected_revision, is_new_session) = match fs::read(&path) {
             Ok(bytes) => {
+                if bytes.len() > MAX_SESSION_FILE_BYTES {
+                    return Err(AgentError::InvalidAction("session file exceeds the 8 MiB limit".into()));
+                }
                 let current: SessionRecord = serde_json::from_slice(&bytes)?;
                 (current.revision.saturating_add(1), false)
             }
@@ -693,6 +696,9 @@ impl BackgroundTaskStore {
         ensure_regular_file_or_missing(&path)?;
         let is_new_record = match fs::read(&path) {
             Ok(bytes) => {
+                if bytes.len() > MAX_BACKGROUND_TASK_RECORD_BYTES {
+                    return Err(AgentError::InvalidAction("background task record exceeds the 16 MiB limit".into()));
+                }
                 let current: BackgroundTaskRecord = serde_json::from_slice(&bytes)?;
                 if current.status == BackgroundTaskStatus::Cancelling
                     && !matches!(record.status, BackgroundTaskStatus::Cancelling | BackgroundTaskStatus::Cancelled)
@@ -787,7 +793,8 @@ impl BackgroundTaskStore {
         let lock = self.lock_store()?;
         ensure_regular_file_or_missing(&path)?;
         let bytes = match fs::read(&path) {
-            Ok(bytes) => bytes,
+            Ok(bytes) if bytes.len() <= MAX_BACKGROUND_TASK_RECORD_BYTES => bytes,
+            Ok(_) => return Err(AgentError::InvalidAction("background task record exceeds the 16 MiB limit".into())),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 lock.unlock()?;
                 return Ok(false);
