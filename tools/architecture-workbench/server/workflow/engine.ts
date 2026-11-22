@@ -1,4 +1,4 @@
-import { all, id, now, one, run } from "../db.js";
+import { all, db, id, now, one, run } from "../db.js";
 
 export type WorkflowAction =
   | "start_analysis"
@@ -83,23 +83,35 @@ export function transitionWorkItem(workItemId:string,actorId:string,action:Workf
   const validation=validateWorkflowTransition(workItemId,actorId,action);
   if (!validation.ok) return validation;
   const timestamp=now();
-  if (action==="submit_for_review") {
-    run("UPDATE review_cycles SET status='closed' WHERE work_item_id=? AND status='active'",workItemId);
-    const baseline=all<{id:string;version:number}>(
-      "SELECT a.id,a.version FROM artifacts a WHERE a.work_item_id=? AND NOT EXISTS (SELECT 1 FROM artifacts newer WHERE newer.work_item_id=a.work_item_id AND COALESCE(newer.code,newer.id)=COALESCE(a.code,a.id) AND newer.version>a.version)",
-      workItemId
-    );
-    const round=one<{n:number}>("SELECT COUNT(*) AS n FROM review_cycles WHERE work_item_id=?",workItemId)?.n || 0;
-    run("INSERT INTO review_cycles(id,work_item_id,name,baseline_json,status,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
-      id("cycle"),workItemId,"Architecture Review · Round "+(round+1),JSON.stringify(baseline),"active",actorId,timestamp);
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    if (action==="submit_for_review") {
+      run("UPDATE review_cycles SET status='closed' WHERE work_item_id=? AND status='active'",workItemId);
+      const baseline=all<{id:string;version:number;code:string|null;type:string;title:string;content_hash:string}>(
+        "SELECT a.id,a.version,a.code,a.type,a.title,a.content_hash FROM artifacts a WHERE a.work_item_id=? AND NOT EXISTS (SELECT 1 FROM artifacts newer WHERE newer.work_item_id=a.work_item_id AND COALESCE(newer.code,newer.id)=COALESCE(a.code,a.id) AND newer.version>a.version)",
+        workItemId
+      );
+      const round=one<{n:number}>("SELECT COUNT(*) AS n FROM review_cycles WHERE work_item_id=?",workItemId)?.n || 0;
+      const sequence=(one<{n:number}>("SELECT COALESCE(MAX(sequence),0) AS n FROM submissions WHERE work_item_id=?",workItemId)?.n || 0)+1;
+      const contextVersion=one<{context_version:number}>("SELECT context_version FROM work_items WHERE id=?",workItemId)?.context_version || 1;
+      const submissionId=id("sub");
+      run("INSERT INTO submissions(id,work_item_id,sequence,purpose,manifest_json,context_version,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
+        submissionId,workItemId,sequence,"review",JSON.stringify(baseline),contextVersion,actorId,timestamp);
+      run("INSERT INTO review_cycles(id,work_item_id,submission_id,name,baseline_json,status,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
+        id("cycle"),workItemId,submissionId,"Review · Submission "+sequence,JSON.stringify(baseline),"active",actorId,timestamp);
+    }
+    run("UPDATE work_items SET status=?,context_version=context_version+1,updated_at=? WHERE id=?",validation.to,timestamp,workItemId);
+    run("INSERT INTO workflow_transitions(id,work_item_id,from_status,to_status,action,reason,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?)",
+      id("wf"),workItemId,validation.from,validation.to,action,reason,actorId,timestamp);
+    run("INSERT INTO activity_events(id,work_item_id,actor_id,action,target_type,target_id,summary,metadata_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+      id("evt"),workItemId,actorId,"workflow_transition","work_item",workItemId,
+      "Workflow: "+validation.from+" → "+validation.to,JSON.stringify({action,reason}),timestamp);
+    db.exec("COMMIT");
+    return { ok:true as const, from:validation.from, to:validation.to };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
   }
-  run("UPDATE work_items SET status=?,context_version=context_version+1,updated_at=? WHERE id=?",validation.to,timestamp,workItemId);
-  run("INSERT INTO workflow_transitions(id,work_item_id,from_status,to_status,action,reason,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?)",
-    id("wf"),workItemId,validation.from,validation.to,action,reason,actorId,timestamp);
-  run("INSERT INTO activity_events(id,work_item_id,actor_id,action,target_type,target_id,summary,metadata_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
-    id("evt"),workItemId,actorId,"workflow_transition","work_item",workItemId,
-    "Workflow: "+validation.from+" → "+validation.to,JSON.stringify({action,reason}),timestamp);
-  return { ok:true as const, from:validation.from, to:validation.to };
 }
 
 function currentStep(status:string) {
