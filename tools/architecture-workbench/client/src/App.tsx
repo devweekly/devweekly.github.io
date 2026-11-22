@@ -573,7 +573,7 @@ export default function App() {
         </details>}
       </Card>
 
-      <Card size="small" title="当前工作" className="workspace-section" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>{setEditingTaskId(null);taskForm.resetFields();taskForm.setFieldsValue({ownerId:item.owner_id,assigneeId:actor});setTaskOpen(true);}}>新增任务</Button>:null}>
+      <Card size="small" title="当前工作" className="workspace-section" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>{setEditingTaskId(null);taskForm.resetFields();taskForm.setFieldsValue({ownerId:item.owner_id,assigneeId:detail.participants.some(person=>person.person_id===actor)?actor:undefined});setTaskOpen(true);}}>新增任务</Button>:null}>
         {detail.tasks.length===0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有待办任务" /> :
           <Table rowKey="id" size="middle" dataSource={detail.tasks} pagination={false} columns={[
             {title:"工作内容",dataIndex:"title",render:(value:string,task:WorkTask)=><Space direction="vertical" size={2}><Text strong>{value}</Text><Text type="secondary" className="small">{task.kind.replaceAll("_"," ")}</Text></Space>},
