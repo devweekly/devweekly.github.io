@@ -11,6 +11,7 @@ export interface WorkTask { id:string; title:string; kind:string; status:string;
 export interface Submission { id:string; sequence:number; purpose:string; manifest_json:string; package_json?:string; submission_message?:string; assisted_by_run_id?:string|null; source_submission_id?:string|null; submitted_by?:string|null; context_version:number|null; created_by:string; created_by_name:string; created_at:string; }
 export interface ClarificationRequest { id:string; question:string; response_due_at:string; status:string; answer?:string|null; requested_by:string; requester_name?:string; answered_by?:string|null; answerer_name?:string|null; artifact_id:string|null; artifact_title?:string|null; created_at:string; answered_at?:string|null; }
 export interface DecisionMeeting { id:string; cycle_id:string|null; submission_id:string|null; chairman_id:string; chairman_name:string; meeting_at:string; minutes:string; outcome:string; rationale:string; created_at:string; }
+export interface RequestPackageDraft { id:string; agent_run_id:string; draft_json:string; status:string; created_by:string; created_at:string; applied_at?:string|null; created_by_name:string; agent_skill_name:string; agent_run_status:string; }
 export interface Decision { id:string; subject_type:string; subject_id:string|null; outcome:string; rationale:string; conditions:string; decision_maker_name:string; created_at:string; }
 export interface Comment { id:string; body:string; author_name:string; avatar_color:string; created_at:string; }
 export interface Activity { id:string; summary:string; actor_name:string; created_at:string; }
@@ -48,7 +49,7 @@ export interface AgentPlan {
 export interface WorkItemDetail {
   workItem:WorkItem; participants:Participation[]; artifacts:Artifact[];
   cycles:{id:string;submission_id:string|null;name:string;status:string;due_date:string;review_deadline_at?:string|null;remaining_review_ms?:number|null;paused_at?:string|null;reviewer_snapshot_json?:string;baseline_json:string}[]; submissions:Submission[];
-  reviews:Review[]; tasks:WorkTask[]; decisions:Decision[]; clarifications:ClarificationRequest[]; decisionMeetings:DecisionMeeting[]; comments:Comment[];
+  reviews:Review[]; tasks:WorkTask[]; decisions:Decision[]; clarifications:ClarificationRequest[]; decisionMeetings:DecisionMeeting[]; requestPackageDrafts:RequestPackageDraft[]; comments:Comment[];
   activity:Activity[]; attachments:Attachment[]; externalLinks:ExternalResourceLink[]; agentRuns:AgentRun[]; agentPlans:AgentPlan[];
   permissions:string[]; canManageParticipants:boolean; workflow:WorkflowProjection;
 }
