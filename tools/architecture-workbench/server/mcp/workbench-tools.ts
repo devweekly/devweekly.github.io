@@ -11,6 +11,7 @@ import {
   listAgentPlans,
   completeAgentRun,
   failAgentRun,
+  heartbeatAgentRun,
   getAgentRunEvents,
   handoffAgentRun,
   listAgentRuns,
@@ -370,6 +371,11 @@ export function registerWorkbenchTools(server:McpServer,skillUriForName:(skillNa
       agentKey:z.enum(["business-analyst","solution-architect","data-architect","security-reviewer","architecture-reviewer","decision-analyst","request-coordinator"])
     })
   },async (input,ctx)=>safe(()=>claimAgentRun({...input,actorId:actorId(ctx)}))());
+
+  server.registerTool("agent_heartbeat_run",{
+    description:"Renew the server-owned lease for a currently claimed Agent Run. The claim token and current Participation are revalidated on every heartbeat.",
+    inputSchema:z.object({runId:z.string().min(1),claimToken:z.string().min(32)})
+  },async ({runId,claimToken},ctx)=>safe(()=>heartbeatAgentRun({runId,claimToken,actorId:actorId(ctx)}))());
 
   server.registerTool("agent_complete_run",{
     description:"Complete a claimed Agent run by saving its output as a draft Artifact. This never submits a formal Review or Decision.",
