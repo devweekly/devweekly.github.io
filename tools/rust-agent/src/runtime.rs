@@ -1148,11 +1148,12 @@ impl AgentRuntime {
     }
     pub fn forget_memory(&mut self, id: &str) -> Result<(), AgentError> {
         let sources = self.memory_store.forget_with_sources(id)?;
+        let current_session_id = self.session.session_id.clone();
         self.store.redact_transcript_sources(&sources)?;
-        if sources.iter().any(|source| source.session_id == self.session.session_id) {
+        if sources.iter().any(|source| source.session_id == current_session_id) {
             // Reload after the revision-checked file update so a concurrent Runtime
             // cannot have its newer messages discarded by this instance's stale copy.
-            self.session = self.store.load(&self.session.session_id)?;
+            self.session = self.store.load(&current_session_id)?;
             self.messages = self.session.messages.clone();
         }
         Ok(())
