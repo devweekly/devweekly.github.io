@@ -63,6 +63,7 @@ export interface ExternalResourceLink {
 }
 export interface AnalyticsBreakdown { key:string; count:number; label?:string; }
 export interface RequestAnalytics {
+  byStatus:AnalyticsBreakdown[]; byType:AnalyticsBreakdown[]; byPriority:AnalyticsBreakdown[];
   aging:{key:string;label:string;count:number}[];
   externalSystems:{key:string;count:number;requestCount:number}[];
 }
