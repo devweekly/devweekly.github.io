@@ -19,17 +19,11 @@ The process needs durable timers and event-driven transitions, but the current s
 
 ### 1. One Request Package submission
 
-The Requestor prepares and confirms a Request Package containing:
-- business problem, context and target outcome;
-- scope, constraints and relevant risks;
-- optional initial proposal and evidence;
-- questions requiring a committee decision;
-- an immutable material manifest;
-- a Git-commit-style submission message describing the intent of this revision.
+The Requestor submits the Request description and relevant business context, including the problem, desired outcome, scope, constraints, risks and any question that needs a Decision Meeting. Original materials remain in their source systems and are attached as references to Jira, Confluence, GitHub or LeanIX. The Workbench does not copy those materials into a separate deliverables catalogue.
 
 An Agent running in the Client may help the Requestor compose or revise the Request description. This is ordinary Client-side assistance; it does not create a server-side Agent Package Draft, database entity or MCP tool. The Requestor remains the submitter and explicitly confirms submission. Agent execution, plan completion or artifact creation never submits a Request.
 
-A later revision creates a new Submission linked to the prior Submission. It does not overwrite the previous package or review baseline.
+A later revision creates a new internal review baseline linked to the prior baseline. It does not overwrite the previous Request content or Review Cycle. The baseline is retained for review consistency and audit, not exposed as a repeated material-history panel.
 
 ### 2. Four business stages and explicit outcomes
 
