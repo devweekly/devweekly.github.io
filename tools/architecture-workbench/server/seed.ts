@@ -75,7 +75,7 @@ export function seed() {
   run("INSERT INTO workflow_timers(id,work_item_id,cycle_id,submission_id,timer_type,due_at,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
     "timer-seed-review",wi,"cycle-101","sub-101","review_deadline",seedDeadline,"scheduled",created,created);
   const reviews = [
-    ["rev-101","adr-101","u-ea","Enterprise Architecture","approve","边界清晰，建议补充 API 生命周期与标准目录的关联。",["补充 API 版本治理","明确领域服务的标准责任"]],
+    ["rev-101","adr-101","u-ea","Enterprise Architecture","comment","边界清晰，建议补充 API 生命周期与标准目录的关联。",["补充 API 版本治理","明确领域服务的标准责任"]],
     ["rev-102","adr-102","u-sec","Security","comment","整体方向可行，但字段级保护与审计留存要求需要明确。",["给出敏感字段分类依据","说明审计保留周期与查询权限"]],
     ["rev-103","adr-103","u-dev","Delivery","comment","过渡适配器可降低交付风险，但必须定义退出条件。",["补充移除适配器的目标版本","说明失败重放和监控责任"]]
   ];
