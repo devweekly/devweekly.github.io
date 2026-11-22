@@ -112,7 +112,7 @@ function getWorkItem(workItemId:string,actor:string) {
     workItemId
   );
   return {
-    workItem,participants,tasks,artifacts,reviews,decisions,externalResources,
+    workItem,participants,tasks,artifacts,reviews,decisions,externalResources,relatedDebts,
     workflow:getWorkflowProjection(workItemId,actor),
     permissions:getWorkItemPermissions(workItemId,actor)
   };
@@ -144,12 +144,20 @@ function getContextCapsule(workItemId:string,actor:string) {
     "SELECT r.provider,r.resource_type,r.external_id,r.external_key,r.title,r.url,l.relation_type,l.confluence_template_key,l.confluence_template_name FROM work_item_external_links l JOIN external_resource_refs r ON r.id=l.resource_id WHERE l.work_item_id=?",
     workItemId
   );
+  const relatedDebts=all(
+    "SELECT w.id,w.code,w.title,w.status,w.priority,d.severity,d.status AS debt_status,d.target_state,d.remediation_plan,COALESCE(d.due_date,w.target_date) AS target_date,p.display_name AS owner_name FROM work_item_relations rel JOIN work_items w ON w.id=rel.target_work_item_id JOIN debt_details d ON d.work_item_id=w.id JOIN people p ON p.id=w.owner_id WHERE rel.source_work_item_id=? AND w.type='technical_debt' ORDER BY CASE d.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'deferred' THEN 2 ELSE 3 END,COALESCE(d.due_date,w.target_date)",
+    workItemId
+  );
+  const relatedDebts=all(
+    "SELECT w.id,w.code,w.title,w.status,w.priority,d.severity,d.status AS debt_status,d.target_state,d.remediation_plan,COALESCE(d.due_date,w.target_date) AS target_date,p.display_name AS owner_name FROM work_item_relations rel JOIN work_items w ON w.id=rel.target_work_item_id JOIN debt_details d ON d.work_item_id=w.id JOIN people p ON p.id=w.owner_id WHERE rel.source_work_item_id=? AND w.type='technical_debt' ORDER BY CASE d.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'deferred' THEN 2 ELSE 3 END,COALESCE(d.due_date,w.target_date)",
+    workItemId
+  );
   const comments=all(
     "SELECT c.body,c.created_at,p.display_name AS author_name FROM comments c JOIN people p ON p.id=c.author_id WHERE c.work_item_id=? ORDER BY c.created_at DESC LIMIT 20",
     workItemId
   );
   return {
-    workItem,participants,tasks,artifacts,reviews,externalResources,comments,
+    workItem,participants,tasks,artifacts,reviews,externalResources,relatedDebts,comments,
     workflow:getWorkflowProjection(workItemId,actor),
     generatedAt:now(),
     externalContextNote:"External resources are references only. The Agent Host must retrieve source-system content using its own authorized MCP/API connections and retain source citations and retrieval timestamps."
