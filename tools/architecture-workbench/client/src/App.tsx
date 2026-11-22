@@ -624,6 +624,9 @@ export default function App() {
           description={<>
             <div>{pendingPackageDraft.agent_skill_name} · {pendingPackageDraft.created_by_name} · {dateText(pendingPackageDraft.created_at)}</div>
             <div className="small muted">目标：{String(pendingPackageDraftValue?.goal || "—")}；范围：{String(pendingPackageDraftValue?.scope || "—")}</div>
+            <div className="small muted">约束与风险：{String(pendingPackageDraftValue?.constraints || "未填写")}</div>
+            <div className="small muted">初步方案：{String(pendingPackageDraftValue?.initialProposal || "未提供")}</div>
+            <div className="small muted">需要决定的问题：{String(pendingPackageDraftValue?.decisionQuestions || "未填写")}</div>
             <div className="small muted">提交说明：{String(pendingPackageDraftValue?.submissionMessage || "—")}</div>
             {pendingPackageDraft.agent_run_status!=="completed" ? <div className="small muted">Agent Run 尚未完成，完成后才能采用。</div> : null}
           </>}
@@ -798,12 +801,12 @@ export default function App() {
         <Form.Item name="type" label="Request 类型"><Select options={[{value:"architecture_review",label:"架构评审"},{value:"solution_assessment",label:"Solution 评估"},{value:"change_assessment",label:"变更评估"},{value:"risk_assessment",label:"风险评估"},{value:"other",label:"其他"}]} /></Form.Item>
         <Form.Item name="description" label="问题背景与业务目标" rules={[{required:true}]}><TextArea rows={3} /></Form.Item>
         <Row gutter={12}>
-          <Col span={12}><Form.Item name="goal" label="预期结果"><TextArea rows={2} /></Form.Item></Col>
-          <Col span={12}><Form.Item name="scope" label="范围"><TextArea rows={2} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="goal" label="预期结果" rules={[{required:true}]}><TextArea rows={2} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="scope" label="范围" rules={[{required:true}]}><TextArea rows={2} /></Form.Item></Col>
         </Row>
         <Form.Item name="constraints" label="约束与主要风险"><TextArea rows={2} /></Form.Item>
         <Form.Item name="initialProposal" label="初步方案（可选）"><TextArea rows={3} /></Form.Item>
-        <Form.Item name="decisionQuestions" label="需要委员会决定的问题"><TextArea rows={2} /></Form.Item>
+        <Form.Item name="decisionQuestions" label="需要委员会决定的问题" rules={[{required:true}]}><TextArea rows={2} /></Form.Item>
         <Form.Item name="chairmanId" label="指定 Chairman" rules={[{required:true,message:"必须指定决定会议主席"}]}><Select showSearch optionFilterProp="label" options={(bootstrap?.people || []).map(p=>({value:p.id,label:p.display_name+" · "+p.title}))} /></Form.Item>
         <Row gutter={12}>
           <Col span={12}><Form.Item name="priority" label="优先级"><Select options={[{value:"low",label:"低"},{value:"normal",label:"普通"},{value:"high",label:"高"}]} /></Form.Item></Col>
@@ -815,11 +818,11 @@ export default function App() {
 
     <Modal title="编辑 Request Package" open={packageOpen} onCancel={()=>setPackageOpen(false)} onOk={()=>void submitForm(packageForm,async()=>api.updateRequestPackage(selected!.id,packageForm.getFieldsValue()),"Request Package 已保存",()=>setPackageOpen(false))} confirmLoading={busy} width={720}>
       <Form form={packageForm} layout="vertical">
-        <Form.Item name="goal" label="预期结果"><TextArea rows={2}/></Form.Item>
-        <Form.Item name="scope" label="范围"><TextArea rows={2}/></Form.Item>
+        <Form.Item name="goal" label="预期结果" rules={[{required:true}]}><TextArea rows={2}/></Form.Item>
+        <Form.Item name="scope" label="范围" rules={[{required:true}]}><TextArea rows={2}/></Form.Item>
         <Form.Item name="constraints" label="约束与主要风险"><TextArea rows={2}/></Form.Item>
         <Form.Item name="initialProposal" label="初步方案（可选）"><TextArea rows={3}/></Form.Item>
-        <Form.Item name="decisionQuestions" label="需要委员会决定的问题"><TextArea rows={2}/></Form.Item>
+        <Form.Item name="decisionQuestions" label="需要委员会决定的问题" rules={[{required:true}]}><TextArea rows={2}/></Form.Item>
         <Form.Item name="submissionMessage" label="提交说明（类似 Git Commit Message）" rules={[{required:true}]}><Input/></Form.Item>
         <Form.Item name="assistedByRunId" label="Agent 辅助记录（可选）"><Select allowClear showSearch optionFilterProp="label" placeholder="选择用于准备本次 Request Package 的已完成 Agent Run" options={(detail?.agentRuns || []).filter(run=>run.status==="completed").map(run=>({value:run.id,label:run.skill_name+" · "+run.id.slice(0,12)}))}/></Form.Item>
       </Form>
