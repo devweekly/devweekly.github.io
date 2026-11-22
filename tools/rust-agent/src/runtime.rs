@@ -3352,7 +3352,7 @@ fn transcript_matches_session_message(source: &TranscriptEntry, message: &ChatMe
         "user" if source.content.starts_with("User answers: ") => false,
         "user" => {
             let prompt = message.content
-                .split("\\n\\nAttachments supplied with this turn")
+                .split("\n\nAttachments supplied with this turn")
                 .next()
                 .unwrap_or(&message.content);
             // Normal prompts are appended after the optional memory prefix. Very
@@ -3362,7 +3362,7 @@ fn transcript_matches_session_message(source: &TranscriptEntry, message: &ChatMe
         }
         "assistant" if source.content.starts_with("Background task result [") => {
             let marker = source.content.split(':').next().unwrap_or(&source.content);
-            message.content.starts_with(&format!("{marker}:\\n"))
+            message.content.starts_with(&format!("{marker}:\n"))
                 || message.content.starts_with(&format!("{marker}: "))
         }
         _ => false,
@@ -3494,7 +3494,7 @@ mod tests {
         };
         let composed = ChatMessage {
             role: "user".into(),
-            content: "Reference memories:\\n- preferred language: Rust\\n\\nprivate request phrase\\n\\nAttachments supplied with this turn:\\n- id=att-1".into(),
+            content: "Reference memories:\n- preferred language: Rust\n\nprivate request phrase\n\nAttachments supplied with this turn:\n- id=att-1".into(),
         };
         let unrelated = ChatMessage {
             role: "user".into(),
