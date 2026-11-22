@@ -2674,6 +2674,50 @@ mod tests {
     }
 
     #[test]
+    fn forgetting_source_memory_cascades_to_derived_memory_and_knowledge_pages() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript(
+            "s1", None, None, "user", "A private source transcript"
+        ).unwrap();
+        let source = store.propose(
+            input(MemoryScope::Global, None, "Source memory fact"),
+            95,
+            vec![format!("transcript:{transcript}")],
+        ).unwrap();
+        store.set_status(&source.id, MemoryStatus::Consolidated).unwrap();
+        let derived = store.propose(
+            input(MemoryScope::Global, None, "Derived knowledge fact"),
+            90,
+            vec![format!("memory:{}", source.id)],
+        ).unwrap();
+        store.set_status(&derived.id, MemoryStatus::Consolidated).unwrap();
+        store.apply_dreaming(DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![],
+            pages: vec![DreamingPage {
+                id: "derived-knowledge".into(),
+                title: "Derived knowledge".into(),
+                summary: "A page based on the derived fact".into(),
+                content: "This page must be removed with its source.".into(),
+                scope: MemoryScope::Global,
+                scope_id: None,
+                evidence: vec![format!("memory:{}", derived.id)],
+                links: vec![],
+            }],
+            delete_pages: vec![],
+        }).unwrap();
+
+        let removed_sources = store.forget_with_sources(&source.id).unwrap();
+        assert_eq!(removed_sources.len(), 1);
+        assert!(store.get(&source.id).is_err());
+        assert!(store.get(&derived.id).is_err());
+        assert!(store.get_page("derived-knowledge").is_err());
+        assert!(store.get_transcript(transcript).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn forgetting_last_memory_source_removes_its_transcript_but_keeps_shared_evidence() {
         let root = workspace();
         let store = MemoryStore::new(&root).unwrap();
@@ -2755,7 +2799,8 @@ mod tests {
             task_id: None,
             limit: 5,
         };
-        assert_eq!(store.retrieve(&query).unwrap().len(), 1);
+        let before_dispute = store.retrieve(&query).unwrap();
+        assert!(before_dispute.iter().any(|record| record.id == derived.id));
         store.set_status(&source.id, MemoryStatus::Disputed).unwrap();
         assert!(store.retrieve(&query).unwrap().is_empty());
         let _ = fs::remove_dir_all(root);
@@ -2798,8 +2843,8 @@ mod tests {
                     params![
                         format!("global-{index}"),
                         format!("Global note {index}"),
-                        "common project policy",
-                        "common project policy content",
+                        "unrelated global knowledge",
+                        "unrelated global knowledge content",
                         to_i64(now_ms().saturating_add(index as u128 + 1)).unwrap(),
                     ],
                 ).unwrap();
