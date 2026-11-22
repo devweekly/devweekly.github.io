@@ -25,7 +25,12 @@ export function isGlobalAdmin(actorId: string): boolean {
 export function getWorkItemPermissions(workItemId:string,actorId:string):string[] {
   if (isGlobalAdmin(actorId)) return ["read","contribute","comment","review","decide","manage"];
   const rows=all<{permissions_json:string}>("SELECT permissions_json FROM participations WHERE work_item_id=? AND person_id=?",workItemId,actorId);
-  return [...new Set(rows.flatMap(row=>JSON.parse(row.permissions_json) as string[]))];
+  const direct=[...new Set(rows.flatMap(row=>JSON.parse(row.permissions_json) as string[]))];
+  if (direct.includes("read")) return direct;
+  // Participants of an originating Request may inspect its linked Technical Debt,
+  // but this relationship grants read-only visibility and no debt-management rights.
+  const relatedDebtRead=one("SELECT 1 AS allowed FROM work_item_relations rel JOIN work_items debt ON debt.id=rel.target_work_item_id JOIN participations p ON p.work_item_id=rel.source_work_item_id AND p.person_id=? WHERE rel.target_work_item_id=? AND debt.type='technical_debt' AND p.permissions_json LIKE '%\"read\"%' LIMIT 1",actorId,workItemId);
+  return relatedDebtRead ? ["read"] : direct;
 }
 
 export function canManageParticipants(workItemId:string,actorId:string):boolean {
