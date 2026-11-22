@@ -4,7 +4,7 @@ Architecture decisions for the Workbench are recorded here. The current accepted
 
 | ADR | Decision |
 | --- | --- |
-| [0001](0001-work-item-centric-application.md) | Work Item-centric Application Boundary |
+| [0001](0001-work-item-centric-application.md) | Use Work Item as the Main Business Record |
 | [0002](0002-storage-and-file-boundary.md) | Storage and File Boundary |
 | [0003](0003-external-agent-runtime-boundary.md) | External Agent Runtime Boundary |
 | [0004](0004-external-context-reference-boundary.md) | External Context Reference Boundary |
