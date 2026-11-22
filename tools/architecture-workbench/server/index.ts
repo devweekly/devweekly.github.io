@@ -135,8 +135,8 @@ app.patch("/api/people/:id/profile",(req,res)=>{
 });
 app.get("/api/analytics",(req,res)=>{
   const actor=actorId(req);
-  const requests=all<{id:string;created_at:string}>(
-    "SELECT w.id,w.created_at FROM work_items w WHERE w.type <> 'technical_debt' AND (?=1 OR EXISTS (SELECT 1 FROM participations p WHERE p.work_item_id=w.id AND p.person_id=?))",isGlobalAdmin(actor)?1:0,actor);
+  const requests=all<{id:string;type:string;status:string;priority:string;created_at:string}>(
+    "SELECT w.id,w.type,w.status,w.priority,w.created_at FROM work_items w WHERE w.type <> 'technical_debt' AND (?=1 OR EXISTS (SELECT 1 FROM participations p WHERE p.work_item_id=w.id AND p.person_id=?))",isGlobalAdmin(actor)?1:0,actor);
   const visibleRequestIds=requests.map(r=>r.id);
   const debts=all<{status:string;priority:string;severity:string;created_at:string}>(
     "SELECT w.status,w.priority,d.severity,w.created_at FROM work_items w JOIN debt_details d ON d.work_item_id=w.id WHERE (?=1 OR EXISTS (SELECT 1 FROM participations dp WHERE dp.work_item_id=w.id AND dp.person_id=?) OR EXISTS (SELECT 1 FROM work_item_relations rel JOIN participations op ON op.work_item_id=rel.source_work_item_id WHERE rel.target_work_item_id=w.id AND op.person_id=?))",isGlobalAdmin(actor)?1:0,actor,actor);
@@ -154,9 +154,8 @@ app.get("/api/analytics",(req,res)=>{
     for(const row of rows){const days=ageDays(row.created_at);const index=days<=7?0:days<=30?1:days<=90?2:3;buckets[index].count++;}
     return buckets;
   };
-  const providerCoverage=["jira","confluence","github","leanix"].map(provider=>({
-    key:provider,count:links.filter(link=>link.provider===provider).length,
-    requestCount:new Set(links.filter(link=>link.provider===provider).map(link=>link.work_item_id)).size
+  const providerCoverage=group(links as unknown as Array<{[key:string]:unknown}>,"provider").map(({key,count})=>({
+    key,count,requestCount:new Set(links.filter(link=>link.provider===key).map(link=>link.work_item_id)).size
   }));
   const origins=debts.length && visibleRequestIds.length
     ? all<{code:string;title:string;debt_count:number}>(
@@ -166,6 +165,9 @@ app.get("/api/analytics",(req,res)=>{
   res.json({
     generatedAt:now(),
     requests:{
+      byStatus:group(requests as unknown as Array<{[key:string]:unknown}>,"status"),
+      byType:group(requests as unknown as Array<{[key:string]:unknown}>,"type"),
+      byPriority:group(requests as unknown as Array<{[key:string]:unknown}>,"priority"),
       aging:aging(requests),
       externalSystems:providerCoverage
     },
