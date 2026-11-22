@@ -89,3 +89,53 @@ body { color: #1d2939; background: #f4f6f9; }
   .workflow-current-grid { grid-template-columns: 1fr; gap: 12px; }
   .workflow-next-action { padding-left: 0; border-left: 0; padding-top: 10px; border-top: 1px solid #dbe5f1; }
 }
+
+
+/* Work Item Workspace: business progress first, implementation detail on demand. */
+.work-item-workspace { max-width: 1120px; margin: 0 auto; }
+.work-item-workspace .detail-topline { justify-content: flex-start; margin-bottom: 18px; }
+.work-item-workspace .detail-topline .ant-breadcrumb { margin-left: auto; }
+.work-item-workspace .detail-heading { align-items: flex-start; padding: 8px 0 18px; }
+.workspace-title { min-width: 0; flex: 1; }
+.workspace-title h2 { margin: 7px 0 8px !important; font-weight: 650; letter-spacing: -.02em; }
+.workspace-title p { max-width: 760px; margin-bottom: 0; }
+.workspace-summary { margin: 0 0 18px; border: 1px solid #e7ebf0; background: #fff; }
+.workspace-summary .ant-card-body { padding: 16px 20px; }
+.workflow-card { margin-bottom: 18px; border: 1px solid #e8edf3; }
+.workflow-card .ant-card-head { border-bottom: 0; min-height: 44px; }
+.workflow-card .ant-card-body { padding-top: 4px; }
+.workflow-actions { margin-top: 12px; }
+.workspace-section { margin-bottom: 18px; border: 1px solid #e8edf3; }
+.workspace-section .ant-card-head { min-height: 48px; }
+.workspace-section .ant-card-head-title { font-weight: 620; }
+.workspace-disclosure { margin-top: 14px; border-top: 1px solid #edf0f4; padding-top: 12px; }
+.workspace-disclosure > summary, .advanced-information > summary {
+  cursor: pointer; color: #475467; font-size: 13px; font-weight: 550;
+  list-style-position: inside; outline-offset: 4px;
+}
+.workspace-disclosure[open] > summary, .advanced-information[open] > summary { margin-bottom: 14px; }
+.workspace-disclosure .ant-timeline { margin: 14px 0 0 5px; }
+.submission-history { margin-top: 14px; padding-top: 12px; border-top: 1px solid #edf0f4; }
+.submission-history .ant-list-item { padding: 8px 0; }
+.advanced-information { margin-top: 8px; padding: 16px 18px; border: 1px solid #e8edf3; border-radius: 10px; background: rgba(255,255,255,.72); }
+.advanced-information > summary { font-size: 14px; }
+.advanced-information > summary .ant-typography { margin-left: 8px; font-size: 12px; font-weight: 400; }
+.advanced-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; margin-top: 16px; }
+.advanced-grid > .ant-card { min-width: 0; border: 1px solid #edf0f4; }
+.advanced-grid .ant-card-head { min-height: 44px; padding: 0 14px; }
+.advanced-grid .ant-card-body { padding: 14px; }
+.advanced-agent-card { grid-column: 1 / -1; }
+@media (max-width: 900px) {
+  .advanced-grid { grid-template-columns: 1fr; }
+  .advanced-agent-card { grid-column: auto; }
+}
+@media (max-width: 767px) {
+  .work-item-workspace { margin: 0; }
+  .work-item-workspace .detail-heading { gap: 12px; }
+  .workspace-summary .ant-card-body { padding: 14px; }
+  .workflow-card .ant-steps { overflow-x: auto; }
+  .advanced-information { padding: 14px; }
+  .work-item-workspace .ant-table { overflow-x: auto; }
+  .app-header > div:first-child { display: none; }
+  .app-header { justify-content: flex-end; }
+}
