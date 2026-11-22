@@ -68,7 +68,7 @@ app.get("/api/bootstrap",(req,res)=>{
 app.get("/api/my/tasks",(req,res)=>{
   const actor=actorId(req);
   const tasks=all(
-    "SELECT t.id,t.work_item_id,t.title,t.kind,t.status,t.assignee_id,t.due_date,t.relates_to,t.created_at,t.updated_at,a.display_name AS assignee_name,w.code AS work_item_code,w.title AS work_item_title,w.status AS work_item_status,p.display_name AS requestor_name FROM tasks t JOIN work_items w ON w.id=t.work_item_id LEFT JOIN people p ON p.id=w.requestor_id LEFT JOIN people a ON a.id=t.assignee_id WHERE t.assignee_id=? AND (?=1 OR EXISTS (SELECT 1 FROM participations access WHERE access.work_item_id=w.id AND access.person_id=?)) ORDER BY CASE t.status WHEN 'in_progress' THEN 0 WHEN 'open' THEN 1 WHEN 'blocked' THEN 2 ELSE 3 END,t.due_date,t.updated_at DESC",
+    "SELECT t.id,t.work_item_id,t.title,t.kind,t.status,t.owner_id,t.assignee_id,t.due_date,t.relates_to,t.created_at,t.updated_at,a.display_name AS assignee_name,o.display_name AS owner_name,w.code AS work_item_code,w.title AS work_item_title,w.status AS work_item_status,p.display_name AS requestor_name FROM tasks t JOIN work_items w ON w.id=t.work_item_id LEFT JOIN people p ON p.id=w.requestor_id LEFT JOIN people a ON a.id=t.assignee_id LEFT JOIN people o ON o.id=t.owner_id WHERE t.assignee_id=? AND (?=1 OR EXISTS (SELECT 1 FROM participations access WHERE access.work_item_id=w.id AND access.person_id=?)) ORDER BY CASE t.status WHEN 'in_progress' THEN 0 WHEN 'open' THEN 1 WHEN 'blocked' THEN 2 ELSE 3 END,t.due_date,t.updated_at DESC",
     actor,isGlobalAdmin(actor)?1:0,actor
   );
   res.json(tasks);
@@ -255,8 +255,9 @@ app.get("/api/work-items/:id",(req,res)=>{
   const participants=all("SELECT pt.*,p.display_name,p.title,p.email,p.avatar_color,p.department FROM participations pt JOIN people p ON p.id=pt.person_id WHERE pt.work_item_id=? ORDER BY p.display_name",workItemId);
   const artifacts=all("SELECT a.*,p.display_name AS submitter_name FROM artifacts a JOIN people p ON p.id=a.submitted_by WHERE a.work_item_id=? ORDER BY a.created_at DESC",workItemId);
   const cycles=all("SELECT * FROM review_cycles WHERE work_item_id=? ORDER BY created_at DESC",workItemId);
+  const submissions=all("SELECT s.*,p.display_name AS created_by_name FROM submissions s JOIN people p ON p.id=s.created_by WHERE s.work_item_id=? ORDER BY s.sequence DESC",workItemId);
   const reviews=all("SELECT r.*,p.display_name AS reviewer_name,a.code AS artifact_code,a.title AS artifact_title FROM reviews r JOIN people p ON p.id=r.reviewer_id JOIN artifacts a ON a.id=r.artifact_id JOIN review_cycles c ON c.id=r.cycle_id WHERE c.work_item_id=? ORDER BY r.created_at DESC",workItemId);
-  const tasks=all("SELECT t.*,p.display_name AS assignee_name FROM tasks t LEFT JOIN people p ON p.id=t.assignee_id WHERE t.work_item_id=? ORDER BY CASE t.status WHEN 'in_progress' THEN 0 WHEN 'open' THEN 1 ELSE 2 END,t.due_date",workItemId);
+  const tasks=all("SELECT t.*,a.display_name AS assignee_name,o.display_name AS owner_name FROM tasks t LEFT JOIN people a ON a.id=t.assignee_id LEFT JOIN people o ON o.id=t.owner_id WHERE t.work_item_id=? ORDER BY CASE t.status WHEN 'in_progress' THEN 0 WHEN 'blocked' THEN 1 WHEN 'open' THEN 2 ELSE 3 END,t.due_date",workItemId);
   const decisions=all("SELECT d.*,p.display_name AS decision_maker_name FROM decisions d JOIN people p ON p.id=d.decision_maker_id WHERE d.work_item_id=? ORDER BY d.created_at DESC",workItemId);
   const comments=all("SELECT c.*,p.display_name AS author_name,p.avatar_color FROM comments c JOIN people p ON p.id=c.author_id WHERE c.work_item_id=? ORDER BY c.created_at DESC",workItemId);
   const activity=all("SELECT e.*,p.display_name AS actor_name FROM activity_events e JOIN people p ON p.id=e.actor_id WHERE e.work_item_id=? ORDER BY e.created_at DESC LIMIT 30",workItemId);
@@ -264,7 +265,7 @@ app.get("/api/work-items/:id",(req,res)=>{
   const externalLinks=all("SELECT l.id,l.relation_type,l.confluence_template_key,l.confluence_template_name,l.created_at,r.provider,r.resource_type,r.external_id,r.external_key,r.title,r.url FROM work_item_external_links l JOIN external_resource_refs r ON r.id=l.resource_id WHERE l.work_item_id=? ORDER BY r.provider,r.resource_type,r.title",workItemId);
   const agentRuns=all("SELECT r.id,r.work_item_id,r.task_id,r.plan_id,r.node_key,r.agent_key,r.skill_name,r.objective,r.requested_by,r.claimed_by,r.status,r.handoff_reason,r.result_artifact_id,r.error_message,r.created_at,r.updated_at,r.started_at,r.finished_at,r.heartbeat_at,r.lease_expires_at,r.attempt_count,r.max_attempts,requestor.display_name AS requested_by_name,claimer.display_name AS claimed_by_name FROM agent_runs r JOIN people requestor ON requestor.id=r.requested_by LEFT JOIN people claimer ON claimer.id=r.claimed_by WHERE r.work_item_id=? ORDER BY r.created_at DESC",workItemId);
   const agentPlans=listAgentPlans(workItemId,actor);
-  res.json({workItem,participants,artifacts,cycles,reviews,tasks,decisions,comments,activity,attachments,externalLinks,agentRuns,agentPlans,permissions:permissions(workItemId,actor),canManageParticipants:canManageParticipants(workItemId,actor),workflow:getWorkflowProjection(workItemId,actor)});
+  res.json({workItem,participants,artifacts,submissions,cycles,reviews,tasks,decisions,comments,activity,attachments,externalLinks,agentRuns,agentPlans,permissions:permissions(workItemId,actor),canManageParticipants:canManageParticipants(workItemId,actor),workflow:getWorkflowProjection(workItemId,actor)});
 });
 
 app.post("/api/work-items/:id/artifacts",(req,res)=>{
@@ -312,29 +313,37 @@ app.post("/api/work-items/:id/tasks",(req,res)=>{
   const workItemId=String(req.params.id); const actor=actorId(req);
   if (!requirePermission(res,workItemId,actor,"contribute")) return;
   const body=req.body || {}; if (!body.title) return res.status(400).json({error:"title is required"});
+  const workItem=one<{owner_id:string}>("SELECT owner_id FROM work_items WHERE id=?",workItemId);
+  if (!workItem) return res.status(404).json({error:"Work Item not found"});
+  const ownerId=String(body.ownerId || workItem.owner_id);
+  if (!one("SELECT id FROM participations WHERE work_item_id=? AND person_id=?",workItemId,ownerId)) return res.status(400).json({error:"Task owner must be a participant of this Work Item."});
   if (body.assigneeId && !one("SELECT id FROM participations WHERE work_item_id=? AND person_id=?",workItemId,body.assigneeId)) return res.status(400).json({error:"Task assignee must be a participant of this Work Item."});
   const taskId=id("task"); const timestamp=now();
-  run("INSERT INTO tasks(id,work_item_id,title,kind,status,assignee_id,due_date,relates_to,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",taskId,workItemId,body.title,body.kind || "analysis","open",body.assigneeId || null,body.dueDate || null,body.relatesTo || null,timestamp,timestamp);
+  run("INSERT INTO tasks(id,work_item_id,title,kind,status,owner_id,assignee_id,due_date,relates_to,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",taskId,workItemId,body.title,body.kind || "analysis","open",ownerId,body.assigneeId || null,body.dueDate || null,body.relatesTo || null,timestamp,timestamp);
   logActivity(workItemId,actor,"created","task",taskId,"Created task: "+body.title);
   res.status(201).json({id:taskId});
 });
 
 app.patch("/api/tasks/:id",(req,res)=>{
   const taskId=String(req.params.id); const actor=actorId(req);
-  const task=one<{work_item_id:string;assignee_id:string|null}>("SELECT work_item_id,assignee_id FROM tasks WHERE id=?",taskId);
+  const task=one<{work_item_id:string;owner_id:string|null;assignee_id:string|null}>("SELECT work_item_id,owner_id,assignee_id FROM tasks WHERE id=?",taskId);
   if (!task) return res.status(404).json({error:"Task not found"});
   const canManageTask=can(task.work_item_id,actor,"contribute");
   const isAssignee=task.assignee_id===actor;
-  if (!canManageTask && !isAssignee) return res.status(403).json({error:"Only the assignee or a Work Item contributor can update this Task."});
+  const isTaskOwner=task.owner_id===actor;
+  if (!canManageTask && !isAssignee && !isTaskOwner) return res.status(403).json({error:"Only the Task owner, assignee or a Work Item contributor can update this Task."});
   const body=req.body || {};
-  if (!canManageTask && (body.assigneeId!==undefined || body.dueDate!==undefined)) return res.status(403).json({error:"Assignees may update Task status only."});
+  if (!canManageTask && (body.ownerId!==undefined || body.assigneeId!==undefined || body.dueDate!==undefined)) return res.status(403).json({error:"Task owner and assignee changes require Work Item contributor permission."});
   const statuses=["open","in_progress","blocked","done","cancelled"];
   if (body.status && !statuses.includes(body.status)) return res.status(400).json({error:"Unsupported task status"});
+  if (body.ownerId && !one("SELECT id FROM participations WHERE work_item_id=? AND person_id=?",task.work_item_id,body.ownerId)) {
+    return res.status(400).json({error:"Task owner must be a participant of this Work Item."});
+  }
   if (body.assigneeId && !one("SELECT id FROM participations WHERE work_item_id=? AND person_id=?",task.work_item_id,body.assigneeId)) {
     return res.status(400).json({error:"Task assignee must be a participant of this Work Item."});
   }
-  run("UPDATE tasks SET status=COALESCE(?,status),assignee_id=COALESCE(?,assignee_id),due_date=COALESCE(?,due_date),updated_at=? WHERE id=?",
-    body.status || null,body.assigneeId || null,body.dueDate || null,now(),taskId);
+  run("UPDATE tasks SET status=COALESCE(?,status),owner_id=COALESCE(?,owner_id),assignee_id=COALESCE(?,assignee_id),due_date=COALESCE(?,due_date),updated_at=? WHERE id=?",
+    body.status || null,body.ownerId || null,body.assigneeId || null,body.dueDate || null,now(),taskId);
   logActivity(task.work_item_id,actor,"updated","task",taskId,"Task updated",{status:body.status,assigneeId:body.assigneeId});
   res.json({ok:true});
 });
@@ -368,7 +377,8 @@ app.post("/api/work-items/:id/decisions",(req,res)=>{
       return res.status(400).json({error:"Follow-up Task assignee must be a participant of this Request."});
     }
     const taskId=id("task");
-    run("INSERT INTO tasks(id,work_item_id,title,kind,status,assignee_id,due_date,relates_to,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",taskId,workItemId,body.followUpTitle || "Complete additional analysis","analysis","open",body.followUpOwnerId || null,body.followUpDueDate || null,body.subjectId || null,now(),now());
+    const followUpOwner=body.followUpOwnerId || one<{owner_id:string}>("SELECT owner_id FROM work_items WHERE id=?",workItemId)?.owner_id || actor;
+    run("INSERT INTO tasks(id,work_item_id,title,kind,status,owner_id,assignee_id,due_date,relates_to,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",taskId,workItemId,body.followUpTitle || "Complete additional analysis","analysis","open",followUpOwner,body.followUpOwnerId || null,body.followUpDueDate || null,body.subjectId || null,now(),now());
   }
   let debtId: string | null=null;
   if (body.technicalDebt?.title && body.outcome==="accepted_with_conditions") {
