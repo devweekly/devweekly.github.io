@@ -38,10 +38,9 @@ const statusColors: Record<string,string> = {
 };
 const roleColors: Record<string,string> = {
   solution_architect:"blue", enterprise_architect:"purple", security_architect:"red",
-  solution_sme:"cyan", development_manager:"gold", decision_authority:"green"
+  solution_sme:"cyan", development_manager:"gold", decision_authority:"green", chairman:"green"
 };
 const participationRoleOptions = [
-  {value:"owner",label:"事项负责人"},
   {value:"chairman",label:"会议主席"},
   {value:"solution_architect",label:"解决方案架构师"},
   {value:"enterprise_architect",label:"企业架构师"},
@@ -275,7 +274,7 @@ export default function App() {
    function openAgentPlanDialog() {
     agentPlanForm.resetFields();
     agentPlanForm.setFieldsValue({
-      name:"多角色架构评估",
+      name:"架构分析",
       agentKeys:["business-analyst","solution-architect","data-architect","security-reviewer"],
       objective:"围绕当前事项检查业务目标、技术方案、数据设计和安全要求。各角色列出发现的问题、判断依据和建议；最后整理不同意见，以及需要负责人决定的问题。"
     });
@@ -492,7 +491,7 @@ export default function App() {
      ];
     return <div className="page-stack">
       <div className="page-heading"><div><Title level={2}>我的任务</Title><Paragraph type="secondary">查看分配给你的任务，以及你发起或负责的事项。</Paragraph></div></div>
-      <Card title="我的任务" className="panel-card"><Table rowKey="id" columns={taskColumns} dataSource={myTasks} loading={loading} pagination={{pageSize:8}} locale={{emptyText:<Empty description="当前没有分配给你的任务" />}} /></Card>
+      <Card title="任务列表" className="panel-card"><Table rowKey="id" columns={taskColumns} dataSource={myTasks} loading={loading} pagination={{pageSize:8}} locale={{emptyText:<Empty description="当前没有分配给你的任务" />}} /></Card>
       <Card title="我发起或负责的事项" className="panel-card"><Table rowKey="id" columns={itemColumns} dataSource={mine} pagination={{pageSize:6}} /></Card>
     </div>;
   }
@@ -770,7 +769,7 @@ export default function App() {
         {page==="people" && renderPeople()}
       </Content>
     </Layout>
-    <Modal title="新建事项" open={newItemOpen} onCancel={()=>setNewItemOpen(false)} onOk={()=>void submitForm(newItemForm,async()=>{const v=newItemForm.getFieldsValue();if(v.targetDate)v.targetDate=v.targetDate.format("YYYY-MM-DD");return api.createWorkItem(v);},"事项已创建",()=>setNewItemOpen(false))} confirmLoading={busy} width={720}>
+    <Modal title="新建事项" open={newItemOpen} onCancel={()=>setNewItemOpen(false)} onOk={()=>void submitForm(newItemForm,async()=>{const v=newItemForm.getFieldsValue();if(v.targetDate)v.targetDate=v.targetDate.format("YYYY-MM-DD");return api.createWorkItem(v);},"事项已创建",()=>setNewItemOpen(false))} confirmLoading={busy} width={640}>
       <Form form={newItemForm} layout="vertical" initialValues={{type:"architecture_review",priority:"normal"}}>
         <Form.Item name="title" label="事项名称" rules={[{required:true}]}><Input placeholder="例如：客户身份平台架构评估" /></Form.Item>
         <Form.Item name="type" label="事项类型"><Select options={[{value:"architecture_review",label:"架构评审"},{value:"solution_assessment",label:"方案评估"},{value:"change_assessment",label:"变更评估"},{value:"risk_assessment",label:"风险评估"},{value:"other",label:"其他"}]} /></Form.Item>
@@ -852,12 +851,12 @@ export default function App() {
         objective:value.objective
       }));
       return api.requestAgentPlan(selected!.id,{name:value.name,objective:value.objective,taskId:value.taskId,nodes});
-    },"多角色分析任务已创建",()=>setAgentPlanOpen(false))} confirmLoading={busy} width={760}>
+    },"分析任务已创建",()=>setAgentPlanOpen(false))} confirmLoading={busy} width={760}>
              <Form form={agentPlanForm} layout="vertical">
         <Form.Item name="name" label="分析名称" rules={[{required:true}]}><Input maxLength={200} /></Form.Item>
         <Form.Item name="agentKeys" label="参与角色" rules={[{required:true,message:"至少选择一个角色"}]}><Select mode="multiple" options={agentProfiles.filter(profile=>profile.key!=="decision-analyst").map(profile=>({value:profile.key,label:profile.name+" · "+profile.description}))} /></Form.Item>
         <Form.Item name="taskId" label="关联任务（可选）"><Select allowClear options={detail?.tasks.filter(task=>!["done","cancelled"].includes(task.status)).map(task=>({value:task.id,label:task.title})) || []} /></Form.Item>
-        <Form.Item name="objective" label="分析目标和注意事项" rules={[{required:true}]}><TextArea rows={5} maxLength={4000} showCount /></Form.Item>
+        <Form.Item name="objective" label="分析目标" rules={[{required:true}]}><TextArea rows={5} maxLength={4000} showCount /></Form.Item>
       </Form>
     </Modal>
 
