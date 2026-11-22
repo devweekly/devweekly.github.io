@@ -36,9 +36,9 @@ export function canManageParticipants(workItemId:string,actorId:string):boolean 
 export function canChair(workItemId:string,actorId:string):boolean {
   if (isGlobalAdmin(actorId)) return true;
   const item=one<{chairman_id:string|null}>("SELECT chairman_id FROM work_items WHERE id=?",workItemId);
-  if (item?.chairman_id===actorId) return true;
+  if (item?.chairman_id) return item.chairman_id===actorId;
   return Boolean(one(
-    "SELECT id FROM participations WHERE work_item_id=? AND person_id=? AND role_key IN ('chairman','decision_authority') AND permissions_json LIKE '%\"decide\"%'",
+    "SELECT id FROM participations WHERE work_item_id=? AND person_id=? AND role_key IN ('chairman','decision_authority') AND permissions_json LIKE '%\\"decide\\"%'",
     workItemId,actorId
   ));
 }
@@ -127,6 +127,7 @@ export function transitionWorkItem(workItemId:string,actorId:string,action:Workf
   try {
     if (action==="submit_request") {
       createRequestSubmission(workItemId,actorId,input,timestamp);
+      if (input.package) run("UPDATE work_items SET request_package_json=? WHERE id=?",JSON.stringify(input.package),workItemId);
     } else {
       const cycle=one<{id:string}>("SELECT id FROM review_cycles WHERE work_item_id=? ORDER BY created_at DESC LIMIT 1",workItemId);
       if (cycle) cancelCycleTimers(cycle.id,timestamp);
@@ -170,8 +171,10 @@ export function createClarification(workItemId:string,actorId:string,input:{arti
   const baseline=JSON.parse(cycle.baseline_json) as {id:string;version:number}[];
   if (!baseline.some(entry=>entry.id===artifact.id && entry.version===artifact.version)) return {ok:false as const,statusCode:409,error:"Clarification target is outside the active Submission baseline."};
   if (one("SELECT id FROM clarification_requests WHERE cycle_id=? AND status='requested'",cycle.id)) return {ok:false as const,statusCode:409,error:"A clarification is already waiting for the Requestor."};
-  const dueAt=new Date(input.responseDueAt).toISOString();
-  if (!Number.isFinite(Date.parse(dueAt)) || Date.parse(dueAt)<=Date.now()) return {ok:false as const,statusCode:400,error:"Clarification response deadline must be in the future."};
+  if (!input.question.trim()) return {ok:false as const,statusCode:400,error:"A clarification question is required."};
+  const responseDeadline=Date.parse(input.responseDueAt);
+  if (!Number.isFinite(responseDeadline) || responseDeadline<=Date.now()) return {ok:false as const,statusCode:400,error:"Clarification response deadline must be in the future."};
+  const dueAt=new Date(responseDeadline).toISOString();
   const timestamp=now();
   const remaining=Math.max(0,Date.parse(cycle.review_deadline_at || timestamp)-Date.now());
   db.exec("BEGIN IMMEDIATE");
@@ -206,7 +209,11 @@ export function answerClarification(workItemId:string,clarificationId:string,act
   const timestamp=now();
   db.exec("BEGIN IMMEDIATE");
   try {
-    run("UPDATE clarification_requests SET status='answered',answer=?,answered_by=?,answered_at=? WHERE id=? AND status='requested'",answer.trim(),actorId,timestamp,clarificationId);
+    const answered=run("UPDATE clarification_requests SET status='answered',answer=?,answered_by=?,answered_at=? WHERE id=? AND status='requested' AND response_due_at>?",answer.trim(),actorId,timestamp,clarificationId,timestamp);
+    if (Number(answered.changes)!==1) {
+      db.exec("ROLLBACK");
+      return {ok:false as const,statusCode:409,error:"The clarification response deadline has passed; the Request will proceed to the decision meeting."};
+    }
     run("UPDATE workflow_timers SET status='cancelled',updated_at=? WHERE clarification_id=? AND status IN ('scheduled','processing')",timestamp,clarificationId);
     const pending=one<{n:number}>("SELECT COUNT(*) AS n FROM clarification_requests WHERE cycle_id=? AND status='requested'",clarification.cycle_id)?.n || 0;
     if (pending===0) {
