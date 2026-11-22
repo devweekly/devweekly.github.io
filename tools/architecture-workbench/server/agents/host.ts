@@ -164,6 +164,7 @@ export class McpAgentHost {
         ? await this.call<Record<string,unknown>>("agent_get_plan_context",{runId:claimed.run.id,claimToken:claimed.run.claim_token})
         : undefined;
 
+      heartbeat.assertHealthy();
       const execution=await executor.execute({
         run:claimed.run,
         skill:{
