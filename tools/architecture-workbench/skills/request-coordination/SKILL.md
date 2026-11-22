@@ -18,6 +18,17 @@ Use this Skill when a Request spans multiple roles, needs parallel analysis, has
 7. Escalate missing ownership, conflicting requirements, overdue dependencies and decisions that require a Human authority.
 8. Before review, check that required deliverables and evidence are available and that the review target is a stable Artifact version.
 
+## Request Package preparation
+
+When a Run is explicitly assigned to prepare a new or revised Request Package and the Request is still in `draft` or `requestor_revision`:
+
+1. Build a structured proposal with a clear goal, scope, constraints and risks, optional initial proposal, explicit questions for the Decision Meeting, and a concise Git-commit-style submission message.
+2. Use `workbench_draft_request_package` with the current Work Item ID, Run ID and active claim token. The tool stores a pending suggestion only; it does not modify the Request Package or create a Submission.
+3. Finish the Run through the normal Agent Host completion or hand-off protocol. The Requestor can apply the completed suggestion, edit it and make the formal submission.
+4. Do not call a workflow transition or represent the suggestion as a submitted Request. The Requestor remains the submitter and decision authority remains Human.
+
+Do not use this path once the Request has entered Discussion and Review. A submitted Request Package is frozen for that Review Cycle.
+
 ## Deliverable
 
 Produce a coordination summary containing the current stage, objective, participants and responsibilities, task breakdown, dependencies, blockers, next actions and required Human intervention.
