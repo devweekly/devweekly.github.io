@@ -10,7 +10,7 @@ Base URL in development: http://localhost:4000/api
 | PATCH | /people/:id/profile | Update own profile; Workbench Admin may update another person's profile |
 | GET | /work-items | List business Work Items |
 | POST | /work-items | Create a Request and its initial Request Package, with a designated Chairman |
-| PATCH | /work-items/:id/request-package | Update a draft or Requestor revision before submission; Requestor/Admin only |
+| PATCH | /work-items/:id/request-package | Update a draft or Requestor revision before submission; Requestor only |
 | GET | /agent-profiles | Registered Agent profiles and runtime adapter capabilities |
 | GET | /work-items/:id | Work Item detail projection, including Submission manifests and Agent Run history |
 | GET | /work-items/:id/agent-runs | List Agent Runs visible to a Work Item participant |
@@ -20,7 +20,7 @@ Base URL in development: http://localhost:4000/api
 | POST | /agent-runs/:id/resume | Resume a run waiting for Human input |
 | POST | /work-items/:id/artifacts | Submit a new Artifact version |
 | POST | /work-items/:id/reviews | Comment, request Requestor clarification or raise a blocking objection during Discussion and Review |
-| POST | /work-items/:id/clarifications/:clarificationId/answer | Answer an outstanding clarification; Requestor/Admin only |
+| POST | /work-items/:id/clarifications/:clarificationId/answer | Answer an outstanding clarification; Requestor only |
 | POST | /work-items/:id/participations | Add or upsert a Work Item-scoped Participation; Requestor/Admin/manager only |
 | PUT | /work-items/:id/participations/:participationId | Update the role and permissions for a related person |
 | DELETE | /work-items/:id/participations/:participationId | Remove a related person; Requestor and Owner remain participants | 
