@@ -183,10 +183,14 @@ app.get("/api/work-items",(req,res)=>{
 
 app.post("/api/work-items",(req,res)=>{
   const actor=actorId(req); const body=req.body || {};
-  if (!body.title || !body.type) return res.status(400).json({error:"title and type are required"});
+  if (!body.title || !body.type || !String(body.description || "").trim()) return res.status(400).json({error:"title, type and problem background are required"});
   const chairmanId=body.chairmanId ? String(body.chairmanId) : null;
   if (!chairmanId) return res.status(400).json({error:"A Chairman must be assigned before creating a Request."});
+  if (chairmanId===actor) return res.status(400).json({error:"The Requestor cannot also be the assigned Chairman."});
   if (!one("SELECT id FROM people WHERE id=?",chairmanId)) return res.status(400).json({error:"Unknown Chairman"});
+  if (!String(body.goal || "").trim() || !String(body.scope || "").trim() || !String(body.decisionQuestions || "").trim() || !String(body.submissionMessage || "").trim()) {
+    return res.status(400).json({error:"Request Package requires a goal, scope, committee decision questions and a submission message."});
+  }
   const requestPackage={
     goal:String(body.goal || ""),scope:String(body.scope || ""),constraints:String(body.constraints || ""),
     initialProposal:String(body.initialProposal || ""),decisionQuestions:String(body.decisionQuestions || ""),
@@ -217,7 +221,9 @@ app.patch("/api/work-items/:id/request-package",(req,res)=>{
     submissionMessage:String(body.submissionMessage || ""),
     assistedByRunId:body.assistedByRunId ? String(body.assistedByRunId) : null
   };
-  if (!packageValue.submissionMessage.trim()) return res.status(400).json({error:"A submission message is required."});
+  if (!packageValue.goal.trim() || !packageValue.scope.trim() || !packageValue.decisionQuestions.trim() || !packageValue.submissionMessage.trim()) {
+    return res.status(400).json({error:"Request Package requires a goal, scope, committee decision questions and a submission message."});
+  }
   const timestamp=now();
   run("UPDATE work_items SET request_package_json=?,context_version=context_version+1,updated_at=? WHERE id=?",
     JSON.stringify(packageValue),timestamp,workItemId);
@@ -275,6 +281,7 @@ app.post("/api/work-items/:id/participations",(req,res)=>{
   if (body.permissions.some((p:string)=>!allowed.includes(p))) return res.status(400).json({error:"Unsupported permission"});
   if (!body.permissions.includes("read")) return res.status(400).json({error:"Every Participation must include read permission."});
   const item=one<{requestor_id:string|null}>("SELECT requestor_id FROM work_items WHERE id=?",workItemId);
+  if (body.roleKey==="chairman" && body.personId===item?.requestor_id) return res.status(400).json({error:"The Requestor cannot also be the assigned Chairman."});
   if (body.roleKey==="chairman" && item?.requestor_id!==actor && !isGlobalAdmin(actor)) return res.status(403).json({error:"Only the Requestor or a Workbench Admin may designate the Chairman."});
   if (body.roleKey==="chairman" && (!body.permissions.includes("read") || !body.permissions.includes("decide") || body.permissions.includes("review"))) return res.status(400).json({error:"The Chairman must have read and decide permission, but is not automatically a Reviewer."});
   const actorGrants=permissions(workItemId,actor);
@@ -312,6 +319,7 @@ app.put("/api/work-items/:id/participations/:participationId",(req,res)=>{
   const current=one<{person_id:string;role_key:string}>("SELECT person_id,role_key FROM participations WHERE id=? AND work_item_id=?",participationId,workItemId);
   if (!current) return res.status(404).json({error:"Participation not found"});
   const item=one<{requestor_id:string|null;chairman_id:string|null}>("SELECT requestor_id,chairman_id FROM work_items WHERE id=?",workItemId);
+  if (body.roleKey==="chairman" && current.person_id===item?.requestor_id) return res.status(400).json({error:"The Requestor cannot also be the assigned Chairman."});
   if (body.roleKey==="chairman" && item?.requestor_id!==actor && !isGlobalAdmin(actor)) return res.status(403).json({error:"Only the Requestor or a Workbench Admin may designate the Chairman."});
   if (body.roleKey==="chairman" && (!body.permissions.includes("read") || !body.permissions.includes("decide") || body.permissions.includes("review"))) return res.status(400).json({error:"The Chairman must have read and decide permission, but is not automatically a Reviewer."});
   const duplicate=one<{id:string}>("SELECT id FROM participations WHERE work_item_id=? AND person_id=? AND role_key=? AND id<>?",workItemId,current.person_id,body.roleKey,participationId);
