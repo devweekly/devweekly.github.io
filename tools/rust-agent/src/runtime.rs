@@ -3534,6 +3534,54 @@ mod tests {
     }
 
     #[test]
+    fn background_task_store_does_not_overwrite_cancellation_or_terminal_states() {
+        let directory = std::env::temp_dir().join(format!(
+            "rust-agent-task-state-{}", new_session_id(now_ms())
+        ));
+        let store = BackgroundTaskStore::new(directory.clone());
+        let mut record = BackgroundTaskRecord {
+            schema_version: super::BACKGROUND_TASK_SCHEMA_VERSION,
+            task_id: "task-cancel-guard".into(),
+            name: "cancel guard".into(),
+            parent_session_id: "parent".into(),
+            model: "test-model".into(),
+            status: BackgroundTaskStatus::Queued,
+            step: 0,
+            created_at_ms: now_ms(),
+            updated_at_ms: now_ms(),
+            result: None,
+            error: None,
+            delivered_at_ms: None,
+            agent_profile: Some(AgentProfile::default_background()),
+            usage: UsageTotals::default(),
+            messages: vec![
+                ChatMessage { role: "system".into(), content: "system".into() },
+                ChatMessage { role: "user".into(), content: "task".into() },
+            ],
+        };
+        store.save(&record).unwrap();
+        record.status = BackgroundTaskStatus::Running;
+        store.save(&record).unwrap();
+
+        let mut cancellation = record.clone();
+        cancellation.status = BackgroundTaskStatus::Cancelling;
+        store.save(&cancellation).unwrap();
+
+        record.step = 1;
+        assert!(matches!(store.save(&record), Err(crate::error::AgentError::Cancelled)));
+        assert_eq!(store.load("task-cancel-guard").unwrap().status, BackgroundTaskStatus::Cancelling);
+
+        cancellation.status = BackgroundTaskStatus::Cancelled;
+        cancellation.updated_at_ms = now_ms();
+        store.save(&cancellation).unwrap();
+
+        record.status = BackgroundTaskStatus::Completed;
+        assert!(store.save(&record).is_err());
+        assert_eq!(store.load("task-cancel-guard").unwrap().status, BackgroundTaskStatus::Cancelled);
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
     fn session_ids_are_safe_file_names() {
         let id = new_session_id(now_ms());
         assert!(SessionStore::validate_id(&id).is_ok());
