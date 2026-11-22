@@ -150,7 +150,7 @@ db.exec(`
     cycle_id TEXT NOT NULL REFERENCES review_cycles(id) ON DELETE CASCADE,
     submission_id TEXT REFERENCES submissions(id),
     requested_by TEXT NOT NULL REFERENCES people(id),
-    artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+    artifact_id TEXT REFERENCES artifacts(id),
     question TEXT NOT NULL,
     response_due_at TEXT NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('requested','answered','unanswered','cancelled')),
@@ -193,6 +193,48 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_workflow_timers_due ON workflow_timers(status,due_at);
   CREATE INDEX IF NOT EXISTS idx_workflow_timers_cycle ON workflow_timers(cycle_id,status);
 `);
+
+// Early versions made clarification targets Artifact-only. Rebuild the table so
+// a reviewer can also ask a question about the Request Package itself.
+const clarificationColumns=all<{name:string;notnull:number}>("PRAGMA table_info(clarification_requests)");
+if (clarificationColumns.find(column=>column.name==="artifact_id")?.notnull===1) {
+  db.exec("PRAGMA foreign_keys=OFF");
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec(`
+      CREATE TABLE clarification_requests_new (
+        id TEXT PRIMARY KEY,
+        work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+        cycle_id TEXT NOT NULL REFERENCES review_cycles(id) ON DELETE CASCADE,
+        submission_id TEXT REFERENCES submissions(id),
+        requested_by TEXT NOT NULL REFERENCES people(id),
+        artifact_id TEXT REFERENCES artifacts(id),
+        question TEXT NOT NULL,
+        response_due_at TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('requested','answered','unanswered','cancelled')),
+        answer TEXT,
+        answered_by TEXT REFERENCES people(id),
+        answered_at TEXT,
+        created_at TEXT NOT NULL
+      );
+      INSERT INTO clarification_requests_new
+        (id,work_item_id,cycle_id,submission_id,requested_by,artifact_id,question,response_due_at,status,answer,answered_by,answered_at,created_at)
+      SELECT id,work_item_id,cycle_id,submission_id,requested_by,artifact_id,question,response_due_at,status,answer,answered_by,answered_at,created_at
+      FROM clarification_requests;
+      DROP TABLE clarification_requests;
+      ALTER TABLE clarification_requests_new RENAME TO clarification_requests;
+      CREATE INDEX IF NOT EXISTS idx_clarifications_item ON clarification_requests(work_item_id,created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_clarifications_due ON clarification_requests(status,response_due_at);
+    `);
+    db.exec("COMMIT");
+  } catch(error) {
+    db.exec("ROLLBACK");
+    throw error;
+  } finally {
+    db.exec("PRAGMA foreign_keys=ON");
+  }
+}
+
 
 run("UPDATE submissions SET submitted_by=created_by WHERE submitted_by IS NULL");
 run("UPDATE work_items SET chairman_id=(SELECT p.person_id FROM participations p WHERE p.work_item_id=work_items.id AND p.role_key IN ('chairman','decision_authority') AND p.permissions_json LIKE '%\"decide\"%' ORDER BY CASE p.role_key WHEN 'chairman' THEN 0 ELSE 1 END LIMIT 1) WHERE chairman_id IS NULL");
