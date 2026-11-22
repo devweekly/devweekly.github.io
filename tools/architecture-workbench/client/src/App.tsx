@@ -42,7 +42,10 @@ const dateText = (value?: string | null) => value ? dayjs(value).format("YYYY-MM
 export default function App() {
   const [bootstrap,setBootstrap] = useState<Bootstrap|null>(null);
   const [actor,setActorState] = useState("u-sa");
-  const [page,setPage] = useState(()=>new URLSearchParams(window.location.search).get("page") || "my-work");
+  const [page,setPage] = useState(()=>{
+    const params=new URLSearchParams(window.location.search);
+    return params.get("page") || (params.has("item") ? "work-items" : "my-work");
+  });
   const [selected,setSelected] = useState<WorkItem|null>(null);
   const [detail,setDetail] = useState<WorkItemDetail|null>(null);
   const [loading,setLoading] = useState(true);
@@ -110,13 +113,22 @@ export default function App() {
     const [fresh,data]=await Promise.all([api.detail(selected.id),api.bootstrap()]);
     setDetail(fresh); setBootstrap(data);
   }
-  useEffect(()=>{setActor(actor);setProfilePersonId(actor);void reload();},[actor]);
+  useEffect(()=>{
+    setActor(actor);setProfilePersonId(actor);setDetail(null);setSelected(null);void reload();
+    const params=new URLSearchParams(window.location.search);
+    const itemId=params.get("item");
+    if(itemId) void api.detail(itemId).then(setDetail).catch(error=>{
+      message.error(error instanceof Error?error.message:"无法打开事项");
+      setPage("work-items");
+      const fallback=new URLSearchParams();fallback.set("page","work-items");
+      window.history.replaceState({}, "", window.location.pathname+"?"+fallback.toString());
+    });
+  },[actor]);
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
-    if(!params.has("page")) {
-      params.set("page",page);
-      window.history.replaceState({}, "", window.location.pathname+"?"+params.toString());
-    }
+    if(params.has("item")) params.set("page","work-items");
+    else if(!params.has("page")) params.set("page",page);
+    window.history.replaceState({}, "", window.location.pathname+"?"+params.toString());
   },[]);
 
   function writeRoute(nextPage:string,itemId?:string|null) {
@@ -135,8 +147,8 @@ export default function App() {
   useEffect(()=>{
     const syncFromUrl=()=>{
       const params=new URLSearchParams(window.location.search);
-      const nextPage=params.get("page") || "my-work";
       const itemId=params.get("item");
+      const nextPage=params.get("page") || (itemId ? "work-items" : "my-work");
       setPage(nextPage);
       if(itemId) {
         setSelected(null); setDetail(null);
@@ -149,15 +161,6 @@ export default function App() {
     return ()=>window.removeEventListener("popstate",syncFromUrl);
   },[]);
   useEffect(()=>{if(detail) setSelected(detail.workItem);},[detail]);
-  useEffect(()=>{
-    const itemId=new URLSearchParams(window.location.search).get("item");
-    if(!itemId || !bootstrap) return;
-    const item=bootstrap.workItems.find(candidate=>candidate.id===itemId);
-    if(item) {
-      setSelected(item);
-      if(!detail || detail.workItem.id!==itemId) void api.detail(itemId).then(setDetail).catch(error=>message.error(error instanceof Error?error.message:"无法打开事项"));
-    }
-  },[bootstrap]);
 
   const actorPerson=bootstrap?.people.find(person=>person.id===actor);
   const profilePerson=bootstrap?.people.find(person=>person.id===(profilePersonId || actor)) || actorPerson;
