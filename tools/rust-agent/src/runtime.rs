@@ -425,7 +425,9 @@ impl SessionStore {
                 let previous = record.messages.len();
                 record.messages.retain(|message| {
                     !sources.iter().any(|item|
-                        item.session_id == session_id && item.content == message.content
+                        item.session_id == session_id
+                            && !item.content.is_empty()
+                            && message.content.contains(&item.content)
                     )
                 });
                 let count = previous.saturating_sub(record.messages.len());
