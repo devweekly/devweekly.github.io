@@ -85,6 +85,11 @@ LangChain / DeepAgents 可以作为未来 Agent Runtime 的实现选择，LangSm
 
 安装项目依赖后，配置 MCP 地址、远程 Bearer Token（远程模式）、要运行的角色和 Executor 插件路径：
 
+    # Workbench Server lease settings
+    AGENT_RUN_LEASE_MS=60000
+    AGENT_RUN_LEASE_SWEEP_MS=10000
+
+    # Separate Agent Host process
     MCP_URL=http://localhost:4000/mcp
     MCP_DEMO_USER_ID=u-agent
     AGENT_EXECUTOR_MODULE=/absolute/path/to/agent-executors.ts
