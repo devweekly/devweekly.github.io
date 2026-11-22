@@ -564,7 +564,7 @@ export default function App() {
         <Steps current={detail.workflow.currentStep} status={detail.workflow.visualStatus} items={detail.workflow.steps} />
         <Space wrap className="workflow-actions">
           {detail.workflow.availableActions.includes("start_analysis") && <Button type="primary" onClick={()=>void transitionWorkflow("start_analysis")}>开始处理</Button>}
-          {detail.workflow.availableActions.includes("submit_for_review") && <Button type="primary" onClick={()=>void transitionWorkflow("submit_for_review")}>提交评审</Button>}
+
           {detail.workflow.availableActions.includes("close") && <Button onClick={()=>void transitionWorkflow("close")}>关闭事项</Button>}
         </Space>
         {detail.workflow.history.length>0 && <details className="workspace-disclosure">
