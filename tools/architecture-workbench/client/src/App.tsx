@@ -666,7 +666,7 @@ export default function App() {
             title={<Space wrap><Text strong>{debt.code} · {debt.title}</Text><Tag color={debt.severity==="high"?"error":debt.severity==="medium"?"warning":"default"}>{debt.severity==="high"?"高严重度":debt.severity==="medium"?"中严重度":"低严重度"}</Tag><Tag color={debt.debt_status==="resolved"?"success":debt.debt_status==="in_progress"?"processing":"default"}>{debt.debt_status==="resolved"?"已解决":debt.debt_status==="in_progress"?"处理中":debt.debt_status==="deferred"?"已延期":"待处理"}</Tag></Space>}
             description={<Space wrap><Text type="secondary" className="small">负责人：{debt.owner_name}</Text>{debt.target_date?<Text type="secondary" className="small">目标：{dateText(debt.target_date)}</Text>:null}<Text type="secondary" className="small">优先级：{debt.priority}</Text></Space>}
           />
-        </List.Item>} />
+        </List.Item>} />}
       </Card>
       
       <Card size="small" title="讨论" className="workspace-section">
