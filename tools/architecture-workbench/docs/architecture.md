@@ -81,7 +81,7 @@ For a remote deployment, configure MCP_ALLOWED_HOSTS, a static bearer secret and
 
 ## Business MCP Tools and Agent Coordinator
 
-The same MCP endpoint publishes the Skill catalog and business tools. Each tool handler resolves the current MCP caller and re-checks the Work Item's Participation permissions; the Host cannot gain rights by loading a Skill. The tools support Work Item search/read, Context Capsule retrieval, workflow projection, Task creation/update, draft Artifact creation and discussion.
+The same MCP endpoint publishes the Skill catalog and business tools. Each tool handler resolves the current MCP caller and re-checks the Work Item's Participation permissions; the Host cannot gain rights by loading a Skill. The tools support Work Item search/read, Context Capsule retrieval, workflow projection, Task creation/update, draft Artifact creation, Agent-prepared Request Package suggestions and discussion. A Package suggestion requires the Run's live claim token and remains pending until the Requestor adopts it.
 
 The Coordinator owns persistent Agent Run records and append-only execution events. It does not perform LLM inference. A pull-based Agent Host polls with `agent_claim_next_run`, claims only Runs visible to its service identity and executes the model call externally, using the Skill URI and MCP business tools. This keeps the Workbench independent of Copilot SDK, CodeBuddy SDK or any model vendor.
 
