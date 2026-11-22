@@ -92,7 +92,7 @@ export function seed() {
     packageValue.submissionMessage,JSON.stringify(packageValue),"u-sa");
   const seedDeadline="2026-11-27T23:59:59.000Z";
   run("INSERT INTO review_cycles(id,work_item_id,submission_id,name,baseline_json,status,due_date,review_deadline_at,reviewer_snapshot_json,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-    "cycle-101",wi,"sub-101","Review · Submission 1",JSON.stringify(reviewBaseline),"active","2026-11-27",seedDeadline,
+    "cycle-101",wi,"sub-101","第一轮评审",JSON.stringify(reviewBaseline),"active","2026-11-27",seedDeadline,
     JSON.stringify([{person_id:"u-ea",display_name:"Kenji Sato",role_key:"enterprise_architect"},{person_id:"u-sec",display_name:"Mina Ito",role_key:"security_architect"},{person_id:"u-dev",display_name:"Ryo Nakamura",role_key:"development_manager"}]),"u-sa",created);
   run("INSERT INTO workflow_timers(id,work_item_id,cycle_id,submission_id,timer_type,due_at,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
     "timer-seed-review",wi,"cycle-101","sub-101","review_deadline",seedDeadline,"scheduled",created,created);
