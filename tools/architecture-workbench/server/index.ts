@@ -64,8 +64,8 @@ app.get("/api/bootstrap",(req,res)=>{
   const workItems = all("SELECT w.*,p.display_name AS owner_name,(SELECT COUNT(*) FROM artifacts a WHERE a.work_item_id=w.id) AS artifact_count,(SELECT COUNT(*) FROM tasks t WHERE t.work_item_id=w.id AND t.status NOT IN ('done','cancelled')) AS open_task_count FROM work_items w JOIN people p ON p.id=w.owner_id WHERE w.type <> 'technical_debt' AND (?=1 OR EXISTS (SELECT 1 FROM participations mine WHERE mine.work_item_id=w.id AND mine.person_id=?)) ORDER BY w.updated_at DESC",isGlobalAdmin(actor)?1:0,actor);
   const debts = all("SELECT w.id,w.code,w.title,w.status,w.owner_id,w.target_date,w.priority,p.display_name AS owner_name,d.severity,d.target_state,d.remediation_plan,d.status AS debt_status,d.source_decision_id FROM work_items w JOIN debt_details d ON d.work_item_id=w.id JOIN people p ON p.id=w.owner_id WHERE (?=1 OR EXISTS (SELECT 1 FROM participations mine WHERE mine.work_item_id=w.id AND mine.person_id=?) OR EXISTS (SELECT 1 FROM work_item_relations rel JOIN participations origin_part ON origin_part.work_item_id=rel.source_work_item_id WHERE rel.target_work_item_id=w.id AND origin_part.person_id=?)) ORDER BY CASE d.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,w.target_date",isGlobalAdmin(actor)?1:0,actor,actor);
   const counts = {
-    openWorkItems: one<{n:number}>("SELECT COUNT(*) AS n FROM work_items WHERE type <> 'technical_debt' AND status NOT IN ('closed','rejected')")?.n || 0,
-    awaitingReview: one<{n:number}>("SELECT COUNT(*) AS n FROM work_items WHERE type <> 'technical_debt' AND status='in_review'")?.n || 0,
+    openWorkItems: one<{n:number}>("SELECT COUNT(*) AS n FROM work_items WHERE type <> 'technical_debt' AND status<>'closed'")?.n || 0,
+    awaitingReview: one<{n:number}>("SELECT COUNT(*) AS n FROM work_items WHERE type <> 'technical_debt' AND status IN ('discussion_review','waiting_requestor')")?.n || 0,
     activeDebts: one<{n:number}>("SELECT COUNT(*) AS n FROM debt_details WHERE status IN ('open','in_progress')")?.n || 0,
     myTasks: one<{n:number}>("SELECT COUNT(*) AS n FROM tasks WHERE (assignee_id=? OR owner_id=?) AND status NOT IN ('done','cancelled')",actor,actor)?.n || 0
   };
@@ -141,9 +141,9 @@ app.get("/api/analytics",(req,res)=>{
     generatedAt:now(),
     requests:{
       total:requests.length,
-      active:requests.filter(r=>!["accepted","rejected","closed"].includes(r.status)).length,
-      inReview:requests.filter(r=>r.status==="in_review").length,
-      overdue:requests.filter(r=>r.target_date && r.target_date<today && !["accepted","rejected","closed"].includes(r.status)).length,
+      active:requests.filter(r=>r.status!=="closed").length,
+      inReview:requests.filter(r=>["discussion_review","waiting_requestor"].includes(r.status)).length,
+      overdue:requests.filter(r=>r.target_date && r.target_date<today && r.status!=="closed").length,
       linked:requestLinkedIds.size,
       withoutExternalLinks:requests.length-requestLinkedIds.size,
       byStatus:group(requests as unknown as Array<{[key:string]:unknown}>,"status"),
