@@ -267,21 +267,6 @@ export default function App() {
     } catch (error) { message.error(error instanceof Error ? error.message : "流程转换失败"); }
   }
 
-  async function applyAgentRequestPackageDraft(draftId:string) {
-    if (!selected) return;
-    setBusy(true);
-    try {
-      await api.applyRequestPackageDraft(selected.id,draftId);
-      message.success("Agent 草案已应用到 Request Package；请检查并由 Requestor 正式提交。");
-      await reload();
-      await refreshDetail();
-    } catch(error) {
-      message.error(error instanceof Error ? error.message : "应用 Agent 草案失败");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   function openParticipantDialog(participant?:Participation) {
     setEditingParticipationId(participant?.id || null);
     participantForm.resetFields();
@@ -568,14 +553,6 @@ export default function App() {
         : (phaseAction[item.status] || "确认下一步工作。");
     const requestPackage=(()=>{try{return JSON.parse(item.request_package_json || "{}") as Record<string,unknown>;}catch{return {};}})();
     const canSubmitRequest=item.requestor_id===actor;
-    const pendingPackageDraft=detail.requestPackageDrafts.find(draft=>draft.status==="pending");
-    const pendingPackageDraftValue=(()=>{try{return pendingPackageDraft ? JSON.parse(pendingPackageDraft.draft_json) as Record<string,unknown> : null;}catch{return null;}})();
-    const latestArtifacts=detail.artifacts.filter((artifact,index,all)=>all.findIndex(candidate=>(candidate.code || candidate.id)===(artifact.code || artifact.id))===index);
-    const manifestEntries=(manifest:string):{id:string;version:number;code?:string|null;type?:string;title?:string;content_hash?:string}[]=>{
-      try { const parsed=JSON.parse(manifest); return Array.isArray(parsed)?parsed:[]; }
-      catch { return []; }
-    };
-    const manifestCount=(manifest:string)=>manifestEntries(manifest).length;
     const showArtifact=(artifact:Artifact)=>Modal.info({
       title:(artifact.code || artifact.type)+" · "+artifact.title+" · v"+artifact.version,
       width:820,
@@ -617,24 +594,6 @@ export default function App() {
         </Row>
       </Card>
       <Card size="small" title="Request Package" className="workspace-section">
-        {pendingPackageDraft && ["draft","requestor_revision"].includes(item.status) && <Alert
-          type="info"
-          showIcon
-          message="Agent 已准备 Request Package 草案"
-          description={<>
-            <div>{pendingPackageDraft.agent_skill_name} · {pendingPackageDraft.created_by_name} · {dateText(pendingPackageDraft.created_at)}</div>
-            <div className="small muted">目标：{String(pendingPackageDraftValue?.goal || "—")}；范围：{String(pendingPackageDraftValue?.scope || "—")}</div>
-            <div className="small muted">约束与风险：{String(pendingPackageDraftValue?.constraints || "未填写")}</div>
-            <div className="small muted">初步方案：{String(pendingPackageDraftValue?.initialProposal || "未提供")}</div>
-            <div className="small muted">需要决定的问题：{String(pendingPackageDraftValue?.decisionQuestions || "未填写")}</div>
-            <div className="small muted">提交说明：{String(pendingPackageDraftValue?.submissionMessage || "—")}</div>
-            {pendingPackageDraft.agent_run_status!=="completed" ? <div className="small muted">Agent Run 尚未完成，完成后才能采用。</div> : null}
-          </>}
-          action={canSubmitRequest && pendingPackageDraft.agent_run_status==="completed"
-            ? <Button size="small" disabled={busy} onClick={()=>void applyAgentRequestPackageDraft(pendingPackageDraft.id)}>采用 Agent 草案</Button>
-            : null}
-          className="modal-alert"
-        />}
         <Row gutter={[20,12]}>
           <Col xs={24} md={12}><Text type="secondary" className="workflow-label">业务目标</Text><Paragraph>{String(requestPackage.goal || item.description || "尚未填写")}</Paragraph></Col>
           <Col xs={24} md={12}><Text type="secondary" className="workflow-label">范围</Text><Paragraph>{String(requestPackage.scope || "尚未填写")}</Paragraph></Col>
@@ -659,57 +618,46 @@ export default function App() {
         </details>}
       </Card>
 
-      <Card size="small" title="当前工作" className="workspace-section" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>{setEditingTaskId(null);taskForm.resetFields();taskForm.setFieldsValue({ownerId:item.owner_id,assigneeId:detail.participants.some(person=>person.person_id===actor)?actor:undefined});setTaskOpen(true);}}>新增任务</Button>:null}>
-        {detail.tasks.length===0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有待办任务" /> :
-          <Table rowKey="id" size="middle" dataSource={detail.tasks} pagination={false} columns={[
-            {title:"工作内容",dataIndex:"title",render:(value:string,task:WorkTask)=><Space direction="vertical" size={2}><Text strong>{value}</Text><Text type="secondary" className="small">{task.kind.replaceAll("_"," ")}</Text></Space>},
-            {title:"任务负责人",dataIndex:"owner_name",render:(value:string|null)=><Text>{value || item.owner_name}</Text>},
-            {title:"执行分配",dataIndex:"assignee_name",render:(_:string|null,task:WorkTask)=>taskExecutor(task)},
-            {title:"状态",dataIndex:"status",render:(value:string,task:WorkTask)=><Select size="small" value={value} disabled={!permissions.includes("contribute") && task.assignee_id!==actor && task.owner_id!==actor} style={{width:112}} onChange={status=>void updateTask(task.id,status)} options={[{value:"open",label:"待处理"},{value:"in_progress",label:"处理中"},{value:"blocked",label:"受阻"},{value:"done",label:"完成"},{value:"cancelled",label:"取消"}]} />},
-            {title:"目标日期",dataIndex:"due_date",render:dateText},
-            {title:"",key:"actions",width:100,render:(_:unknown,task:WorkTask)=>permissions.includes("contribute")?<Button size="small" type="link" icon={<EditOutlined />} onClick={()=>editTaskAssignment(task)}>调整分工</Button>:null}
-          ]} />
-        }
+      <Card size="small" title="协作进展" className="workspace-section" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>{setEditingTaskId(null);taskForm.resetFields();taskForm.setFieldsValue({ownerId:item.owner_id,assigneeId:detail.participants.some(person=>person.person_id===actor)?actor:undefined});setTaskOpen(true);}}>添加工作项</Button>:null}>
+        <Paragraph type="secondary" className="small">这里展示正在推进、等待处理或遇到阻塞的工作。普通工作更新不代表审批；正式结论只在决定会议中记录。</Paragraph>
+        {detail.tasks.length===0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂时没有协作工作项" /> : (() => {
+          const groups=[
+            {key:"in_progress",label:"正在推进"},
+            {key:"open",label:"待开始"},
+            {key:"blocked",label:"需要协调"},
+            {key:"done",label:"已完成"}
+          ];
+          return <div className="work-progress-groups">{groups.map(group=>{
+            const rows=detail.tasks.filter(task=>task.status===group.key);
+            if(!rows.length) return null;
+            return <section className="work-progress-group" key={group.key}>
+              <div className="work-progress-heading"><Text strong>{group.label}</Text><Text type="secondary" className="small">{rows.length}</Text></div>
+              <List size="small" dataSource={rows} renderItem={task=><List.Item
+                actions={[
+                  <Select key="status" size="small" value={task.status} disabled={!permissions.includes("contribute") && task.assignee_id!==actor && task.owner_id!==actor} style={{width:112}} onChange={status=>void updateTask(task.id,status)} options={[{value:"open",label:"待开始"},{value:"in_progress",label:"进行中"},{value:"blocked",label:"需要协调"},{value:"done",label:"已完成"},{value:"cancelled",label:"取消"}]} />,
+                  permissions.includes("contribute")?<Button key="edit" size="small" type="link" icon={<EditOutlined />} onClick={()=>editTaskAssignment(task)}>调整</Button>:null
+                ].filter(Boolean)}
+              >
+                <List.Item.Meta
+                  title={<Space wrap><Text strong>{task.title}</Text><Tag>{task.kind.replaceAll("_"," ")}</Tag></Space>}
+                  description={<Space wrap size={[12,4]}><Text type="secondary" className="small">负责：{task.owner_name || item.owner_name}</Text><Text type="secondary" className="small">执行：{taskExecutor(task)}</Text>{task.due_date?<Text type="secondary" className="small">目标：{dateText(task.due_date)}</Text>:null}</Space>}
+                />
+              </List.Item>} />
+            </section>;
+          })}</div>;
+        })()}
       </Card>
 
-      <Card size="small" title="交付材料" className="workspace-section" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>setArtifactOpen(true)}>添加材料</Button>:null}>
-        {latestArtifacts.length===0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未提交材料" /> :
-          <List dataSource={latestArtifacts} renderItem={artifact=><List.Item actions={[<Button key="view" type="link" onClick={()=>showArtifact(artifact)}>查看</Button>]}>
-            <List.Item.Meta avatar={<Avatar icon={<FileProtectOutlined />} />} title={<Space wrap><Text strong>{artifact.title}</Text><Tag>{artifact.code || artifact.type}</Tag><Tag>v{artifact.version}</Tag></Space>} description={<>{artifact.summary || "暂无摘要"}<div className="small muted">{artifact.submitter_name} · {dateText(artifact.created_at)}</div></>} />
+      <Card size="small" title={"关联资源 · "+detail.externalLinks.length} className="workspace-section" extra={permissions.includes("contribute")?<Button size="small" icon={<LinkOutlined />} onClick={()=>void openExternalLinkDialog()}>添加链接</Button>:null}>
+        <Paragraph type="secondary" className="small">原始业务材料保留在 Jira、Confluence、GitHub 和 LeanIX 等源系统中；这里仅记录关联链接，不复制或维护另一套材料版本。</Paragraph>
+        {detail.externalLinks.length===0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未关联外部资源" /> :
+          <List size="small" dataSource={detail.externalLinks} renderItem={link=><List.Item actions={[link.url?<a key="open" href={link.url} target="_blank" rel="noreferrer">打开</a>:null,permissions.includes("contribute")?<Button key="remove" type="link" danger size="small" onClick={()=>void removeExternalLink(link.id)}>移除</Button>:null].filter(Boolean)}>
+            <List.Item.Meta
+              title={<Space wrap><Tag color={link.provider==="jira"?"blue":link.provider==="confluence"?"purple":link.provider==="github"?"default":"cyan"}>{link.provider.toUpperCase()}</Tag><Text strong>{link.external_key || link.title}</Text></Space>}
+              description={<>{link.title}{link.relation_type && link.relation_type!=="related_to"?" · "+link.relation_type.replaceAll("_"," "):""}</>}
+            />
           </List.Item>} />
         }
-        {detail.submissions.length>0 && <div className="submission-history">
-          <Text type="secondary" className="small">正式提交记录</Text>
-          <List size="small" dataSource={detail.submissions} renderItem={submission=>{
-            const entries=manifestEntries(submission.manifest_json);
-            const packageSnapshot=(()=>{try{return JSON.parse(submission.package_json || "{}") as Record<string,unknown>;}catch{return {};}})();
-            const externalReferences=Array.isArray(packageSnapshot.externalReferences) ? packageSnapshot.externalReferences as {provider:string;external_key:string;title:string;url:string;relation_type:string}[] : [];
-            return <List.Item>
-              <List.Item.Meta title={<Space direction="vertical" size={2}><Text strong>{"Submission "+submission.sequence+" · "+entries.length+" 份材料"}</Text>{submission.submission_message ? <Text type="secondary">{submission.submission_message}</Text> : null}</Space>} description={<>
-                <div>{submission.created_by_name} · {dateText(submission.created_at)} · Context v{submission.context_version ?? "legacy"}{submission.assisted_by_run_id ? " · Agent Run "+submission.assisted_by_run_id : ""}</div>
-                <details className="submission-manifest-disclosure">
-                  <summary>查看本次提交固定的 Request Package、材料与引用</summary>
-                  <div className="small"><strong>预期结果：</strong>{String(packageSnapshot.goal || "—")}</div>
-                  <div className="small"><strong>范围：</strong>{String(packageSnapshot.scope || "—")}</div>
-                  <div className="small"><strong>约束与风险：</strong>{String(packageSnapshot.constraints || "—")}</div>
-                  <div className="small"><strong>初步方案：</strong>{String(packageSnapshot.initialProposal || "未提供")}</div>
-                  <div className="small"><strong>委员会需决定：</strong>{String(packageSnapshot.decisionQuestions || "—")}</div>
-                  {externalReferences.length>0 && <div className="small submission-reference-list"><strong>外部证据与引用：</strong>{externalReferences.map((reference,index)=><span key={reference.provider+reference.external_key+index}>{index>0?" · ":""}<a href={reference.url} target="_blank" rel="noreferrer">{reference.external_key || reference.title}</a></span>)}</div>}
-                  <List size="small" dataSource={entries} renderItem={entry=><List.Item>
-                    <List.Item.Meta title={<Space wrap><Text>{entry.code || entry.type || entry.id}</Text><Text strong>{entry.title || "材料"}</Text><Tag>v{entry.version}</Tag></Space>} description={entry.content_hash ? "SHA-256 · "+entry.content_hash.slice(0,16)+"…" : "历史基线未记录内容指纹"} />
-                  </List.Item>} />
-                </details>
-              </>} />
-              {currentCycle?.submission_id===submission.id ? <Tag color="processing">当前评审基线</Tag> : null}
-            </List.Item>;
-          }} />
-        </div>}
-        <details className="workspace-disclosure">
-          <summary>材料版本历史（{detail.artifacts.length} 个版本）</summary>
-          <List size="small" dataSource={detail.artifacts} renderItem={artifact=><List.Item actions={[<Button key="view" type="link" onClick={()=>showArtifact(artifact)}>查看版本</Button>]}>
-            <List.Item.Meta title={<Space wrap><Text>{artifact.title}</Text><Tag>{artifact.code || artifact.type}</Tag><Tag>v{artifact.version}</Tag></Space>} description={artifact.submitter_name+" · "+dateText(artifact.created_at)} />
-          </List.Item>} />
-        </details>
       </Card>
 
       <Card size="small" title="讨论" className="workspace-section">
