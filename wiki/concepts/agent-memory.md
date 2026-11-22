@@ -42,5 +42,7 @@ Persistent memory and active context are different. The agent should retrieve on
 
 Give source-specific work independent write targets, then serialize consolidation of shared concepts and indexes. Preserve source history and temporal changes. Evaluate memory by whether it improves future decisions and user outcomes—not by the number of stored notes.
 
+Memory can become an evolving component of an agent harness. Durable updates that improve later task performance are evidence of retained self-improvement; they are not strict RSI unless the processes that select, consolidate, evaluate, or install memory updates are themselves improved and independently tested. See [Recursive Self-Improvement](recursive-self-improvement.md).
+
 [^anthropic-agent-memory]: [Anthropic, The components of agent memory](https://www.anthropic.com/research/components-of-agent-memory).
 [^memory-survey]: [Han et al., Learning to Remember](https://link.springer.com/article/10.1007/s44336-026-00044-1).
