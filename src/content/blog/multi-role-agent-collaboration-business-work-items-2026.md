@@ -132,7 +132,7 @@ MCP 侧应提供表达业务意图的工具，例如 `list_my_work_items`、`get
 
 A2A 适合委托给其他团队、供应商或组织维护的独立 Agent，例如安全情报、合规分析或第三方评估服务。适配层需要保存本地 Work Item ID、Collaboration Task ID、远端 A2A Task ID、A2A Context ID、Artifact Reference 和 Correlation ID 的映射。远端 Task 的状态与产物返回后，平台还要检查它对应的本地 Task、上下文版本和授权范围，决定是否接受结果。协议响应本身不能直接推进正式业务状态。
 
-ACP 的位置更靠近用户本地工作环境。Local Connector 可以通过 ACP 或某个 Runtime 的原生 CLI / SDK 接入 Copilot、Claude Code 或其他 Agent Runtime。不同 Runtime 的 Session 能力、工具访问、取消和 Sandbox 支持并不完全一样，适配器应提供明确的 Capability Manifest，而不是假设所有 Runtime 都能被伪装成相同实现。无论底层使用哪一种方式，Connector 最终都通过平台业务 API 提交工作结果。
+ACP 的位置更靠近用户本地工作环境。Local Connector 可以通过 [Agent Client Protocol](https://agentclientprotocol.com/) 或某个 Runtime 的原生 CLI / SDK 接入 Copilot、Claude Code 或其他 Agent Runtime。不同 Runtime 的 Session 能力、工具访问、取消和 Sandbox 支持并不完全一样，适配器应提供明确的 Capability Manifest，而不是假设所有 Runtime 都能被伪装成相同实现。无论底层使用哪一种方式，Connector 最终都通过平台业务 API 提交工作结果。
 
 网站应该支持多种参与方式。最简单的是用户复制 Context Capsule 到自己熟悉的 Agent，再把结果作为 Artifact 提交；有集成能力的 Agent 可以通过 Remote MCP 读取 Task 并提交；需要本地文件和工具时，由用户自己的 Connector 接入 Local Runtime；真正跨独立 Agent 服务的协作再使用 A2A。平台不必强迫用户在网站注册每一个 Agent，也不需要第一阶段就托管所有人的 Agent Runtime。
 
