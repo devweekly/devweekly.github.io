@@ -330,6 +330,8 @@ app.post("/api/work-items/:id/reviews",(req,res)=>{
   if (!requirePermission(res,workItemId,actor,"review")) return;
   const body=req.body || {};
   const outcome=String(body.outcome || "comment");
+  const summary=String(body.summary || "").trim();
+  if (!summary) return res.status(400).json({error:"A review comment or objection reason is required."});
   if (!["comment","objection","clarification_requested"].includes(outcome)) {
     return res.status(400).json({error:"Reviewers may comment, request clarification or raise a blocking objection. Formal outcomes belong to the Decision Meeting."});
   }
@@ -353,21 +355,23 @@ app.post("/api/work-items/:id/reviews",(req,res)=>{
   }
   let reviewId:string|null=null;
   const timestamp=now();
-  if (artifact) {
-    reviewId=id("rev");
-    run("INSERT INTO reviews(id,cycle_id,artifact_id,artifact_version,reviewer_id,discipline,outcome,summary,findings_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-      reviewId,cycle.id,artifact.id,artifact.version,actor,body.discipline || "General",outcome,String(body.summary || ""),JSON.stringify(body.findings || []),timestamp);
-  } else if (outcome==="comment") {
-    run("INSERT INTO comments(id,work_item_id,author_id,body,created_at) VALUES(?,?,?,?,?)",id("comment"),workItemId,actor,String(body.summary || ""),timestamp);
-  }
-  logActivity(workItemId,actor,"reviewed",artifact ? "artifact" : "request",artifact?.id || workItemId,
-    "Submitted "+outcome+" review"+(artifact ? " for "+artifact.title : " on the Request Package"));
   if (outcome==="objection") {
-    const transition=raiseObjection(workItemId,actor,String(body.summary || "Blocking objection raised"));
+    const transition=raiseObjection(workItemId,actor,summary);
     if (!transition.ok) return res.status(transition.statusCode).json({error:transition.error});
     workflowTimers.wake();
+  } else if (artifact) {
+    reviewId=id("rev");
+    run("INSERT INTO reviews(id,cycle_id,artifact_id,artifact_version,reviewer_id,discipline,outcome,summary,findings_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+      reviewId,cycle.id,artifact.id,artifact.version,actor,body.discipline || "General",outcome,summary,JSON.stringify(body.findings || []),timestamp);
+  } else if (outcome==="comment") {
+    reviewId=id("comment");
+    run("INSERT INTO comments(id,work_item_id,author_id,body,created_at) VALUES(?,?,?,?,?)",reviewId,workItemId,actor,summary,timestamp);
   }
-  res.status(201).json({id:reviewId});
+  if (outcome!=="objection") {
+    logActivity(workItemId,actor,"reviewed",artifact ? "artifact" : "request",artifact?.id || workItemId,
+      "Submitted "+outcome+" review"+(artifact ? " for "+artifact.title : " on the Request Package"));
+  }
+  res.status(201).json({id:reviewId || "objection-recorded"});
 });
 
 app.post("/api/work-items/:id/clarifications/:clarificationId/answer",(req,res)=>{
