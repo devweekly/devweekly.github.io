@@ -23,6 +23,24 @@ impl AttachmentStore {
         if bytes.is_empty() || bytes.len() > MAX_ATTACHMENT_BYTES { return Err(AgentError::InvalidAction(format!("attachment size must be between 1 and {} bytes", MAX_ATTACHMENT_BYTES))); }
         let filename = Path::new(filename).file_name().and_then(|name| name.to_str()).filter(|name| !name.is_empty() && name.len() <= 255).ok_or_else(|| AgentError::InvalidAction("attachment filename must be a valid basename of at most 255 bytes".into()))?;
         if content_type.is_empty() || content_type.len() > 128 || content_type.chars().any(char::is_control) { return Err(AgentError::InvalidAction("attachment content type must contain 1–128 printable bytes".into())); }
+        let quota_lock_path = self.directory.join(".quota.lock");
+        match fs::symlink_metadata(&quota_lock_path) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+                return Err(AgentError::InvalidAction("attachment quota lock must be a regular file".into()));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        let mut lock_options = OpenOptions::new();
+        lock_options.create(true).read(true).write(true);
+        #[cfg(unix)] {
+            use std::os::unix::fs::OpenOptionsExt;
+            lock_options.mode(0o600);
+        }
+        let quota_lock = lock_options.open(&quota_lock_path)?;
+        quota_lock.lock()?;
+
         let mut attachment_count = 0usize;
         let mut stored_bytes = 0u64;
         for entry in fs::read_dir(&self.directory)? {
@@ -61,6 +79,7 @@ impl AttachmentStore {
         if let Err(error) = metadata_options.open(&metadata_path).and_then(|mut file| { file.write_all(&encoded)?; file.sync_all() }) {
             let _ = fs::remove_file(&data_path); let _ = fs::remove_file(&metadata_path); return Err(error.into());
         }
+        quota_lock.unlock()?;
         Ok(item)
     }
 }
