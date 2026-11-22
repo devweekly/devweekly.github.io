@@ -73,7 +73,6 @@ body { color: #1d2939; background: #f4f6f9; }
 @media (min-width: 768px) {
   .app-sider { flex: 0 0 238px !important; max-width: 238px !important; min-width: 238px !important; width: 238px !important; }
 }
-.analytics-insight { display: block; margin: 0 0 10px; font-size: 12px; }
 .analytics-bar { margin: 10px 0 14px; }
 .analytics-track { height: 6px; overflow: hidden; border-radius: 999px; background: #edf1f6; }
 .analytics-track > span { display: block; height: 100%; border-radius: inherit; background: #6484b2; }
