@@ -316,7 +316,7 @@ export function getWorkflowProjection(workItemId:string,actorId:string) {
     visualStatus:status==="rejected_pending_close" ? "error" as const : status==="closed" ? "finish" as const : "process" as const,
     decisionOutcome:item.decision_outcome,
     chairmanId:item.chairman_id,
-    reviewDeadlineAt:cycle?.review_deadline_at || null,
+    reviewDeadlineAt:cycle?.status==="active" ? cycle.review_deadline_at : null,
     activeClarification:clarification || null,
     reviewerSnapshot:cycle?.reviewer_snapshot_json ? JSON.parse(cycle.reviewer_snapshot_json) : [],
     steps:workflowStepDefinitions.map((step,index)=>({
