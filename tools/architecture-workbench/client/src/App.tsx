@@ -267,6 +267,21 @@ export default function App() {
     } catch (error) { message.error(error instanceof Error ? error.message : "流程转换失败"); }
   }
 
+  async function applyAgentRequestPackageDraft(draftId:string) {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await api.applyRequestPackageDraft(selected.id,draftId);
+      message.success("Agent 草案已应用到 Request Package；请检查并由 Requestor 正式提交。");
+      await reload();
+      await refreshDetail();
+    } catch(error) {
+      message.error(error instanceof Error ? error.message : "应用 Agent 草案失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function openParticipantDialog(participant?:Participation) {
     setEditingParticipationId(participant?.id || null);
     participantForm.resetFields();
@@ -553,6 +568,8 @@ export default function App() {
         : (phaseAction[item.status] || "确认下一步工作。");
     const requestPackage=(()=>{try{return JSON.parse(item.request_package_json || "{}") as Record<string,unknown>;}catch{return {};}})();
     const canSubmitRequest=item.requestor_id===actor;
+    const pendingPackageDraft=detail.requestPackageDrafts.find(draft=>draft.status==="pending");
+    const pendingPackageDraftValue=(()=>{try{return pendingPackageDraft ? JSON.parse(pendingPackageDraft.draft_json) as Record<string,unknown> : null;}catch{return null;}})();
     const latestArtifacts=detail.artifacts.filter((artifact,index,all)=>all.findIndex(candidate=>(candidate.code || candidate.id)===(artifact.code || artifact.id))===index);
     const manifestEntries=(manifest:string):{id:string;version:number;code?:string|null;type?:string;title?:string;content_hash?:string}[]=>{
       try { const parsed=JSON.parse(manifest); return Array.isArray(parsed)?parsed:[]; }
@@ -600,6 +617,21 @@ export default function App() {
         </Row>
       </Card>
       <Card size="small" title="Request Package" className="workspace-section">
+        {pendingPackageDraft && <Alert
+          type="info"
+          showIcon
+          message="Agent 已准备 Request Package 草案"
+          description={<>
+            <div>{pendingPackageDraft.agent_skill_name} · {pendingPackageDraft.created_by_name} · {dateText(pendingPackageDraft.created_at)}</div>
+            <div className="small muted">目标：{String(pendingPackageDraftValue?.goal || "—")}；范围：{String(pendingPackageDraftValue?.scope || "—")}</div>
+            <div className="small muted">提交说明：{String(pendingPackageDraftValue?.submissionMessage || "—")}</div>
+            {pendingPackageDraft.agent_run_status!=="completed" ? <div className="small muted">Agent Run 尚未完成，完成后才能采用。</div> : null}
+          </>}
+          action={canSubmitRequest && pendingPackageDraft.agent_run_status==="completed"
+            ? <Button size="small" disabled={busy} onClick={()=>void applyAgentRequestPackageDraft(pendingPackageDraft.id)}>采用 Agent 草案</Button>
+            : null}
+          className="modal-alert"
+        />}
         <Row gutter={[20,12]}>
           <Col xs={24} md={12}><Text type="secondary" className="workflow-label">业务目标</Text><Paragraph>{String(requestPackage.goal || item.description || "尚未填写")}</Paragraph></Col>
           <Col xs={24} md={12}><Text type="secondary" className="workflow-label">范围</Text><Paragraph>{String(requestPackage.scope || "尚未填写")}</Paragraph></Col>
