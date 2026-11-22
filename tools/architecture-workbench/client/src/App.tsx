@@ -421,7 +421,7 @@ export default function App() {
         <Form.Item name="conditions" label="条件 / 限制"><TextArea rows={2} /></Form.Item>
         <Form.Item noStyle shouldUpdate>{({getFieldValue})=>getFieldValue("outcome")==="more_analysis"?<><Form.Item name="followUpTitle" label="后续分析工作"><Input placeholder="明确要补充的分析" /></Form.Item><Form.Item name="followUpOwnerId" label="责任人"><Select allowClear options={(bootstrap?.people || []).map(p=>({value:p.id,label:p.display_name}))} /></Form.Item><Form.Item name="followUpDueDate" label="截止日期"><DatePicker style={{width:"100%"}} /></Form.Item></>:null}</Form.Item>
         <Form.Item noStyle shouldUpdate>{({getFieldValue})=>getFieldValue("outcome")==="accepted_with_conditions"?<>
-          <Divider orientation="start">后续义务（按需创建）</Divider>
+          <Divider titlePlacement="start">后续义务（按需创建）</Divider>
           <Form.Item name="createTechnicalDebt" valuePropName="checked"><Checkbox>需要单独跟踪长期 Technical Debt</Checkbox></Form.Item>
           {getFieldValue("createTechnicalDebt")?<>
           <Form.Item name={["technicalDebt","title"]} label="技术债务标题" rules={[{required:true,message:"请填写技术债务标题"}]}><Input placeholder="例如：移除过渡适配器" /></Form.Item>
@@ -461,7 +461,7 @@ export default function App() {
           {value:"dependency",label:"依赖"}
         ]} /></Form.Item>
         <Form.Item noStyle shouldUpdate>{({getFieldValue})=>getFieldValue("provider")==="confluence" && getFieldValue("resourceType")==="Page"?<>
-          <Divider orientation="start">Confluence Page Template Reference</Divider>
+          <Divider titlePlacement="start">Confluence Page Template Reference</Divider>
           <Form.Item name="templateKey" label="Template Key / ID" rules={[{required:true,message:"请填写该 Page 使用的 Template 标识"}]}><Input placeholder="例如 architecture-decision-record" /></Form.Item>
           <Form.Item name="templateName" label="Template 名称"><Input placeholder="例如 Architecture Decision Record" /></Form.Item>
           <Text type="secondary" className="small">这里只记录 Template 引用。网站 Agent 需要读取模板定义时，通过其配置的 Confluence MCP/API 工具获取；Workbench 后端不实现 Confluence Connector。</Text>
