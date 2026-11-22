@@ -337,14 +337,14 @@ app.patch("/api/tasks/:id",(req,res)=>{
   if (!canManageTask && (body.ownerId!==undefined || body.assigneeId!==undefined || body.dueDate!==undefined)) return res.status(403).json({error:"Task owner and assignee changes require Work Item contributor permission."});
   const statuses=["open","in_progress","blocked","done","cancelled"];
   if (body.status && !statuses.includes(body.status)) return res.status(400).json({error:"Unsupported task status"});
-  if (body.ownerId && !one("SELECT id FROM participations WHERE work_item_id=? AND person_id=?",task.work_item_id,body.ownerId)) {
+  if (body.ownerId!==undefined && (!body.ownerId || !one("SELECT id FROM participations WHERE work_item_id=? AND person_id=?",task.work_item_id,body.ownerId))) {
     return res.status(400).json({error:"Task owner must be a participant of this Work Item."});
   }
   if (body.assigneeId && !one("SELECT id FROM participations WHERE work_item_id=? AND person_id=?",task.work_item_id,body.assigneeId)) {
     return res.status(400).json({error:"Task assignee must be a participant of this Work Item."});
   }
-  run("UPDATE tasks SET status=COALESCE(?,status),owner_id=COALESCE(?,owner_id),assignee_id=COALESCE(?,assignee_id),due_date=COALESCE(?,due_date),updated_at=? WHERE id=?",
-    body.status || null,body.ownerId || null,body.assigneeId || null,body.dueDate || null,now(),taskId);
+  run("UPDATE tasks SET status=COALESCE(?,status),owner_id=CASE WHEN ?=1 THEN ? ELSE owner_id END,assignee_id=CASE WHEN ?=1 THEN ? ELSE assignee_id END,due_date=CASE WHEN ?=1 THEN ? ELSE due_date END,updated_at=? WHERE id=?",
+    body.status || null,body.ownerId!==undefined?1:0,body.ownerId ?? null,body.assigneeId!==undefined?1:0,body.assigneeId ?? null,body.dueDate!==undefined?1:0,body.dueDate ?? null,now(),taskId);
   logActivity(task.work_item_id,actor,"updated","task",taskId,"Task updated",{status:body.status,ownerId:body.ownerId,assigneeId:body.assigneeId,dueDate:body.dueDate});
   res.json({ok:true});
 });
