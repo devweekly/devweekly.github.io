@@ -132,7 +132,12 @@ export function transitionWorkItem(workItemId:string,actorId:string,action:Workf
       const cycle=one<{id:string}>("SELECT id FROM review_cycles WHERE work_item_id=? ORDER BY created_at DESC LIMIT 1",workItemId);
       if (cycle) cancelCycleTimers(cycle.id,timestamp);
     }
-    run("UPDATE work_items SET status=?,context_version=context_version+1,updated_at=? WHERE id=?",validation.to,timestamp,workItemId);
+    const changed=run("UPDATE work_items SET status=?,context_version=context_version+1,updated_at=? WHERE id=? AND status=?",
+      validation.to,timestamp,workItemId,validation.from);
+    if (Number(changed.changes)!==1) {
+      db.exec("ROLLBACK");
+      return {ok:false as const,statusCode:409,error:"The Request changed while the action was being processed. Refresh and try again."};
+    }
     appendTransition(workItemId,validation.from,validation.to,action,reason,actorId,timestamp);
     db.exec("COMMIT");
     return {ok:true as const,from:validation.from,to:validation.to};
@@ -149,9 +154,13 @@ export function raiseObjection(workItemId:string,actorId:string,reason:string) {
   const timestamp=now();
   db.exec("BEGIN IMMEDIATE");
   try {
-    run("UPDATE review_cycles SET status='closed' WHERE id=? AND status='active'",cycle.id);
+    const itemChanged=run("UPDATE work_items SET status='decision_meeting',updated_at=? WHERE id=? AND status='discussion_review'",timestamp,workItemId);
+    const cycleChanged=run("UPDATE review_cycles SET status='closed' WHERE id=? AND status='active'",cycle.id);
+    if (Number(itemChanged.changes)!==1 || Number(cycleChanged.changes)!==1) {
+      db.exec("ROLLBACK");
+      return {ok:false as const,statusCode:409,error:"The review window has already ended. Refresh the Request before raising an objection."};
+    }
     cancelCycleTimers(cycle.id,timestamp);
-    run("UPDATE work_items SET status='decision_meeting',updated_at=? WHERE id=?",timestamp,workItemId);
     appendTransition(workItemId,"discussion_review","decision_meeting","raise_objection",reason,actorId,timestamp);
     db.exec("COMMIT");
     return {ok:true as const};
@@ -182,12 +191,16 @@ export function createClarification(workItemId:string,actorId:string,input:{arti
   db.exec("BEGIN IMMEDIATE");
   try {
     const clarificationId=id("clar");
+    const itemChanged=run("UPDATE work_items SET status='waiting_requestor',updated_at=? WHERE id=? AND status='discussion_review'",timestamp,workItemId);
+    const cycleChanged=run("UPDATE review_cycles SET status='waiting_requestor',remaining_review_ms=?,paused_at=? WHERE id=? AND status='active'",remaining,timestamp,cycle.id);
+    if (Number(itemChanged.changes)!==1 || Number(cycleChanged.changes)!==1) {
+      db.exec("ROLLBACK");
+      return {ok:false as const,statusCode:409,error:"The review window has already ended. Refresh the Request before asking for clarification."};
+    }
     run("INSERT INTO clarification_requests(id,work_item_id,cycle_id,submission_id,requested_by,artifact_id,question,response_due_at,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
       clarificationId,workItemId,cycle.id,cycle.submission_id,actorId,artifact?.id || null,input.question.trim(),dueAt,"requested",timestamp);
     if (artifact) run("INSERT INTO reviews(id,cycle_id,artifact_id,artifact_version,reviewer_id,discipline,outcome,summary,findings_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
       id("rev"),cycle.id,artifact.id,artifact.version,actorId,"General","clarification_requested",input.question.trim(),"[]",timestamp);
-    run("UPDATE review_cycles SET status='waiting_requestor',remaining_review_ms=?,paused_at=? WHERE id=?",remaining,timestamp,cycle.id);
-    run("UPDATE work_items SET status='waiting_requestor',updated_at=? WHERE id=?",timestamp,workItemId);
     run("UPDATE workflow_timers SET status='cancelled',updated_at=? WHERE cycle_id=? AND timer_type='review_deadline' AND status IN ('scheduled','processing')",timestamp,cycle.id);
     run("INSERT INTO workflow_timers(id,work_item_id,cycle_id,submission_id,clarification_id,timer_type,due_at,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
       id("wt"),workItemId,cycle.id,cycle.submission_id,clarificationId,"clarification_deadline",dueAt,"scheduled",timestamp,timestamp);
@@ -246,6 +259,12 @@ export function recordFormalDecision(workItemId:string,actorId:string,input:{out
   const cycle=one<{id:string;submission_id:string|null}>("SELECT id,submission_id FROM review_cycles WHERE work_item_id=? ORDER BY created_at DESC LIMIT 1",workItemId);
   db.exec("BEGIN IMMEDIATE");
   try {
+    const stateChanged=run("UPDATE work_items SET status=?,decision_outcome=?,updated_at=? WHERE id=? AND status='decision_meeting'",
+      nextStatus,input.outcome,timestamp,workItemId);
+    if (Number(stateChanged.changes)!==1) {
+      db.exec("ROLLBACK");
+      return {ok:false as const,statusCode:409,error:"The Decision Meeting has already been completed. Refresh the Request."};
+    }
     const decisionId=id("dec");
     run("INSERT INTO decisions(id,work_item_id,subject_type,subject_id,outcome,rationale,conditions,decision_maker_id,policy_ref,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
       decisionId,workItemId,"work_item",null,input.outcome,input.rationale,input.conditions || "",actorId,"chairman-meeting-v1",timestamp);
@@ -255,7 +274,6 @@ export function recordFormalDecision(workItemId:string,actorId:string,input:{out
       run("UPDATE review_cycles SET status='closed' WHERE id=?",cycle.id);
       cancelCycleTimers(cycle.id,timestamp);
     }
-    run("UPDATE work_items SET status=?,decision_outcome=?,updated_at=? WHERE id=?",nextStatus,input.outcome,timestamp,workItemId);
     appendTransition(workItemId,item.status,nextStatus,"record_decision",input.rationale,actorId,timestamp);
     run("INSERT INTO activity_events(id,work_item_id,actor_id,action,target_type,target_id,summary,metadata_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
       id("evt"),workItemId,actorId,"decision_recorded","decision_meeting",decisionId,"Decision meeting concluded: "+input.outcome,JSON.stringify({outcome:input.outcome,meetingAt:input.meetingAt || timestamp}),timestamp);
