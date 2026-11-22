@@ -58,6 +58,41 @@ function requireParticipantManager(res:express.Response,workItemId:string,actor:
 }
 app.get("/api/health",(_req,res)=>res.json({ok:true,database:"sqlite",storage:process.env.STORAGE_DRIVER || "local"}));
 
+app.get("/api/admin/workflow-timers",(req,res)=>{
+  const actor=actorId(req);
+  if (!isGlobalAdmin(actor)) return res.status(403).json({error:"Only a Workbench Admin may inspect workflow timers."});
+  const requestedStatus=String(req.query.status || "dead_letter");
+  const allowed=["scheduled","processing","dead_letter","completed","cancelled"];
+  if (!allowed.includes(requestedStatus)) return res.status(400).json({error:"Unsupported workflow timer status."});
+  const timers=all(
+    "SELECT t.id,t.work_item_id,w.code AS work_item_code,w.title AS work_item_title,t.cycle_id,t.submission_id,t.clarification_id,t.timer_type,t.due_at,t.status,t.lease_until,t.attempt_count,t.last_error,t.created_at,t.updated_at FROM workflow_timers t JOIN work_items w ON w.id=t.work_item_id WHERE t.status=? ORDER BY t.due_at,t.created_at",
+    requestedStatus
+  );
+  res.json({status:requestedStatus,count:timers.length,timers});
+});
+
+app.post("/api/admin/workflow-timers/:timerId/retry",(req,res)=>{
+  const actor=actorId(req);
+  if (!isGlobalAdmin(actor)) return res.status(403).json({error:"Only a Workbench Admin may retry workflow timers."});
+  const timerId=String(req.params.timerId);
+  const timestamp=now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const retried=run("UPDATE workflow_timers SET status='scheduled',due_at=?,lease_until=NULL,attempt_count=0,last_error=NULL,updated_at=? WHERE id=? AND status='dead_letter'",
+      timestamp,timestamp,timerId);
+    if (Number(retried.changes)!==1) {
+      db.exec("ROLLBACK");
+      return res.status(409).json({error:"Only a dead-letter workflow timer can be retried."});
+    }
+    db.exec("COMMIT");
+  } catch(error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  workflowTimers.wake();
+  res.json({ok:true,id:timerId,status:"scheduled"});
+});
+
 app.get("/api/bootstrap",(req,res)=>{
   const actor = actorId(req);
   const people = all("SELECT id,display_name,title,email,avatar_color,department,location,bio,expertise_json,timezone,is_admin FROM people ORDER BY display_name");
