@@ -458,6 +458,12 @@ impl MemoryStore {
                 last_error TEXT,
                 activity_epoch INTEGER NOT NULL DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS transcript_redaction_tombstones (
+                session_id TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
+                created_at_ms INTEGER NOT NULL,
+                PRIMARY KEY(session_id, content_hash)
+            );
             CREATE TABLE IF NOT EXISTS background_task_leases (
                 task_id TEXT PRIMARY KEY NOT NULL,
                 owner_id TEXT NOT NULL,
@@ -1033,6 +1039,11 @@ impl MemoryStore {
                 row_transcript,
             ).optional()?;
             if let Some(source) = source {
+                transaction.execute(
+                    "INSERT OR IGNORE INTO transcript_redaction_tombstones(session_id,content_hash,created_at_ms)
+                     VALUES (?1,?2,?3)",
+                    params![source.session_id,transcript_content_hash(&source.content),to_i64(now_ms())?],
+                )?;
                 transaction.execute("DELETE FROM transcripts WHERE id=?1", [transcript_id])?;
                 removed_sources.push(source);
             }
@@ -1074,8 +1085,20 @@ impl MemoryStore {
             if deleted >= max_delete { break; }
             let reference = format!("transcript:{id}");
             if !transcript_is_referenced_in_transaction(&transaction, &reference)? {
-                transaction.execute("DELETE FROM transcripts WHERE id=?1", [id])?;
-                deleted += 1;
+                let transcript: Option<(String, String)> = transaction.query_row(
+                    "SELECT session_id,content FROM transcripts WHERE id=?1",
+                    [id],
+                    |row| Ok((row.get(0)?,row.get(1)?)),
+                ).optional()?;
+                if let Some((session_id, content)) = transcript {
+                    transaction.execute(
+                        "INSERT OR IGNORE INTO transcript_redaction_tombstones(session_id,content_hash,created_at_ms)
+                         VALUES (?1,?2,?3)",
+                        params![session_id,transcript_content_hash(&content),to_i64(now_ms())?],
+                    )?;
+                    transaction.execute("DELETE FROM transcripts WHERE id=?1", [id])?;
+                    deleted += 1;
+                }
             }
         }
         transaction.commit()?;
@@ -1299,6 +1322,18 @@ impl MemoryStore {
         let mut inserted = 0;
         for message in messages.iter().filter(|message| message.role != "system") {
             if !message.content.is_empty() {
+                let content_hash = transcript_content_hash(&message.content);
+                let is_redacted: bool = self.conn()?.query_row(
+                    "SELECT EXISTS(
+                        SELECT 1 FROM transcript_redaction_tombstones
+                        WHERE session_id=?1 AND content_hash=?2
+                    )",
+                    params![session_id,content_hash],
+                    |row| row.get(0),
+                )?;
+                if is_redacted {
+                    continue;
+                }
                 // Chat Completions represents tool results as user messages. Recover the
                 // original source classification instead of backfilling them as user input.
                 let role = if message.content.starts_with("Tool result (ok=") {
@@ -2042,6 +2077,17 @@ fn markdown_page_links(content: &str) -> Vec<String> {
         .collect()
 }
 
+fn transcript_content_hash(content: &str) -> String {
+    // Stable 128-bit FNV-1a fingerprint. The tombstone stores no transcript text and
+    // is used only to prevent a forgotten/pruned message from being backfilled again.
+    let mut hash = 0x6c62272e07bb014262b821756295c58du128;
+    for byte in content.as_bytes() {
+        hash ^= u128::from(*byte);
+        hash = hash.wrapping_mul(0x0000000001000000000000000000013bu128);
+    }
+    format!("{hash:032x}")
+}
+
 fn collect_transcript_refs_from_json(
     encoded: &str,
     output: &mut HashSet<String>,
@@ -2746,6 +2792,31 @@ mod tests {
         assert!(store.get(&derived.id).is_err());
         assert!(store.get_page("derived-knowledge").is_err());
         assert!(store.get_transcript(transcript).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn transcript_tombstone_prevents_a_forgotten_session_message_from_being_backfilled() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript(
+            "old-session", None, None, "user", "Do not resurrect this private text"
+        ).unwrap();
+        let memory = store.remember({
+            let mut value = input(MemoryScope::Global, None, "A note derived from a private transcript");
+            value.source_refs = vec![format!("transcript:{transcript}")];
+            value
+        }).unwrap();
+        let sources = store.forget_with_sources(&memory.id).unwrap();
+        assert_eq!(sources.len(), 1);
+        let legacy_messages = vec![ChatMessage {
+            role: "user".into(),
+            content: "Do not resurrect this private text".into(),
+        }];
+        assert_eq!(store.backfill_transcript("old-session", None, &legacy_messages).unwrap(), 0);
+        assert!(store.search_transcripts(
+            "private text", Some("old-session"), None, None, 5
+        ).unwrap().is_empty());
         let _ = fs::remove_dir_all(root);
     }
 
