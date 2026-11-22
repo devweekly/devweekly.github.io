@@ -1,4 +1,4 @@
-# ADR-0001: Work Item-centric Application Boundary
+# ADR-0001: Use Work Item as the Main Business Record
 
 - Status: Accepted
 - Date: 2026-11-22
@@ -13,7 +13,7 @@ The website must remain fully usable without an AI Agent. External Agent Clients
 
 Use Business Work Item as the durable business root. Participation expresses a principal's role and permissions within one Work Item. Task represents executable work. Artifact represents versioned deliverables such as ADRs and architecture documents. Review represents an independent opinion bound to an Artifact version. Decision represents a formal human decision with subject, outcome, rationale and conditions.
 
-Technical Debt is a separately managed Work Item linked to the origin Work Item and, where available, the Decision that created it. Short-lived remediation can remain a Task; debt that needs independent prioritization and lifecycle becomes a Work Item.
+Technical Debt is recorded as a separate Work Item and linked to the Work Item and Decision that caused it. A fix that can be completed as part of the current work stays a Task. Create a separate Technical Debt Work Item only when it needs its own owner, priority and target date.
 
 REST API is the business interface. Remote MCP will be an adapter for external Agent Clients and must call the same application services. No model Runtime or Agent registry is required in the prototype.
 
