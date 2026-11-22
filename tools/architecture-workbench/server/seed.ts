@@ -53,6 +53,14 @@ export function seed() {
   }
   if (all("SELECT id FROM work_items LIMIT 1").length > 0) {
     seedExternalReferences();
+    const demoSubmission=one<{id:string;package_json:string}>("SELECT id,package_json FROM submissions WHERE work_item_id='wi-arch-001' AND sequence=1");
+    if (demoSubmission) {
+      const snapshot=JSON.parse(demoSubmission.package_json || "{}") as Record<string,unknown>;
+      if (!Array.isArray(snapshot.externalReferences)) {
+        const externalReferences=all("SELECT r.provider,r.resource_type,r.external_id,r.external_key,r.title,r.url,l.relation_type,l.confluence_template_key,l.confluence_template_name FROM work_item_external_links l JOIN external_resource_refs r ON r.id=l.resource_id WHERE l.work_item_id=? ORDER BY r.provider,r.resource_type,r.external_key","wi-arch-001");
+        run("UPDATE submissions SET package_json=? WHERE id=?",JSON.stringify({...snapshot,externalReferences}),demoSubmission.id);
+      }
+    }
     return;
   }
   const created = now();
