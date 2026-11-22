@@ -418,20 +418,40 @@ impl SessionStore {
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(error) => return Err(error.into()),
             }
-            let mut record = self.load(&source.session_id)?;
-            let session_id = record.session_id.clone();
-            let previous = record.messages.len();
-            record.messages.retain(|message| {
-                !sources.iter().any(|item|
-                    item.session_id == session_id && item.content == message.content
-                )
-            });
-            let count = previous.saturating_sub(record.messages.len());
-            if count > 0 {
+            let mut saved = false;
+            for _attempt in 0..3 {
+                let mut record = self.load(&source.session_id)?;
+                let session_id = record.session_id.clone();
+                let previous = record.messages.len();
+                record.messages.retain(|message| {
+                    !sources.iter().any(|item|
+                        item.session_id == session_id && item.content == message.content
+                    )
+                });
+                let count = previous.saturating_sub(record.messages.len());
+                if count == 0 {
+                    saved = true;
+                    break;
+                }
                 record.updated_at_ms = now_ms();
                 record.revision = record.revision.saturating_add(1);
-                self.save_record(&record)?;
-                removed = removed.saturating_add(count);
+                match self.save_record(&record) {
+                    Ok(()) => {
+                        removed = removed.saturating_add(count);
+                        saved = true;
+                        break;
+                    }
+                    Err(AgentError::InvalidAction(message)) if message.starts_with("session write conflict:") => {
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            if !saved {
+                return Err(AgentError::InvalidAction(format!(
+                    "could not redact the source messages from session {} after concurrent updates",
+                    source.session_id
+                )));
             }
         }
         Ok(removed)
@@ -1149,13 +1169,22 @@ impl AgentRuntime {
     pub fn forget_memory(&mut self, id: &str) -> Result<(), AgentError> {
         let sources = self.memory_store.forget_with_sources(id)?;
         let current_session_id = self.session.session_id.clone();
-        self.store.redact_transcript_sources(&sources)?;
+        let redaction = self.store.redact_transcript_sources(&sources);
         if sources.iter().any(|source| source.session_id == current_session_id) {
-            // Reload after the revision-checked file update so a concurrent Runtime
-            // cannot have its newer messages discarded by this instance's stale copy.
-            self.session = self.store.load(&current_session_id)?;
-            self.messages = self.session.messages.clone();
+            if redaction.is_ok() {
+                // Reload after the revision-checked file update so a concurrent Runtime
+                // cannot have its newer messages discarded by this instance's stale copy.
+                self.session = self.store.load(&current_session_id)?;
+                self.messages = self.session.messages.clone();
+            } else {
+                // Never let the just-forgotten source remain in the active model context,
+                // even if the persisted session was concurrently modified or inaccessible.
+                self.messages.retain(|message| !sources.iter().any(|source|
+                    source.session_id == current_session_id && source.content == message.content
+                ));
+            }
         }
+        redaction?;
         Ok(())
     }
 
