@@ -3,6 +3,7 @@ import express from "express";
 import multer from "multer";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { createHash } from "node:crypto";
 import { all, db, id, now, one, run } from "./db.js";
 import { createObjectStore } from "./object-store.js";
 import { seed } from "./seed.js";
@@ -276,7 +277,7 @@ app.post("/api/work-items/:id/artifacts",(req,res)=>{
   const code=body.code ? String(body.code) : null;
   const latest=code ? one<{version:number}>("SELECT MAX(version) AS version FROM artifacts WHERE work_item_id=? AND code=?",workItemId,code) : undefined;
   const version=(latest?.version || 0)+1; const artifactId=id("art"); const content=String(body.content);
-  const hash=Buffer.from(content).toString("base64").slice(0,32);
+  const hash=createHash("sha256").update(content).digest("hex");
   run("INSERT INTO artifacts(id,work_item_id,type,code,title,version,status,summary,content,submitted_by,content_hash,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",artifactId,workItemId,body.type,code,body.title,version,body.status || "draft",body.summary || "",content,actor,hash,now());
   run("UPDATE work_items SET context_version=context_version+1,updated_at=? WHERE id=?",now(),workItemId);
   logActivity(workItemId,actor,"submitted","artifact",artifactId,"Submitted "+(code || body.type)+" v"+version);
@@ -344,7 +345,7 @@ app.patch("/api/tasks/:id",(req,res)=>{
   }
   run("UPDATE tasks SET status=COALESCE(?,status),owner_id=COALESCE(?,owner_id),assignee_id=COALESCE(?,assignee_id),due_date=COALESCE(?,due_date),updated_at=? WHERE id=?",
     body.status || null,body.ownerId || null,body.assigneeId || null,body.dueDate || null,now(),taskId);
-  logActivity(task.work_item_id,actor,"updated","task",taskId,"Task updated",{status:body.status,assigneeId:body.assigneeId});
+  logActivity(task.work_item_id,actor,"updated","task",taskId,"Task updated",{status:body.status,ownerId:body.ownerId,assigneeId:body.assigneeId,dueDate:body.dueDate});
   res.json({ok:true});
 });
 
