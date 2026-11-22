@@ -821,19 +821,21 @@ impl MemoryStore {
 
         let memory_rows = {
             let mut statement = transaction.prepare("SELECT id,source_refs_json FROM memories")?;
-            statement.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
-                .collect::<Result<Vec<_>, _>>()?
+            let rows = statement.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
         };
         let memory_revisions = {
             let mut statement = transaction.prepare(
                 "SELECT memory_id,evidence_refs_json,before_json,after_json FROM memory_revisions"
             )?;
-            statement.query_map([], |row| Ok((
+            let rows = statement.query_map([], |row| Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<String>>(2)?,
                 row.get::<_, Option<String>>(3)?,
-            )))?.collect::<Result<Vec<_>, _>>()?
+            )))?.collect::<Result<Vec<_>, _>>()?;
+            rows
         };
 
         let snapshot_mentions_memory = |snapshot: &Option<String>, ids: &HashSet<String>| -> Result<bool, AgentError> {
@@ -876,23 +878,25 @@ impl MemoryStore {
             let mut statement = transaction.prepare(
                 "SELECT id,source_refs_json,links_json,content FROM memory_pages"
             )?;
-            statement.query_map([], |row| Ok((
+            let rows = statement.query_map([], |row| Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, String>(3)?,
-            )))?.collect::<Result<Vec<_>, _>>()?
+            )))?.collect::<Result<Vec<_>, _>>()?;
+            rows
         };
         let page_revisions = {
             let mut statement = transaction.prepare(
                 "SELECT page_id,evidence_refs_json,before_json,after_json FROM memory_page_revisions"
             )?;
-            statement.query_map([], |row| Ok((
+            let rows = statement.query_map([], |row| Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<String>>(2)?,
                 row.get::<_, Option<String>>(3)?,
-            )))?.collect::<Result<Vec<_>, _>>()?
+            )))?.collect::<Result<Vec<_>, _>>()?;
+            rows
         };
 
         let snapshot_links_to_deleted_page = |snapshot: &Option<String>, ids: &HashSet<String>| -> Result<bool, AgentError> {
