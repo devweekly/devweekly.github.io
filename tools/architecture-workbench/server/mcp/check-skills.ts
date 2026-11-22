@@ -10,6 +10,7 @@ const databasePath=resolve("data/architecture-workbench.mcp-smoke.sqlite");
 mkdirSync(resolve("data"),{recursive:true});
 for (const suffix of ["","-wal","-shm"]) rmSync(databasePath+suffix,{force:true});
 process.env.DATABASE_PATH=databasePath;
+process.env.AGENT_RUN_LEASE_MS="15000";
 process.env.MCP_ALLOWED_HOSTS="";
 delete process.env.MCP_BEARER_TOKEN;
 delete process.env.MCP_SERVICE_USER_ID;
@@ -353,10 +354,16 @@ try {
   }));
   const host=new McpAgentHost(remoteClient,{
     "business-analyst":{
-      execute:async context=>({
-        kind:"completed",
-        artifact:{title:"Host Business Analysis",type:"analysis",content:"Host executor read Skill "+context.skill.frontmatter.name+" and context for "+context.run.work_item_id+"."}
-      })
+      execute:async context=>{
+        const initialHeartbeat=Date.parse(context.run.heartbeat_at);
+        await new Promise(resolve=>setTimeout(resolve,5_500));
+        const renewed=all<{heartbeat_at:string}>("SELECT heartbeat_at FROM agent_runs WHERE id=?",context.run.id)[0];
+        assert(renewed?.heartbeat_at && Date.parse(renewed.heartbeat_at)>initialHeartbeat,"The Agent Host did not renew its lease during a long-running Executor call.");
+        return {
+          kind:"completed",
+          artifact:{title:"Host Business Analysis",type:"analysis",content:"Host executor read Skill "+context.skill.frontmatter.name+" and context for "+context.run.work_item_id+"."}
+        };
+      }
     },
     "decision-analyst":{
       execute:async context=>{
@@ -375,7 +382,7 @@ try {
     name:"agent_list_plans",arguments:{workItemId:workItem.id}
   }));
   assert(hostPlans.some((entry:any)=>entry.id===hostPlan.id && entry.status==="completed"),"Agent Host did not complete the remote Agent Plan.");
-  console.log("Workbench MCP smoke test passed: 7 Skills; 24 Tools; permission enforcement; DAG dependencies and parallel claims; synthesis aggregation; lease heartbeat and crash recovery; bounded retries; stale worker fencing; provider-neutral MCP Agent Host; Human hand-off; remote bearer identity.");
+  console.log("Workbench MCP smoke test passed: 7 Skills; 24 Tools; permission enforcement; DAG dependencies and parallel claims; synthesis aggregation; server lease heartbeat and crash recovery; Host heartbeat during long execution; bounded retries; stale worker fencing; provider-neutral MCP Agent Host; Human hand-off; remote bearer identity.");
 } finally {
   if (remoteClient) await remoteClient.close();
   if (remoteServer) await closeServer(remoteServer.httpServer);
