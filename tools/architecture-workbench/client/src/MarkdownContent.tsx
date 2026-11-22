@@ -2,7 +2,8 @@ import { CodeHighlighter, Mermaid } from "@ant-design/x";
 import { XMarkdown } from "@ant-design/x-markdown";
 import type { ReactNode } from "react";
 
-interface MarkdownCodeProps {
+interface MarkdownComponentProps {
+  [key: string]: unknown;
   children?: ReactNode;
   className?: string;
   lang?: string;
@@ -13,7 +14,12 @@ interface MarkdownContentProps {
   content: string;
 }
 
-function MarkdownCode({ children, className, lang, block }: MarkdownCodeProps) {
+function MarkdownMermaid({ children }: MarkdownComponentProps) {
+  const code = typeof children === "string" ? children : String(children ?? "");
+  return <Mermaid>{code}</Mermaid>;
+}
+
+function MarkdownCode({ children, className, lang, block }: MarkdownComponentProps) {
   if (!block) return <code className={className}>{children}</code>;
   const code = typeof children === "string" ? children : String(children ?? "");
   return <CodeHighlighter className={className} lang={lang || "text"}>{code}</CodeHighlighter>;
@@ -22,7 +28,7 @@ function MarkdownCode({ children, className, lang, block }: MarkdownCodeProps) {
 // Keep component references stable. XMarkdown maps Mermaid code fences to the
 // Ant Design X Mermaid component and uses CodeHighlighter only for fenced blocks.
 const markdownComponents = {
-  mermaid: Mermaid,
+  mermaid: MarkdownMermaid,
   code: MarkdownCode
 };
 
