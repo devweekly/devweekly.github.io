@@ -74,7 +74,7 @@ The lifecycle is defined by ADR-0011 and enforced by the server-side state machi
 | decision_meeting | Rejected | rejected_pending_close | Chairman/Admin records rejection |
 | approved_pending_close / rejected_pending_close | Chairman/Admin closes | closed | Explicit human closure |
 
-The review deadline is independent from the Work Item's business target date. The default review duration is configurable with `WORKFLOW_REVIEW_DAYS`; the clarification response duration is configurable with `WORKFLOW_CLARIFICATION_DAYS`. Ordinary comments do not affect either deadline. Reviewers can comment, ask the Requestor to clarify or raise a blocking objection; they cannot formally approve or reject the Request.
+The review deadline is independent from the Work Item's business target date. The default review duration is configurable with `WORKFLOW_REVIEW_DAYS`; the clarification response duration is configurable with `WORKFLOW_CLARIFICATION_DAYS`. Ordinary comments do not affect either deadline. Only people captured in the Submission's reviewer snapshot can use the Review operations. Reviewers can comment, ask the Requestor to clarify or raise a blocking objection; they cannot formally approve or reject the Request. Ordinary Work Item discussion remains available through the separate Comments operation.
 
 A Request Package may be drafted with Agent assistance, but a completed Agent Run does not submit it. The Requestor confirms the final package and submission message. The Submission stores the Requestor as submitter and the assisting Run ID as provenance when provided.
 
