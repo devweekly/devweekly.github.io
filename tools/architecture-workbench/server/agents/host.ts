@@ -15,6 +15,10 @@ export interface HostAgentRun {
   objective:string;
   status:string;
   claim_token:string;
+  lease_expires_at:string;
+  lease_duration_ms:number;
+  attempt_count:number;
+  max_attempts:number;
 }
 
 export interface VerifiedSkill {
@@ -29,6 +33,7 @@ export interface AgentExecutionContext {
   skill:VerifiedSkill;
   contextCapsule:Record<string,unknown>;
   planContext?:Record<string,unknown>;
+  signal:AbortSignal;
   readArtifact(artifactId:string):Promise<Record<string,unknown>>;
 }
 
@@ -59,6 +64,12 @@ export type AgentExecutorRegistry = Partial<Record<AgentKey,AgentExecutor>>;
 type ClaimedRun = {
   run:HostAgentRun;
   skillUri:string;
+};
+
+type LeaseHeartbeat = {
+  signal:AbortSignal;
+  assertHealthy():void;
+  stop():Promise<void>;
 };
 
 function parseToolResult<T>(result:{content?:McpContent[];isError?:boolean}):T {
@@ -93,11 +104,46 @@ export class McpAgentHost {
     return parseToolResult<T>(result);
   }
 
+  private startLeaseHeartbeat(run:HostAgentRun):LeaseHeartbeat {
+    const controller=new AbortController();
+    const intervalMs=Math.max(1_000,Math.floor((run.lease_duration_ms || 60_000)/3));
+    let failure:unknown;
+    let inFlight:Promise<void>|undefined;
+    let stopped=false;
+    const timer=setInterval(()=>{
+      if (stopped || failure || inFlight) return;
+      inFlight=this.call("agent_heartbeat_run",{
+        runId:run.id,
+        claimToken:run.claim_token
+      }).then(()=>undefined).catch(error=>{
+        failure=error;
+        controller.abort();
+      }).finally(()=>{
+        inFlight=undefined;
+      });
+    },intervalMs);
+    timer.unref?.();
+    return {
+      signal:controller.signal,
+      assertHealthy:()=>{
+        if (failure) throw new Error("Agent Run lease heartbeat failed: "+(failure instanceof Error ? failure.message : String(failure)));
+      },
+      stop:async()=>{
+        if (stopped) return;
+        stopped=true;
+        clearInterval(timer);
+        if (inFlight) await inFlight;
+      }
+    };
+  }
+
   async runOnce(agentKey:AgentKey):Promise<"idle"|"completed"|"human_handoff"|"failed"> {
     let claimed:ClaimedRun|null=null;
+    let heartbeat:LeaseHeartbeat|undefined;
     try {
       claimed=await this.call<ClaimedRun|null>("agent_claim_next_run",{agentKey});
       if (!claimed?.run) return "idle";
+      heartbeat=this.startLeaseHeartbeat(claimed.run);
 
       const executor=this.executors[agentKey];
       if (!executor) throw new Error("No AgentExecutor is registered for profile: "+agentKey);
@@ -128,11 +174,13 @@ export class McpAgentHost {
         },
         contextCapsule,
         planContext,
+        signal:heartbeat.signal,
         readArtifact:(artifactId)=>this.call<Record<string,unknown>>(
           "workbench_get_artifact",
           {artifactId}
         )
       });
+      heartbeat.assertHealthy();
 
       if (execution.kind==="human_handoff") {
         await this.call("agent_request_human_handoff",{
@@ -156,6 +204,7 @@ export class McpAgentHost {
       });
       return "completed";
     } catch (error) {
+      await heartbeat?.stop();
       if (claimed?.run?.id) {
         try {
           await this.call("agent_fail_run",{
@@ -168,6 +217,8 @@ export class McpAgentHost {
         }
       }
       return "failed";
+    } finally {
+      await heartbeat?.stop();
     }
   }
 
