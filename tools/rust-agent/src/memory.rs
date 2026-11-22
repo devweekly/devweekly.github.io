@@ -442,6 +442,7 @@ impl MemoryStore {
                 completion_tokens INTEGER,
                 total_tokens INTEGER,
                 duration_ms INTEGER,
+                activity_epoch INTEGER NOT NULL DEFAULT 0,
                 started_at_ms INTEGER NOT NULL,
                 completed_at_ms INTEGER,
                 error TEXT
@@ -454,7 +455,8 @@ impl MemoryStore {
                 lease_until_ms INTEGER,
                 next_retry_at_ms INTEGER,
                 failure_count INTEGER NOT NULL DEFAULT 0,
-                last_error TEXT
+                last_error TEXT,
+                activity_epoch INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS background_task_leases (
                 task_id TEXT PRIMARY KEY NOT NULL,
@@ -474,6 +476,8 @@ impl MemoryStore {
         ensure_column(&connection, "transcripts", "project_id", "TEXT")?;
         ensure_column(&connection, "transcripts", "task_id", "TEXT")?;
         ensure_column(&connection, "memory_page_revisions", "evidence_refs_json", "TEXT NOT NULL DEFAULT '[]'")?;
+        ensure_column(&connection, "dreaming_runs", "activity_epoch", "INTEGER NOT NULL DEFAULT 0")?;
+        ensure_column(&connection, "dreaming_control", "activity_epoch", "INTEGER NOT NULL DEFAULT 0")?;
         connection.execute(
             "UPDATE memories SET schema_version = ?1 WHERE schema_version < ?1",
             [SCHEMA_VERSION],
@@ -493,6 +497,24 @@ impl MemoryStore {
 
     pub fn database_path(&self) -> &Path {
         &self.database_path
+    }
+
+    /// Increment the durable workspace activity epoch when a user begins a turn.
+    /// Dreaming compares this value again inside the same transaction that writes its
+    /// result, so a concurrently started user turn cannot race the final commit.
+    pub fn bump_dreaming_activity_epoch(&self) -> Result<u64, AgentError> {
+        let connection = self.conn()?;
+        connection.execute(
+            "UPDATE dreaming_control SET activity_epoch=activity_epoch+1 WHERE id=1",
+            [],
+        )?;
+        let value: i64 = connection.query_row(
+            "SELECT activity_epoch FROM dreaming_control WHERE id=1",
+            [],
+            |row| row.get(0),
+        )?;
+        u64::try_from(value)
+            .map_err(|_| AgentError::InvalidAction("Dreaming activity epoch is out of range".into()))
     }
 
     /// Atomically claim a task lease and one of the bounded active-worker slots.
@@ -1453,11 +1475,11 @@ impl MemoryStore {
         if pending < i64::try_from(minimum_transcripts).unwrap_or(i64::MAX) {
             return Ok(None);
         }
-        let (current_run, lease_until, next_retry): (Option<i64>, Option<i64>, Option<i64>) =
+        let (current_run, lease_until, next_retry, activity_epoch): (Option<i64>, Option<i64>, Option<i64>, i64) =
             transaction.query_row(
-                "SELECT current_run_id,lease_until_ms,next_retry_at_ms FROM dreaming_control WHERE id=1",
+                "SELECT current_run_id,lease_until_ms,next_retry_at_ms,activity_epoch FROM dreaming_control WHERE id=1",
                 [],
-                |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?)),
+                |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)),
             )?;
         let now = to_i64(now_ms())?;
         if lease_until.is_some_and(|until| until > now)
@@ -1474,9 +1496,9 @@ impl MemoryStore {
         }
         let transcript_count = pending.min(200);
         transaction.execute(
-            "INSERT INTO dreaming_runs(trigger,status,cursor_from,cursor_to,transcript_count,started_at_ms)
-             VALUES (?1,'running',?2,?3,?4,?5)",
-            params![trigger,cursor,max_id,transcript_count,now],
+            "INSERT INTO dreaming_runs(trigger,status,cursor_from,cursor_to,transcript_count,activity_epoch,started_at_ms)
+             VALUES (?1,'running',?2,?3,?4,?5,?6)",
+            params![trigger,cursor,max_id,transcript_count,activity_epoch,now],
         )?;
         let run_id = transaction.last_insert_rowid();
         transaction.execute(
@@ -1591,15 +1613,18 @@ impl MemoryStore {
         let transaction = connection.transaction()?;
         let previous_cursor = last_dreamed_cursor(&transaction)?;
         if let Some((run_id, _)) = run.as_ref() {
-            let active_run: Option<i64> = transaction.query_row(
-                "SELECT current_run_id FROM dreaming_control WHERE id=1",
+            let (active_run, activity_epoch): (Option<i64>, i64) = transaction.query_row(
+                "SELECT current_run_id,activity_epoch FROM dreaming_control WHERE id=1",
                 [],
+                |row| Ok((row.get(0)?,row.get(1)?)),
+            )?;
+            let run_epoch: i64 = transaction.query_row(
+                "SELECT activity_epoch FROM dreaming_runs WHERE id=?1",
+                [run_id],
                 |row| row.get(0),
             )?;
-            if active_run != Some(*run_id) {
-                return Err(AgentError::InvalidAction(
-                    "Dreaming lease was lost before the consolidation result could be committed".into(),
-                ));
+            if active_run != Some(*run_id) || run_epoch != activity_epoch {
+                return Err(AgentError::Cancelled);
             }
         }
         let max_transcript: i64 = transaction.query_row(
@@ -2852,6 +2877,35 @@ mod tests {
         };
         assert!(store.apply_dreaming(deletion).is_err());
         assert!(store.get_page("child-page").is_ok());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn new_user_activity_invalidates_a_running_dreaming_commit() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        store.record_transcript("s1", None, None, "user", "initial prompt").unwrap();
+        let (run_id, cursor) = store.start_dreaming_run(1, 120_000, "test").unwrap().unwrap();
+        store.bump_dreaming_activity_epoch().unwrap();
+        let output = DreamingOutput {
+            reviewed_through: store.transcripts_after(cursor, 10).unwrap().last().unwrap().id,
+            notes: vec![],
+            pages: vec![],
+            delete_pages: vec![],
+        };
+        let result = store.apply_dreaming_run(
+            run_id,
+            output,
+            DreamingRunMetrics {
+                model: "test".into(),
+                prompt_tokens: None,
+                completion_tokens: None,
+                total_tokens: None,
+                duration_ms: 1,
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(store.list().unwrap().len(), 0);
         let _ = fs::remove_dir_all(root);
     }
 
