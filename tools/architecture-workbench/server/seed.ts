@@ -69,7 +69,7 @@ export function seed() {
     ["u-sec","security_architect","Security Architect",["read","review","comment"]],
     ["u-sme","solution_sme","Solution SME",["read","comment","contribute"]],
     ["u-dev","development_manager","Development Manager",["read","review","comment","contribute"]],
-    ["u-chair","decision_authority","Decision Authority",["read","review","comment","contribute","decide","manage"]]
+    ["u-chair","chairman","Chairman",["read","decide"]]
   ];
   for (const p of participants) run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)", id("part"),wi,p[0],p[1],p[2],JSON.stringify(p[3]),created);
   run("UPDATE work_items SET chairman_id='u-chair' WHERE id=?",wi);
