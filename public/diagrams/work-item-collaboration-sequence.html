@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>一个业务事项如何经过多角色协作</title>
+<meta name="description" content="顺序图展示任务分配、版本化产物、独立评审、返工和 Human 决策之间的关系。">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#F9F6EF;color:#221C17;font-family:'IBM Plex Mono','Noto Sans SC',sans-serif}
+main{max-width:1440px;margin:0 auto;padding:28px 24px 48px}h1{font-size:20px;font-weight:500;margin:0 0 8px}p{margin:0 0 20px;color:#65584D;font-size:13px;line-height:1.7}
+.frame{overflow-x:auto;background:#F9F6EF}svg{display:block;width:100%;min-width:1280px;height:auto}
+@media print{.frame{overflow:visible}svg{min-width:0}}
+</style>
+</head>
+<body><main><h1>一个业务事项如何经过多角色协作</h1><p>顺序图展示任务分配、版本化产物、独立评审、返工和 Human 决策之间的关系。</p><div class="frame"><svg xmlns="http://www.w3.org/2000/svg" width="1280" height="900" viewBox="0 0 1280 900" role="img" aria-labelledby="work-item-collaboration-sequence-title work-item-collaboration-sequence-desc">
+<title id="work-item-collaboration-sequence-title">一个业务事项如何经过多角色协作</title>
+<desc id="work-item-collaboration-sequence-desc">Requester 创建事项，Agent 提交版本化产物，Reviewer 独立评审，Approver 确认正式决定。</desc>
+<style>
+  text{font-family:'IBM Plex Mono','Noto Sans SC',sans-serif;fill:#221C17}
+  .title{font-size:27px;font-weight:500;letter-spacing:-.02em}
+  .subtitle{font-size:12px;fill:#65584D}
+  .zone{fill:#F1EDE4;stroke:rgba(34,28,23,.12);stroke-width:1}
+  .zone-label{font-size:9px;letter-spacing:.16em;fill:#75695F;font-weight:500}
+  .node{fill:#FFFEFA;stroke:rgba(34,28,23,.16);stroke-width:1;filter:url(#work-item-collaboration-sequence-shadow)}
+  .node-name{font-size:15px;font-weight:600}
+  .node-sub{font-size:10px;fill:#65584D}
+  .chip{font-size:8px;letter-spacing:.12em;font-weight:600}
+  .edge{fill:none;stroke:#65584D;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#work-item-collaboration-sequence-arrow)}
+  .edge-accent{fill:none;stroke:#8B5A2B;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#work-item-collaboration-sequence-arrow-accent)}
+  .edge-dash{fill:none;stroke:#75695F;stroke-width:1.25;stroke-dasharray:5 4;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#work-item-collaboration-sequence-arrow)}
+  .edge-label{font-size:9px;fill:#65584D}
+  .actor{fill:#FFFEFA;stroke:rgba(34,28,23,.18);stroke-width:1;filter:url(#work-item-collaboration-sequence-shadow)}
+  .lifeline{stroke:rgba(34,28,23,.28);stroke-width:1;stroke-dasharray:4 5}
+  .activation{fill:rgba(34,28,23,.06);stroke:#65584D;stroke-width:.8}
+  .message{stroke:#65584D;stroke-width:1.5;fill:none;marker-end:url(#work-item-collaboration-sequence-arrow)}
+  .message-return{stroke:#75695F;stroke-width:1.25;stroke-dasharray:5 4;fill:none;marker-end:url(#work-item-collaboration-sequence-arrow)}
+  .message-main{stroke:#8B5A2B;stroke-width:1.8;fill:none;marker-end:url(#work-item-collaboration-sequence-arrow-accent)}
+  .message-label{font-size:10px;fill:#221C17}
+  .state{fill:#FFFEFA;stroke:rgba(34,28,23,.22);stroke-width:1;filter:url(#work-item-collaboration-sequence-shadow)}
+  .state-main{fill:#F5E7D4;stroke:#8B5A2B;stroke-width:1.5;filter:url(#work-item-collaboration-sequence-shadow)}
+  .state-text{font-size:14px;font-weight:600}
+  .state-sub{font-size:10px;fill:#65584D}
+  .note{fill:#F1EDE4;stroke:rgba(34,28,23,.16);stroke-width:1}
+  .small{font-size:10px;fill:#65584D}
+</style>
+<defs>
+  <filter id="work-item-collaboration-sequence-shadow" x="-20%" y="-20%" width="140%" height="150%">
+    <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#221C17" flood-opacity=".09"/>
+  </filter>
+  <marker id="work-item-collaboration-sequence-arrow" markerWidth="8" markerHeight="7" refX="7" refY="3.5" orient="auto">
+    <path d="M0 0 L8 3.5 L0 7 Z" fill="#65584D"/>
+  </marker>
+  <marker id="work-item-collaboration-sequence-arrow-accent" markerWidth="8" markerHeight="7" refX="7" refY="3.5" orient="auto">
+    <path d="M0 0 L8 3.5 L0 7 Z" fill="#8B5A2B"/>
+  </marker>
+</defs>
+<rect width="1280" height="900" fill="#F9F6EF"/><text class="title" x="48" y="43">一个业务事项如何经过多角色协作</text>
+<text class="subtitle" x="48" y="65">一次执行可以切换 Runtime；业务 Task、Artifact 版本和 Human 决策记录保持连续</text><line class="lifeline" x1="140" y1="148" x2="140" y2="825"/><line class="lifeline" x1="390" y1="148" x2="390" y2="825"/><line class="lifeline" x1="640" y1="148" x2="640" y2="825"/><line class="lifeline" x1="890" y1="148" x2="890" y2="825"/><line class="lifeline" x1="1140" y1="148" x2="1140" y2="825"/><rect class="activation" x="384" y="182" width="12" height="620" rx="3"/>
+<rect class="activation" x="634" y="247" width="12" height="286" rx="3"/>
+<rect class="activation" x="884" y="348" width="12" height="310" rx="3"/>
+<rect class="activation" x="1134" y="695" width="12" height="64" rx="3"/><rect class="actor" x="46" y="94" width="188" height="58" rx="10"/>
+<rect x="62" y="103" width="81" height="14" rx="7" fill="#DCE5F4"/>
+<text class="chip" x="102.5" y="113" text-anchor="middle">REQUESTER</text>
+<text class="node-name" x="140" y="139" text-anchor="middle" font-size="14">业务提交人</text><rect class="actor" x="296" y="94" width="188" height="58" rx="10"/>
+<rect x="312" y="103" width="74" height="14" rx="7" fill="#DCE5F4"/>
+<text class="chip" x="349" y="113" text-anchor="middle">PLATFORM</text>
+<text class="node-name" x="390" y="139" text-anchor="middle" font-size="14">Work Item 平台</text><rect class="actor" x="546" y="94" width="188" height="58" rx="10"/>
+<rect x="562" y="103" width="64" height="14" rx="7" fill="#DCE5F4"/>
+<text class="chip" x="594" y="113" text-anchor="middle">AGENT</text>
+<text class="node-name" x="640" y="139" text-anchor="middle" font-size="14">分析 Agent</text><rect class="actor" x="796" y="94" width="188" height="58" rx="10"/>
+<rect x="812" y="103" width="74" height="14" rx="7" fill="#DCE5F4"/>
+<text class="chip" x="849" y="113" text-anchor="middle">REVIEWER</text>
+<text class="node-name" x="890" y="139" text-anchor="middle" font-size="14">独立 Reviewer</text><rect class="actor" x="1046" y="94" width="188" height="58" rx="10"/>
+<rect x="1062" y="103" width="74" height="14" rx="7" fill="#DCE5F4"/>
+<text class="chip" x="1099" y="113" text-anchor="middle">APPROVER</text>
+<text class="node-name" x="1140" y="139" text-anchor="middle" font-size="14">授权 Approver</text><path class="message" d="M148 205 H382"/>
+<rect x="218.9" y="182" width="92.2" height="17" rx="4" fill="#F9F6EF"/>
+<text class="message-label" x="265" y="194" text-anchor="middle">创建事项 + 业务背景</text><path class="message" d="M398 260 H632"/>
+<rect x="425.5" y="237" width="179" height="17" rx="4" fill="#F9F6EF"/>
+<text class="message-label" x="515" y="249" text-anchor="middle">分配 Task + Context Capsule</text><path class="message-return" d="M632 315 H398"/>
+<rect x="425.5" y="292" width="179" height="17" rx="4" fill="#F9F6EF"/>
+<text class="message-label" x="515" y="304" text-anchor="middle">提交 Analysis / Artifact v1</text><path class="message" d="M398 370 H882"/>
+<rect x="572.2" y="347" width="135.6" height="17" rx="4" fill="#F9F6EF"/>
+<text class="message-label" x="640" y="359" text-anchor="middle">发起独立 Review（固定 v1）</text><path class="message-return" d="M882 425 H398"/>
+<rect x="572.2" y="402" width="135.6" height="17" rx="4" fill="#F9F6EF"/>
+<text class="message-label" x="640" y="414" text-anchor="middle">提交 Review Findings</text><path class="message" d="M398 480 H632"/>
+<rect x="468.9" y="457" width="92.2" height="17" rx="4" fill="#F9F6EF"/>
+<text class="message-label" x="515" y="469" text-anchor="middle">要求修订（若存在问题）</text><path class="message-return" d="M632 535 H398"/>
+<rect x="459.6" y="512" width="110.8" height="17" rx="4" fill="#F9F6EF"/>
+<text class="message-label" x="515" y="524" text-anchor="middle">提交 Artifact v2</text><path class="message" d="M398 590 H882"/>
+<rect x="597" y="567" width="86" height="17" rx="4" fill="#F9F6EF"/>
+<text class="message-label" x="640" y="579" text-anchor="middle">针对 v2 重新评审</text><path class="message-return" d="M882 645 H398"/>
+<rect x="569.1" y="622" width="141.8" height="17" rx="4" fill="#F9F6EF"/>
+<text class="message-label" x="640" y="634" text-anchor="middle">确认正式 Review Outcome</text><path class="message" d="M398 700 H1132"/>
+<rect x="684.8" y="677" width="160.4" height="17" rx="4" fill="#F9F6EF"/>
+<text class="message-label" x="765" y="689" text-anchor="middle">呈现 Decision Draft + 证据</text><path class="message-main" d="M1132 755 H398"/>
+<rect x="694.1" y="732" width="141.8" height="17" rx="4" fill="#F9F6EF"/>
+<text class="message-label" x="765" y="744" text-anchor="middle">Human 确认正式 Decision</text><path class="message-return" d="M382 810 H148"/>
+<rect x="222" y="787" width="86" height="17" rx="4" fill="#F9F6EF"/>
+<text class="message-label" x="265" y="799" text-anchor="middle">记录结果并通知参与者</text><rect class="note" x="48" y="844" width="1184" height="38" rx="8"/>
+<text class="small" x="68" y="868">Agent 的提交只是工作结果；Review Outcome、正式 Decision 和 Work Item 关闭均由有权限的 Human 确认。</text></svg></div></main></body></html>
