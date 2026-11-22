@@ -49,6 +49,7 @@ test("Request lifecycle freezes submissions, pauses review for clarification and
   person("reviewer");
   person("chairman");
   person("admin",1);
+  person("u-workflow");
   request("workflow-one");
 
   const first=transitionWorkItem("workflow-one","requestor","submit_request","Initial submission",{
@@ -134,6 +135,7 @@ test("Request lifecycle freezes submissions, pauses review for clarification and
 });
 
 test("persisted review timer advances a Request after its deadline",()=>{
+  person("u-workflow");
   request("workflow-timer");
   const submitted=transitionWorkItem("workflow-timer","requestor","submit_request","Timer test",{
     submissionMessage:"test(timer): deadline"
