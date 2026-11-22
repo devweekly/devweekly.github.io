@@ -755,7 +755,7 @@ export default function App() {
         <Form.Item name="constraints" label="约束与主要风险"><TextArea rows={2} /></Form.Item>
         <Form.Item name="initialProposal" label="初步方案（可选）"><TextArea rows={3} /></Form.Item>
         <Form.Item name="decisionQuestions" label="需要委员会决定的问题"><TextArea rows={2} /></Form.Item>
-        <Form.Item name="chairmanId" label="指定 Chairman"><Select allowClear showSearch optionFilterProp="label" options={(bootstrap?.people || []).filter(p=>p.is_admin!==1).map(p=>({value:p.id,label:p.display_name+" · "+p.title}))} /></Form.Item>
+        <Form.Item name="chairmanId" label="指定 Chairman" rules={[{required:true,message:"必须指定决定会议主席"}]}><Select showSearch optionFilterProp="label" options={(bootstrap?.people || []).filter(p=>p.is_admin!==1).map(p=>({value:p.id,label:p.display_name+" · "+p.title}))} /></Form.Item>
         <Row gutter={12}>
           <Col span={12}><Form.Item name="priority" label="优先级"><Select options={[{value:"low",label:"低"},{value:"normal",label:"普通"},{value:"high",label:"高"}]} /></Form.Item></Col>
           <Col span={12}><Form.Item name="targetDate" label="业务目标日期"><DatePicker style={{width:"100%"}} /></Form.Item></Col>
