@@ -20,14 +20,14 @@ Use this Skill when a Request spans multiple roles, needs parallel analysis, has
 
 ## Request Package preparation
 
-When a Run is explicitly assigned to prepare a new or revised Request Package and the Request is still in `draft` or `requestor_revision`:
+When helping prepare a new or revised Request:
 
-1. Build a structured proposal with a clear goal, scope, constraints and risks, optional initial proposal, explicit questions for the Decision Meeting, and a concise Git-commit-style submission message.
-2. Use `workbench_draft_request_package` with the current Work Item ID, Run ID and active claim token. The tool stores a pending suggestion only; it does not modify the Request Package or create a Submission.
-3. Finish the Run through the normal Agent Host completion or hand-off protocol. The Requestor can apply the completed suggestion, edit it and make the formal submission.
-4. Do not call a workflow transition or represent the suggestion as a submitted Request. The Requestor remains the submitter and decision authority remains Human.
+1. Analyse the Request context and produce a concise proposal covering the business goal, scope, constraints, risks and questions for the Decision Meeting.
+2. Return the proposal to the Client UI for the Requestor to edit. Do not persist a separate server-side Package Draft and do not call a draft-specific MCP tool.
+3. The Requestor confirms and submits the package through the normal Workbench UI. Only the Requestor is recorded as submitter.
+4. Continue analysis through Tasks, Agent Runs and draft Artifacts where useful. Completing an Agent Run does not submit or change the Request Package.
 
-Do not use this path once the Request has entered Discussion and Review. A submitted Request Package is frozen for that Review Cycle.
+After submission, the Request content and external reference baseline are frozen for that Review Cycle. Later changes require the normal Requestor revision and resubmission path.
 
 ## Deliverable
 
