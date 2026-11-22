@@ -15,7 +15,6 @@ import {
   canChair,
   createClarification,
   answerClarification,
-  applyRequestPackageDraft,
   recordFormalDecision,
   raiseObjection,
   getWorkItemPermissions,
@@ -267,14 +266,6 @@ app.patch("/api/work-items/:id/request-package",(req,res)=>{
   res.json({ok:true});
 });
 
-app.post("/api/work-items/:id/request-package-drafts/:draftId/apply",(req,res)=>{
-  const workItemId=String(req.params.id);
-  const draftId=String(req.params.draftId);
-  const result=applyRequestPackageDraft(workItemId,draftId,actorId(req));
-  if (!result.ok) return res.status(result.statusCode).json({error:result.error});
-  res.json({ok:true,id:result.id});
-});
-
 app.post("/api/work-items/:id/participations",(req,res)=>{
   const workItemId=String(req.params.id); const actor=actorId(req);
   if (!requireParticipantManager(res,workItemId,actor)) return;
@@ -364,14 +355,14 @@ app.get("/api/work-items/:id",(req,res)=>{
   const decisions=all("SELECT d.*,p.display_name AS decision_maker_name FROM decisions d JOIN people p ON p.id=d.decision_maker_id WHERE d.work_item_id=? ORDER BY d.created_at DESC",workItemId);
   const clarifications=all("SELECT c.*,requester.display_name AS requester_name,answerer.display_name AS answerer_name,a.title AS artifact_title FROM clarification_requests c JOIN people requester ON requester.id=c.requested_by LEFT JOIN people answerer ON answerer.id=c.answered_by LEFT JOIN artifacts a ON a.id=c.artifact_id WHERE c.work_item_id=? ORDER BY c.created_at DESC",workItemId);
   const decisionMeetings=all("SELECT m.*,p.display_name AS chairman_name FROM decision_meetings m JOIN people p ON p.id=m.chairman_id WHERE m.work_item_id=? ORDER BY m.meeting_at DESC",workItemId);
-  const requestPackageDrafts=all("SELECT d.id,d.agent_run_id,d.draft_json,d.status,d.created_by,d.created_at,d.applied_at,p.display_name AS created_by_name,r.skill_name AS agent_skill_name,r.status AS agent_run_status FROM request_package_drafts d JOIN people p ON p.id=d.created_by JOIN agent_runs r ON r.id=d.agent_run_id WHERE d.work_item_id=? ORDER BY d.created_at DESC LIMIT 10",workItemId);
   const comments=all("SELECT c.*,p.display_name AS author_name,p.avatar_color FROM comments c JOIN people p ON p.id=c.author_id WHERE c.work_item_id=? ORDER BY c.created_at DESC",workItemId);
   const activity=all("SELECT e.*,p.display_name AS actor_name FROM activity_events e JOIN people p ON p.id=e.actor_id WHERE e.work_item_id=? ORDER BY e.created_at DESC LIMIT 30",workItemId);
   const attachments=all("SELECT id,original_name,content_type,size_bytes,uploaded_by,created_at FROM attachments WHERE work_item_id=? ORDER BY created_at DESC",workItemId);
   const externalLinks=all("SELECT l.id,l.relation_type,l.confluence_template_key,l.confluence_template_name,l.created_at,r.provider,r.resource_type,r.external_id,r.external_key,r.title,r.url FROM work_item_external_links l JOIN external_resource_refs r ON r.id=l.resource_id WHERE l.work_item_id=? ORDER BY r.provider,r.resource_type,r.title",workItemId);
   const agentRuns=all("SELECT r.id,r.work_item_id,r.task_id,r.plan_id,r.node_key,r.agent_key,r.skill_name,r.objective,r.requested_by,r.claimed_by,r.status,r.handoff_reason,r.result_artifact_id,r.error_message,r.created_at,r.updated_at,r.started_at,r.finished_at,r.heartbeat_at,r.lease_expires_at,r.attempt_count,r.max_attempts,requestor.display_name AS requested_by_name,claimer.display_name AS claimed_by_name FROM agent_runs r JOIN people requestor ON requestor.id=r.requested_by LEFT JOIN people claimer ON claimer.id=r.claimed_by WHERE r.work_item_id=? ORDER BY r.created_at DESC",workItemId);
   const agentPlans=listAgentPlans(workItemId,actor);
-  res.json({workItem,participants,artifacts,submissions,cycles,reviews,tasks,decisions,clarifications,decisionMeetings,requestPackageDrafts,comments,activity,attachments,externalLinks,agentRuns,agentPlans,permissions:permissions(workItemId,actor),canManageParticipants:canManageParticipants(workItemId,actor),workflow:getWorkflowProjection(workItemId,actor)});
+    const relatedDebts=all("SELECT w.id,w.code,w.title,w.status,w.owner_id,p.display_name AS owner_name,COALESCE(d.due_date,w.target_date) AS target_date,w.priority,d.severity,d.target_state,d.remediation_plan,d.status AS debt_status FROM work_item_relations rel JOIN work_items w ON w.id=rel.target_work_item_id JOIN debt_details d ON d.work_item_id=w.id JOIN people p ON p.id=w.owner_id WHERE rel.source_work_item_id=? AND w.type='technical_debt' ORDER BY CASE d.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'deferred' THEN 2 ELSE 3 END,COALESCE(d.due_date,w.target_date)",workItemId);
+  res.json({workItem,participants,artifacts,submissions,cycles,reviews,tasks,decisions,clarifications,decisionMeetings,comments,activity,attachments,externalLinks,relatedDebts,agentRuns,agentPlans,permissions:permissions(workItemId,actor),canManageParticipants:canManageParticipants(workItemId,actor),workflow:getWorkflowProjection(workItemId,actor)});
 });
 
 app.post("/api/work-items/:id/artifacts",(req,res)=>{
