@@ -20,6 +20,9 @@ The prototype deliberately separates business facts from interaction and executi
 | Thread | comments | Human discussion attached to a Work Item |
 | Attachment | attachments + ObjectStore | File metadata and authorization in SQLite; bytes in local storage or S3 |
 | Workflow Transition | workflow_transitions | Append-only history of Request lifecycle transitions, actions, actor and reason |
+| Clarification Request | clarification_requests | Reviewer question bound to a Submission and response deadline, including the answer or unanswered result |
+| Decision Meeting | decision_meetings | Chairman, meeting time, minutes, rationale and formal outcome for a Review Cycle |
+| Workflow Timer | workflow_timers | Durable review or clarification deadline, scheduler status, lease, attempts and processing error |
 | Activity | activity_events | Append-oriented business activity record |
 | Agent Profile | server/agents/coordinator.ts registry | Role-oriented execution capability mapped to one Skill; not a Person or model provider |
 | Agent Plan | agent_plans | Multi-role collaboration request with an overall status and final synthesis Artifact |
@@ -33,12 +36,9 @@ The prototype deliberately separates business facts from interaction and executi
 
 ## Decision outcomes
 
-- accepted
-- accepted_with_conditions
-- more_analysis
-- rejected
+The Request lifecycle uses three formal outcomes: `approved`, `needs_work` and `rejected`. The outcome is separate from the Work Item phase. Approval and rejection enter a pending-close state; Need Work returns the Request to Requestor revision and requires a new Submission. Artifact-level decisions, where separately supported, must not be confused with the Request-level Decision Meeting outcome.
 
-These are prototype values. A production Decision Policy must define applicable outcomes, subject scope, mandatory reviewers, quorum, authority, segregation of duties, and conditional obligations.
+A production Decision Policy must define mandatory reviewers, quorum, authority, segregation of duties, and conditional obligations.
 
 ## Authorization
 
@@ -58,28 +58,33 @@ A Context Capsule carries the references, not the remote page contents or live J
 
 ## Request workflow
 
-The workflow is intentionally small and deterministic. Request status remains the business source of truth; the Workflow Engine validates allowed transitions and records each transition in `workflow_transitions`.
+The lifecycle is defined by ADR-0011 and enforced by the server-side state machine. The Request Package is submitted once by the Requestor and frozen as an immutable Submission; initial proposal and supporting material belong to this package, while analysis Tasks and Agent Runs remain execution activities.
 
-| Current stage | Allowed next action | Next stage |
-| --- | --- | --- |
-| draft | Start analysis | analysis |
-| analysis | Submit for review | in_review |
-| changes_requested | Resubmit for review | in_review |
-| in_review | Reviewer requests changes | changes_requested |
-| in_review | Decision: accept | accepted |
-| in_review | Decision: reject | rejected |
-| in_review | Decision: more analysis | analysis |
-| accepted / rejected | Close | closed |
+| Current phase | Event | Next phase | Rule |
+| --- | --- | --- | --- |
+| draft / requestor_revision | Requestor submits Request Package | discussion_review | Freeze manifest, reviewer snapshot and review deadline |
+| discussion_review | Comment | discussion_review | Discussion only; deadline is unchanged |
+| discussion_review | Request clarification | waiting_requestor | Pause remaining review duration and start clarification deadline |
+| waiting_requestor | Requestor answers all pending clarifications | discussion_review | Resume remaining review duration |
+| waiting_requestor | Clarification deadline expires | decision_meeting | Record unanswered clarification and proceed to meeting |
+| discussion_review | Blocking objection | decision_meeting | Early hand-off; objection is not a formal rejection |
+| discussion_review | Review deadline expires | decision_meeting | No implicit approval |
+| decision_meeting | Approved | approved_pending_close | Chairman/Admin records meeting result and rationale |
+| decision_meeting | Need Work | requestor_revision | Requestor prepares a new Submission |
+| decision_meeting | Rejected | rejected_pending_close | Chairman/Admin records rejection |
+| approved_pending_close / rejected_pending_close | Chairman/Admin closes | closed | Explicit human closure |
 
-Submitting for review requires at least one Artifact. Each submission creates an immutable Submission record containing the latest version of each Artifact stream, its content hash, the context version, submitting principal and timestamp. The new Review Cycle references that Submission and keeps the baseline JSON as a compatibility projection. The previous active Review Cycle is closed in the same transaction as the new Submission and Work Item transition. A Review outcome of `request_changes` moves the Request to `changes_requested`; the revision work does not overwrite the previous Submission. Resubmission creates a new baseline. Final acceptance, rejection and more-analysis outcomes still require a formal Decision.
+The review deadline is independent from the Work Item's business target date. The default review duration is configurable with `WORKFLOW_REVIEW_DAYS`; the clarification response duration is configurable with `WORKFLOW_CLARIFICATION_DAYS`. Ordinary comments do not affect either deadline. Reviewers can comment, ask the Requestor to clarify or raise a blocking objection; they cannot formally approve or reject the Request.
 
-The UI renders the server-provided workflow projection with Ant Design Steps. It does not decide which transitions are allowed. Permission checks and state transitions are performed by the server Workflow Engine.
+A Request Package may be drafted with Agent assistance, but a completed Agent Run does not submit it. The Requestor confirms the final package and submission message. The Submission stores the Requestor as submitter and the assisting Run ID as provenance when provided.
+
+The UI renders the server-provided workflow projection and available actions. The server re-checks Requestor, reviewer, Chairman and Admin permissions on each transition. Task status and Agent Run status remain separate from the Request lifecycle.
 
 ## Submission manifest
 
-A Submission is created by the server when a Work Item enters a Review Cycle. The manifest freezes the Artifact ID, version, code/type, title and content hash for each included deliverable, together with purpose, context version, creator and timestamp. The Review Cycle has a foreign-key reference to that Submission and retains `baseline_json` for compatibility with existing consumers.
+A Submission is created by the server when a Requestor submits a Request Package. It stores the Git-commit-style submission message, package JSON, Requestor identity, optional Agent Run provenance, source Submission and an immutable manifest of Artifact IDs, versions, code/type, titles and content hashes, together with the context version and creation time. The Review Cycle references that Submission and retains `baseline_json` for compatibility with existing consumers. An empty Artifact manifest is valid when the Request Package itself contains the initial business input and no separate deliverable has yet been attached.
 
-A material revision creates a new Artifact version. It does not rewrite an earlier Submission, reset prior Review outcomes or silently alter what a reviewer evaluated. Resubmitting closes the previous Review Cycle and creates a new Submission/Review Cycle pair in the same transaction as the lifecycle transition. Reviews remain attached to the original cycle and Artifact versions.
+A material revision creates a new Artifact version. It does not rewrite an earlier Submission, reset prior Review outcomes or silently alter what a reviewer evaluated. A Need Work outcome returns the Request to Requestor revision; resubmission creates a new Submission/Review Cycle pair. Reviews and clarifications remain attached to their original cycle and Artifact versions. Submission, Review Cycle, Work Item transition, timer and activity records are committed together.
 
 At startup, existing Review Cycles without a Submission are migrated by copying their current `baseline_json` into a legacy Submission. This preserves the historical baseline instead of guessing a new one.
 
