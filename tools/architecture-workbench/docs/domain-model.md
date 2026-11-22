@@ -10,7 +10,7 @@ The prototype deliberately separates business facts from interaction and executi
 | Requestor | work_items.requestor_id | Person who raised the Request; can maintain the Request's relevant people |
 | Task | tasks | Executable work with owner, status and due date |
 | Artifact | artifacts | Versioned deliverable, including ADR and evidence |
-| Submission | submissions | Immutable Request Package snapshot, external reference pointers, Artifact versions and context version for one formal submission |
+| Submission | submissions | Internal immutable review baseline linking submitted Request content and external references to a Review Cycle; not a separate user-facing material-history feature |
 | Agent Request Package Draft | request_package_drafts | Pending Agent-produced package suggestion; separately adopted by the Requestor before editing and formal submission |
 | Review Cycle | review_cycles | A review round bound to one Submission and its baseline manifest |
 | Review | reviews | Independent opinion bound to an Artifact version |
@@ -59,7 +59,7 @@ A Context Capsule carries the references, not the remote page contents or live J
 
 ## Request workflow
 
-The lifecycle is defined by ADR-0011 and enforced by the server-side state machine. The Request Package is submitted once by the Requestor and frozen as an immutable Submission; initial proposal and supporting material belong to this package, while analysis Tasks and Agent Runs remain execution activities.
+The lifecycle is defined by ADR-0011 and enforced by the server-side state machine. The Requestor submits the Request description and relevant business context. Source material remains in Jira, Confluence, GitHub or LeanIX and is linked by URL/key; Workbench does not maintain a second copy or a parallel material-version catalogue. The server retains an internal immutable Submission snapshot only to bind a Review Cycle to the references and context that were current at submission. Tasks and Agent Runs remain collaboration/execution activities.
 
 | Current phase | Event | Next phase | Rule |
 | --- | --- | --- | --- |
@@ -77,15 +77,15 @@ The lifecycle is defined by ADR-0011 and enforced by the server-side state machi
 
 The review deadline is independent from the Work Item's business target date. The default review duration is configurable with `WORKFLOW_REVIEW_DAYS`; the clarification response duration is configurable with `WORKFLOW_CLARIFICATION_DAYS`. Ordinary comments do not affect either deadline. Only people captured in the Submission's reviewer snapshot can use the Review operations. Reviewers can comment, ask the Requestor to clarify or raise a blocking objection; they cannot formally approve or reject the Request. Ordinary Work Item discussion remains available through the separate Comments operation.
 
-A Request Package may be drafted with Agent assistance, but a completed Agent Run does not submit it. The Requestor confirms the final package and submission message. The Submission stores the Requestor as submitter and the assisting Run ID as provenance when provided.
+A Client-side Agent may help the Requestor compose or refine the Request description. This is a Client interaction, not a Workbench business entity or MCP operation. The Requestor confirms the final content and submits it; the server does not store a separate Agent Package Draft.
 
-The UI renders the server-provided workflow projection and available actions. The server re-checks Requestor, reviewer, Chairman and Admin permissions on each transition. Task status and Agent Run status remain separate from the Request lifecycle.
+The UI renders the server-provided workflow projection and available actions. The collaboration view groups work by progress state rather than presenting a person-by-person approval checklist. Ordinary Task updates are not approvals or rejections. The Request detail shows directly related Technical Debt Work Items alongside the Request context. The server re-checks Requestor, reviewer, Chairman and Admin permissions on each transition. Task status and Agent Run status remain separate from the Request lifecycle.
 
 ## Submission manifest
 
-A Submission is created by the server when a Requestor submits a Request Package. It stores the Git-commit-style submission message, package JSON, Requestor identity, optional Agent Run provenance, source Submission and an immutable manifest of Artifact IDs, versions, code/type, titles and content hashes, together with the context version and creation time. The Review Cycle references that Submission and retains `baseline_json` for compatibility with existing consumers. An empty Artifact manifest is valid when the Request Package itself contains the initial business input and no separate deliverable has yet been attached.
+A Submission row is an internal review-baseline record created with the Review Cycle. It preserves the Request content, external link references and relevant context identity at the time of submission. It is not presented as a second formal-submission register or as an Artifact version history in the main Request workspace. Artifact records remain available for generated analysis outputs and formal records such as ADRs when those are actually needed.
 
-A material revision creates a new Artifact version. It does not rewrite an earlier Submission, reset prior Review outcomes or silently alter what a reviewer evaluated. A Need Work outcome returns the Request to Requestor revision; resubmission creates a new Submission/Review Cycle pair. Reviews and clarifications remain attached to their original cycle and Artifact versions. Submission, Review Cycle, Work Item transition, timer and activity records are committed together.
+A Request revision creates a new internal review baseline; it does not rewrite an earlier Review Cycle or its recorded opinions. A Need Work outcome returns the Request to Requestor revision; resubmission creates a new Submission/Review Cycle pair. Reviews and clarifications remain attached to their original cycle. Submission, Review Cycle, Work Item transition, timer and activity records are committed together.
 
 At startup, existing Review Cycles without a Submission are migrated by copying their current `baseline_json` into a legacy Submission. This preserves the historical baseline instead of guessing a new one.
 
