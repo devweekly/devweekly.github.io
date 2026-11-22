@@ -16,10 +16,7 @@ body { color: #1d2939; background: #f4f6f9; }
 .page-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 3px; }
 .page-heading h2 { margin: 5px 0 4px !important; font-weight: 650; }
 .page-heading p { margin-bottom: 0; max-width: 720px; }
-.metric-card, .panel-card { border: 1px solid #e8edf3; box-shadow: 0 3px 12px rgba(26,45,75,.025); }
-.metric-card .ant-statistic-title { color: #667085; }
-.metric-card .ant-statistic-content { color: #233c61; font-size: 27px; }
-.metric-card .ant-statistic-content-prefix { margin-right: 10px; font-size: 20px; color: #5577a6; }
+.panel-card { border: 1px solid #e8edf3; box-shadow: 0 3px 12px rgba(26,45,75,.025); }
 .panel-card .ant-card-head { min-height: 52px; }
 .panel-card .ant-card-head-title { font-weight: 600; }
 .table-link { padding: 0; height: auto; white-space: normal; text-align: left; font-weight: 600; }
