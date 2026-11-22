@@ -148,6 +148,7 @@ export default function App() {
     window.addEventListener("popstate",syncFromUrl);
     return ()=>window.removeEventListener("popstate",syncFromUrl);
   },[]);
+  useEffect(()=>{if(detail) setSelected(detail.workItem);},[detail]);
   useEffect(()=>{
     const itemId=new URLSearchParams(window.location.search).get("item");
     if(!itemId || !bootstrap) return;
@@ -546,6 +547,7 @@ export default function App() {
           {title:"版本",dataIndex:"version",render:(v:number)=>"v"+v},
           {title:"状态",dataIndex:"status",render:(v:string)=><Tag>{v}</Tag>},
           {title:"提交人",dataIndex:"submitter_name"},
+          {title:"提交时间",dataIndex:"created_at",render:(v:string)=>dateText(v)},
           {title:"",render:(_:unknown,a:Artifact)=><Tooltip title="查看内容"><Button type="link" onClick={()=>Modal.info({title:a.title,content:<Paragraph style={{whiteSpace:"pre-wrap"}}>{a.content}</Paragraph>,width:720})}>查看</Button></Tooltip>}
         ]} /></Card><Card size="small" className="nested-card" title="附件" extra={permissions.includes("contribute")?<Upload showUploadList={false} customRequest={async options=>{try{await api.uploadAttachment(item.id,options.file as File);options.onSuccess?.({});message.success("附件已上传");await refreshDetail();}catch(error){options.onError?.(error as Error);message.error(error instanceof Error?error.message:"附件上传失败");}}}><Button size="small" icon={<UploadOutlined />}>上传文件</Button></Upload>:null}><List dataSource={detail.attachments} locale={{emptyText:"暂无附件"}} renderItem={file=><List.Item><List.Item.Meta avatar={<Avatar icon={<FileProtectOutlined />} />} title={file.original_name} description={file.content_type+" · "+Math.ceil(file.size_bytes/1024)+" KB · "+dateText(file.created_at)} /></List.Item>} /></Card></>},
         {key:"external",label:"上下文引用",children:<Card size="small" title="Request 外部系统上下文引用" extra={permissions.includes("contribute")?<Button size="small" icon={<LinkOutlined />} onClick={()=>void openExternalLinkDialog()}>添加关联</Button>:null}>
