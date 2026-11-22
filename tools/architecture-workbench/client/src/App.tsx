@@ -877,6 +877,7 @@ export default function App() {
     <Modal title="记录决定会议结论" open={decisionOpen} onCancel={()=>setDecisionOpen(false)} onOk={()=>void submitForm(decisionForm,async()=>{
       const value=decisionForm.getFieldsValue();
       if(value.meetingAt) value.meetingAt=value.meetingAt.toISOString();
+      if(value.technicalDebt?.dueDate) value.technicalDebt.dueDate=value.technicalDebt.dueDate.format("YYYY-MM-DD");
       if(!value.createTechnicalDebt) delete value.technicalDebt;
       delete value.createTechnicalDebt;
       return api.createDecision(selected!.id,value);
