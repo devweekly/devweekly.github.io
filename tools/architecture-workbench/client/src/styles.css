@@ -115,8 +115,6 @@ body { color: #1d2939; background: #f4f6f9; }
 }
 .workspace-disclosure[open] > summary, .advanced-information[open] > summary { margin-bottom: 14px; }
 .workspace-disclosure .ant-timeline { margin: 14px 0 0 5px; }
-.submission-history { margin-top: 14px; padding-top: 12px; border-top: 1px solid #edf0f4; }
-.submission-history .ant-list-item { padding: 8px 0; }
 .advanced-information { margin-top: 8px; padding: 16px 18px; border: 1px solid #e8edf3; border-radius: 10px; background: rgba(255,255,255,.72); }
 .advanced-information > summary { font-size: 14px; }
 .advanced-information > summary .ant-typography { margin-left: 8px; font-size: 12px; font-weight: 400; }
@@ -139,3 +137,12 @@ body { color: #1d2939; background: #f4f6f9; }
   .app-header > div:first-child { display: none; }
   .app-header { justify-content: flex-end; }
 }
+
+
+/* Collaboration progress is grouped by state; people remain secondary metadata. */
+.work-progress-groups { display: grid; gap: 16px; }
+.work-progress-group + .work-progress-group { padding-top: 14px; border-top: 1px solid #edf0f4; }
+.work-progress-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.work-progress-group .ant-list-item { padding-inline: 0; }
+.work-progress-group .ant-list-item-meta { min-width: 0; }
+.work-progress-group .ant-list-item-meta-description { margin-top: 4px; }
