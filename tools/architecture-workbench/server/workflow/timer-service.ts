@@ -111,7 +111,7 @@ export function startWorkflowTimerService() {
     if (timer) clearTimeout(timer);
   }
 
-  run("UPDATE workflow_timers SET status='scheduled',lease_until=NULL,updated_at=? WHERE status='processing' AND (lease_until IS NULL OR lease_until<=?)",now(),now());
+  run("UPDATE workflow_timers SET status='scheduled',lease_until=NULL,updated_at=? WHERE status='processing'",now());
   void runDueTimers();
   return {wake,stop,runDueTimers};
 }
