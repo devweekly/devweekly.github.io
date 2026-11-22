@@ -130,9 +130,41 @@ The server runs a periodic lease-recovery sweep and also performs recovery befor
 
 Human hand-off pauses only the Agent Run. The Request workflow does not change. The original requester, Work Item Requestor or an Admin can resume it. Additional context is persisted in the Run event log; after a resumed Run is claimed, the Host must call `agent_get_run_events` to read that Human context before continuing.
 
-## Remote MCP identity
+## MCP client authentication
 
-Local MCP mode is localhost-only and uses the prototype `x-demo-user-id` identity header. Remote mode requires `MCP_ALLOWED_HOSTS`, a `MCP_BEARER_TOKEN` with at least 32 characters and a non-admin `MCP_SERVICE_USER_ID`. The server overrides any caller-supplied demo identity with this fixed Service Principal. Seed creates `u-agent`; a Requestor/Admin must add it to each Work Item and grant only the permissions needed for that work. The static bearer secret is service authentication for this prototype, not per-user OAuth delegation.
+The MCP endpoint is an OAuth 2.0 Protected Resource. With \`MCP_AUTH_ENABLED=true\`, the server uses the official MCP SDK \`requireBearerAuth\` gate and publishes RFC 9728 Protected Resource Metadata at \`/.well-known/oauth-protected-resource\`. Microsoft Entra ID is the Authorization Server: it performs user sign-in / SSO and issues tokens. Workbench does not issue tokens, handle passwords, or store client secrets.
+
+Configure these values on the Workbench server:
+
+- \`MCP_ALLOWED_HOSTS\`: allowlisted public hostname(s).
+- \`MCP_AUTH_TENANT_ID\`: single Entra tenant GUID.
+- \`MCP_AUTH_AUDIENCE\`: the Workbench API app registration's client-ID GUID. Entra v2 access tokens put this GUID in \`aud\`.
+- \`MCP_AUTH_RESOURCE_URL\`: canonical HTTPS endpoint, for example \`https://workbench.example.com/mcp\`. It must exactly match the API app registration's Application ID URI and has no trailing slash.
+- \`MCP_AUTH_ALLOWED_CLIENT_IDS\`: comma-separated client application IDs. The verifier checks the v2 \`azp\` claim; knowing the tenant or audience alone does not authorize a client.
+- \`MCP_AUTH_REQUIRED_SCOPES\`: short names of delegated scopes / application roles required for MCP access. The default is \`mcp.access\`; the metadata and 401 challenge publish the fully qualified resource scope.
+- \`MCP_SERVICE_USER_ID\`: a non-admin Person used only for app-only Agent calls.
+- \`MCP_AUTH_AUTO_LINK_BY_EMAIL\`: optional unique-email linking; defaults to \`false\`.
+
+Delegated users authenticate with Entra using Authorization Code + PKCE in the MCP client. The Workbench resolves the immutable \`tid + oid\` pair to a Person whose \`entra_tenant_id\` and \`entra_object_id\` columns have been provisioned. Email is not a stable identity and is not used unless the explicit auto-link option is enabled; even then, exactly one Person must match.
+
+For unattended Agent clients, use the Entra client-credentials flow with a Workbench application role matching the configured required role. The caller's client ID must be allowlisted. App-only calls are mapped to \`MCP_SERVICE_USER_ID\`, which must not be a Workbench Admin and must receive only least-privilege Participation permissions on the relevant Work Items.
+
+The v2 token verifier checks signature via Entra's tenant JWKS, issuer, audience, expiry, tenant, \`azp\`, token version and delegated scope / application role. The SDK's OAuth middleware returns 401 with a \`WWW-Authenticate\` resource-metadata challenge for missing or invalid tokens, and 403 for valid tokens without the required permission. The tool layer then checks Work Item Participation on every operation.
+
+To provision a delegated user, bind the Entra tenant and object IDs to the existing Person record, for example:
+
+\`\`\`sql
+UPDATE people
+SET entra_tenant_id = '<tenant-guid>',
+    entra_object_id = '<user-object-guid>'
+WHERE id = '<workbench-person-id>';
+\`\`\`
+
+Store the GUIDs in lowercase. Do not use the email address as a permanent subject key. Use email linking only when the directory's email values are governed and unique.
+
+The previous static bearer mode remains only as a prototype compatibility path when \`MCP_AUTH_ENABLED=false\`: it requires \`MCP_ALLOWED_HOSTS\`, a \`MCP_BEARER_TOKEN\` of at least 32 characters, and a non-admin \`MCP_SERVICE_USER_ID\`; all remote calls are collapsed to that one service identity. It is not user-level OAuth delegation. Local-only mode remains available without remote exposure and uses the demo \`x-demo-user-id\` header.
+
+For Entra Agent ID Client ID Metadata Document (CIMD) integrations, set \`MCP_AUTH_AUTHORIZATION_SERVER_URL\` to the versioned authorization-server identifier documented by Microsoft. The default is the conventional tenant-specific \`/v2.0\` identifier. Register and allowlist calling applications in advance; this resource-server integration does not implement dynamic client registration.
 
 ## Multi-role Agent Plan
 

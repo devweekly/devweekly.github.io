@@ -108,7 +108,7 @@ LangChain / DeepAgents 可以作为未来 Agent Runtime 的实现选择，LangSm
 
 Executor 插件必须导出 createAgentExecutors()，返回以 Agent Profile key 为索引的 AgentExecutor。接口定义位于 server/agents/host.ts。它由独立的 `npm run agent-host` 进程加载和执行，**不是浏览器 UI 的 client 端代码，也不在 Workbench Server 进程中运行**。插件的 execute() 接收已验证 Skill、Context Capsule、Run 元数据、可选的 Plan 汇总上下文、Artifact 读取方法和租约失效时的 AbortSignal；它需要返回 Draft Artifact，或明确请求 Human hand-off。Host 捕获执行异常并记录 Run failure。当前仓库提供 Host 与 Executor 接口，但没有捆绑 CodeBuddy、Copilot 或其他真实模型 Provider Adapter。
 
-Remote Host 使用 MCP_URL、MCP_BEARER_TOKEN 和服务器配置的 MCP_SERVICE_USER_ID；本地演示模式使用 MCP_DEMO_USER_ID。运行身份必须加入每个相关 Work Item 并仅授予必要权限。不要将模型 API Key 放入 Workbench Server 配置或提交到仓库。
+Remote Host 使用 MCP_URL 和 Entra 签发的 Workbench API access token（通过 MCP_BEARER_TOKEN 传入）；本地演示模式使用 MCP_DEMO_USER_ID。Entra delegated token 通过 `tid + oid` 映射到 Workbench Person；app-only Agent token 通过 `MCP_SERVICE_USER_ID` 映射到非 Admin 服务身份。两种身份都必须加入相关 Work Item 并仅授予必要 Participation 权限。Agent Host 当前不负责交互式登录或刷新令牌，部署方负责令牌获取和续期。不要将模型 API Key 放入 Workbench Server 配置或提交到仓库。
 
 ## 目录
 
@@ -124,8 +124,8 @@ Remote Host 使用 MCP_URL、MCP_BEARER_TOKEN 和服务器配置的 MCP_SERVICE_
 ## 当前限制
 
 - 演示登录通过 Header 选择身份，不可用于生产。
-- 已提供 Skills / 业务 Tools over MCP、带 DAG 依赖和汇总节点的 Agent Plan、带服务端 Claim Lease、心跳与崩溃恢复的 Coordinator，以及 provider-neutral Agent Host。项目没有随 Host 捆绑特定模型 Provider Adapter；部署方仍需提供 AgentExecutor 插件。尚未实现企业 OIDC/OAuth Delegation Grant、完整组织目录和策略引擎，也没有 Jira/Confluence/GitHub/LeanIX Connector。
-- 本地 MCP 默认只允许 localhost Host，并通过 `x-demo-user-id` 模拟调用者；不能用于生产身份认证。远程 MCP 必须同时配置 `MCP_ALLOWED_HOSTS`、长度至少 32 字符的 `MCP_BEARER_TOKEN` 和非 Admin 的 `MCP_SERVICE_USER_ID`。默认 Seed 会创建 `u-agent` 服务身份；必须由 Requestor/Admin 将它作为相关人员加入具体 Work Item，并只授予必要的 `read` / `contribute` / `comment` 权限。远程模式忽略请求自带的 `x-demo-user-id`，所有调用固定映射到该服务身份。静态 Bearer Token 是原型级服务认证，不替代企业 OAuth/OIDC 与用户级 Delegation Grant。
+- 已提供 Skills / 业务 Tools over MCP、DAG Agent Plan、服务端 Claim Lease 和 provider-neutral Agent Host。项目没有捆绑模型 Provider Adapter；部署方仍需提供 AgentExecutor 插件。尚未实现完整组织目录和策略引擎，也没有 Jira/Confluence/GitHub/LeanIX Connector。
+- 本地 MCP 仅允许 localhost Host，并通过 `x-demo-user-id` 模拟调用者；不可用于生产。远程 MCP 必须配置 `MCP_ALLOWED_HOSTS`，并启用 Entra OAuth Resource Server（`MCP_AUTH_ENABLED=true`），或明确使用仅供原型的静态 Bearer Token 兼容模式。Entra 模式验证 v2 access token 的签名、issuer、audience、tenant、客户端白名单及 delegated scope / app role；delegated 用户按 `tid + oid` 映射到 Person，app-only Agent 映射到非 Admin `MCP_SERVICE_USER_ID`。Email 自动关联默认关闭。关闭 Entra 模式时，远程静态 Token 仍会固定映射到服务身份，不提供用户委托身份。
 - 当前 SQLite 通过启动时的增量 schema check 兼容本原型已有数据库；尚无通用迁移框架和 PostgreSQL Adapter。迁移到 PostgreSQL 时需要引入异步 Repository / Unit of Work 实现，不能只替换连接字符串。
 - 当前已实现本地/S3 上传和元数据记录，尚未实现经过 Work Item 授权的下载/预签名 URL，也没有病毒扫描。
 - 已实现申请材料提交、评审材料版本留存、评论、澄清、阻断性异议、决定会议，以及由会议主席或管理员关闭事项。系统已保存评审开始时的评审人员名单；正式环境仍需补充通知送达、评审独立性规则、法定人数和可配置的评审策略。

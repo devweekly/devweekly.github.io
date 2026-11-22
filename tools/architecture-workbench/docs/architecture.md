@@ -59,7 +59,7 @@ The default LocalObjectStore writes files under `LOCAL_OBJECT_DIR`. Set `STORAGE
 
 ## Security assumptions and non-goals
 
-The `x-demo-user-id` header is a local prototype identity selector, not authentication. Do not expose this service to untrusted networks. A production deployment needs OIDC login, OAuth Delegation Grant for external Agents, tenant/resource authorization, CSRF/CORS policy, request validation, attachment content scanning, rate limits, durable audit retention and backups.
+The `x-demo-user-id` header is a local prototype identity selector, not authentication. Do not expose the service remotely in that mode. Remote MCP uses the OAuth Resource Server boundary when `MCP_AUTH_ENABLED=true`: Microsoft Entra ID authenticates users / clients and issues tokens; the Workbench validates the v2 token and enforces its own resource and Participation authorization. The server never treats an arbitrary Entra token as sufficient merely because Microsoft signed it. REST API demo identity remains a separate prototype concern. Other production requirements include CSRF/CORS policy for browser clients, attachment content scanning, rate limits, durable audit retention and backups.
 
 ## External system access boundary
 
@@ -76,7 +76,7 @@ The server factory is stateless per MCP HTTP request and attaches the same valid
 
 The MCP boundary exposes repository-managed Skills and a bounded set of Workbench business tools. A Skill does not grant permissions and reading a Skill is not activation. The Host is responsible for verifying, approving and loading it. Business tools re-check Participation at call time; formal Review and Decision authorization remains in the Workbench application services and Workflow Engine.
 
-For a remote deployment, configure MCP_ALLOWED_HOSTS, a static bearer secret and a non-admin Service Principal. This is prototype service authentication, not user-level OAuth delegation. The service identity must be explicitly added to each Work Item with least-privilege Participation permissions.
+For a remote deployment, prefer Entra OAuth Resource Server mode. Publish RFC 9728 Protected Resource Metadata, validate Entra v2 signatures and claims (`iss`, `aud`, `exp`, `tid`, `azp`, `scp` / `roles`), and map delegated identities by the tenant/object-ID pair. App-only Agent clients use an allowlisted client ID and a non-admin service Person. In both cases, each business Tool re-checks Work Item Participation. The static bearer + fixed service identity remains only as an explicit prototype compatibility mode.
 
 
 ## Business MCP Tools and Agent Coordinator
@@ -117,7 +117,7 @@ sequenceDiagram
 
 The MCP business surface does not include official Review submission, formal Decision creation, risk acceptance or Request closure. Those remain separate Human-authorized operations handled by the existing application APIs and Workflow Engine.
 
-Remote MCP is protected with a configured Host allowlist and static bearer token mapped to one non-admin service principal. This is a prototype service-authentication adapter, not user-level OAuth delegation. The service principal must be explicitly added to each Work Item with least-privilege Participation permissions.
+Remote MCP is protected by Entra OAuth Resource Server middleware when enabled. Delegated tokens retain the Human identity; app-only Agent tokens map to the configured non-admin service Person. The legacy static bearer adapter remains only for prototype compatibility when Entra mode is disabled.
 
 ## Multi-role Agent Plan and Host execution
 
