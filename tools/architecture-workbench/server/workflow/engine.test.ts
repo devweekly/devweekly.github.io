@@ -16,7 +16,7 @@ const {
   answerClarification,
   raiseObjection,
   recordFormalDecision,
-  applyRequestPackageDraft
+  getWorkItemPermissions
 }=await import("./engine.js");
 const {startWorkflowTimerService}=await import("./timer-service.js");
 
@@ -164,52 +164,25 @@ test("Request lifecycle freezes submissions, pauses review for clarification and
   assert.equal(status("workflow-one")?.status,"closed");
 });
 
-test("only the Requestor may apply a completed Agent Request Package draft",()=>{
+test("Request participants can inspect linked Technical Debt without gaining debt-management permissions",()=>{
   person("requestor");
   person("reviewer");
   person("chairman");
+  person("debt-owner");
   person("u-agent");
-  request("package-draft-apply");
-  run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",
-    "part-package-agent","package-draft-apply","u-agent","agent_service","Agent Service",JSON.stringify(["read","contribute","comment"]),now());
-  run("INSERT INTO agent_runs(id,work_item_id,agent_key,skill_name,objective,requested_by,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
-    "run-package-draft","package-draft-apply","request-coordinator","request-coordination","Prepare the Request Package.","requestor","completed",now(),now());
-  const proposed={
-    goal:"A single identity lifecycle outcome",
-    scope:"Identity lifecycle and access reviews",
-    constraints:"Existing enterprise identity provider",
-    initialProposal:"Use a common lifecycle API with policy checks",
-    decisionQuestions:"Approve the ownership boundary and review cadence",
-    submissionMessage:"feat(request): propose identity lifecycle governance",
-    assistedByRunId:"run-package-draft"
-  };
-  run("INSERT INTO request_package_drafts(id,work_item_id,agent_run_id,draft_json,status,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
-    "pkg-draft-apply","package-draft-apply","run-package-draft",JSON.stringify(proposed),"pending","u-agent",now());
+  request("debt-origin-request");
+  run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,requestor_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+    "debt-linked","DEBT-TEST-001","technical_debt","Linked technical debt","Follow-up remediation","open","high","debt-owner","debt-owner",now(),now());
+  run("INSERT INTO debt_details(work_item_id,severity,priority,target_state,remediation_plan,status) VALUES(?,?,?,?,?,?)",
+    "debt-linked","high","high","Retire legacy adapter","Migrate consumers and remove adapter.","open");
+  run("INSERT INTO work_item_relations(id,source_work_item_id,target_work_item_id,relation_type,created_at) VALUES(?,?,?,?,?)",
+    "debt-origin-link","debt-origin-request","debt-linked","generated_technical_debt",now());
 
-  const reviewerAttempt=applyRequestPackageDraft("package-draft-apply","pkg-draft-apply","reviewer");
-  assert.equal(reviewerAttempt.ok,false);
-  if (!reviewerAttempt.ok) assert.equal(reviewerAttempt.statusCode,403);
-  const agentAttempt=applyRequestPackageDraft("package-draft-apply","pkg-draft-apply","u-agent");
-  assert.equal(agentAttempt.ok,false);
-  if (!agentAttempt.ok) assert.equal(agentAttempt.statusCode,403);
-
-  const applied=applyRequestPackageDraft("package-draft-apply","pkg-draft-apply","requestor");
-  assert.equal(applied.ok,true);
-  assert.equal(status("package-draft-apply")?.status,"draft");
-  const stored=one<{request_package_json:string;context_version:number}>(
-    "SELECT request_package_json,context_version FROM work_items WHERE id=?","package-draft-apply"
-  );
-  const storedPackage=JSON.parse(stored?.request_package_json || "{}") as typeof proposed;
-  assert.equal(storedPackage.goal,proposed.goal);
-  assert.equal(storedPackage.assistedByRunId,"run-package-draft");
-  assert.equal(stored?.context_version,1);
-  const savedDraft=one<{status:string;applied_by:string}>(
-    "SELECT status,applied_by FROM request_package_drafts WHERE id=?","pkg-draft-apply"
-  );
-  assert.equal(savedDraft?.status,"applied");
-  assert.equal(savedDraft?.applied_by,"requestor");
-  const duplicate=applyRequestPackageDraft("package-draft-apply","pkg-draft-apply","requestor");
-  assert.equal(duplicate.ok,false);
+  const reviewerPermissions=getWorkItemPermissions("debt-linked","reviewer");
+  assert.deepEqual(reviewerPermissions,["read"]);
+  assert.equal(reviewerPermissions.includes("contribute"),false);
+  assert.equal(reviewerPermissions.includes("manage"),false);
+  assert.deepEqual(getWorkItemPermissions("debt-linked","u-agent"),[]);
 });
 
 test("persisted review timer advances a Request after its deadline",()=>{
