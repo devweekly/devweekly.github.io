@@ -53,6 +53,10 @@ test("Request lifecycle freezes submissions, pauses review for clarification and
   person("admin",1);
   person("u-workflow");
   request("workflow-one");
+  run("INSERT INTO external_resource_refs(id,provider,resource_type,external_id,external_key,title,url,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+    "ref-workflow-one","jira","Issue","external-1","ARCH-101","Identity boundary evidence","https://jira.example.test/browse/ARCH-101",now(),now());
+  run("INSERT INTO work_item_external_links(id,work_item_id,resource_id,relation_type,linked_by,created_at) VALUES(?,?,?,?,?,?)",
+    "link-workflow-one","workflow-one","ref-workflow-one","evidence","requestor",now());
 
   const first=transitionWorkItem("workflow-one","requestor","submit_request","Initial submission",{
     submissionMessage:"feat(request): initial platform review package",
@@ -60,13 +64,15 @@ test("Request lifecycle freezes submissions, pauses review for clarification and
   });
   assert.equal(first.ok,true);
   assert.equal(status("workflow-one")?.status,"discussion_review");
-  const firstSubmission=one<{id:string;sequence:number;submitted_by:string;submission_message:string;manifest_json:string}>(
-    "SELECT id,sequence,submitted_by,submission_message,manifest_json FROM submissions WHERE work_item_id=?","workflow-one"
+  const firstSubmission=one<{id:string;sequence:number;submitted_by:string;submission_message:string;manifest_json:string;package_json:string}>(
+    "SELECT id,sequence,submitted_by,submission_message,manifest_json,package_json FROM submissions WHERE work_item_id=?","workflow-one"
   );
   assert.equal(firstSubmission?.sequence,1);
   assert.equal(firstSubmission?.submitted_by,"requestor");
   assert.equal(firstSubmission?.submission_message,"feat(request): initial platform review package");
   assert.deepEqual(JSON.parse(firstSubmission?.manifest_json || "[]"),[]);
+  const firstPackage=JSON.parse(firstSubmission?.package_json || "{}") as {externalReferences?:{external_key:string}[]};
+  assert.deepEqual(firstPackage.externalReferences?.map(reference=>reference.external_key),["ARCH-101"]);
   const reviewerSnapshot=one<{reviewer_snapshot_json:string}>("SELECT reviewer_snapshot_json FROM review_cycles WHERE work_item_id=?","workflow-one");
   const reviewerIds=(JSON.parse(reviewerSnapshot?.reviewer_snapshot_json || "[]") as {person_id:string}[]).map(entry=>entry.person_id);
   assert.deepEqual(reviewerIds,["reviewer"]);
@@ -123,12 +129,14 @@ test("Request lifecycle freezes submissions, pauses review for clarification and
   });
   assert.equal(second.ok,true);
   const submissions=one<{count:number}>("SELECT COUNT(*) AS count FROM submissions WHERE work_item_id=?","workflow-one");
-  const latest=one<{sequence:number;source_submission_id:string|null}>(
-    "SELECT sequence,source_submission_id FROM submissions WHERE work_item_id=? ORDER BY sequence DESC LIMIT 1","workflow-one"
+  const latest=one<{sequence:number;source_submission_id:string|null;package_json:string}>(
+    "SELECT sequence,source_submission_id,package_json FROM submissions WHERE work_item_id=? ORDER BY sequence DESC LIMIT 1","workflow-one"
   );
   assert.equal(submissions?.count,2);
   assert.equal(latest?.sequence,2);
   assert.equal(latest?.source_submission_id,firstSubmission?.id);
+  const revisedPackage=JSON.parse(latest?.package_json || "{}") as {externalReferences?:{external_key:string}[]};
+  assert.deepEqual(revisedPackage.externalReferences?.map(reference=>reference.external_key).sort(),["ARCH-101","PR-202"]);
 
   raiseObjection("workflow-one","reviewer","Second round objection");
   const approved=recordFormalDecision("workflow-one","chairman",{
