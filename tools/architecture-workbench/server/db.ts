@@ -67,6 +67,9 @@ function ensureColumn(table: string, column: string, definition: string) {
 
 // Additive migrations keep existing local prototype databases usable.
 ensureColumn("people","department","TEXT NOT NULL DEFAULT ''");
+ensureColumn("people","entra_tenant_id","TEXT");
+ensureColumn("people","entra_object_id","TEXT");
+run("CREATE UNIQUE INDEX IF NOT EXISTS idx_people_entra_identity ON people(lower(entra_tenant_id),lower(entra_object_id)) WHERE entra_tenant_id IS NOT NULL AND entra_object_id IS NOT NULL");
 ensureColumn("people","location","TEXT NOT NULL DEFAULT ''");
 ensureColumn("people","bio","TEXT NOT NULL DEFAULT ''");
 ensureColumn("people","expertise_json","TEXT NOT NULL DEFAULT '[]'");

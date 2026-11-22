@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { McpServer } from "@modelcontextprotocol/server";
+import { McpServer, type AuthInfo } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import { all, db, id, now, one, run } from "../db.js";
 import { getWorkItemPermissions, isGlobalAdmin, getWorkflowProjection } from "../workflow/engine.js";
@@ -22,9 +22,11 @@ import {
 } from "../agents/coordinator.js";
 import { agentRuntimeAdapter } from "../agents/runtime.js";
 
-type ToolContext = { http?: { req?: Request } };
+type ToolContext = { http?: { req?: Request; authInfo?: AuthInfo } };
 
 function actorId(ctx:ToolContext):string {
+  const authenticatedActor = ctx.http?.authInfo?.extra?.workbenchActorId;
+  if (typeof authenticatedActor === "string" && authenticatedActor.trim()) return authenticatedActor.trim();
   return ctx.http?.req?.headers.get("x-demo-user-id")?.trim() || "u-sa";
 }
 

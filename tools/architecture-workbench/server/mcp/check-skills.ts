@@ -12,6 +12,14 @@ for (const suffix of ["","-wal","-shm"]) rmSync(databasePath+suffix,{force:true}
 process.env.DATABASE_PATH=databasePath;
 process.env.AGENT_RUN_LEASE_MS="15000";
 process.env.MCP_ALLOWED_HOSTS="";
+process.env.MCP_AUTH_ENABLED="false";
+delete process.env.MCP_AUTH_TENANT_ID;
+delete process.env.MCP_AUTH_AUDIENCE;
+delete process.env.MCP_AUTH_RESOURCE_URL;
+delete process.env.MCP_AUTH_AUTHORIZATION_SERVER_URL;
+delete process.env.MCP_AUTH_ALLOWED_CLIENT_IDS;
+delete process.env.MCP_AUTH_REQUIRED_SCOPES;
+delete process.env.MCP_AUTH_AUTO_LINK_BY_EMAIL;
 delete process.env.MCP_BEARER_TOKEN;
 delete process.env.MCP_SERVICE_USER_ID;
 

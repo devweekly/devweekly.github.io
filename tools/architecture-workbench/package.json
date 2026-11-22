@@ -11,7 +11,7 @@
     "dev": "concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "tsx watch server/index.ts",
     "dev:web": "vite --host 0.0.0.0",
-    "test": "tsx --test server/workflow/engine.test.ts",
+    "test": "tsx --test server/workflow/engine.test.ts server/mcp/entra-auth.test.ts",
     "build": "npm run test && tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.client.json && npm run check:skills && vite build",
     "start": "cross-env NODE_ENV=production tsx server/index.ts",
     "typecheck": "tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.client.json && npm run check:skills",
@@ -34,7 +34,8 @@
     "multer": "^2.0.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "jose": "^6.2.18"
   },
   "devDependencies": {
     "@types/express": "^5.0.3",
