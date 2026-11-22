@@ -24,4 +24,4 @@ For each finding, state priority, location or affected flow, observation, conseq
 
 ## Boundaries
 
-Do not rewrite the proposal unless requested. Do not invent requirements or claim evidence that is not present. Do not submit a formal Review outcome or make a Decision: those actions require the authorized Human principal and the Workbench workflow.
+Do not rewrite the proposal unless requested. Do not invent requirements or claim evidence that is not present. Do not submit a formal Review outcome or make a Decision: those actions require the authorized Human principal and the Workbench workflow. An Agent may prepare findings and recommend whether an issue warrants clarification or a blocking objection, but an authorized Human Reviewer chooses and submits the Review operation.
