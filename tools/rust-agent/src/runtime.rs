@@ -556,8 +556,9 @@ impl SessionStore {
 
 const BACKGROUND_TASK_SCHEMA_VERSION: u32 = 1;
 const MAX_ACTIVE_BACKGROUND_TASKS: usize = 8;
-const MAX_STORED_BACKGROUND_TASKS: usize = 5_000;
+const MAX_STORED_BACKGROUND_TASKS: usize = 512;
 const MAX_BACKGROUND_TASK_RECORD_BYTES: usize = 16 * 1024 * 1024;
+const MAX_BACKGROUND_TASK_STORE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_BACKGROUND_TASK_STEPS: usize = 12;
 const MAX_BACKGROUND_TASK_RESULT_CHARS: usize = 24_000;
 
@@ -690,7 +691,7 @@ impl BackgroundTaskStore {
         let path = self.path_for(&record.task_id)?;
         let lock = self.lock_store()?;
         ensure_regular_file_or_missing(&path)?;
-        match fs::read(&path) {
+        let is_new_record = match fs::read(&path) {
             Ok(bytes) => {
                 let current: BackgroundTaskRecord = serde_json::from_slice(&bytes)?;
                 if current.status == BackgroundTaskStatus::Cancelling
@@ -720,27 +721,41 @@ impl BackgroundTaskStore {
                         )));
                     }
                 }
+                false
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                let count = fs::read_dir(&self.directory)?
-                    .filter_map(Result::ok)
-                    .filter(|entry| {
-                        entry.file_type().is_ok_and(|kind| kind.is_file())
-                            && entry.path().extension().and_then(|value| value.to_str()) == Some("json")
-                    })
-                    .count();
-                if count >= MAX_STORED_BACKGROUND_TASKS {
-                    return Err(AgentError::InvalidAction(format!(
-                        "background task store reached the {MAX_STORED_BACKGROUND_TASKS} record limit; prune terminal tasks"
-                    )));
-                }
-            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
             Err(error) => return Err(error.into()),
-        }
+        };
         let temporary = path.with_extension(format!("json.tmp-{}-{}", std::process::id(), now_ms()));
         let bytes = serde_json::to_vec_pretty(record)?;
         if bytes.len() > MAX_BACKGROUND_TASK_RECORD_BYTES {
             return Err(AgentError::InvalidAction("background task record exceeds the 16 MiB limit".into()));
+        }
+
+        let mut stored_count = 0usize;
+        let mut stored_bytes = 0u64;
+        for entry in fs::read_dir(&self.directory)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_file()
+                || entry.path().extension().and_then(|value| value.to_str()) != Some("json")
+            {
+                continue;
+            }
+            stored_count += 1;
+            if entry.path() != path {
+                stored_bytes = stored_bytes.saturating_add(entry.metadata()?.len());
+            }
+        }
+        if is_new_record && stored_count >= MAX_STORED_BACKGROUND_TASKS {
+            return Err(AgentError::InvalidAction(format!(
+                "background task store reached the {MAX_STORED_BACKGROUND_TASKS} record limit; prune terminal tasks"
+            )));
+        }
+        if stored_bytes.saturating_add(bytes.len() as u64) > MAX_BACKGROUND_TASK_STORE_BYTES {
+            return Err(AgentError::InvalidAction(format!(
+                "background task store is limited to {} MiB; prune terminal tasks",
+                MAX_BACKGROUND_TASK_STORE_BYTES / (1024 * 1024)
+            )));
         }
         write_private_file(&temporary, &bytes, false)?;
         fs::rename(&temporary, &path)?;
