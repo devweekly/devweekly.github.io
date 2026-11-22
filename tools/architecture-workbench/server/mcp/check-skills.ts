@@ -14,10 +14,11 @@ process.env.MCP_ALLOWED_HOSTS="";
 delete process.env.MCP_BEARER_TOKEN;
 delete process.env.MCP_SERVICE_USER_ID;
 
-const [{seed},{db,all,run,id,now},{mountSkillsMcpEndpoint}]=await Promise.all([
+const [{seed},{db,all,run,id,now},{mountSkillsMcpEndpoint},{recoverExpiredAgentRunLeases}]=await Promise.all([
   import("../seed.js"),
   import("../db.js"),
-  import("./skills-server.js")
+  import("./skills-server.js"),
+  import("../agents/coordinator.js")
 ]);
 
 function assert(condition:unknown,message:string):asserts condition {
@@ -90,7 +91,7 @@ try {
     "workbench_get_workflow_state","workbench_list_my_tasks","workbench_create_task",
     "workbench_update_task","workbench_create_artifact_draft","workbench_add_comment",
     "agent_list_profiles","agent_request_run","agent_request_plan","agent_list_plans","agent_get_plan_context",
-    "agent_claim_run","agent_claim_next_run","agent_complete_run","agent_request_human_handoff","agent_fail_run",
+    "agent_claim_run","agent_claim_next_run","agent_heartbeat_run","agent_complete_run","agent_request_human_handoff","agent_fail_run",
     "agent_resume_run","agent_list_runs","agent_get_run_events"
   ];
   for (const name of requiredTools) assert(toolNames.includes(name),"Missing MCP Tool: "+name);
@@ -142,7 +143,11 @@ try {
   const claimed=claimNext.run;
   assert(claimNext.skillUri.includes("business-analysis"),"Claim-next did not return the required Skill URI.");
   assert(claimed.id===runId,"Claim-next selected a different run.");
-  assert(claimed.status==="running" && claimed.claimed_by==="u-sa","Agent run claim failed.");
+  assert(claimed.status==="running" && claimed.claimed_by==="u-sa" && claimed.lease_expires_at && claimed.attempt_count===1,"Agent run claim did not establish a lease.");
+  const heartbeat=parseToolResult(await localClient.callTool({
+    name:"agent_heartbeat_run",arguments:{runId,claimToken:claimed.claim_token}
+  }));
+  assert(Date.parse(heartbeat.lease_expires_at)>Date.parse(heartbeat.heartbeat_at),"Agent lease heartbeat did not extend the lease.");
 
   const rejectedStolenClaim=await localClient.callTool({
     name:"agent_complete_run",
@@ -187,6 +192,56 @@ try {
   }));
   assert(events.length>=5,"Agent run event history is incomplete.");
 
+  const leaseRequest=parseToolResult(await localClient.callTool({
+    name:"agent_request_run",
+    arguments:{workItemId:workItem.id,agentKey:"business-analyst",objective:"Exercise lease expiry and stale worker fencing."}
+  }));
+  const abandonedClaim=parseToolResult(await localClient.callTool({
+    name:"agent_claim_run",arguments:{runId:leaseRequest.run.id,agentKey:"business-analyst"}
+  }));
+  const oldClaimToken=abandonedClaim.claim_token;
+  run("UPDATE agent_runs SET lease_expires_at=? WHERE id=?",new Date(Date.now()-1000).toISOString(),leaseRequest.run.id);
+  assert(recoverExpiredAgentRunLeases()===1,"The server did not recover the expired Agent lease.");
+  const requeued=all<{status:string;attempt_count:number;claim_token:string|null}>(
+    "SELECT status,attempt_count,claim_token FROM agent_runs WHERE id=?",leaseRequest.run.id
+  )[0];
+  assert(requeued.status==="queued" && requeued.attempt_count===1 && requeued.claim_token===null,"Expired lease was not safely returned to the queue.");
+  const staleHeartbeat=await localClient.callTool({
+    name:"agent_heartbeat_run",arguments:{runId:leaseRequest.run.id,claimToken:oldClaimToken}
+  });
+  assert(staleHeartbeat.isError===true,"An expired worker could renew its old lease.");
+  const reclaimed=parseToolResult(await localClient.callTool({
+    name:"agent_claim_run",arguments:{runId:leaseRequest.run.id,agentKey:"business-analyst"}
+  }));
+  assert(reclaimed.claim_token!==oldClaimToken && reclaimed.attempt_count===2,"Reclaim did not rotate the claim token and increment the attempt.");
+  const staleCompletion=await localClient.callTool({
+    name:"agent_complete_run",
+    arguments:{runId:leaseRequest.run.id,claimToken:oldClaimToken,artifactTitle:"Stale Worker Output",artifactType:"analysis",content:"Must be rejected."}
+  });
+  assert(staleCompletion.isError===true,"A stale worker wrote an Artifact after lease recovery.");
+  const recoveredCompletion=parseToolResult(await localClient.callTool({
+    name:"agent_complete_run",
+    arguments:{runId:leaseRequest.run.id,claimToken:reclaimed.claim_token,artifactTitle:"Recovered Worker Output",artifactType:"analysis",content:"The replacement worker completed the recovered run."}
+  }));
+  assert(recoveredCompletion.run.status==="completed","The replacement worker could not complete a recovered Run.");
+
+  const exhaustedRequest=parseToolResult(await localClient.callTool({
+    name:"agent_request_run",
+    arguments:{workItemId:workItem.id,agentKey:"security-reviewer",objective:"Exercise bounded recovery after repeated Host crashes."}
+  }));
+  for (let attempt=1;attempt<=3;attempt++) {
+    const claim=parseToolResult(await localClient.callTool({
+      name:"agent_claim_run",arguments:{runId:exhaustedRequest.run.id,agentKey:"security-reviewer"}
+    }));
+    run("UPDATE agent_runs SET lease_expires_at=? WHERE id=?",new Date(Date.now()-1000).toISOString(),exhaustedRequest.run.id);
+    recoverExpiredAgentRunLeases();
+    const state=all<{status:string;attempt_count:number}>(
+      "SELECT status,attempt_count FROM agent_runs WHERE id=?",exhaustedRequest.run.id
+    )[0];
+    assert(state.attempt_count===attempt,"Lease recovery did not persist the attempt count.");
+    assert(state.status===(attempt===3 ? "failed" : "queued"),"Lease recovery did not enforce the bounded retry policy.");
+    if (attempt===3) assert(claim.claim_token.length>=32,"The final expired attempt did not have a valid claim token.");
+  }
 
   const plan=parseToolResult(await localClient.callTool({
     name:"agent_request_plan",
@@ -320,7 +375,7 @@ try {
     name:"agent_list_plans",arguments:{workItemId:workItem.id}
   }));
   assert(hostPlans.some((entry:any)=>entry.id===hostPlan.id && entry.status==="completed"),"Agent Host did not complete the remote Agent Plan.");
-  console.log("Workbench MCP smoke test passed: 7 Skills; 23 Tools; permission enforcement; DAG dependencies and parallel claims; synthesis aggregation; provider-neutral MCP Agent Host; Human hand-off; remote bearer identity.");
+  console.log("Workbench MCP smoke test passed: 7 Skills; 24 Tools; permission enforcement; DAG dependencies and parallel claims; synthesis aggregation; lease heartbeat and crash recovery; bounded retries; stale worker fencing; provider-neutral MCP Agent Host; Human hand-off; remote bearer identity.");
 } finally {
   if (remoteClient) await remoteClient.close();
   if (remoteServer) await closeServer(remoteServer.httpServer);
