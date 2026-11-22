@@ -317,7 +317,7 @@ export default function App() {
 
   function breakdownCard(title:string,rows:Array<{key:string;count:number;label?:string}>) {
     const max=Math.max(1,...rows.map(row=>row.count));
-    const labels:Record<string,string>={draft:"草稿",analysis:"分析中",in_review:"评审中",changes_requested:"待修改",accepted:"已接受",accepted_with_conditions:"附条件接受",rejected:"已拒绝",closed:"已关闭",high:"高",normal:"普通",low:"低",architecture_review:"架构评审",change_assessment:"变更评估",solution_assessment:"Solution 评估",risk_assessment:"风险评估",technical_debt:"技术债务",jira:"Jira",confluence:"Confluence",github:"GitHub",leanix:"LeanIX",open:"待处理",in_progress:"处理中",deferred:"已延期",resolved:"已解决",cancelled:"已取消",medium:"中"};
+    const labels:Record<string,string>={draft:"Request 草稿",requestor_revision:"待 Requestor 修订",discussion_review:"讨论与评审",waiting_requestor:"等待 Requestor",decision_meeting:"决定会议",approved_pending_close:"批准待关闭",rejected_pending_close:"拒绝待关闭",closed:"已关闭",analysis:"分析",in_review:"历史评审状态",changes_requested:"历史待修改",accepted:"历史已接受",rejected:"历史已拒绝",approve:"历史认可意见",request_changes:"历史修改意见",block:"历史阻断意见",high:"高",normal:"普通",low:"低",architecture_review:"架构评审",change_assessment:"变更评估",solution_assessment:"Solution 评估",risk_assessment:"风险评估",technical_debt:"技术债务",jira:"Jira",confluence:"Confluence",github:"GitHub",leanix:"LeanIX",open:"待处理",in_progress:"处理中",deferred:"已延期",resolved:"已解决",cancelled:"已取消",medium:"中"};
     const leader=[...rows].sort((a,b)=>b.count-a.count)[0];
     const total=rows.reduce((sum,row)=>sum+row.count,0);
     return <Card title={title} className="panel-card">
@@ -335,7 +335,7 @@ export default function App() {
     const r=analyticsData.requests;
     const d=analyticsData.technicalDebt;
     const visibleItems=bootstrap?.workItems || [];
-    const isOverdue=(item:WorkItem)=>Boolean(item.target_date && dayjs(item.target_date).isBefore(dayjs(),"day") && !["closed","rejected"].includes(item.status));
+    const isOverdue=(item:WorkItem)=>Boolean(item.target_date && dayjs(item.target_date).isBefore(dayjs(),"day") && item.status!=="closed");
     const attentionItems=visibleItems.filter(item=>isOverdue(item) || item.status==="in_review")
       .sort((a,b)=>Number(isOverdue(b))-Number(isOverdue(a)) || String(a.target_date || "9999-12-31").localeCompare(String(b.target_date || "9999-12-31")));
     const debtItems=bootstrap?.debts || [];
@@ -683,7 +683,7 @@ export default function App() {
           <Card size="small" title={"评审记录 · "+detail.reviews.length}>
             <Text type="secondary" className="small">{currentCycle ? currentCycle.name+" · 固定材料基线" : "尚未启动评审"}</Text>
             {permissions.includes("review") && currentCycle?.status==="active" && item.status==="discussion_review" ? <Button size="small" icon={<PlusOutlined />} disabled={reviewableArtifacts.length===0} onClick={()=>{reviewForm.resetFields();reviewForm.setFieldsValue({artifactId:reviewableArtifacts[0]?.id,outcome:"comment",discipline:actorPerson?.title || "General"});setReviewOpen(true);}}>提交评审意见</Button>:null}
-            <List size="small" dataSource={detail.reviews} locale={{emptyText:"尚无评审意见"}} renderItem={(review:Review)=><List.Item><List.Item.Meta title={<Space wrap><Text strong>{review.reviewer_name}</Text><Tag>{review.discipline}</Tag><Tag color={review.outcome==="approve"?"success":review.outcome==="request_changes"?"warning":"default"}>{review.outcome}</Tag></Space>} description={<>{review.summary}<div className="small muted">{review.artifact_code || review.artifact_title} · v{review.artifact_version} · {dateText(review.created_at)}</div></>} /></List.Item>} />
+            <List size="small" dataSource={detail.reviews} locale={{emptyText:"尚无评审意见"}} renderItem={(review:Review)=><List.Item><List.Item.Meta title={<Space wrap><Text strong>{review.reviewer_name}</Text><Tag>{review.discipline}</Tag><Tag color={review.outcome==="objection"?"error":review.outcome==="clarification_requested"?"warning":"default"}>{statusLabels[review.outcome] || review.outcome}</Tag></Space>} description={<>{review.summary}<div className="small muted">{review.artifact_code || review.artifact_title} · v{review.artifact_version} · {dateText(review.created_at)}</div></>} /></List.Item>} />
           </Card>
 
           <Card size="small" title={"正式决定 · "+detail.decisions.length}>
