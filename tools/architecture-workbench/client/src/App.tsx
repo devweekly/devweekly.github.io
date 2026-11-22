@@ -386,7 +386,7 @@ export default function App() {
           </Row>
           <Card title={"需要跟进的事项 · "+attentionItems.length} className="panel-card" extra={<Button type="link" onClick={()=>navigatePage("work-items")}>全部事项</Button>}>
             <Paragraph type="secondary">列出你有权查看且已逾期或正等待处理的事项。打开事项可查看负责人、任务和相关材料。</Paragraph>
-            <Table size="small" rowKey="id" dataSource={attentionItems} pagination={{pageSize:6,hideOnSinglePage:true}} locale={{emptyText:"当前没有逾期或等待评审的事项"}} columns={[
+            <Table size="small" rowKey="id" dataSource={attentionItems} pagination={{pageSize:6,hideOnSinglePage:true}} locale={{emptyText:"当前没有需要跟进的事项"}} columns={[
               {title:"事项",dataIndex:"title",render:(value:string,item:WorkItem)=><Button type="link" className="table-link" onClick={()=>void openWorkItem(item)}>{item.code} · {value}</Button>},
               {title:"阶段",dataIndex:"status",render:(value:string)=><Tag color={statusColors[value]}>{statusLabels[value] || value}</Tag>},
               {title:"负责人",dataIndex:"owner_name"},
