@@ -457,7 +457,7 @@ export default function App() {
   function renderDashboard() {
     if (!bootstrap) return <Card loading />;
     return <div className="page-stack">
-      <div className="page-heading"><div><Text type="secondary">工作台概览</Text><Title level={2}>工作概览</Title><Paragraph type="secondary">围绕业务事项组织参与者、工作、材料、评审和正式决策。</Paragraph></div><Button type="primary" icon={<PlusOutlined />} onClick={()=>setNewItemOpen(true)}>新建事项</Button></div>
+      <div className="page-heading"><div><Title level={2}>工作概览</Title><Paragraph type="secondary">最近更新的事项和技术债务。</Paragraph></div><Button type="primary" icon={<PlusOutlined />} onClick={()=>setNewItemOpen(true)}>新建事项</Button></div>
        <Card title="最近事项" extra={<Button type="link" onClick={()=>navigatePage("work-items")}>查看全部</Button>} className="panel-card">
         <Table rowKey="id" columns={itemColumns} dataSource={bootstrap.workItems.slice(0,8)} pagination={false} loading={loading} />
       </Card>
@@ -557,17 +557,17 @@ export default function App() {
       .map(entry=>detail.artifacts.find(artifact=>artifact.id===entry.id && artifact.version===entry.version))
       .filter((artifact):artifact is Artifact=>Boolean(artifact)) : [];
     const phaseAction:Record<string,string>={
-      draft:"申请人完善申请材料，确认提交说明后提交评审。",
-      requestor_revision:"根据决定会议结论修改申请材料，再次提交评审。",
-      discussion_review:"讨论和评审持续到截止时间；普通评论不会中断流程，提出阻断性异议会提前进入决定会议。",
-      waiting_requestor:"等待申请人在指定期限内回答澄清问题；答复后恢复剩余评审时间。",
-      decision_meeting:"由指定会议主席主持决定会议，记录批准、要求修改或拒绝的正式结论。",
-      approved_pending_close:"决定已批准，等待会议主席或管理员关闭事项。",
-      rejected_pending_close:"决定已拒绝，等待会议主席或管理员关闭事项。",
-      closed:"事项已关闭，讨论、评审意见、会议纪要和决定记录仍可查阅。"
+      draft:"完善申请材料并提交评审。",
+      requestor_revision:"修改材料后重新提交。",
+      discussion_review:"等待评审意见或评审截止。",
+      waiting_requestor:"等待申请人答复。",
+      decision_meeting:"会议主席记录决定。",
+      approved_pending_close:"会议主席或管理员关闭事项。",
+      rejected_pending_close:"会议主席或管理员关闭事项。",
+      closed:"事项已关闭。"
     };
     const nextAction=detail.workflow.activeClarification
-      ? "申请人回答澄清问题（截止 "+dateText(detail.workflow.activeClarification.response_due_at)+"）。"
+      ? "申请人答复（截止 "+dateText(detail.workflow.activeClarification.response_due_at)+"）。"
       : (phaseAction[item.status] || "根据当前进展继续处理。");
     const requestPackage=(()=>{try{return JSON.parse(item.request_package_json || "{}") as Record<string,unknown>;}catch{return {};}})();
     const canSubmitRequest=item.requestor_id===actor;
@@ -599,7 +599,7 @@ export default function App() {
         <Space wrap>
           {permissions.includes("contribute") && <Button icon={<PlusOutlined />} onClick={()=>setArtifactOpen(true)}>添加架构材料</Button>}
           {canSubmitRequest && ["draft","requestor_revision"].includes(item.status) && <Button onClick={()=>{packageForm.setFieldsValue({...requestPackage});setPackageOpen(true);}}>{packageReady?"编辑申请材料":"完善申请材料"}</Button>}
-          {detail.workflow.availableActions.includes("submit_request") && packageReady && <Button type="primary" onClick={()=>void transitionWorkflow("submit_request",{submissionMessage:String(requestPackage.submissionMessage),package:requestPackage,assistedByRunId:requestPackage.assistedByRunId ? String(requestPackage.assistedByRunId) : undefined})}>提交评审</Button>}
+          {canSubmitRequest && detail.workflow.availableActions.includes("submit_request") && packageReady && <Button type="primary" onClick={()=>void transitionWorkflow("submit_request",{submissionMessage:String(requestPackage.submissionMessage),package:requestPackage,assistedByRunId:requestPackage.assistedByRunId ? String(requestPackage.assistedByRunId) : undefined})}>提交评审</Button>}
           {detail.workflow.availableActions.includes("record_decision") && <Button type="primary" onClick={()=>{decisionForm.resetFields();decisionForm.setFieldsValue({outcome:"approved"});setDecisionOpen(true);}}>记录决定会议结论</Button>}
         </Space>
       </div>
@@ -637,8 +637,7 @@ export default function App() {
         </details>}
       </Card>
 
-      <Card size="small" title="协作进展" className="workspace-section" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>{setEditingTaskId(null);taskForm.resetFields();taskForm.setFieldsValue({ownerId:item.owner_id,assigneeId:detail.participants.some(person=>person.person_id===actor)?actor:undefined});setTaskOpen(true);}}>添加任务</Button>:null}>
-        <Paragraph type="secondary" className="small">这里展示正在推进、等待处理或遇到阻塞的工作。普通工作更新不代表审批；正式结论只在决定会议中记录。</Paragraph>
+      <Card size="small" title="任务" className="workspace-section" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>{setEditingTaskId(null);taskForm.resetFields();taskForm.setFieldsValue({ownerId:item.owner_id,assigneeId:detail.participants.some(person=>person.person_id===actor)?actor:undefined});setTaskOpen(true);}}>添加任务</Button>:null}>
         {detail.tasks.length===0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有安排的任务" /> : (() => {
           const groups=[
             {key:"in_progress",label:"正在推进"},
@@ -786,12 +785,13 @@ export default function App() {
 
     <Modal title="编辑申请材料" open={packageOpen} onCancel={()=>setPackageOpen(false)} onOk={()=>void submitForm(packageForm,async()=>api.updateRequestPackage(selected!.id,packageForm.getFieldsValue()),"申请材料已保存",()=>setPackageOpen(false))} confirmLoading={busy} width={720}>
       <Form form={packageForm} layout="vertical">
-        <Form.Item name="goal" label="预期结果" rules={[{required:true}]}><TextArea rows={2}/></Form.Item>
-        <Form.Item name="scope" label="范围" rules={[{required:true}]}><TextArea rows={2}/></Form.Item>
+        <Form.Item name="goal" label="预期结果"><TextArea rows={2}/></Form.Item>
+        <Form.Item name="scope" label="范围"><TextArea rows={2}/></Form.Item>
         <Form.Item name="constraints" label="约束与主要风险"><TextArea rows={2}/></Form.Item>
         <Form.Item name="initialProposal" label="初步方案（可选）"><TextArea rows={3}/></Form.Item>
-        <Form.Item name="decisionQuestions" label="需要负责人决定的问题" rules={[{required:true}]}><TextArea rows={2}/></Form.Item>
-        <Form.Item name="submissionMessage" label="本次提交说明" rules={[{required:true}]}><Input/></Form.Item>
+        <Form.Item name="decisionQuestions" label="需要负责人决定的问题"><TextArea rows={2}/></Form.Item>
+        <Form.Item name="submissionMessage" label="本次提交说明"><Input/></Form.Item>
+        <Text type="secondary" className="small">保存草稿不需要填完这些内容；提交评审前需补齐预期结果、范围、决定问题和提交说明。</Text>
                </Form>
     </Modal>
 
@@ -824,7 +824,7 @@ export default function App() {
       </Form>
     </Modal>
 
-    <Modal title={editingTaskId ? "调整任务分工" : "创建后续任务"} open={taskOpen} onCancel={()=>{setTaskOpen(false);setEditingTaskId(null);taskForm.resetFields();}} onOk={()=>void submitForm(taskForm,async()=>{
+    <Modal title={editingTaskId ? "编辑任务" : "添加任务"} open={taskOpen} onCancel={()=>{setTaskOpen(false);setEditingTaskId(null);taskForm.resetFields();}} onOk={()=>void submitForm(taskForm,async()=>{
       const v=taskForm.getFieldsValue();
       if(v.dueDate) v.dueDate=v.dueDate.format("YYYY-MM-DD");
       if(editingTaskId) {
@@ -833,7 +833,7 @@ export default function App() {
         return api.updateTask(editingTaskId,v);
       }
       return api.createTask(selected!.id,v);
-    },editingTaskId?"任务分工已更新":"任务已创建",()=>{setTaskOpen(false);setEditingTaskId(null);})} confirmLoading={busy}>
+    },editingTaskId?"任务已更新":"任务已添加",()=>{setTaskOpen(false);setEditingTaskId(null);})} confirmLoading={busy}>
       <Form form={taskForm} layout="vertical">
         <Form.Item name="title" label="工作内容" rules={[{required:true}]}><Input disabled={Boolean(editingTaskId)} /></Form.Item>
         <Form.Item name="kind" label="任务类型"><Select disabled={Boolean(editingTaskId)} options={[{value:"analysis",label:"分析"},{value:"revision",label:"材料修改"},{value:"follow_up",label:"后续整改"},{value:"decision_prep",label:"决策准备"}]} /></Form.Item>
@@ -845,7 +845,7 @@ export default function App() {
 
     <Modal title="Agent 分析" open={agentPlanOpen} onCancel={()=>setAgentPlanOpen(false)} onOk={()=>void submitForm(agentPlanForm,async()=>{
       const value=agentPlanForm.getFieldsValue();
-      if(!String(value.name || "").trim() || !String(value.objective || "").trim() || !Array.isArray(value.agentKeys) || value.agentKeys.length===0) throw new Error("计划名称、分析目标和至少一个角色为必填项。");
+      if(!String(value.name || "").trim() || !String(value.objective || "").trim() || !Array.isArray(value.agentKeys) || value.agentKeys.length===0) throw new Error("请填写分析名称、目标并选择至少一个角色。");
       const nodes=(value.agentKeys as string[]).map(agentKey=>({
         key:agentKey,
         agentKey,
@@ -861,9 +861,9 @@ export default function App() {
       </Form>
     </Modal>
 
-    <Modal title="补充信息并继续 Agent 任务" open={agentResumeOpen} onCancel={()=>{setAgentResumeOpen(false);setAgentResumeRunId(null);}} onOk={()=>void submitForm(agentResumeForm,async()=>api.resumeAgentRun(agentResumeRunId!,String(agentResumeForm.getFieldValue("additionalContext") || "")),"Agent 任务已重新加入队列",()=>{setAgentResumeOpen(false);setAgentResumeRunId(null);})} confirmLoading={busy}>
-      <Alert type="info" showIcon message="继续操作只会重新安排 Agent 任务" description="不会改变事项流程，也不会代替正式评审或决定。" className="modal-alert" />
-      <Form form={agentResumeForm} layout="vertical"><Form.Item name="additionalContext" label="补充说明 / 回答 Agent 提出的问题"><TextArea rows={5} maxLength={8000} showCount placeholder="提供 Agent 需要的业务事实、约束、澄清或下一步要求。" /></Form.Item></Form>
+    <Modal title="继续 Agent 分析" open={agentResumeOpen} onCancel={()=>{setAgentResumeOpen(false);setAgentResumeRunId(null);}} onOk={()=>void submitForm(agentResumeForm,async()=>api.resumeAgentRun(agentResumeRunId!,String(agentResumeForm.getFieldValue("additionalContext") || "")),"Agent 任务已重新加入队列",()=>{setAgentResumeOpen(false);setAgentResumeRunId(null);})} confirmLoading={busy}>
+      <Alert type="info" showIcon message="补充信息后，Agent 会继续处理原任务。" className="modal-alert" />
+      <Form form={agentResumeForm} layout="vertical"><Form.Item name="additionalContext" label="补充说明 / 回答 Agent 提出的问题"><TextArea rows={5} maxLength={8000} showCount placeholder="补充事实、约束或需要调整的方向。" /></Form.Item></Form>
     </Modal>
 
     <Modal title="记录决定会议结论" open={decisionOpen} onCancel={()=>setDecisionOpen(false)} onOk={()=>void submitForm(decisionForm,async()=>{
@@ -874,7 +874,7 @@ export default function App() {
       delete value.createTechnicalDebt;
       return api.createDecision(selected!.id,value);
     },"决定会议结论已记录",()=>setDecisionOpen(false))} confirmLoading={busy} width={720}>
-      <Alert type="warning" showIcon message="只有指定的会议主席或管理员可以记录正式结论。评审截止、普通评论和阻断性异议都不会自动批准或拒绝事项。" className="modal-alert" />
+      <Alert type="warning" showIcon message="只有会议主席或管理员可以记录正式结论。" className="modal-alert" />
       <Form form={decisionForm} layout="vertical" initialValues={{outcome:"approved",createTechnicalDebt:false}}>
         <Form.Item name="meetingAt" label="会议时间"><DatePicker showTime style={{width:"100%"}} /></Form.Item>
         <Form.Item name="outcome" label="正式结论" rules={[{required:true}]}><Select options={[{value:"approved",label:"批准"},{value:"needs_work",label:"要求修改"},{value:"rejected",label:"拒绝"}]} /></Form.Item>
@@ -913,9 +913,9 @@ export default function App() {
       <Alert type="info" showIcon message="这里只记录外部资源链接，不读取源系统内容。" description="已登记的资源可以关联到多个事项；新资源请填写对应的 ID、Key 和链接。" className="modal-alert" />
       <Form form={externalLinkForm} layout="vertical">
         <Form.Item name="existingResourceId" label="选用已登记的外部资源（可选）">
-          <Select allowClear showSearch optionFilterProp="label" placeholder="按系统、编号或名称搜索你可以查看的资源" options={externalReferences.map(r=>({value:r.id,label:r.provider.toUpperCase()+" · "+(r.external_key || r.external_id)+" · "+r.title}))} />
+          <Select allowClear showSearch optionFilterProp="label" placeholder="搜索已登记资源" options={externalReferences.map(r=>({value:r.id,label:r.provider.toUpperCase()+" · "+(r.external_key || r.external_id)+" · "+r.title}))} />
         </Form.Item>
-        <Text type="secondary" className="small">这里只显示工作台中已登记的资源，不会搜索外部系统。</Text>
+        <Text type="secondary" className="small">仅显示工作台中已经登记的资源。</Text>
         <Form.Item noStyle shouldUpdate>{({getFieldValue})=>{
           const chosen=externalReferences.find(r=>r.id===getFieldValue("existingResourceId"));
           if (chosen) return <>
@@ -924,7 +924,7 @@ export default function App() {
               <Divider titlePlacement="start">Confluence 页面模板</Divider>
               <Form.Item name="templateKey" label="Template Key / ID" rules={[{required:true,message:"请填写该 Page 使用的 Template 标识"}]}><Input placeholder="例如 architecture-decision-record" /></Form.Item>
               <Form.Item name="templateName" label="Template 名称"><Input placeholder="例如 Architecture Decision Record" /></Form.Item>
-              <Text type="secondary" className="small">这里只记录模板标识，不读取模板内容。</Text>
+              <Text type="secondary" className="small">这里只记录模板标识。</Text>
             </>:null}
           </>;
           return <>
@@ -940,7 +940,7 @@ export default function App() {
               <Divider titlePlacement="start">Confluence 页面模板</Divider>
               <Form.Item name="templateKey" label="Template Key / ID" rules={[{required:true,message:"请填写该 Page 使用的 Template 标识"}]}><Input placeholder="例如 architecture-decision-record" /></Form.Item>
               <Form.Item name="templateName" label="Template 名称"><Input placeholder="例如 Architecture Decision Record" /></Form.Item>
-              <Text type="secondary" className="small">这里只记录模板标识，不读取模板内容。</Text>
+              <Text type="secondary" className="small">这里只记录模板标识。</Text>
             </>:null}
           </>;
         }}</Form.Item>
@@ -992,10 +992,10 @@ export default function App() {
           const permissions=participantForm.getFieldValue("permissions") || ["read","comment"];
           participantForm.setFieldsValue({
             roleLabel:participantRoleChoices.find(option=>option.value===roleKey)?.label || roleKey,
-            permissions:roleKey==="chairman"?["read","decide"]:selectedParticipant?.role_key==="chairman"?["read","comment"]:permissions
+            permissions:roleKey==="chairman"?["read","decide"]:permissions.filter((permission:string)=>permission!=="decide")
           });
         }} /></Form.Item>
-        <Form.Item name="permissions" label="事项权限" rules={[{required:true}]}><Select mode="multiple" options={[{value:"read",label:"读取"},{value:"contribute",label:"提交材料 / 管理任务"},{value:"comment",label:"讨论"},{value:"review",label:"专业评审"},{value:"decide",label:"正式决策"},{value:"manage",label:"管理相关人员"}]} /></Form.Item>
+        <Form.Item name="permissions" label="事项权限" rules={[{required:true}]}><Select mode="multiple" options={[{value:"read",label:"读取"},{value:"contribute",label:"提交材料和管理任务"},{value:"comment",label:"讨论"},{value:"review",label:"评审"},{value:"decide",label:"作出决定"},{value:"manage",label:"管理参与者"}]} /></Form.Item>
       </Form>
     </Modal>
 
