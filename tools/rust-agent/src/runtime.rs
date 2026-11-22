@@ -2850,7 +2850,9 @@ async fn run_dreaming_batch(
     };
 
     let result = async {
-        let transcripts = memory_store.transcripts_after(cursor, options.batch_size.clamp(1, 200))?;
+        // Keep each Dreaming batch comfortably below the conservative context budget
+        // before JSON serialization. Truncating a serialized JSON blob would corrupt it.
+        let transcripts = memory_store.transcripts_after(cursor, options.batch_size.clamp(1, 8))?;
         let Some(last_entry) = transcripts.last() else {
             return Err(AgentError::InvalidAction(
                 "Dreaming claimed a run without any pending transcript entries".into(),
@@ -2864,7 +2866,7 @@ async fn run_dreaming_batch(
             "project_id": entry.project_id,
             "task_id": entry.task_id,
             "role": entry.role,
-            "content": entry.content.chars().take(1_800).collect::<String>()
+            "content": entry.content.chars().take(600).collect::<String>()
         })).collect::<Vec<_>>();
         let project_scopes = transcripts.iter().filter_map(|entry| entry.project_id.as_deref())
             .collect::<std::collections::HashSet<_>>();
@@ -2879,10 +2881,10 @@ async fn run_dreaming_batch(
                 MemoryScope::Session => note.scope_id.as_deref().is_some_and(|id| session_scopes.contains(id)),
                 MemoryScope::Task => note.scope_id.as_deref().is_some_and(|id| task_scopes.contains(id)),
             })
-            .take(100).map(|note| json!({
+            .take(8).map(|note| json!({
                 "id": note.id, "kind": note.kind, "scope": note.scope, "scope_id": note.scope_id,
                 "status": note.status, "confidence": note.confidence, "importance": note.importance,
-                "source_refs": note.source_refs, "content": note.content.chars().take(1_200).collect::<String>()
+                "source_refs": note.source_refs, "content": note.content.chars().take(400).collect::<String>()
             })).collect::<Vec<_>>();
         let existing_pages = memory_store.list_pages(200)?.into_iter()
             .filter(|page| match page.scope {
@@ -2891,9 +2893,10 @@ async fn run_dreaming_batch(
                 MemoryScope::Session => page.scope_id.as_deref().is_some_and(|id| session_scopes.contains(id)),
                 MemoryScope::Task => page.scope_id.as_deref().is_some_and(|id| task_scopes.contains(id)),
             })
-            .take(40).map(|page| json!({
-                "id": page.id, "title": page.title, "summary": page.summary,
-                "content_excerpt": page.content.chars().take(1_500).collect::<String>(),
+            .take(4).map(|page| json!({
+                "id": page.id, "title": page.title,
+                "summary": page.summary.chars().take(300).collect::<String>(),
+                "content_excerpt": page.content.chars().take(400).collect::<String>(),
                 "scope": page.scope, "scope_id": page.scope_id, "source_refs": page.source_refs, "links": page.links
             })).collect::<Vec<_>>();
         let payload = json!({
