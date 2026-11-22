@@ -11,7 +11,7 @@
 - Express 5 提供 REST API。
 - Node 内置 node:sqlite 作为第一阶段存储，要求 Node.js 24.0 或更高版本。
 - 非结构化文件通过 ObjectStore 接口存储，默认写入本地目录；配置 S3 后使用 AWS SDK。
-- 网站内置 Agent Runtime 暂不启用。Workbench Server 已通过 MCP Skills Extension（SEP-2640）发布版本化角色 Skills，默认端点为 `/mcp`；界面仍提供 Context Capsule 复制能力。Jira、Confluence、GitHub、LeanIX 只登记为外部上下文引用；Workbench 不实现这些系统的 Connector、同步或缓存。将来如启用网站内置 Agent，由 Agent Runtime 自己使用配置好的 MCP/API 工具按需读取。
+- Workbench Server 已通过 MCP Skills Extension（SEP-2640）发布角色 Skills，并提供 Work Item 业务 Tools 和持久化 Agent Coordinator。Agent 的模型推理仍由外部 MCP Host 执行；Workbench 不绑定 Copilot、CodeBuddy 或特定模型 SDK。Jira、Confluence、GitHub、LeanIX 只登记为外部上下文引用；Workbench 不实现这些系统的 Connector、同步或缓存。将来如启用网站内置 Agent，由 Agent Runtime 自己使用配置好的 MCP/API 工具按需读取。
 
 ## 启动
 
@@ -63,13 +63,15 @@ SQLite 仅作为本地原型存储。数据访问集中在 server/db.ts 和 Expr
 
 当前阶段不接入 LangChain、DeepAgents 或 LangSmith。这个原型的首要验证对象是业务状态、授权、评审和决策，不是 Agent 编排。Ant Design X 只提供可选的 Agent 辅助体验，页面提供 Context Capsule 导出。
 
-Workbench Server 通过官方 MCP TypeScript SDK v2 的 Skills Extension 发布 `skills/` 目录。MCP Client 可在 `http://localhost:4000/mcp` 使用 `skills/list`、`skills/get` 和标准 `resources/read` 发现并读取 Skill 文件；目录中的每个 Skill 都有 `SKILL.md`，可以继续包含 references、examples 等配套文件。目录在服务启动时严格校验，内容随代码版本发布。
+Workbench Server 使用官方 MCP TypeScript SDK v2，在 `http://localhost:4000/mcp` 同时发布 Skills 和业务 Tools。Skills 通过 `skills/list`、`skills/get` 和 `resources/read` 发现与读取；业务 Tools 用于查询事项、读取 Context Capsule、管理 Task、提交 Artifact 草案和讨论记录。目录中的每个 Skill 都有 `SKILL.md`，可继续包含 references、examples 等配套文件。目录在服务启动时严格校验，内容随代码版本发布。
 
 **外部业务系统不由 Workbench 后端集成。** Workbench 只保存 Jira Story、Confluence Page、GitHub Repository、LeanIX Application、Interface 等资源的 ID/Key、URL、类型、关联语义，以及 Confluence Template 的引用标识。不会调用外部系统 API，不同步状态，不复制外部正文，也不保存这些系统的凭据。用户可以复用当前身份可见、之前已经登记的引用；新资源由用户录入。当前没有源系统搜索选择器。
 
-未来如果启用网站内置 AI Agent，Agent Runtime 才是 MCP/API 工具的调用方：它读取 Work Item 的引用信息，使用自身配置和授权的工具按需查询外部内容，再将分析、证据和草案提交回 Workbench。外部权限仍由各源系统及 Agent 使用的身份/授权决定。Agent 返回的信息要保留来源和获取时间；它不能据此自动创建正式 Review Outcome 或 Decision。
+外部 Agent Host 是 MCP/API 工具的调用方：它读取 Work Item 的引用信息，使用自身配置和授权的源系统工具按需查询外部内容，再将分析、证据和草案提交回 Workbench。外部权限仍由各源系统及 Agent 使用的身份/授权决定。Agent 返回的信息要保留来源和获取时间；它不能据此自动创建正式 Review Outcome 或 Decision。
 
-Skills over MCP 只负责发布可验证的角色工作方法，不负责启动或激活 Skill，也不负责选择 Agent、创建子 Agent、分配 Task 或推进 Workflow。MCP Host 必须自行完成 Skill 的发现、完整性验证、审批和加载。当前 MCP Endpoint 只发布只读 Skills 资源，不提供 Work Item/Task/Review/Decision 的 MCP Tools；业务数据仍走现有 REST API 和权限校验。
+Agent Coordinator 将一次角色执行记录为 Agent Run，生命周期为 `queued → running → completed / failed`，也可进入 `waiting_for_human` 后由 Requestor/Admin 恢复。Agent Host 通过 `agent_claim_next_run` 轮询并领取有权执行的排队 Run，按 Run 声明加载对应 Skill，读取 Work Item 上下文，再通过业务 Tools 生成草案或请求 Human hand-off。Coordinator 记录状态和事件，但不在 Workbench 进程内执行模型推理；外部 Host 负责模型选择、上下文窗口和推理调用。
+
+Skills 描述工作方法，MCP Tools 提供受控操作，Coordinator 管理 Agent Run 生命周期。Host 必须自行发现、校验、审批和加载 Skill。Agent 只能创建草案、Task 和讨论记录；没有正式 Review Outcome、Decision、风险接受或关闭事项的 MCP Tool。每个 Tool 都重新读取当前 Participation 权限，不能通过 Skill 或 Agent Profile 扩大权限。
 
 LangChain / DeepAgents 可以作为未来 Agent Runtime 的实现选择，LangSmith 用于 Agent 执行追踪；它们都不是外部系统 Connector，更不能成为业务状态的权威来源。
 
@@ -77,6 +79,8 @@ LangChain / DeepAgents 可以作为未来 Agent Runtime 的实现选择，LangSm
 
     client/              React + Ant Design + Ant Design X
     server/              Express API、SQLite schema/seed、对象存储适配
+    server/agents/       Agent Profile、Coordinator 和 Runtime Adapter
+    server/mcp/          Skills Extension、业务 Tools 和 MCP Host smoke tests
     skills/              通过 MCP Skills Extension 发布的角色 Skills
     ADR/                 本工具架构决策记录
     docs/                领域模型、权限与 API 说明
@@ -85,8 +89,8 @@ LangChain / DeepAgents 可以作为未来 Agent Runtime 的实现选择，LangSm
 ## 当前限制
 
 - 演示登录通过 Header 选择身份，不可用于生产。
-- 已提供只读 Skills over MCP Endpoint；暂未提供 Work Item/Task/Review/Decision MCP Tools、OIDC、OAuth Delegation Grant、网站内置 Agent Runtime、完整组织目录和策略引擎，也没有 Jira/Confluence/GitHub/LeanIX Connector。
-- 演示身份通过请求 Header 提供，不能暴露到公网或用于任何真实审批。Skills Endpoint 默认只允许 localhost Host；远程部署需配置 `MCP_ALLOWED_HOSTS`。当前 Skills 内容是静态通用工作规范，不含业务数据，但 Endpoint 尚无 OAuth 身份认证，不能据此向它添加私有或用户级 Skill 内容。
+- 已提供 Skills over MCP、受 Participation 授权的业务 Tools 和 pull-based Agent Coordinator；尚未接入模型推理 SDK、内置模型 Worker、企业 OIDC/OAuth Delegation Grant、完整组织目录和策略引擎，也没有 Jira/Confluence/GitHub/LeanIX Connector。
+- 本地 MCP 默认只允许 localhost Host，并通过 `x-demo-user-id` 模拟调用者；不能用于生产身份认证。远程 MCP 必须同时配置 `MCP_ALLOWED_HOSTS`、长度至少 32 字符的 `MCP_BEARER_TOKEN` 和非 Admin 的 `MCP_SERVICE_USER_ID`。默认 Seed 会创建 `u-agent` 服务身份；必须由 Requestor/Admin 将它作为相关人员加入具体 Work Item，并只授予必要的 `read` / `contribute` / `comment` 权限。远程模式忽略请求自带的 `x-demo-user-id`，所有调用固定映射到该服务身份。静态 Bearer Token 是原型级服务认证，不替代企业 OAuth/OIDC 与用户级 Delegation Grant。
 - 当前 SQLite 通过启动时的增量 schema check 兼容本原型已有数据库；尚无通用迁移框架和 PostgreSQL Adapter。迁移到 PostgreSQL 时需要引入异步 Repository / Unit of Work 实现，不能只替换连接字符串。
 - 当前已实现本地/S3 上传和元数据记录，尚未实现经过 Work Item 授权的下载/预签名 URL，也没有病毒扫描。
 - Review Cycle 当前为轻量模型，提交 Review 时绑定 Artifact Version；正式环境还应增加完整 Submission Manifest、Reviewer Assignment、独立性规则和策略版本。

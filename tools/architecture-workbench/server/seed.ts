@@ -9,10 +9,14 @@ export function seed() {
       ["u-sec","Mina Ito","Security Architect","mina@example.test","#9970a8"],
       ["u-sme","Yuki Mori","Solution SME","yuki@example.test","#b17b52"],
       ["u-dev","Ryo Nakamura","Development Manager","ryo@example.test","#628f9f"],
-      ["u-chair","Haru Watanabe","Architecture Decision Owner","haru@example.test","#9e755d"]
+      ["u-chair","Haru Watanabe","Architecture Decision Owner","haru@example.test","#9e755d"],
+      ["u-agent","Workbench Agent Service","Agent Service Principal","agent-service@example.test","#557c85"]
     ];
     for (const p of people) run("INSERT INTO people(id,display_name,title,email,avatar_color,created_at) VALUES(?,?,?,?,?,?)", ...p, created);
   }
+  const servicePrincipal=one<{id:string}>("SELECT id FROM people WHERE id='u-agent'");
+  if (!servicePrincipal) run("INSERT INTO people(id,display_name,title,email,avatar_color,department,location,bio,expertise_json,timezone,is_admin,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,0,?)",
+    "u-agent","Workbench Agent Service","Agent Service Principal","agent-service@example.test","#557c85","Architecture Platform","Local","Dedicated non-admin identity for remote Agent Host operations. Grant it only the Work Item Participation permissions required for its assigned work.",JSON.stringify(["Agent execution","Draft artifact preparation","Task coordination"]),"Asia/Tokyo",now());
   const admin=one<{id:string}>("SELECT id FROM people WHERE id='u-admin'");
   if (!admin) run("INSERT INTO people(id,display_name,title,email,avatar_color,department,location,bio,expertise_json,timezone,is_admin,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,1,?)",
     "u-admin","Workbench Administrator","Platform Administrator","admin@example.test","#344b70","Architecture Office","Tokyo","Administers people, workflow and workspace access.",JSON.stringify(["Workflow administration","People administration","Architecture governance"]),"Asia/Tokyo",now());
@@ -24,7 +28,8 @@ export function seed() {
     "u-sme":{department:"Business",location:"Tokyo",bio:"Provides business process and domain knowledge for architecture decisions.",expertise:["Business Process","Domain Knowledge","Requirements"]},
     "u-dev":{department:"Engineering",location:"Tokyo",bio:"Owns delivery feasibility, engineering quality and operational readiness.",expertise:["Software Engineering","Delivery","Operations","Reliability"]},
     "u-chair":{department:"Architecture Governance",location:"Tokyo",bio:"Makes formal architecture decisions and accepts or rejects recommendations.",expertise:["Architecture Governance","Decision Making","Risk Acceptance"]},
-    "u-admin":{department:"Architecture Office",location:"Tokyo",bio:"Administers people, workflow and workspace access.",expertise:["Workflow Administration","People Administration","Architecture Governance"]}
+    "u-admin":{department:"Architecture Office",location:"Tokyo",bio:"Administers people, workflow and workspace access.",expertise:["Workflow Administration","People Administration","Architecture Governance"]},
+    "u-agent":{department:"Architecture Platform",location:"Local",bio:"Dedicated non-admin identity for Agent Host operations. Grant only explicit, Work Item-scoped permissions.",expertise:["Agent Execution","Draft Artifact Preparation","Task Coordination"]}
   };
   for (const [personId,profile] of Object.entries(profiles)) {
     run("UPDATE people SET department=CASE WHEN department='' THEN ? ELSE department END,location=CASE WHEN location='' THEN ? ELSE location END,bio=CASE WHEN bio='' THEN ? ELSE bio END,expertise_json=CASE WHEN expertise_json='[]' THEN ? ELSE expertise_json END WHERE id=?",

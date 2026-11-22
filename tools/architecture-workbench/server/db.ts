@@ -33,7 +33,11 @@ db.exec([
   "CREATE INDEX IF NOT EXISTS idx_attachments_item ON attachments(work_item_id, created_at DESC);",
   "CREATE TABLE IF NOT EXISTS workflow_transitions (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE, from_status TEXT NOT NULL, to_status TEXT NOT NULL, action TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '', actor_id TEXT NOT NULL REFERENCES people(id), created_at TEXT NOT NULL);",
   "CREATE INDEX IF NOT EXISTS idx_activity_item ON activity_events(work_item_id, created_at DESC);",
-  "CREATE INDEX IF NOT EXISTS idx_debt_status ON debt_details(status, due_date);"
+  "CREATE INDEX IF NOT EXISTS idx_debt_status ON debt_details(status, due_date);",
+  "CREATE TABLE IF NOT EXISTS agent_runs (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE, task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL, agent_key TEXT NOT NULL, skill_name TEXT NOT NULL, objective TEXT NOT NULL, requested_by TEXT NOT NULL REFERENCES people(id), claimed_by TEXT REFERENCES people(id), status TEXT NOT NULL CHECK(status IN ('queued','running','waiting_for_human','completed','failed','cancelled')), handoff_reason TEXT NOT NULL DEFAULT '', result_artifact_id TEXT REFERENCES artifacts(id), error_message TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, started_at TEXT, finished_at TEXT);",
+  "CREATE TABLE IF NOT EXISTS agent_run_events (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE, actor_type TEXT NOT NULL, actor_id TEXT REFERENCES people(id), event_type TEXT NOT NULL, details_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL);",
+  "CREATE INDEX IF NOT EXISTS idx_agent_runs_item ON agent_runs(work_item_id, created_at DESC);",
+  "CREATE INDEX IF NOT EXISTS idx_agent_runs_queue ON agent_runs(status, agent_key, created_at);"
 ].join("\n"));
 export function all<T = Record<string, unknown>>(sql: string, ...params: unknown[]): T[] {
   return db.prepare(sql).all(...(params as never[])) as T[];

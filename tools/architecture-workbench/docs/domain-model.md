@@ -20,7 +20,11 @@ The prototype deliberately separates business facts from interaction and executi
 | Attachment | attachments + ObjectStore | File metadata and authorization in SQLite; bytes in local storage or S3 |
 | Workflow Transition | workflow_transitions | Append-only history of Request lifecycle transitions, actions, actor and reason |
 | Activity | activity_events | Append-oriented business activity record |
-| Work Session | not persisted in prototype | Runtime/session detail is not business state |
+| Agent Profile | server/agents/coordinator.ts registry | Role-oriented execution capability mapped to one Skill; not a Person or model provider |
+| Agent Run | agent_runs | Durable request to execute a profile against a Work Item, with status and optional Task/Artifact links |
+| Agent Run Event | agent_run_events | Append-only execution, failure, completion and Human hand-off history |
+| Agent Runtime Adapter | server/agents/runtime.ts | Provider-neutral pull contract implemented by an external MCP Host |
+| Work Session | external Host-owned | Model context and runtime session are not business state |
 
 ## Decision outcomes
 
@@ -71,3 +75,16 @@ The UI renders the server-provided workflow projection with Ant Design Steps. It
 The Requestor is recorded separately from the Work Item Owner. The Requestor, a global Workbench Admin or a Work Item principal with explicit `manage` permission can add, update or remove Participation records. The Requestor and Owner must remain participants.
 
 People can maintain their own profile. A Workbench Admin can maintain any profile. A Task Assignee can update their own Task status without receiving broader Request contribution permissions; reassignment and due-date edits remain contributor/admin actions.
+
+
+## Agent collaboration model
+
+A Person, Agent Profile, Skill and Task are distinct concepts. A Person is an accountable Human principal with Participation permissions. An Agent Profile describes a bounded role such as Business Analyst or Security Reviewer. A Skill supplies that role's work method. A Task is a unit of work that may be used to scope an Agent Run. The Agent Host supplies the model/runtime that executes the profile.
+
+The Coordinator persists Agent Run lifecycle and ownership. An Agent Run is queued against a Work Item and one registered profile; the profile maps to a published Skill. An authorized Host claims the Run, retrieves the Skill and Work Item context, and works through MCP business tools. Its output is saved as a draft Artifact. The Run event log records queue, claim, completion, failure, Human hand-off and resume events.
+
+The initial execution model is pull-based. Workbench does not launch model processes or depend on a specific Agent SDK. A Host can be built with Copilot SDK, CodeBuddy SDK, Claude, another provider, or an in-house runtime, as long as it follows the MCP contract and uses its own authorized tool connections.
+
+Human intervention is explicit. An Agent can pause its Run with questions and recommended actions; it cannot decide for the Human or move the Request Workflow. A Work Item Requestor or Admin may resume a Run after supplying missing context. Completion only produces a draft Artifact; it does not submit an official Review or Decision.
+
+The remote MCP service identity is a non-admin Person principal (seeded as `u-agent` in the prototype). It receives no global permissions by default. A Requestor/Admin must add it to each Work Item and grant only the permissions needed for that assignment. Local demo identity headers are not production authentication.

@@ -7,6 +7,8 @@ import { all, db, id, now, one, run } from "./db.js";
 import { createObjectStore } from "./object-store.js";
 import { seed } from "./seed.js";
 import { mountSkillsMcpEndpoint } from "./mcp/skills-server.js";
+import { agentProfiles, listAgentRuns, requestAgentRun, resumeAgentRun, type AgentKey } from "./agents/coordinator.js";
+import { agentRuntimeAdapter } from "./agents/runtime.js";
 import {
   canManageParticipants,
   getWorkItemPermissions,
@@ -259,7 +261,8 @@ app.get("/api/work-items/:id",(req,res)=>{
   const activity=all("SELECT e.*,p.display_name AS actor_name FROM activity_events e JOIN people p ON p.id=e.actor_id WHERE e.work_item_id=? ORDER BY e.created_at DESC LIMIT 30",workItemId);
   const attachments=all("SELECT id,original_name,content_type,size_bytes,uploaded_by,created_at FROM attachments WHERE work_item_id=? ORDER BY created_at DESC",workItemId);
   const externalLinks=all("SELECT l.id,l.relation_type,l.confluence_template_key,l.confluence_template_name,l.created_at,r.provider,r.resource_type,r.external_id,r.external_key,r.title,r.url FROM work_item_external_links l JOIN external_resource_refs r ON r.id=l.resource_id WHERE l.work_item_id=? ORDER BY r.provider,r.resource_type,r.title",workItemId);
-  res.json({workItem,participants,artifacts,cycles,reviews,tasks,decisions,comments,activity,attachments,externalLinks,permissions:permissions(workItemId,actor),canManageParticipants:canManageParticipants(workItemId,actor),workflow:getWorkflowProjection(workItemId,actor)});
+  const agentRuns=all("SELECT r.id,r.task_id,r.agent_key,r.skill_name,r.objective,r.status,r.handoff_reason,r.result_artifact_id,r.error_message,r.created_at,r.updated_at,r.started_at,r.finished_at,requestor.display_name AS requested_by_name,claimer.display_name AS claimed_by_name FROM agent_runs r JOIN people requestor ON requestor.id=r.requested_by LEFT JOIN people claimer ON claimer.id=r.claimed_by WHERE r.work_item_id=? ORDER BY r.created_at DESC",workItemId);
+  res.json({workItem,participants,artifacts,cycles,reviews,tasks,decisions,comments,activity,attachments,externalLinks,agentRuns,permissions:permissions(workItemId,actor),canManageParticipants:canManageParticipants(workItemId,actor),workflow:getWorkflowProjection(workItemId,actor)});
 });
 
 app.post("/api/work-items/:id/artifacts",(req,res)=>{
@@ -499,6 +502,40 @@ app.delete("/api/work-items/:id/external-links/:linkId",(req,res)=>{
   run("UPDATE work_items SET context_version=context_version+1,updated_at=? WHERE id=?",now(),workItemId);
   logActivity(workItemId,actor,"unlinked","external_resource",link.resource_id,"Unlinked external resource: "+link.title);
   res.json({ok:true});
+});
+
+app.get("/api/agent-profiles",(_req,res)=>res.json({profiles:agentProfiles,runtime:agentRuntimeAdapter.describe()}));
+
+app.get("/api/work-items/:id/agent-runs",(req,res)=>{
+  const workItemId=String(req.params.id); const actor=actorId(req);
+  if (!requirePermission(res,workItemId,actor,"read")) return;
+  res.json(listAgentRuns(workItemId,actor));
+});
+
+app.post("/api/work-items/:id/agent-runs",(req,res)=>{
+  const workItemId=String(req.params.id); const actor=actorId(req); const body=req.body || {};
+  if (!requirePermission(res,workItemId,actor,"contribute")) return;
+  const profile=agentProfiles.find(item=>item.key===body.agentKey);
+  if (!profile) return res.status(400).json({error:"Unsupported Agent profile"});
+  if (!body.objective || !String(body.objective).trim()) return res.status(400).json({error:"objective is required"});
+  try {
+    const queued=requestAgentRun({workItemId,actorId:actor,agentKey:profile.key as AgentKey,objective:String(body.objective),taskId:body.taskId ? String(body.taskId) : undefined});
+    res.status(201).json(queued);
+  } catch (error) {
+    res.status(409).json({error:error instanceof Error ? error.message : "Could not queue Agent Run"});
+  }
+});
+
+app.post("/api/agent-runs/:id/resume",(req,res)=>{
+  const runId=String(req.params.id); const actor=actorId(req);
+  const record=one<{work_item_id:string}>("SELECT work_item_id FROM agent_runs WHERE id=?",runId);
+  if (!record) return res.status(404).json({error:"Agent Run not found"});
+  if (!requirePermission(res,record.work_item_id,actor,"read")) return;
+  try {
+    res.json(resumeAgentRun({runId,actorId:actor,additionalContext:String(req.body?.additionalContext || "")}));
+  } catch (error) {
+    res.status(409).json({error:error instanceof Error ? error.message : "Could not resume Agent Run"});
+  }
 });
 
 app.post("/api/work-items/:id/attachments",upload.single("file"),async(req,res)=>{

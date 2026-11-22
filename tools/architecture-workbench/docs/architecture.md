@@ -77,3 +77,44 @@ The server factory is stateless per MCP HTTP request and attaches the same valid
 The MCP boundary currently exposes role/workflow instructions only. It does not expose business tools, REST data projections, external-system connectors or an Agent Runtime. A Skill does not grant permissions and reading a Skill is not activation. The Host is responsible for verifying, approving and loading it. Human Review and Decision authorization remains in the Workbench application services and Workflow Engine.
 
 For a remote deployment, configure `MCP_ALLOWED_HOSTS` with the exact hostnames accepted by the MCP endpoint. The current prototype does not implement OAuth for MCP; only non-sensitive, repository-managed Skill content belongs in this catalog.
+
+
+## Business MCP Tools and Agent Coordinator
+
+The same MCP endpoint publishes the Skill catalog and business tools. Each tool handler resolves the current MCP caller and re-checks the Work Item's Participation permissions; the Host cannot gain rights by loading a Skill. The tools support Work Item search/read, Context Capsule retrieval, workflow projection, Task creation/update, draft Artifact creation and discussion.
+
+The Coordinator owns persistent Agent Run records and append-only execution events. It does not perform LLM inference. A pull-based Agent Host polls with `agent_claim_next_run`, claims only Runs visible to its service identity and executes the model call externally, using the Skill URI and MCP business tools. This keeps the Workbench independent of Copilot SDK, CodeBuddy SDK or any model vendor.
+
+```mermaid
+sequenceDiagram
+    participant H as Human / Workbench
+    participant C as Agent Coordinator
+    participant M as MCP Server
+    participant A as External Agent Host
+    participant W as Workbench Domain
+
+    H->>C: Request Agent Run(profile, objective)
+    C->>C: Persist queued run + event
+    A->>M: agent_claim_run(runId, profile)
+    M->>C: Claim if queued and authorized
+    C-->>A: Run + Skill URI
+    A->>M: skills/get + resources/read
+    A->>M: workbench_get_context_capsule
+    M->>W: Check read permission and return context
+    A->>A: Execute model using its own provider
+    alt Work can be completed
+        A->>M: agent_complete_run(draft Artifact)
+        M->>W: Check contribute permission + save draft
+        M->>C: Complete run and append event
+    else Human input is required
+        A->>M: agent_request_human_handoff(questions)
+        M->>C: Pause run as waiting_for_human
+        C-->>H: Activity / run status
+        H->>M: agent_resume_run(additional context)
+        M->>C: Requeue run
+    end
+```
+
+The MCP business surface does not include official Review submission, formal Decision creation, risk acceptance or Request closure. Those remain separate Human-authorized operations handled by the existing application APIs and Workflow Engine.
+
+Remote MCP is protected with a configured Host allowlist and static bearer token mapped to one non-admin service principal. This is a prototype service-authentication adapter, not user-level OAuth delegation. The service principal must be explicitly added to each Work Item with least-privilege Participation permissions.
