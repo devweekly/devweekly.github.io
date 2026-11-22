@@ -49,7 +49,7 @@ cargo run -- --model <model-id> --workspace /path/to/workspace --continue
 cargo run -- --model <model-id> --workspace /path/to/workspace --session-id <session-id>
 ```
 
-A fork copies the current conversation into a new session and records its parent session ID. Every session is bound to its optional project ID; resuming the same session under a different project is rejected. Older session files without a project ID remain usable only when no project scope is configured. Session writes use a temporary file followed by rename to avoid leaving a partially written JSON document. Session IDs are validated before they are used as file names.
+A fork copies the current conversation into a new session and records its parent session ID. Every session is bound to its optional project ID; resuming the same session under a different project is rejected. Older session files without a project ID remain usable only when no project scope is configured. Session writes use a temporary file followed by rename to avoid leaving a partially written JSON document. Each session has a monotonically increasing revision; a file lock and revision check reject stale writes from another Runtime instead of silently overwriting newer conversation state. Session files are limited to 16 MiB, and state directories/files reject symbolic-link paths.
 
 Embedding hosts can create a `CancellationHandle`, pass it to `run_turn_with_cancellation`, and call `cancel()` from a UI cancel action. The CLI maps Ctrl-C to the same mechanism while a turn is running. Cancellation aborts in-flight model requests, including delegated subagent requests, persists a synthetic cancelled-turn marker for conversation continuity, and emits `turn.cancelled`. It does not roll back a local tool operation that has already completed. Synchronous local tools and blocking approval/question prompts are not preemptible; the cancellation request is checked immediately after a prompt returns and before a pending write approval can execute. The CLI keeps one process-lifetime Ctrl-C listener, so Ctrl-C cancels an active turn and exits when the CLI is idle.
 
@@ -65,12 +65,24 @@ Use these CLI commands to manage tasks:
 /wait <id>             Wait for completion (Ctrl-C stops waiting, not the task)
 /cancel-task <id>      Request task cancellation
 /deliver-task <id>     Add a completed result to its original parent session
-/forget-memory <id>       Forget a memory and redact exclusive transcript sources
+/forget-memory <id>       Forget a memory and its dependent notes/pages and exclusive transcript sources
 /prune-transcripts <days> Prune unreferenced transcript rows older than N days
+/prune-tasks <days>       Remove old completed, failed, and cancelled task records
 ```
 
-A result can only be delivered to the parent session that created the task. Delivery is idempotent. Cancellation first persists a `cancelling` state before signalling the worker; the active worker observes it after the in-flight provider request and exits. Cross-process cancellation is cooperative, not an instantaneous interruption. Background tasks are limited to eight active tasks and twelve model steps per task; a selected profile can lower that step budget. They can only read, list, and search workspace files; they cannot write files, ask questions, start nested tasks, or use arbitrary network or process tools.
+A result can only be delivered to the parent session that created the task. Delivery uses the durable `delivered_at_ms` marker, so context compaction cannot cause the same result to be inserted again. Cancellation first persists a `cancelling` state before signalling the worker; the active worker observes it after the in-flight provider request and exits. Cross-process cancellation is cooperative, not an instantaneous interruption. Background tasks are limited to eight active tasks and twelve model steps per task; a selected profile can lower that step budget. The task store is limited to 5,000 records with a 16 MiB limit per record. `/prune-tasks` explicitly removes old terminal task records. They can only read, list, and search workspace files; they cannot write files, ask questions, start nested tasks, or use arbitrary network or process tools.
 
+
+
+## Storage limits and evidence lifecycle
+
+Workspace reads and writes have fixed ceilings. `read_file` reads at most 1 MiB; `read_attachment` exposes at most 256 KiB of UTF-8 text. Directory listings stop at 2,000 entries. `search_files` visits at most 10,000 files, scans at most 1 MiB from an individual file and 64 MiB across the search, returns at most 1,000 matches, and caps output at 256 KiB. `write_file` accepts at most 1 MiB and writes to a same-directory temporary file before atomically replacing the target, avoiding writes through an existing symlink or hard link. Attachment storage is limited to 20 MiB per file, 1,000 files and 200 MiB total; these aggregate quotas are protected by a cross-process lock.
+
+Memory evidence is checked at consolidation and again at retrieval. A derived note or knowledge page becomes unavailable when its source memory is disputed, stale, expired, deleted, or has an invalid source chain. Global memories cannot use project-scoped transcripts as evidence. Knowledge-page revisions store the evidence used for create/update/delete operations, and page lookup/search excludes pages whose evidence is no longer valid.
+
+`/forget-memory` cascades through dependent memory notes, knowledge pages, and their revision snapshots. It removes transcript rows only when no remaining memory/page/revision references them, then redacts matching source messages from persisted sessions. The active session is updated in place. `/prune-transcripts` is a separate, explicit retention operation: it deletes only expired-by-age transcript rows that are not referenced by any current or revisioned evidence and always preserves the newest 1,000 rows. Startup does not automatically forget or prune user content.
+
+Usage and audit JSONL logs rotate at 16 MiB and 32 MiB respectively, retaining three backups. Trace JSONL rotates at 32 MiB with three backups. Appends and rotation are serialized across Runtime instances. Dreaming records a durable workspace activity epoch; a user turn that starts before Dreaming commits invalidates that run inside the same SQLite transaction.
 
 ## Custom Agents
 
@@ -112,7 +124,8 @@ The built-in defaults remain available when no profile ID is supplied: foregroun
 | Runtime controls | Interactive model/mode switching, context inspection, manual window compaction, and host-triggered turn cancellation |
 | Memory lifecycle | SQLite transcript log, evidence-backed notes, linked knowledge pages, scoped retrieval, and model-assisted dreaming consolidation |
 | Lifecycle hooks | Native `RuntimeHook` callbacks plus JSONL audit events; hooks can deny a tool call but cannot grant permissions |
-| Workspace tools | Rust read, list, search, and write operations with bounded reads and results |
+| Workspace tools | Rust read, list, search, and atomic write operations with explicit per-file and aggregate limits |
+| Storage lifecycle | Bounded task/attachment stores, rotating logs, evidence-aware transcript pruning, and cascading memory forgetting |
 | MCP | Standalone Rust stdio server with tools, resources, and prompts |
 
 Options:
