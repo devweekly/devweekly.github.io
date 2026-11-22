@@ -212,57 +212,6 @@ function updateTask(input:{taskId:string;status?:string;ownerId?:string;assignee
   return one("SELECT t.id,t.title,t.status,t.owner_id,owner.display_name AS owner_name,t.assignee_id,assignee.display_name AS assignee_name,t.due_date,t.updated_at FROM tasks t LEFT JOIN people owner ON owner.id=t.owner_id LEFT JOIN people assignee ON assignee.id=t.assignee_id WHERE t.id=?",input.taskId);
 }
 
-function draftRequestPackage(input:{
-  workItemId:string;
-  runId:string;
-  claimToken:string;
-  goal:string;
-  scope:string;
-  constraints?:string;
-  initialProposal?:string;
-  decisionQuestions?:string;
-  submissionMessage:string;
-},actor:string) {
-  requirePermission(input.workItemId,actor,"contribute");
-  const item=one<{status:string}>("SELECT status FROM work_items WHERE id=?",input.workItemId);
-  if (!item || !["draft","requestor_revision"].includes(item.status)) {
-    throw new Error("An Agent can only prepare a Request Package draft before Request submission.");
-  }
-  if (!input.submissionMessage.trim()) throw new Error("A Git-commit-style submission message is required.");
-  const timestamp=now();
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const agentRun=one<{work_item_id:string;status:string;claimed_by:string|null;claim_token:string|null;lease_expires_at:string|null}>(
-      "SELECT work_item_id,status,claimed_by,claim_token,lease_expires_at FROM agent_runs WHERE id=?",input.runId
-    );
-    if (!agentRun || agentRun.work_item_id!==input.workItemId || agentRun.status!=="running" ||
-        agentRun.claimed_by!==actor || agentRun.claim_token!==input.claimToken ||
-        !agentRun.lease_expires_at || Date.parse(agentRun.lease_expires_at)<=Date.now()) {
-      throw new Error("The Agent Run must be actively claimed by this Host with its current, unexpired claim token.");
-    }
-    run("UPDATE request_package_drafts SET status='superseded' WHERE work_item_id=? AND status='pending'",input.workItemId);
-    const draftId=id("pkgdraft");
-    const draft={
-      goal:input.goal.trim(),
-      scope:input.scope.trim(),
-      constraints:(input.constraints || "").trim(),
-      initialProposal:(input.initialProposal || "").trim(),
-      decisionQuestions:(input.decisionQuestions || "").trim(),
-      submissionMessage:input.submissionMessage.trim(),
-      assistedByRunId:input.runId
-    };
-    run("INSERT INTO request_package_drafts(id,work_item_id,agent_run_id,draft_json,status,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
-      draftId,input.workItemId,input.runId,JSON.stringify(draft),"pending",actor,timestamp);
-    appendActivity(input.workItemId,actor,"agent_request_package_draft","request_package_draft",draftId,
-      "Agent prepared a Request Package draft for Requestor confirmation.",{runId:input.runId});
-    db.exec("COMMIT");
-    return {id:draftId,status:"pending",requestorConfirmationRequired:true,draft};
-  } catch(error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
-}
-
 function createArtifactDraft(input:{workItemId:string;title:string;type:string;content:string;code?:string;summary?:string},actor:string) {
   requirePermission(input.workItemId,actor,"contribute");
   if (!input.title.trim() || !input.content.trim()) throw new Error("Artifact title and content are required.");
@@ -356,21 +305,6 @@ export function registerWorkbenchTools(server:McpServer,skillUriForName:(skillNa
       dueDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional()
     })
   },async (input,ctx)=>safe(()=>updateTask(input,actorId(ctx)))());
-
-  server.registerTool("workbench_draft_request_package",{
-    description:"Prepare a structured Request Package draft for Requestor review. Requires a currently claimed Agent Run, matching claim token and Work Item contribute permission. This writes only a pending suggestion; it does not update the Request Package or create a Submission. The Requestor must explicitly apply, edit and submit it.",
-    inputSchema:z.object({
-      workItemId:z.string().min(1),
-      runId:z.string().min(1),
-      claimToken:z.string().min(32),
-      goal:z.string().min(1).max(8000),
-      scope:z.string().min(1).max(8000),
-      constraints:z.string().max(8000).optional(),
-      initialProposal:z.string().max(12000).optional(),
-      decisionQuestions:z.string().max(8000).optional(),
-      submissionMessage:z.string().min(1).max(500).describe("Git-commit-style intent summary for this proposed Request Package")
-    })
-  },async (input,ctx)=>safe(()=>draftRequestPackage(input,actorId(ctx)))());
 
   server.registerTool("workbench_create_artifact_draft",{
     description:"Create a versioned draft Artifact under a Work Item. Agent output remains draft and cannot become a formal Review outcome or Decision.",
