@@ -80,6 +80,8 @@ These are product-specific implementations, not interchangeable standards. Their
 4. Provide user-visible review, correction, suppression, and deletion paths.
 5. Do not treat an LLM's memory file as an authorization policy. Enforce security, privacy, and approval requirements in deterministic controls.
 
+A user model may become an evolving harness component when new evidence changes durable preferences, scopes, or interaction strategies. Such adaptation must preserve provenance, time, user correction controls, and the ability to suppress an inapplicable preference. It is retained self-improvement only when it improves later outcomes; it is not strict RSI unless the updater and its evaluation method also improve. See [Recursive Self-Improvement](recursive-self-improvement.md).
+
 Related: [Memory Hierarchy](memory-hierarchy.md), [Memory Dreaming](memory-dreaming.md), and [Context Management](context-management.md). See also the [industry and research source dossier](../references/industry-memory-and-context.md) and [latest papers](../references/research-memory-and-context-2026.md).
 
 [^google-personal-intelligence]: [Google, Gemini introduces Personal Intelligence](https://blog.google/innovation-and-ai/products/gemini-app/personal-intelligence/).
