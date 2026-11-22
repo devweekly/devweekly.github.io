@@ -15,7 +15,8 @@ const {
   createClarification,
   answerClarification,
   raiseObjection,
-  recordFormalDecision
+  recordFormalDecision,
+  applyRequestPackageDraft
 }=await import("./engine.js");
 const {startWorkflowTimerService}=await import("./timer-service.js");
 
@@ -161,6 +162,54 @@ test("Request lifecycle freezes submissions, pauses review for clarification and
   const closed=transitionWorkItem("workflow-one","chairman","close","Closure confirmed by the Chairman.");
   assert.equal(closed.ok,true);
   assert.equal(status("workflow-one")?.status,"closed");
+});
+
+test("only the Requestor may apply a completed Agent Request Package draft",()=>{
+  person("requestor");
+  person("reviewer");
+  person("chairman");
+  person("u-agent");
+  request("package-draft-apply");
+  run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",
+    "part-package-agent","package-draft-apply","u-agent","agent_service","Agent Service",JSON.stringify(["read","contribute","comment"]),now());
+  run("INSERT INTO agent_runs(id,work_item_id,agent_key,skill_name,objective,requested_by,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+    "run-package-draft","package-draft-apply","request-coordinator","request-coordination","Prepare the Request Package.","requestor","completed",now(),now());
+  const proposed={
+    goal:"A single identity lifecycle outcome",
+    scope:"Identity lifecycle and access reviews",
+    constraints:"Existing enterprise identity provider",
+    initialProposal:"Use a common lifecycle API with policy checks",
+    decisionQuestions:"Approve the ownership boundary and review cadence",
+    submissionMessage:"feat(request): propose identity lifecycle governance",
+    assistedByRunId:"run-package-draft"
+  };
+  run("INSERT INTO request_package_drafts(id,work_item_id,agent_run_id,draft_json,status,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
+    "pkg-draft-apply","package-draft-apply","run-package-draft",JSON.stringify(proposed),"pending","u-agent",now());
+
+  const reviewerAttempt=applyRequestPackageDraft("package-draft-apply","pkg-draft-apply","reviewer");
+  assert.equal(reviewerAttempt.ok,false);
+  if (!reviewerAttempt.ok) assert.equal(reviewerAttempt.statusCode,403);
+  const agentAttempt=applyRequestPackageDraft("package-draft-apply","pkg-draft-apply","u-agent");
+  assert.equal(agentAttempt.ok,false);
+  if (!agentAttempt.ok) assert.equal(agentAttempt.statusCode,403);
+
+  const applied=applyRequestPackageDraft("package-draft-apply","pkg-draft-apply","requestor");
+  assert.equal(applied.ok,true);
+  assert.equal(status("package-draft-apply")?.status,"draft");
+  const stored=one<{request_package_json:string;context_version:number}>(
+    "SELECT request_package_json,context_version FROM work_items WHERE id=?","package-draft-apply"
+  );
+  const storedPackage=JSON.parse(stored?.request_package_json || "{}") as typeof proposed;
+  assert.equal(storedPackage.goal,proposed.goal);
+  assert.equal(storedPackage.assistedByRunId,"run-package-draft");
+  assert.equal(stored?.context_version,1);
+  const savedDraft=one<{status:string;applied_by:string}>(
+    "SELECT status,applied_by FROM request_package_drafts WHERE id=?","pkg-draft-apply"
+  );
+  assert.equal(savedDraft?.status,"applied");
+  assert.equal(savedDraft?.applied_by,"requestor");
+  const duplicate=applyRequestPackageDraft("package-draft-apply","pkg-draft-apply","requestor");
+  assert.equal(duplicate.ok,false);
 });
 
 test("persisted review timer advances a Request after its deadline",()=>{
