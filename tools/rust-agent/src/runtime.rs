@@ -1709,7 +1709,9 @@ impl AgentRuntime {
             ));
         }
         let marker = format!("Background task result [{}]", task_id);
-        if self.messages.iter().any(|message| message.content.starts_with(&marker)) {
+        if record.delivered_at_ms.is_some()
+            || self.messages.iter().any(|message| message.content.starts_with(&marker))
+        {
             record.delivered_at_ms.get_or_insert_with(now_ms);
             self.background_task_store.save(&record)?;
             return Ok(());
