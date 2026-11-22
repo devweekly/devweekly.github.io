@@ -431,6 +431,10 @@ app.post("/api/work-items/:id/decisions",(req,res)=>{
   const body=req.body || {};
   if (!["approved","needs_work","rejected"].includes(body.outcome)) return res.status(400).json({error:"Decision outcome must be approved, needs_work or rejected."});
   if (!String(body.rationale || "").trim()) return res.status(400).json({error:"A decision rationale is required."});
+  const technicalDebtOwnerId=body.technicalDebt?.ownerId ? String(body.technicalDebt.ownerId) : actor;
+  if (body.technicalDebt?.title && body.outcome==="approved" && !one("SELECT id FROM people WHERE id=?",technicalDebtOwnerId)) {
+    return res.status(400).json({error:"Unknown Technical Debt owner."});
+  }
   const result=recordFormalDecision(workItemId,actor,{
     outcome:body.outcome,rationale:String(body.rationale),conditions:String(body.conditions || ""),
     meetingAt:body.meetingAt ? String(body.meetingAt) : undefined,minutes:String(body.minutes || "")
@@ -438,8 +442,7 @@ app.post("/api/work-items/:id/decisions",(req,res)=>{
   if (!result.ok) return res.status(result.statusCode).json({error:result.error});
   let debtId:string|null=null;
   if (body.technicalDebt?.title && body.outcome==="approved") {
-    const debt=body.technicalDebt; const ownerId=debt.ownerId || actor;
-    if (!one("SELECT id FROM people WHERE id=?",ownerId)) return res.status(400).json({error:"Unknown Technical Debt owner."});
+    const debt=body.technicalDebt; const ownerId=technicalDebtOwnerId;
     debtId=id("wi");
     const debtCode="DEBT-"+new Date().getFullYear()+"-"+Math.floor(Date.now()/1000).toString().slice(-6);
     run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,requestor_id,target_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
