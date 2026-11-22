@@ -21,7 +21,7 @@ const { TextArea } = Input;
 
 const statusLabels: Record<string,string> = {
   draft:"待受理", analysis:"处理中", in_review:"待确认", changes_requested:"待修改",
-  accepted:"已接受", rejected:"已拒绝", closed:"已关闭", open:"待处理",
+  accepted:"已接受", rejected:"已拒绝", closed:"已完成", open:"待处理",
   in_progress:"处理中", deferred:"已延期", resolved:"已解决", cancelled:"已取消",
   accepted_with_conditions:"附条件接受", more_analysis:"需要更多分析",
   queued:"待领取", running:"执行中", waiting_for_human:"等待人工输入", completed:"已完成", failed:"执行失败", blocked:"受阻"
@@ -50,6 +50,7 @@ export default function App() {
   const [artifactOpen,setArtifactOpen] = useState(false);
   const [reviewOpen,setReviewOpen] = useState(false);
   const [taskOpen,setTaskOpen] = useState(false);
+  const [editingTaskId,setEditingTaskId] = useState<string|null>(null);
   const [decisionOpen,setDecisionOpen] = useState(false);
   const [debtOpen,setDebtOpen] = useState(false);
   const [participantOpen,setParticipantOpen] = useState(false);
@@ -208,6 +209,15 @@ export default function App() {
       if (selected) await refreshDetail();
     } catch (error) { message.error(error instanceof Error ? error.message : "更新失败"); }
   }
+  function editTaskAssignment(task:WorkTask) {
+    setEditingTaskId(task.id);
+    taskForm.setFieldsValue({
+      title:task.title,kind:task.kind,ownerId:task.owner_id || itemFallbackOwner(),
+      assigneeId:task.assignee_id || undefined,dueDate:task.due_date ? dayjs(task.due_date) : undefined
+    });
+    setTaskOpen(true);
+  }
+  function itemFallbackOwner() { return detail?.workItem.owner_id || selected?.owner_id || actor; }
 
   function openAgentRunDialog() {
     agentForm.resetFields();
@@ -419,7 +429,7 @@ export default function App() {
       </Row>
       <Card title="分配给我的 Task" className="panel-card"><Table rowKey="id" columns={taskColumns} dataSource={activeTasks} loading={loading} pagination={{pageSize:8}} locale={{emptyText:<Empty description="当前没有分配给你的任务" />}} /></Card>
       <Card title="我发起或负责的 Request" className="panel-card"><Table rowKey="id" columns={itemColumns} dataSource={mine} pagination={{pageSize:6}} /></Card>
-      <Card title="我的 Person Profile" className="panel-card" extra={<Button type="link" onClick={()=>setPage("people")}>查看资料</Button>}>
+      <Card title="我的 Person Profile" className="panel-card" extra={<Button type="link" onClick={()=>navigatePage("people")}>查看资料</Button>}>
         <Space><Avatar size={44} style={{background:actorPerson?.avatar_color}}>{actorPerson?.display_name.slice(0,1)}</Avatar><div><Text strong>{actorPerson?.display_name}</Text><div><Text type="secondary">{actorPerson?.title} · {actorPerson?.department}</Text></div></div></Space>
       </Card>
     </div>;
@@ -562,14 +572,15 @@ export default function App() {
         </details>}
       </Card>
 
-      <Card size="small" title="当前工作" className="workspace-section" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>{taskForm.setFieldsValue({ownerId:item.owner_id,assigneeId:actor});setTaskOpen(true);}}>新增任务</Button>:null}>
+      <Card size="small" title="当前工作" className="workspace-section" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>{setEditingTaskId(null);taskForm.resetFields();taskForm.setFieldsValue({ownerId:item.owner_id,assigneeId:actor});setTaskOpen(true);}}>新增任务</Button>:null}>
         {detail.tasks.length===0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有待办任务" /> :
           <Table rowKey="id" size="middle" dataSource={detail.tasks} pagination={false} columns={[
             {title:"工作内容",dataIndex:"title",render:(value:string,task:WorkTask)=><Space direction="vertical" size={2}><Text strong>{value}</Text><Text type="secondary" className="small">{task.kind.replaceAll("_"," ")}</Text></Space>},
             {title:"任务负责人",dataIndex:"owner_name",render:(value:string|null)=><Text>{value || item.owner_name}</Text>},
             {title:"执行分配",dataIndex:"assignee_name",render:(_:string|null,task:WorkTask)=>taskExecutor(task)},
             {title:"状态",dataIndex:"status",render:(value:string,task:WorkTask)=><Select size="small" value={value} disabled={!permissions.includes("contribute") && task.assignee_id!==actor && task.owner_id!==actor} style={{width:112}} onChange={status=>void updateTask(task.id,status)} options={[{value:"open",label:"待处理"},{value:"in_progress",label:"处理中"},{value:"blocked",label:"受阻"},{value:"done",label:"完成"},{value:"cancelled",label:"取消"}]} />},
-            {title:"目标日期",dataIndex:"due_date",render:dateText}
+            {title:"目标日期",dataIndex:"due_date",render:dateText},
+            {title:"",key:"actions",width:100,render:(_:unknown,task:WorkTask)=>permissions.includes("contribute")?<Button size="small" type="link" icon={<EditOutlined />} onClick={()=>editTaskAssignment(task)}>调整分工</Button>:null}
           ]} />
         }
       </Card>
@@ -707,7 +718,10 @@ export default function App() {
       </Form>
     </Modal>
 
-    <Modal title="创建后续 Task" open={taskOpen} onCancel={()=>setTaskOpen(false)} onOk={()=>void submitForm(taskForm,async()=>{const v=taskForm.getFieldsValue();if(v.dueDate)v.dueDate=v.dueDate.format("YYYY-MM-DD");return api.createTask(selected!.id,v);},"Task 已创建",()=>setTaskOpen(false))} confirmLoading={busy}>
+    <Modal title={editingTaskId ? "调整任务分工" : "创建后续 Task"} open={taskOpen} onCancel={()=>{setTaskOpen(false);setEditingTaskId(null);taskForm.resetFields();}} onOk={()=>void submitForm(taskForm,async()=>{
+      const v=taskForm.getFieldsValue();if(v.dueDate)v.dueDate=v.dueDate.format("YYYY-MM-DD");
+      return editingTaskId ? api.updateTask(editingTaskId,v) : api.createTask(selected!.id,v);
+    },editingTaskId?"任务分工已更新":"Task 已创建",()=>{setTaskOpen(false);setEditingTaskId(null);})} confirmLoading={busy}>
       <Form form={taskForm} layout="vertical">
         <Form.Item name="title" label="工作内容" rules={[{required:true}]}><Input /></Form.Item>
         <Form.Item name="kind" label="工作类型"><Select options={[{value:"analysis",label:"分析"},{value:"revision",label:"材料修改"},{value:"follow_up",label:"后续整改"},{value:"decision_prep",label:"决策准备"}]} /></Form.Item>
