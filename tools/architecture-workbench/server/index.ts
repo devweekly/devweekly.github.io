@@ -209,7 +209,7 @@ app.patch("/api/work-items/:id/request-package",(req,res)=>{
   const workItemId=String(req.params.id); const actor=actorId(req); const body=req.body || {};
   const item=one<{requestor_id:string|null;status:string}>("SELECT requestor_id,status FROM work_items WHERE id=?",workItemId);
   if (!item) return res.status(404).json({error:"Request not found."});
-  if (item.requestor_id!==actor && !isGlobalAdmin(actor)) return res.status(403).json({error:"Only the Requestor or a Workbench Admin may update the Request Package."});
+  if (item.requestor_id!==actor) return res.status(403).json({error:"Only the Requestor may update the Request Package."});
   if (!["draft","requestor_revision"].includes(item.status)) return res.status(409).json({error:"The Request Package is frozen after submission. Create a new revision after a Need Work decision."});
   const packageValue={
     goal:String(body.goal || ""),scope:String(body.scope || ""),constraints:String(body.constraints || ""),
@@ -234,6 +234,9 @@ app.post("/api/work-items/:id/participations",(req,res)=>{
   if (!one("SELECT id FROM people WHERE id=?",body.personId)) return res.status(400).json({error:"Unknown participant"});
   if (body.permissions.some((p:string)=>!allowed.includes(p))) return res.status(400).json({error:"Unsupported permission"});
   if (!body.permissions.includes("read")) return res.status(400).json({error:"Every Participation must include read permission."});
+  const item=one<{requestor_id:string|null}>("SELECT requestor_id FROM work_items WHERE id=?",workItemId);
+  if (body.roleKey==="chairman" && item?.requestor_id!==actor && !isGlobalAdmin(actor)) return res.status(403).json({error:"Only the Requestor or a Workbench Admin may designate the Chairman."});
+  if (body.roleKey==="chairman" && !body.permissions.includes("read")) return res.status(400).json({error:"The Chairman must have read permission."});
   const actorGrants=permissions(workItemId,actor);
   if (!isGlobalAdmin(actor) && !actorGrants.includes("decide") && body.permissions.includes("decide")) {
     return res.status(403).json({error:"Only a Workbench Admin or an existing Decision Authority can grant decide permission."});
@@ -247,6 +250,7 @@ app.post("/api/work-items/:id/participations",(req,res)=>{
   } else {
     run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",id("part"),workItemId,body.personId,body.roleKey,body.roleLabel,JSON.stringify(body.permissions),now());
   }
+  if (body.roleKey==="chairman") run("UPDATE work_items SET chairman_id=?,updated_at=? WHERE id=?",body.personId,now(),workItemId);
   logActivity(workItemId,actor,"participation_updated","participation",body.personId,"Updated participation for "+body.roleLabel);
   res.status(200).json({ok:true});
 });
@@ -265,11 +269,15 @@ app.put("/api/work-items/:id/participations/:participationId",(req,res)=>{
   if (!isGlobalAdmin(actor) && !actorGrants.includes("manage") && body.permissions.includes("manage")) {
     return res.status(403).json({error:"Only a Workbench Admin or an existing Work Item manager can delegate manage permission."});
   }
-  const current=one<{person_id:string}>("SELECT person_id FROM participations WHERE id=? AND work_item_id=?",participationId,workItemId);
+  const current=one<{person_id:string;role_key:string}>("SELECT person_id,role_key FROM participations WHERE id=? AND work_item_id=?",participationId,workItemId);
   if (!current) return res.status(404).json({error:"Participation not found"});
+  const item=one<{requestor_id:string|null;chairman_id:string|null}>("SELECT requestor_id,chairman_id FROM work_items WHERE id=?",workItemId);
+  if (body.roleKey==="chairman" && item?.requestor_id!==actor && !isGlobalAdmin(actor)) return res.status(403).json({error:"Only the Requestor or a Workbench Admin may designate the Chairman."});
   const duplicate=one<{id:string}>("SELECT id FROM participations WHERE work_item_id=? AND person_id=? AND role_key=? AND id<>?",workItemId,current.person_id,body.roleKey,participationId);
   if (duplicate) return res.status(409).json({error:"This person already has the selected role on this Request."});
   run("UPDATE participations SET role_key=?,role_label=?,permissions_json=? WHERE id=?",body.roleKey,body.roleLabel,JSON.stringify(body.permissions),participationId);
+  if (body.roleKey==="chairman") run("UPDATE work_items SET chairman_id=?,updated_at=? WHERE id=?",current.person_id,now(),workItemId);
+  else if (current.person_id===item?.chairman_id) run("UPDATE work_items SET chairman_id=NULL,updated_at=? WHERE id=?",now(),workItemId);
   logActivity(workItemId,actor,"participation_updated","participation",participationId,"Updated relevant person: "+body.roleLabel);
   res.json({ok:true});
 });
@@ -281,9 +289,10 @@ app.delete("/api/work-items/:id/participations/:participationId",(req,res)=>{
     "SELECT pt.person_id,p.display_name FROM participations pt JOIN people p ON p.id=pt.person_id WHERE pt.id=? AND pt.work_item_id=?",participationId,workItemId
   );
   if (!participant) return res.status(404).json({error:"Participation not found"});
-  const item=one<{requestor_id:string|null;owner_id:string}>("SELECT requestor_id,owner_id FROM work_items WHERE id=?",workItemId);
+  const item=one<{requestor_id:string|null;owner_id:string;chairman_id:string|null}>("SELECT requestor_id,owner_id,chairman_id FROM work_items WHERE id=?",workItemId);
   if (participant.person_id===item?.requestor_id || participant.person_id===item?.owner_id) return res.status(409).json({error:"The Requestor and Work Item Owner must remain participants."});
   run("DELETE FROM participations WHERE id=?",participationId);
+  if (participant.person_id===item?.chairman_id) run("UPDATE work_items SET chairman_id=NULL,updated_at=? WHERE id=?",now(),workItemId);
   logActivity(workItemId,actor,"participation_removed","participation",participationId,"Removed relevant person: "+participant.display_name);
   res.json({ok:true});
 });
