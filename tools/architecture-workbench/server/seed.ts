@@ -115,7 +115,7 @@ export function seed() {
   const second = "wi-change-002";
   run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,requestor_id,chairman_id,request_package_json,target_date,context_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     second,"CHG-2026-021","change_assessment","支付对账服务弹性改造","评估重试策略、批量补偿与运行时隔离的变更影响。","draft","normal","u-dev","u-dev","u-chair",
-    JSON.stringify({goal:"减少支付对账任务因临时故障失败后需要人工补数的情况。",scope:"重试策略、批量补偿流程和任务运行隔离。",constraints:"现有结算时间窗口不能延长；重试和补偿必须避免重复入账。",initialProposal:"为可重试错误设置次数和间隔限制，补偿任务采用幂等处理。",decisionQuestions:"哪些错误可以自动重试？补偿任务由谁负责？是否需要独立运行队列？",submissionMessage:"提交支付对账服务改造方案，明确重试范围、补偿责任和运行隔离。"),
+    JSON.stringify({goal:"减少支付对账任务因临时故障失败后需要人工补数的情况。",scope:"重试策略、批量补偿流程和任务运行隔离。",constraints:"现有结算时间窗口不能延长；重试和补偿必须避免重复入账。",initialProposal:"为可重试错误设置次数和间隔限制，补偿任务采用幂等处理。",decisionQuestions:"哪些错误可以自动重试？补偿任务由谁负责？是否需要独立运行队列？",submissionMessage:"提交支付对账服务改造方案，明确重试范围、补偿责任和运行隔离。"}),
     "2026-12-15",2,created,created);
   for (const p of [["u-dev","delivery_owner","交付负责人",["read","contribute","comment"]],["u-sa","architect","架构师",["read","review","comment"]],["u-chair","chairman","会议主席",["read","decide"]]]) {
     run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",id("part"),second,p[0],p[1],p[2],JSON.stringify(p[3]),created);
