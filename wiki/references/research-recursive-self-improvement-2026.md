@@ -154,9 +154,9 @@ A useful evaluation should measure more than the score of the latest candidate.
 | Did it damage prior behavior? | Regression suite, constraint checks, historical tasks, and red-team cases |
 | Is the update worth its cost? | Tokens, latency, compute, infrastructure cost, retries, and maintenance burden |
 
-Relevant evaluation resources include [RSI-Bench](https://github.com/sunghunkwag/rsi-bench), [SEABench](https://arxiv.org/abs/2609.35596), [PostTrainBench](https://arxiv.org/abs/2603.08640), [AutoLab](https://arxiv.org/abs/2606.05080), [MLE-bench](https://github.com/openai/mle-bench), [RE-Bench](https://github.com/METR/RE-Bench), and [SWE-bench](https://github.com/SWE-bench/SWE-bench). Some are direct self-improvement evaluations; others are capability proxies for AI R&D or coding. Do not treat all benchmark scores as direct RSI evidence.[^awesome-rsi]
+Relevant evaluation resources include [RSI-Bench](https://github.com/sunghunkwag/rsi-bench)[^rsi-bench], [SEABench](https://arxiv.org/abs/2609.35596)[^seabench], [PostTrainBench](https://arxiv.org/abs/2603.08640), [AutoLab](https://arxiv.org/abs/2606.05080), [MLE-bench](https://github.com/openai/mle-bench), [RE-Bench](https://github.com/METR/RE-Bench), and [SWE-bench](https://github.com/SWE-bench/SWE-bench). Some are direct self-improvement evaluations; others are capability proxies for AI R&D or coding. Do not treat all benchmark scores as direct RSI evidence.[^awesome-rsi]
 
-The safety literature highlights risks that compound across persistent state and successor systems: benchmark leakage, reward hacking, self-confirming evaluators, capability regression, diversity collapse, harmful or stale memory, prompt injection that becomes retained policy, policy/permission drift, privacy leakage, unsafe self-modifying code, and weakening human oversight. [Safety in Self-Evolving Agents](https://arxiv.org/abs/2610.00093) and the broader [Trustworthy RSI survey](https://arxiv.org/abs/2610.35193) are useful starting points. A key operational principle is that a change to the evaluator or updater invalidates assumptions based on its earlier version; evaluate the changed mechanism again.
+The safety literature, including the [Safety in Self-Evolving Agents survey](https://arxiv.org/abs/2610.00093)[^safety-self-evolving], highlights risks that compound across persistent state and successor systems: benchmark leakage, reward hacking, self-confirming evaluators, capability regression, diversity collapse, harmful or stale memory, prompt injection that becomes retained policy, policy/permission drift, privacy leakage, unsafe self-modifying code, and weakening human oversight. [Safety in Self-Evolving Agents](https://arxiv.org/abs/2610.00093) and the broader [Trustworthy RSI survey](https://arxiv.org/abs/2610.35193) are useful starting points. A key operational principle is that a change to the evaluator or updater invalidates assumptions based on its earlier version; evaluate the changed mechanism again.
 
 # Research conclusions
 
@@ -172,6 +172,9 @@ The evidence base is uneven. Papers report encouraging gains, but differences in
 - [Context Management](../concepts/context-management.md)
 
 [^awesome-rsi]: [LobeHub, Awesome RSI](https://github.com/lobehub/awesome-rsi).
+[^safety-self-evolving]: [Gong et al., Safety in Self-Evolving Agents: A Survey](https://arxiv.org/abs/2610.00093).
+[^seabench]: [Das et al., SEABench: Benchmarking Endogenous Misalignment in Self-Evolving Agents](https://arxiv.org/abs/2609.35596).
+[^rsi-bench]: [RSI-Bench, open-source evaluation framework](https://github.com/sunghunkwag/rsi-bench).
 [^self-evolving-agents-survey]: [Gao et al., A Survey of Self-Evolving Agents](https://arxiv.org/abs/2507.21046).
 [^rsi-bounded-survey]: [Chen et al., Recursive Self-Improvement in AI: From Bounded Self-Refinement to Autonomous Research Loops](https://arxiv.org/abs/2607.07663).
 [^self-improvements-survey]: [Ren et al., Self-Improvements in Modern Agentic Systems](https://arxiv.org/abs/2607.13104).
