@@ -7,7 +7,7 @@ import { all, db, id, now, one, run } from "./db.js";
 import { createObjectStore } from "./object-store.js";
 import { seed } from "./seed.js";
 import { mountSkillsMcpEndpoint } from "./mcp/skills-server.js";
-import { agentProfiles, listAgentPlans, listAgentRuns, requestAgentPlan, requestAgentRun, resumeAgentRun, type AgentKey } from "./agents/coordinator.js";
+import { agentProfiles, listAgentPlans, listAgentRuns, requestAgentPlan, requestAgentRun, resumeAgentRun, startAgentRunLeaseReaper, type AgentKey } from "./agents/coordinator.js";
 import { agentRuntimeAdapter } from "./agents/runtime.js";
 import {
   canManageParticipants,
@@ -20,6 +20,7 @@ import {
 } from "./workflow/engine.js";
 
 seed();
+const stopAgentRunLeaseReaper=startAgentRunLeaseReaper();
 const app = express();
 const port = Number(process.env.PORT || 4000);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -590,5 +591,5 @@ app.listen(port,()=>{
   console.log("SQLite database: "+(process.env.DATABASE_PATH || "./data/architecture-workbench.sqlite"));
   console.log("MCP Skills endpoint: http://localhost:"+port+"/mcp ("+publishedSkillCount+" skills)");
 });
-process.on("SIGINT",()=>{db.close();process.exit(0);});
-process.on("SIGTERM",()=>{db.close();process.exit(0);});
+process.on("SIGINT",()=>{stopAgentRunLeaseReaper();db.close();process.exit(0);});
+process.on("SIGTERM",()=>{stopAgentRunLeaseReaper();db.close();process.exit(0);});
