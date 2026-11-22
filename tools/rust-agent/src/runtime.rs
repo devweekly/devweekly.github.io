@@ -1375,6 +1375,18 @@ impl AgentRuntime {
         Ok(attachment)
     }
 
+    /// Delete a stored attachment under the same quota lock used by uploads.
+    /// Existing messages that reference the attachment will receive a normal
+    /// read_attachment-not-found result if the model later tries to reopen it.
+    pub fn delete_attachment(&mut self, id: &str) -> Result<bool, AgentError> {
+        let deleted = self.attachment_store.delete(id)?;
+        if deleted {
+            self.pending_attachments.retain(|attachment| attachment.id != id);
+            self.audit("attachment.deleted", None, json!({"attachment_id": id}));
+        }
+        Ok(deleted)
+    }
+
 
 
     pub fn session_id(&self) -> &str {
