@@ -290,7 +290,7 @@ Human 确认后，系统可以自动执行后续确定性动作，例如更新�
 
 这意味着“使用 Agent”不应该是创建或处理事项的必要步骤。没有安装 MCP、没有 Skill、没有 SDK、没有脚本，用户仍然可以完整参与工作。平台提供的集成能力应逐级增强，而不是一次性要求用户改变工作习惯。
 
-### 16.1 Agent 接入的四个层级
+### 27.16.1 Agent 接入的四个层级
 
 | 层级 | 使用方式 | 网站提供什么 | 用户需要做什么 | 适用场景 |
 | --- | --- | --- | --- | --- |
@@ -473,7 +473,7 @@ MCP Tool 不需要与 REST API 一一对应。面向 Agent 的工具应表达工
 | ACP（Agent Client Protocol） | 编辑器、桌面客户端或 Connector 与本地 Coding Agent Runtime | 本地 Session、Prompt、流式更新、取消和运行时能力协商 | 企业业务事项、跨部门角色和审批 |
 | CloudEvents / AsyncAPI | 业务服务与事件消费者 | 事件 Envelope、消息 Channel 和异步接口描述 | 业务事件是否合法、谁能触发事件 |
 
-### 22.1 REST/OpenAPI 应该是业务服务的稳定接口
+### 27.22.1 REST/OpenAPI 应该是业务服务的稳定接口
 
 业务系统首先应定义自己的领域 API。Web UI、移动端、CLI、Local Connector、MCP Server、Webhook 和第三方服务都通过这一层访问 Work Item 服务。
 
@@ -571,7 +571,7 @@ ACP 很适合需要嵌入本地 Coding Agent 的 IDE、桌面客户端或 Local 
 
 当前设计里最值得进一步引入的不是某个 Agent Framework，而是 OMG 的 BPMN、CMMN 和 DMN。它们不是 Agent 标准，但能描述业务活动、动态工作和确定性业务规则。
 
-### 23.1 BPMN：流程顺序明确时使用
+### 27.23.1 BPMN：流程顺序明确时使用
 
 BPMN 适合步骤、条件和责任相对确定的工作，例如：
 
@@ -628,7 +628,7 @@ CMMN 对动态 Case 特别有价值，但不代表所有事项都必须启动 Ca
 
 以下比较区分**业务事项管理、流程编排和 Agent 执行**。它们并不是同一类产品。
 
-### 24.1 Flowable：与动态 Case / Work Item 语义最接近
+### 27.24.1 Flowable：与动态 Case / Work Item 语义最接近
 
 项目：[flowable/flowable-engine](https://github.com/flowable/flowable-engine)
 
@@ -725,7 +725,7 @@ n8n 擅长自动化工作流以及在 Tool Call 周围插入 Human Review。它�
 
 ## 24. 商业产品：已有平台如何让外部 Agent 使用业务系统
 
-### 25.1 Atlassian Rovo MCP：最接近“用户自己的 Agent 直接连接工作网站”的实例
+### 27.25.1 Atlassian Rovo MCP：最接近“用户自己的 Agent 直接连接工作网站”的实例
 
 Atlassian 提供官方 Remote MCP Server，支持 Jira、Confluence、Jira Service Management、Bitbucket、Compass 等产品。它可以连接 ChatGPT、Claude、VS Code/GitHub Copilot、Cursor 等 MCP Client。
 
@@ -779,7 +779,7 @@ Cumora 是一个以 Team Chat 为主要产品入口的跨平台协作应用，�
 
 它对当前架构最有价值的地方，不是照搬它的聊天界面，而是学习它如何将**业务协作服务、Agent 执行 Runtime、本地机器和模型进程隔离**。
 
-### 26.1 它有两条 Agent 执行路径，不是单纯的 ACP Client
+### 27.26.1 它有两条 Agent 执行路径，不是单纯的 ACP Client
 
 Cumora 有两个执行模式：
 
@@ -1015,7 +1015,7 @@ Cumora 的一个局限是：它的主要协作模型围绕 Workspace、Participa
 
 现有研究已从“多个 Agent 怎么协作”逐渐转向“Agent 在真实业务环境中怎样被授权、监督和验证”。
 
-### 27.1 Enterprise Agent Governance
+### 27.27.1 Enterprise Agent Governance
 
 Chawla 与 Thakkar 的 [Agentic AI in Enterprise Systems: A Systematic Review of Human-in-the-Loop, Governance, and Autonomous Workflow Control](https://research.google/pubs/agentic-ai-in-enterprise-systems-a-systematic-review-of-human-in-the-loop-governance-and-autonomous-workflow-control-2/) 研究企业 Agent 系统的 Human-in-the-loop、Human-on-the-loop、自治流程控制和安全治理。其结论之一是：Human 监督对企业部署非常关键，但现有系统实现并不一致，尤其在信任、记忆、安全和跨 Agent 治理方面仍有缺口。
 
@@ -1064,7 +1064,7 @@ Chawla 与 Thakkar 的 [Agentic AI in Enterprise Systems: A Systematic Review of
 
 经过协议、Workflow、产品和 Cumora 的比较，可以得出一个比“选择一个 Agent Framework”更稳定的设计。
 
-### 28.1 平台的业务核心必须自己掌握
+### 27.28.1 平台的业务核心必须自己掌握
 
 建议将业务平台拆成以下层次：
 
@@ -1172,7 +1172,213 @@ Human Confirmation 还要绑定 Decision Draft Version、输入 Artifact Version
 这套组合既能支持完全不用 Agent 的用户，也能容纳 Copilot、Claude Code、网站 Agent 和多个外部 Agent，不会把业务平台变成某个 Agent Runtime 的专用前端。
 
 
-## 28. 结论
+
+## 28. Human-first 的外部 Agent 接入：网站提供服务，用户选择 Agent
+
+前面的架构还需要一个更明确的产品定位：**网站的主要用户仍然是 Human，Agent 是可选的外部协作者。网站不应该变成 Agent 的管理中心，也不应该要求用户先在网站注册、配置或启动某个 Agent。**
+
+用户可能在 VS Code 中使用 GitHub Copilot，也可能在终端使用 Copilot CLI、Claude Code，或者使用其他支持标准协议的 Agent。网站不需要知道用户最终选择哪个模型、哪个 Runtime，也不应该要求用户迁移工作习惯。网站只需要提供一个对外稳定、可以被这些 Agent 连接的业务服务入口。
+
+推荐模式是：
+
+- Human 继续通过网站 UI 创建事项、分配角色、查看结果、评审和作出决定。
+- 用户自己选择 Copilot、Claude 或其他 Agent，并从该 Agent Client 发起连接。
+- 网站公开一个 Remote MCP Server，提供经过授权的 Work Item、Task、Artifact 和 Review 能力。
+- Agent 通过 OAuth 代表当前 Human 访问网站，不需要网站为它创建一个专属 Runtime。
+- Agent 没有连接、没有配置 Skill 或不支持 MCP 时，网站仍然可以完整地由 Human 使用。
+
+这不是“网站调用一个外部 Agent”，而是“外部 Agent 在 Human 的授权下调用网站服务”。两种模式的控制方向不同。当前场景应该优先实现后者。
+
+### 28.1 MCP Remote Server 是最合适的跨 Agent 接入入口
+
+GitHub Copilot 和 Claude Code 已经支持以 MCP Client 的方式连接外部服务，而且都支持远程 HTTP MCP Server：
+
+| 客户端 | 当前接入能力 | 对网站的意义 |
+| --- | --- | --- |
+| GitHub Copilot in VS Code | 支持远程 MCP Server、OAuth；部分能力取决于 Copilot Harness 和编辑器 | 不需要网站开发 Copilot 专用 Runtime |
+| GitHub Copilot CLI | 支持本地和远程 MCP Server | 终端用户可以直接连接网站 |
+| GitHub Copilot App / Cloud Agent | 支持 MCP，但服务配置和权限受 GitHub 产品策略约束 | 可以逐步覆盖 GitHub 工作流 |
+| Claude Code | 推荐使用 Remote HTTP MCP，可通过 OAuth 进行授权 | 可以直接连接网站的业务服务 |
+| 其他 MCP Client | 按各自支持的传输、授权和能力协商接入 | 网站不必为每个模型品牌开发独立 API |
+
+参考：[GitHub Copilot MCP](https://docs.github.com/en/copilot/concepts/customizations/mcp)、[Copilot MCP Integration Guide](https://code.visualstudio.com/api/extension-guides/ai/mcp)、[Copilot CLI MCP Setup](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers)、[Claude Code MCP](https://code.claude.com/docs/en/mcp)。
+
+网站应该提供一个稳定的 HTTPS 地址，例如：
+
+`https://work.example.com/mcp`
+
+MCP 使用 Streamable HTTP 传输。不要把旧式 HTTP+SSE 作为新实现的主路径；MCP 规范已将旧传输列为弃用方向。服务端应通过标准 MCP 协议完成能力协商，并兼容当前主流客户端实际使用的协议版本。
+
+但“支持 MCP”并不代表所有客户端的能力完全相同。Copilot 的官方集成说明明确区分了 Harness 和 Client：Tools、OAuth、Elicitation、MCP Apps、Resources、Prompts 等能力的可用性不同；例如 Copilot 会调用 MCP Tools，但 VS Code 的 MCP Prompts 并不直接以通用 Prompt 列表暴露给 Copilot 会话。Claude Code 的 MCP 能力也会随着版本和运行模式变化。
+
+因此，第一版只依赖跨客户端最稳定的公共子集：
+
+- Remote Streamable HTTP。
+- OAuth 授权。
+- Tools 与 JSON Schema 输入定义。
+- 标准化的结果和错误表达。
+- HTTPS、请求超时、取消、幂等与审计。
+
+Resources 可以作为只读上下文入口的补充；Elicitation、MCP Apps、Prompts、Sampling、MCP Tasks 等能力不要成为业务流程能否工作的前提。尤其不要把 MCP Client 是否支持 Elicitation 当成人工确认的唯一入口。所有正式 Human 操作仍可回到网站 UI。
+
+### 28.2 MCP 是接入协议，Work Collaboration Contract 才是业务契约
+
+MCP 解决的是不同 Agent Client 如何发现和调用工具，但它没有定义企业 Work Item、Requester、Reviewer、Approver、Task、Artifact 或 Decision 的业务语义。
+
+因此，需要定义一套平台自己的 **Work Collaboration Contract**。它不是发明新的网络协议，而是把业务操作整理为跨 Agent 可复用、稳定且可测试的 Tool Contract，并同时映射到 REST/OpenAPI 和 MCP。
+
+例如：
+
+| 能力 | MCP Tool 示例 | 说明 |
+| --- | --- | --- |
+| 查询事项 | `list_my_work_items` | 只返回当前用户有权访问的事项 |
+| 获取上下文 | `get_work_item_context` | 返回经过权限投影的 Context Capsule 和版本 |
+| 查询任务 | `list_my_tasks` / `get_task` | 提供当前用户可见的 Task |
+| 认领任务 | `claim_task` | 需要时使用带 TTL 的 Claim / Lease |
+| 提交分析 | `submit_analysis` | 以 Artifact 形式保存分析结果 |
+| 提交评审意见 | `submit_review_findings` | 只能形成 Review Findings Draft |
+| 创建决策草案 | `create_decision_draft` | 记录推荐方案、依据和未解决风险 |
+| 请求 Human 输入 | `request_human_input` | 在网站中形成待处理事项 |
+| 提交工作结果 | `submit_task_result` | 标记执行已提交，不能直接确认业务验收 |
+
+不要向 Agent 暴露一个泛化的 `update_work_item`，更不能提供 `approve`、`confirm_decision`、`reject_request` 或 `close_work_item` 这样的正式业务操作。
+
+这套 Contract 同时需要映射到 REST API。例如，MCP 的 `submit_analysis` 对应业务服务的 `POST /tasks/{id}/artifacts` 或专用分析提交端点。Web UI、MCP、CLI 和未来其他 Connector 应复用同一领域服务和权限检查，而不是分别实现业务规则。
+
+每个写操作应支持：
+
+- 业务对象 ID 和 Task ID。
+- 当前 Context / Artifact Version 或 ETag。
+- 幂等请求 ID。
+- 结构化输入 Schema。
+- 服务端返回的提交状态和 Artifact ID。
+- 明确的错误类别，如权限不足、上下文过期、任务已被其他人认领、状态不允许或需要 Human 处理。
+
+Agent 提交的结果应附带它实际读取的输入版本。若事项上下文已经变化，服务端应返回 Conflict / Stale Context，而不是把基于旧事实产生的结果静默写入当前版本。
+
+### 28.3 不要求网站注册 Agent，但仍然需要记录 Human 授权
+
+“不需要注册 Agent”不等于“不要身份和权限”。
+
+网站不需要提前创建一个 Claude Agent、Copilot Agent 或模型实例记录。用户连接 MCP 时，客户端通过 OAuth 代表当前 Human 获取访问令牌。网站识别登录用户和 OAuth Client，并为这次连接建立一个可撤销的 Delegation Grant。
+
+建议记录：
+
+| 字段 | 用途 |
+| --- | --- |
+| Human Subject | 实际授权人和业务责任人 |
+| OAuth Client ID | 连接来源，例如 Copilot 或 Claude Client |
+| Delegation Grant ID | 本次授权的稳定标识 |
+| Scopes | 允许访问的能力范围 |
+| Resource / Work Item Scope | 允许访问的事项或资源范围 |
+| Issued / Expires / Revoked | 授权生命周期 |
+| Policy Version | 授权时采用的策略版本 |
+
+这里不必强求知道实际运行的是哪个模型。Agent 可能经由 Claude Code 的不同模型执行，也可能由 Copilot 切换模型；客户端提供的模型名称或 Agent Name 只能当作可选审计元数据，不能用作身份凭证。
+
+每次操作都需要服务端重新校验：
+
+1. OAuth Token 是否有效、是否签发给当前 MCP Resource。
+2. Delegation Grant 是否仍有效，是否已撤销或过期。
+3. Human 是否仍是当前组织成员。
+4. Human 对这个 Work Item 是否具有相应 Participation 和 Role。
+5. Task 当前状态是否允许该操作。
+6. Agent 提交内容是否试图跨越 Human-only 的正式决策边界。
+
+OAuth Scope 适合表达较粗粒度的能力，例如 `work:read`、`task:read`、`artifact:submit`；真正的事项权限必须由服务端结合参与关系、角色、事项状态和动态策略判断。不能因为用户曾登录网站，就把这个 Token 当成对整个组织数据的永久授权。
+
+审计中应保留真实的 Human 授权者，同时记录 OAuth Client、Delegation Grant、MCP Request ID 和调用时间。这样既不会把 Agent 误记成 Human，也不需要提前维护一个网站专属 Agent 目录。
+
+如果未来需要把某个长期运行的外部 Agent 作为正式工作参与者，也可以另外定义 Service Principal / Agent Principal，并明确委托范围。这是更高一级的协作模式，不应成为普通用户连接 Copilot 或 Claude 的门槛。
+
+### 28.4 连接方式应该由用户在 Agent Client 内完成
+
+网站只需要提供清晰的连接信息，不必为每个 Agent 写一个专用插件。
+
+建议网站在 Work Item 页面或用户设置里提供一个“Connect an Agent”入口，内容包括 MCP URL、OAuth 登录入口、授权范围、支持能力和撤销入口。对常见客户端可以给出简短的官方配置指引，但它们最终都连接同一个服务地址。
+
+例如，Claude Code 可以通过 `claude mcp add --transport http <name> https://work.example.com/mcp` 添加远程服务器，然后在 `/mcp` 中完成授权。Copilot 则可以通过 VS Code 的 MCP 配置、Copilot CLI 的 `/mcp` 或其连接器入口添加服务。具体配置和授权 UI 由各 Client 管理，网站不需要控制用户的 Agent 进程。
+
+首次授权后，用户可以在自己的 Agent 中直接提出：
+
+> 查看我当前负责的架构评估事项，读取上下文并整理需要补充的证据。
+
+Agent 使用网站提供的工具完成读取和提交。Human 仍通过网站查看产物、补充信息或确认正式决定。
+
+### 28.5 Agent Skills 可选，不能成为接入依赖
+
+Agent Skills 是有价值的跨 Agent 指令分发标准。它可以提供 `SKILL.md`、示例、领域术语、产物模板和任务执行建议。GitHub Copilot 已支持 Agent Skills，Claude Code 也可以通过自己的 Skill 目录使用类似的标准结构。
+
+但 Skill 与 MCP 解决的问题不同：
+
+- MCP 是连接和调用业务服务的协议。
+- Agent Skill 是告诉 Agent 如何正确使用这些业务能力的说明和方法。
+- OAuth 是访问授权。
+- Work Collaboration Contract 是业务操作和数据语义。
+
+没有 Skill，Agent 仍然应该可以通过 MCP 的 Tool Description 和 JSON Schema 理解并使用基础工具。Skill 可以提升执行质量，但不能承载安全规则，也不能用它来授予权限。
+
+建议网站提供一个可选的、版本化的 `SKILL.md` 下载或公开链接，用户可以自行安装到 Claude、Copilot 或其他支持 Agent Skills 的 Client。不要要求每个用户先安装它，也不要把业务流程的关键规则只写在 Skill 里面。
+
+参考：[Agent Skills Standard in VS Code](https://code.visualstudio.com/docs/agent-customization/agent-skills)。
+
+### 28.6 MCP Registry 可以帮助发现，但不应该是系统依赖
+
+如果网站服务是公开可访问的，可以考虑将 MCP Server 的元数据发布到官方 MCP Registry 或其他聚合目录。官方 Registry 通过 `server.json` 描述 MCP Server 的名称、版本、连接地址、安装方式和能力。
+
+但官方 Registry 当前仍处于 Preview，而且明确不支持仅在私有网络中提供服务的 Private MCP Server。企业内网或租户专用环境应使用企业自己的连接目录，或者直接通过网站提供连接说明。
+
+所以，MCP Registry 只能解决“用户在哪里发现这个 MCP Server”，不能解决用户身份、Work Item 授权或业务决策，也不应该成为系统运行依赖。
+
+参考：[MCP Registry](https://github.com/modelcontextprotocol/registry)、[Registry Overview](https://github.com/modelcontextprotocol/registry/blob/main/docs/modelcontextprotocol-io/about.mdx)。
+
+### 28.7 不支持 MCP 的 Agent 也不能被排除
+
+MCP 应是最优先的集成方式，但不能成为唯一入口。至少保留三种接入级别：
+
+| 级别 | 使用方式 | 是否需要 Agent 专门配置 |
+| --- | --- | --- |
+| 0 | 网站 UI + Copy / Paste Context Capsule | 不需要 |
+| 1 | Remote MCP + OAuth | 只需在用户自己的 Agent Client 中添加服务 |
+| 2 | REST/OpenAPI + 用户自己的 Connector / SDK | 需要用户自己的集成，但不依赖网站 Runtime |
+
+如果某个 Agent 只支持 HTTP Tool、OpenAPI 或用户自定义 Connector，它仍然可以通过同一业务 API 工作。未来出现新的 Agent Protocol，也只需要增加 Adapter，不应改变 Work Item 模型和业务 API。
+
+不要为了支持每一种客户端而重写业务操作。所有入口最终都应落到同一应用服务、同一授权体系和同一审计记录。
+
+### 28.8 这也意味着网站不需要先建设 Agent Runtime 管理平台
+
+在这个产品定位下，以下能力都不是第一阶段的必要条件：
+
+- 在网站中创建 Claude / Copilot Agent 实例。
+- 在网站中管理用户的模型、Prompt、Skill 和 Runtime 配置。
+- 为每个 Agent 分配一台云端执行主机。
+- 网站主动拉起用户本机 Agent。
+- 要求用户将 Agent 的内部 Memory 或 Session 同步到网站。
+
+网站需要的是稳定的业务 API、Remote MCP Server、OAuth Authorization、Delegation Grant、Context Projection、Artifact Submission 和 Human Decision Gate。
+
+用户需要 Agent 执行时，由自己的 Agent Client 负责启动和管理 Runtime。网站只负责授权、提供业务上下文、接收工作结果和记录协作过程。
+
+这可以显著降低第一阶段的产品复杂度，也避免把业务平台绑定到某个厂商的 Agent Runtime。
+
+### 28.9 第一阶段的验收标准
+
+不要用“网站能启动几个 Agent”来衡量第一阶段。更有价值的验证方式是：
+
+1. 用户不配置任何 Agent，也能完整使用网站。
+2. 用户可以在 Copilot 和 Claude Code 中分别添加同一个 Remote MCP URL。
+3. 两个 Agent 通过不同 Client ID 登录后，获得的权限都由当前 Human 的业务角色决定。
+4. 用户撤销一个 Delegation Grant 后，该连接不能继续访问数据。
+5. Agent 可以读取用户授权的 Work Item Context，并提交 Analysis、Artifact 和 Decision Draft。
+6. Agent 无法调用正式批准、确认 Decision、确认 Review Outcome 或关闭事项的接口。
+7. Human 在网站完成确认，所有后续工作流动作均绑定该 Human Decision Record。
+8. MCP Client 不支持 Elicitation 或 MCP Apps 时，工作流程仍可通过网站 UI 完成。
+9. Agent 不安装 Skill、不使用特定 Runtime，也能完成基础读取和提交。
+10. Copilot、Claude 和其他客户端的差异只存在于连接与交互适配层，不影响业务对象、权限规则和审计模型。
+
+
+## 29. 结论
 
 这类系统最合适的设计单位不是 Agent，也不是一个共享聊天会话，而是长期存在的业务事项。参与者通过 Participation 加入事项，角色决定其责任，Task 承载具体工作，Artifact 保存交付物，Review 和 Decision 表达正式判断，Workflow Runtime 管理业务生命周期。
 
