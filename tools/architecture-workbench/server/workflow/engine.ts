@@ -37,10 +37,11 @@ export function canChair(workItemId:string,actorId:string):boolean {
   if (isGlobalAdmin(actorId)) return true;
   const item=one<{chairman_id:string|null}>("SELECT chairman_id FROM work_items WHERE id=?",workItemId);
   if (item?.chairman_id) return item.chairman_id===actorId;
-  return Boolean(one(
-    "SELECT id FROM participations WHERE work_item_id=? AND person_id=? AND role_key IN ('chairman','decision_authority') AND permissions_json LIKE '%\\"decide\\"%'",
+  const authorityRoles=all<{permissions_json:string}>(
+    "SELECT permissions_json FROM participations WHERE work_item_id=? AND person_id=? AND role_key IN ('chairman','decision_authority')",
     workItemId,actorId
-  ));
+  );
+  return authorityRoles.some(row=>(JSON.parse(row.permissions_json) as string[]).includes("decide"));
 }
 
 function appendTransition(workItemId:string,from:string,to:string,action:string,reason:string,actorId:string,timestamp:string) {
@@ -89,10 +90,13 @@ function createRequestSubmission(workItemId:string,actorId:string,input:Submissi
   const submissionId=id("sub");
   run("INSERT INTO submissions(id,work_item_id,sequence,purpose,manifest_json,context_version,created_by,created_at,submission_message,package_json,assisted_by_run_id,source_submission_id,submitted_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
     submissionId,workItemId,sequence,"request",JSON.stringify(manifest),item.context_version,actorId,timestamp,message,JSON.stringify(packageValue),input.assistedByRunId || null,prior?.id || null,item.requestor_id || actorId);
-  const reviewers=all<{person_id:string;display_name:string;role_key:string}>(
-    "SELECT p.person_id,people.display_name,p.role_key FROM participations p JOIN people ON people.id=p.person_id WHERE p.work_item_id=? AND p.person_id<>? AND p.permissions_json LIKE '%\"review\"%' ORDER BY people.display_name",
+  const reviewerCandidates=all<{person_id:string;display_name:string;role_key:string;permissions_json:string}>(
+    "SELECT p.person_id,people.display_name,p.role_key,p.permissions_json FROM participations p JOIN people ON people.id=p.person_id WHERE p.work_item_id=? AND p.person_id<>? ORDER BY people.display_name",
     workItemId,item.requestor_id || actorId
   );
+  const reviewers=reviewerCandidates
+    .filter(person=>(JSON.parse(person.permissions_json) as string[]).includes("review"))
+    .map(({person_id,display_name,role_key})=>({person_id,display_name,role_key}));
   const dueAt=new Date(Date.parse(timestamp)+REVIEW_DAYS*86400000).toISOString();
   const cycleId=id("cycle");
   run("INSERT INTO review_cycles(id,work_item_id,submission_id,name,baseline_json,status,due_date,review_deadline_at,remaining_review_ms,reviewer_snapshot_json,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -215,7 +219,7 @@ export function createClarification(workItemId:string,actorId:string,input:{arti
       id("wt"),workItemId,cycle.id,cycle.submission_id,clarificationId,"clarification_deadline",dueAt,"scheduled",timestamp,timestamp);
     appendTransition(workItemId,"discussion_review","waiting_requestor","request_clarification",input.question,actorId,timestamp);
     run("INSERT INTO activity_events(id,work_item_id,actor_id,action,target_type,target_id,summary,metadata_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
-      id("evt"),workItemId,actorId,"clarification_requested","clarification",clarificationId,"Requested clarification from Requestor",JSON.stringify({responseDueAt:dueAt,artifactId:artifact.id}),timestamp);
+      id("evt"),workItemId,actorId,"clarification_requested","clarification",clarificationId,"Requested clarification from Requestor",JSON.stringify({responseDueAt:dueAt,artifactId:artifact?.id || null}),timestamp);
     db.exec("COMMIT");
     return {ok:true as const,id:clarificationId,responseDueAt:dueAt};
   } catch(error) { db.exec("ROLLBACK"); throw error; }
