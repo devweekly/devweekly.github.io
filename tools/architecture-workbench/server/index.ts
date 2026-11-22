@@ -200,7 +200,7 @@ app.post("/api/work-items",(req,res)=>{
   run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",
     id("part"),workItemId,actor,"owner","Work Item Owner",JSON.stringify(["read","contribute","comment","review","manage"]),timestamp);
   if (chairmanId) run("INSERT OR IGNORE INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",
-    id("part"),workItemId,chairmanId,"chairman","Chairman",JSON.stringify(["read","review","decide"]),timestamp);
+    id("part"),workItemId,chairmanId,"chairman","Chairman",JSON.stringify(["read","decide"]),timestamp);
   logActivity(workItemId,actor,"created","work_item",workItemId,"Created Request "+code);
   res.status(201).json({id:workItemId,code});
 });
@@ -236,7 +236,7 @@ app.post("/api/work-items/:id/participations",(req,res)=>{
   if (!body.permissions.includes("read")) return res.status(400).json({error:"Every Participation must include read permission."});
   const item=one<{requestor_id:string|null}>("SELECT requestor_id FROM work_items WHERE id=?",workItemId);
   if (body.roleKey==="chairman" && item?.requestor_id!==actor && !isGlobalAdmin(actor)) return res.status(403).json({error:"Only the Requestor or a Workbench Admin may designate the Chairman."});
-  if (body.roleKey==="chairman" && !body.permissions.includes("read")) return res.status(400).json({error:"The Chairman must have read permission."});
+  if (body.roleKey==="chairman" && (!body.permissions.includes("read") || !body.permissions.includes("decide") || body.permissions.includes("review"))) return res.status(400).json({error:"The Chairman must have read and decide permission, but is not automatically a Reviewer."});
   const actorGrants=permissions(workItemId,actor);
   if (!isGlobalAdmin(actor) && !actorGrants.includes("decide") && body.permissions.includes("decide") && body.roleKey!=="chairman") {
     return res.status(403).json({error:"Only a Workbench Admin or an existing Decision Authority can grant decide permission."});
@@ -273,6 +273,7 @@ app.put("/api/work-items/:id/participations/:participationId",(req,res)=>{
   if (!current) return res.status(404).json({error:"Participation not found"});
   const item=one<{requestor_id:string|null;chairman_id:string|null}>("SELECT requestor_id,chairman_id FROM work_items WHERE id=?",workItemId);
   if (body.roleKey==="chairman" && item?.requestor_id!==actor && !isGlobalAdmin(actor)) return res.status(403).json({error:"Only the Requestor or a Workbench Admin may designate the Chairman."});
+  if (body.roleKey==="chairman" && (!body.permissions.includes("read") || !body.permissions.includes("decide") || body.permissions.includes("review"))) return res.status(400).json({error:"The Chairman must have read and decide permission, but is not automatically a Reviewer."});
   const duplicate=one<{id:string}>("SELECT id FROM participations WHERE work_item_id=? AND person_id=? AND role_key=? AND id<>?",workItemId,current.person_id,body.roleKey,participationId);
   if (duplicate) return res.status(409).json({error:"This person already has the selected role on this Request."});
   run("UPDATE participations SET role_key=?,role_label=?,permissions_json=? WHERE id=?",body.roleKey,body.roleLabel,JSON.stringify(body.permissions),participationId);
