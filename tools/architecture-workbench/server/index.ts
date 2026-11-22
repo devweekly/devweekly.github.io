@@ -214,7 +214,8 @@ app.patch("/api/work-items/:id/request-package",(req,res)=>{
   const packageValue={
     goal:String(body.goal || ""),scope:String(body.scope || ""),constraints:String(body.constraints || ""),
     initialProposal:String(body.initialProposal || ""),decisionQuestions:String(body.decisionQuestions || ""),
-    submissionMessage:String(body.submissionMessage || "")
+    submissionMessage:String(body.submissionMessage || ""),
+    assistedByRunId:body.assistedByRunId ? String(body.assistedByRunId) : null
   };
   if (!packageValue.submissionMessage.trim()) return res.status(400).json({error:"A submission message is required."});
   const timestamp=now();
