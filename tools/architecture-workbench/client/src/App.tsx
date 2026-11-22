@@ -14,7 +14,7 @@ import {
 import { Welcome } from "@ant-design/x";
 import dayjs from "dayjs";
 import { api, setActor } from "./api";
-import type { Activity, Artifact, Bootstrap, Comment, DebtItem, Person, Review, WorkItem, WorkItemDetail } from "./types";
+import type { Activity, Artifact, Bootstrap, Comment, DebtItem, Person, Review, WorkItem, WorkItemDetail, WorkTask } from "./types";
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
