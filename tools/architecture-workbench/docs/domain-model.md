@@ -10,7 +10,8 @@ The prototype deliberately separates business facts from interaction and executi
 | Requestor | work_items.requestor_id | Person who raised the Request; can maintain the Request's relevant people |
 | Task | tasks | Executable work with owner, status and due date |
 | Artifact | artifacts | Versioned deliverable, including ADR and evidence |
-| Review Cycle | review_cycles | A review round and its baseline manifest |
+| Submission | submissions | Immutable manifest for one formal material submission, including Artifact versions and context version |
+| Review Cycle | review_cycles | A review round bound to one Submission and its baseline manifest |
 | Review | reviews | Independent opinion bound to an Artifact version |
 | Decision | decisions | Formal decision by an authorized Human |
 | Technical Debt | Work Item + debt_details + relation | Optional long-lived follow-up; not created for every Request |
@@ -70,15 +71,33 @@ The workflow is intentionally small and deterministic. Request status remains th
 | in_review | Decision: more analysis | analysis |
 | accepted / rejected | Close | closed |
 
-Submitting for review requires at least one Artifact. Each submission closes the previous active Review Cycle and captures a new baseline manifest. A Review outcome of `request_changes` moves the Request to `changes_requested`; final acceptance, rejection and more-analysis outcomes still require a formal Decision.
+Submitting for review requires at least one Artifact. Each submission creates an immutable Submission record containing the latest version of each Artifact stream, its content hash, the context version, submitting principal and timestamp. The new Review Cycle references that Submission and keeps the baseline JSON as a compatibility projection. The previous active Review Cycle is closed in the same transaction as the new Submission and Work Item transition. A Review outcome of `request_changes` moves the Request to `changes_requested`; the revision work does not overwrite the previous Submission. Resubmission creates a new baseline. Final acceptance, rejection and more-analysis outcomes still require a formal Decision.
 
 The UI renders the server-provided workflow projection with Ant Design Steps. It does not decide which transitions are allowed. Permission checks and state transitions are performed by the server Workflow Engine.
+
+## Submission manifest
+
+A Submission is created by the server when a Work Item enters a Review Cycle. The manifest freezes the Artifact ID, version, code/type, title and content hash for each included deliverable, together with purpose, context version, creator and timestamp. The Review Cycle has a foreign-key reference to that Submission and retains `baseline_json` for compatibility with existing consumers.
+
+A material revision creates a new Artifact version. It does not rewrite an earlier Submission, reset prior Review outcomes or silently alter what a reviewer evaluated. Resubmitting closes the previous Review Cycle and creates a new Submission/Review Cycle pair in the same transaction as the lifecycle transition. Reviews remain attached to the original cycle and Artifact versions.
+
+At startup, existing Review Cycles without a Submission are migrated by copying their current `baseline_json` into a legacy Submission. This preserves the historical baseline instead of guessing a new one.
+
+## Workflow layers
+
+The Workbench keeps three distinct layers:
+
+- Business Workflow: Work Item lifecycle, formal gates, permission-checked transitions and transition history.
+- Collaboration Workflow: Tasks, accountable owners, assignees, dependencies, participant hand-off and independent Reviews.
+- Agent Execution Workflow: Agent Plans, Run nodes, claims, leases, retries, Host sessions and execution traces.
+
+Only the Business Workflow controls Work Item status. A Task or Agent Run can be blocked, waiting or complete without changing the business stage. An Agent Plan is an execution mechanism, not a business approval stage.
 
 ## Relevant people and personal work
 
 The Requestor is recorded separately from the Work Item Owner. The Requestor, a global Workbench Admin or a Work Item principal with explicit `manage` permission can add, update or remove Participation records. The Requestor and Owner must remain participants.
 
-People can maintain their own profile. A Workbench Admin can maintain any profile. A Task Assignee can update their own Task status without receiving broader Request contribution permissions; reassignment and due-date edits remain contributor/admin actions.
+People can maintain their own profile. A Workbench Admin can maintain any profile. A Task Owner or Assignee can update Task status without receiving broader Request contribution permissions; reassigning the Owner/Assignee and changing due date remain contributor-only actions.
 
 
 ## Agent collaboration model
