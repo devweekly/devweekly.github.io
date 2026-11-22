@@ -101,6 +101,7 @@ The `/mcp` endpoint registers the following business and coordination tools alon
 | `workbench_create_task` | Create a Task; human assignee must be a participant | contribute |
 | `workbench_update_task` | Update Task status; assignees may update status and contributors may reassign | assignee or contribute |
 | `workbench_create_artifact_draft` | Save a versioned draft Artifact | contribute |
+| `workbench_draft_request_package` | Save an Agent-authored Request Package suggestion bound to its active Run claim; Requestor confirmation is still required | contribute + active Run claim |
 | `workbench_add_comment` | Add a discussion note | comment |
 | `agent_list_profiles` | List role-oriented Agent profiles and mapped Skills | none |
 | `agent_request_run` | Queue a standalone Agent Run for a Work Item | contribute |
