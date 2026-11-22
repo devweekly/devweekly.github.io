@@ -204,7 +204,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Rust Agent ready. Workspace: {}", runtime.workspace().display());
     println!("Session: {}", runtime.session_id());
-    println!("Commands: /help, /attach <workspace-relative-path>, /new, /session, /resume <id>, /fork, /model <id>, /models, /agents, /agent <id>, /mode <default|plan>, /context, /compact, /usage, /dream, /dream-status, /prune-transcripts <days>, /forget-memory <id>, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
+    println!("Commands: /help, /attach <workspace-relative-path>, /new, /session, /resume <id>, /fork, /model <id>, /models, /agents, /agent <id>, /mode <default|plan>, /context, /compact, /usage, /dream, /dream-status, /prune-transcripts <days>, /prune-tasks <days>, /forget-memory <id>, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
 
     loop {
         print!("you> ");
@@ -242,8 +242,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!(" /dream               Consolidate pending memory now");
             println!(" /dream-status        Show pending transcripts, lease, retries and recent runs");
             println!(" /prune-transcripts <days>  Prune unreferenced transcript rows older than N days");
-            println!(" /forget-memory <id>        Forget a memory and remove exclusive transcript sources");
-            println!(" /dream               Consolidate transcripts into evidence-backed memory");
+            println!(" /forget-memory <id>        Forget a memory and its dependent evidence");
+            println!(" /prune-tasks <days>        Remove old completed, failed and cancelled tasks");
             println!(" /tasks               List background tasks");
             println!(" /task <id>           Show task status and result");
             println!(" /wait <id>           Wait for a background task (Ctrl-C stops waiting)");
@@ -361,6 +361,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             continue;
         }
+        if let Some(value) = input.strip_prefix("/prune-tasks ") {
+            match value.trim().parse::<u64>() {
+                Ok(days) => match runtime.prune_background_tasks_before_days(days) {
+                    Ok(deleted) => println!("Pruned {deleted} terminal background tasks older than {days} days."),
+                    Err(error) => eprintln!("Background task retention failed: {error}"),
+                },
+                Err(_) => eprintln!("Usage: /prune-tasks <days>"),
+            }
+            continue;
+        }
         if let Some(id) = input.strip_prefix("/forget-memory ") {
             match runtime.forget_memory(id.trim()) {
                 Ok(()) => println!("Memory {} and its unshared transcript sources were forgotten.", id.trim()),
@@ -430,6 +440,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
             continue;
         }
         if input == "/tasks" {
+            match runtime.resume_background_tasks() {
+                Ok(resumed) if resumed > 0 => println!("Resumed {resumed} queued or expired background tasks."),
+                Ok(_) => {}
+                Err(error) => eprintln!("Could not resume queued tasks: {error}"),
+            }
             match runtime.list_background_tasks() {
                 Ok(tasks) if tasks.is_empty() => println!("No background tasks."),
                 Ok(tasks) => {
