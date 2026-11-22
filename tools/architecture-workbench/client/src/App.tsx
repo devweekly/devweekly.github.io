@@ -110,6 +110,13 @@ export default function App() {
     setDetail(fresh); setBootstrap(data);
   }
   useEffect(()=>{setActor(actor);setProfilePersonId(actor);void reload();},[actor]);
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    if(!params.has("page")) {
+      params.set("page",page);
+      window.history.replaceState({}, "", window.location.pathname+"?"+params.toString());
+    }
+  },[]);
 
   function writeRoute(nextPage:string,itemId?:string|null) {
     const params=new URLSearchParams();
@@ -127,7 +134,7 @@ export default function App() {
   useEffect(()=>{
     const syncFromUrl=()=>{
       const params=new URLSearchParams(window.location.search);
-      const nextPage=params.get("page") || "overview";
+      const nextPage=params.get("page") || "my-work";
       const itemId=params.get("item");
       setPage(nextPage);
       if(itemId) {
@@ -395,13 +402,15 @@ export default function App() {
     const activeTasks=myTasks.filter(task=>!["done","cancelled"].includes(task.status));
     const taskColumns=[
       {title:"任务",dataIndex:"title",render:(value:string,task:MyTask)=><div><Text strong>{value}</Text><div className="small muted">{task.kind}</div></div>},
-      {title:"所属 Request",dataIndex:"work_item_title",render:(value:string,task:MyTask)=><Button type="link" className="table-link" onClick={()=>{const item=bootstrap?.workItems.find(entry=>entry.id===task.work_item_id);if(item)void openWorkItem(item);}}>{task.work_item_code} · {value}</Button>},
+      {title:"所属事项",dataIndex:"work_item_title",render:(value:string,task:MyTask)=><Button type="link" className="table-link" onClick={()=>{const item=bootstrap?.workItems.find(entry=>entry.id===task.work_item_id);if(item)void openWorkItem(item);}}>{task.work_item_code} · {value}</Button>},
+      {title:"任务负责人",dataIndex:"owner_name",render:(value:string|null)=>value || "—"},
+      {title:"执行分配",dataIndex:"assignee_name",render:(value:string|null)=>value || "尚未分配"},
       {title:"状态",dataIndex:"status",render:(value:string,task:MyTask)=><Select size="small" value={value} style={{width:120}} onChange={status=>void updateTask(task.id,status)} options={[{value:"open",label:"待处理"},{value:"in_progress",label:"处理中"},{value:"blocked",label:"受阻"},{value:"done",label:"完成"},{value:"cancelled",label:"取消"}]} />},
       {title:"截止日期",dataIndex:"due_date",render:dateText},
       {title:"Requestor",dataIndex:"requestor_name",render:(value:string|null)=>value || "—"}
     ];
     return <div className="page-stack">
-      <div className="page-heading"><div><Text type="secondary">PERSONAL WORK QUEUE</Text><Title level={2}>我的工作</Title><Paragraph type="secondary">任务按实际 Assignee 汇总；可以直接更新自己负责的 Task 状态，并返回所属 Request 查看上下文。</Paragraph></div></div>
+      <div className="page-heading"><div><Text type="secondary">PERSONAL WORK QUEUE</Text><Title level={2}>我的工作</Title><Paragraph type="secondary">这里汇总当前分配给你的工作；任务负责人对结果负责，执行分配表示当前由谁处理。</Paragraph></div></div>
       <Row gutter={[16,16]}>
         <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="待完成任务" value={activeTasks.length} /></Card></Col>
         <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="处理中" value={activeTasks.filter(task=>task.status==="in_progress").length} /></Card></Col>
@@ -472,6 +481,9 @@ export default function App() {
     const item=detail.workItem;
     const permissions=detail.permissions;
     const currentCycle=detail.cycles[0];
+    const reviewableArtifacts=currentCycle ? (JSON.parse(currentCycle.baseline_json) as {id:string;version:number}[])
+      .map(entry=>detail.artifacts.find(artifact=>artifact.id===entry.id && artifact.version===entry.version))
+      .filter((artifact):artifact is Artifact=>Boolean(artifact)) : [];
     const activeTask=detail.tasks.find(task=>task.status==="in_progress")
       || detail.tasks.find(task=>task.status==="blocked")
       || detail.tasks.find(task=>task.status==="open");
@@ -606,7 +618,7 @@ export default function App() {
 
           <Card size="small" title={"评审记录 · "+detail.reviews.length}>
             <Text type="secondary" className="small">{currentCycle ? currentCycle.name+" · 固定材料基线" : "尚未启动评审"}</Text>
-            {permissions.includes("review") && currentCycle?.status==="active" ? <Button size="small" icon={<PlusOutlined />} onClick={()=>{reviewForm.setFieldsValue({artifactId:detail.artifacts[0]?.id,outcome:"comment",discipline:actorPerson?.title || "General"});setReviewOpen(true);}}>提交评审意见</Button>:null}
+            {permissions.includes("review") && currentCycle?.status==="active" ? <Button size="small" icon={<PlusOutlined />} disabled={reviewableArtifacts.length===0} onClick={()=>{reviewForm.setFieldsValue({artifactId:reviewableArtifacts[0]?.id,outcome:"comment",discipline:actorPerson?.title || "General"});setReviewOpen(true);}}>提交评审意见</Button>:null}
             <List size="small" dataSource={detail.reviews} locale={{emptyText:"尚无评审意见"}} renderItem={(review:Review)=><List.Item><List.Item.Meta title={<Space wrap><Text strong>{review.reviewer_name}</Text><Tag>{review.discipline}</Tag><Tag color={review.outcome==="approve"?"success":review.outcome==="request_changes"?"warning":"default"}>{review.outcome}</Tag></Space>} description={<>{review.summary}<div className="small muted">{review.artifact_code || review.artifact_title} · v{review.artifact_version} · {dateText(review.created_at)}</div></>} /></List.Item>} />
           </Card>
 
@@ -688,7 +700,7 @@ export default function App() {
 
     <Modal title="提交独立 Review" open={reviewOpen} onCancel={()=>setReviewOpen(false)} onOk={()=>void submitForm(reviewForm,async()=>api.createReview(selected!.id,reviewForm.getFieldsValue()),"Review 已提交",()=>setReviewOpen(false))} confirmLoading={busy}>
       <Form form={reviewForm} layout="vertical">
-        <Form.Item name="artifactId" label="评审对象" rules={[{required:true}]}><Select options={(detail?.artifacts || []).map(a=>({value:a.id,label:(a.code || a.type)+" · "+a.title+" v"+a.version}))} /></Form.Item>
+        <Form.Item name="artifactId" label="评审对象" rules={[{required:true}]}><Select options={(detail?.cycles[0] ? (JSON.parse(detail.cycles[0].baseline_json) as {id:string;version:number}[]).map(entry=>detail.artifacts.find(a=>a.id===entry.id && a.version===entry.version)).filter(Boolean).map(a=>({value:(a as Artifact).id,label:((a as Artifact).code || (a as Artifact).type)+" · "+(a as Artifact).title+" v"+(a as Artifact).version})) : [])} /></Form.Item>
         <Form.Item name="discipline" label="专业领域" rules={[{required:true}]}><Input /></Form.Item>
         <Form.Item name="outcome" label="意见类型"><Select options={[{value:"approve",label:"认可"},{value:"comment",label:"建议 / 评论"},{value:"request_changes",label:"要求修改"},{value:"block",label:"阻断"}]} /></Form.Item>
         <Form.Item name="summary" label="评审意见" rules={[{required:true}]}><TextArea rows={4} /></Form.Item>
@@ -699,7 +711,8 @@ export default function App() {
       <Form form={taskForm} layout="vertical">
         <Form.Item name="title" label="工作内容" rules={[{required:true}]}><Input /></Form.Item>
         <Form.Item name="kind" label="工作类型"><Select options={[{value:"analysis",label:"分析"},{value:"revision",label:"材料修改"},{value:"follow_up",label:"后续整改"},{value:"decision_prep",label:"决策准备"}]} /></Form.Item>
-        <Form.Item name="assigneeId" label="责任人"><Select allowClear options={(detail?.participants || []).map(p=>({value:p.person_id,label:p.display_name+" · "+p.role_label}))} /></Form.Item>
+        <Form.Item name="ownerId" label="任务负责人" rules={[{required:true}]}><Select options={(detail?.participants || []).map(p=>({value:p.person_id,label:p.display_name+" · "+p.role_label}))} /></Form.Item>
+        <Form.Item name="assigneeId" label="执行分配"><Select allowClear options={(detail?.participants || []).map(p=>({value:p.person_id,label:p.display_name+" · "+p.role_label}))} /></Form.Item>
         <Form.Item name="dueDate" label="截止日期"><DatePicker style={{width:"100%"}} /></Form.Item>
       </Form>
     </Modal>
