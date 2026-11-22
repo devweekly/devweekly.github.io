@@ -116,6 +116,12 @@ export default function App() {
     try { setDetail(await api.detail(item.id)); }
     catch (error) { message.error(error instanceof Error ? error.message : "无法打开事项"); }
   }
+  async function openRelatedDebt(workItemId:string) {
+    setPage("work-items"); setSelected(null); setDetail(null);
+    writeRoute("work-items",workItemId);
+    try { setDetail(await api.detail(workItemId)); }
+    catch (error) { message.error(error instanceof Error ? error.message : "无法打开关联技术债务"); }
+  }
   async function refreshDetail() {
     if (!selected) return;
     const [fresh,data]=await Promise.all([api.detail(selected.id),api.bootstrap()]);
@@ -532,9 +538,6 @@ export default function App() {
     const reviewableArtifacts=currentCycle ? (JSON.parse(currentCycle.baseline_json) as {id:string;version:number}[])
       .map(entry=>detail.artifacts.find(artifact=>artifact.id===entry.id && artifact.version===entry.version))
       .filter((artifact):artifact is Artifact=>Boolean(artifact)) : [];
-    const activeTask=detail.tasks.find(task=>task.status==="in_progress")
-      || detail.tasks.find(task=>task.status==="blocked")
-      || detail.tasks.find(task=>task.status==="open");
     const phaseAction:Record<string,string>={
       draft:"Requestor 完善 Request Package，并确认提交说明后提交。",
       requestor_revision:"根据决定会议结论修订 Request Package，形成新版本后重新提交。",
@@ -545,12 +548,9 @@ export default function App() {
       rejected_pending_close:"决定已拒绝，等待 Chairman 或 Admin 人工关闭。",
       closed:"事项已关闭，Submission、评审、会议纪要和决定记录仍可查阅。"
     };
-    const taskIsNext= ["requestor_revision","approved_pending_close","rejected_pending_close"].includes(item.status) && Boolean(activeTask);
     const nextAction=detail.workflow.activeClarification
       ? "Requestor 回答澄清问题（截止 "+dateText(detail.workflow.activeClarification.response_due_at)+"）。"
-      : taskIsNext && activeTask
-        ? (activeTask.status==="blocked" ? "解除阻塞："+activeTask.title+"（任务负责人："+(activeTask.owner_name || item.owner_name)+"；执行人："+(activeTask.assignee_name || "待分配")+"）" : "完成当前任务："+activeTask.title+"（任务负责人："+(activeTask.owner_name || item.owner_name)+"；执行人："+(activeTask.assignee_name || "待分配")+"）")
-        : (phaseAction[item.status] || "确认下一步工作。");
+      : (phaseAction[item.status] || "根据讨论和协作进展继续推进。");
     const requestPackage=(()=>{try{return JSON.parse(item.request_package_json || "{}") as Record<string,unknown>;}catch{return {};}})();
     const canSubmitRequest=item.requestor_id===actor;
     const showArtifact=(artifact:Artifact)=>Modal.info({
@@ -593,7 +593,7 @@ export default function App() {
           <Col xs={24} md={9}><Text type="secondary" className="workflow-label">下一步</Text><div><Text strong>{nextAction}</Text></div></Col>
         </Row>
       </Card>
-      <Card size="small" title="Request Package" className="workspace-section">
+      <Card size="small" title="Request 概要" className="workspace-section">
         <Row gutter={[20,12]}>
           <Col xs={24} md={12}><Text type="secondary" className="workflow-label">业务目标</Text><Paragraph>{String(requestPackage.goal || item.description || "尚未填写")}</Paragraph></Col>
           <Col xs={24} md={12}><Text type="secondary" className="workflow-label">范围</Text><Paragraph>{String(requestPackage.scope || "尚未填写")}</Paragraph></Col>
@@ -660,6 +660,15 @@ export default function App() {
         }
       </Card>
 
+      {detail.relatedDebts.length>0 && <Card size="small" title={"关联技术债务 · "+detail.relatedDebts.length} className="workspace-section">
+        <List size="small" dataSource={detail.relatedDebts} renderItem={debt=><List.Item actions={[<Button key="open" type="link" onClick={()=>void openRelatedDebt(debt.id)}>查看</Button>]}>
+          <List.Item.Meta
+            title={<Space wrap><Text strong>{debt.code} · {debt.title}</Text><Tag color={debt.severity==="high"?"error":debt.severity==="medium"?"warning":"default"}>{debt.severity==="high"?"高严重度":debt.severity==="medium"?"中严重度":"低严重度"}</Tag><Tag color={debt.debt_status==="resolved"?"success":debt.debt_status==="in_progress"?"processing":"default"}>{debt.debt_status==="resolved"?"已解决":debt.debt_status==="in_progress"?"处理中":debt.debt_status==="deferred"?"已延期":"待处理"}</Tag></Space>}
+            description={<Space wrap><Text type="secondary" className="small">负责人：{debt.owner_name}</Text>{debt.target_date?<Text type="secondary" className="small">目标：{dateText(debt.target_date)}</Text>:null}<Text type="secondary" className="small">优先级：{debt.priority}</Text></Space>}
+          />
+        </List.Item>} />
+      </Card>}
+      
       <Card size="small" title="讨论" className="workspace-section">
         <Space.Compact block><Input value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="补充事实、提出问题或回应讨论..." onPressEnter={()=>void submitComment()} /><Button type="primary" onClick={()=>void submitComment()}>发送</Button></Space.Compact>
         <List className="comment-list" dataSource={detail.comments} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚无讨论" />}} renderItem={(comment:Comment)=><List.Item>
@@ -696,14 +705,6 @@ export default function App() {
           </Card>
           <Card size="small" title={"决定会议纪要 · "+detail.decisionMeetings.length}>
             <List size="small" dataSource={detail.decisionMeetings} locale={{emptyText:"尚无决定会议"}} renderItem={meeting=><List.Item><List.Item.Meta title={<Space wrap><Tag color={statusColors[meeting.outcome]}>{statusLabels[meeting.outcome] || meeting.outcome}</Tag><Text strong>{meeting.chairman_name}</Text><Text type="secondary">{dayjs(meeting.meeting_at).format("YYYY-MM-DD HH:mm")}</Text></Space>} description={<>{meeting.rationale}{meeting.minutes?<div className="small muted">会议纪要：{meeting.minutes}</div>:null}</>} /></List.Item>} />
-          </Card>
-
-          <Card size="small" title={"外部引用 · "+detail.externalLinks.length}>
-            <List size="small" dataSource={detail.externalLinks} locale={{emptyText:"尚无外部引用"}} renderItem={link=><List.Item>
-              <List.Item.Meta title={<Space wrap><Tag>{link.provider.toUpperCase()}</Tag><Text strong>{link.external_key || link.external_id}</Text></Space>} description={link.title} />
-              <Space>{link.url?<a href={link.url} target="_blank" rel="noreferrer">打开</a>:null}{permissions.includes("manage")?<Button size="small" type="link" danger onClick={()=>void removeExternalLink(link.id)}>移除</Button>:null}</Space>
-            </List.Item>} />
-            {permissions.includes("contribute")?<Button size="small" icon={<LinkOutlined />} onClick={()=>void openExternalLinkDialog()}>关联外部资源</Button>:null}
           </Card>
 
           <Card size="small" title={"附件 · "+detail.attachments.length}>
