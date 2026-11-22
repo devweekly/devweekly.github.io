@@ -126,3 +126,95 @@ for (const submission of all<{id:string;manifest_json:string}>("SELECT id,manife
   if (changed) run("UPDATE submissions SET manifest_json=? WHERE id=?",JSON.stringify(normalized),submission.id);
 }
 
+
+
+// Request lifecycle and durable timer migrations (additive; existing records remain readable).
+ensureColumn("work_items","chairman_id","TEXT REFERENCES people(id)");
+ensureColumn("work_items","decision_outcome","TEXT");
+ensureColumn("work_items","request_package_json","TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("submissions","submission_message","TEXT NOT NULL DEFAULT ''");
+ensureColumn("submissions","package_json","TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("submissions","assisted_by_run_id","TEXT REFERENCES agent_runs(id)");
+ensureColumn("submissions","source_submission_id","TEXT REFERENCES submissions(id)");
+ensureColumn("submissions","submitted_by","TEXT REFERENCES people(id)");
+ensureColumn("review_cycles","review_deadline_at","TEXT");
+ensureColumn("review_cycles","remaining_review_ms","INTEGER");
+ensureColumn("review_cycles","paused_at","TEXT");
+ensureColumn("review_cycles","reviewer_snapshot_json","TEXT NOT NULL DEFAULT '[]'");
+ensureColumn("decisions","meeting_id","TEXT");
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS clarification_requests (
+    id TEXT PRIMARY KEY,
+    work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+    cycle_id TEXT NOT NULL REFERENCES review_cycles(id) ON DELETE CASCADE,
+    submission_id TEXT REFERENCES submissions(id),
+    requested_by TEXT NOT NULL REFERENCES people(id),
+    artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+    question TEXT NOT NULL,
+    response_due_at TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('requested','answered','unanswered','cancelled')),
+    answer TEXT,
+    answered_by TEXT REFERENCES people(id),
+    answered_at TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_clarifications_item ON clarification_requests(work_item_id,created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_clarifications_due ON clarification_requests(status,response_due_at);
+  CREATE TABLE IF NOT EXISTS decision_meetings (
+    id TEXT PRIMARY KEY,
+    work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+    cycle_id TEXT REFERENCES review_cycles(id),
+    submission_id TEXT REFERENCES submissions(id),
+    chairman_id TEXT NOT NULL REFERENCES people(id),
+    meeting_at TEXT NOT NULL,
+    minutes TEXT NOT NULL DEFAULT '',
+    outcome TEXT NOT NULL CHECK(outcome IN ('approved','needs_work','rejected')),
+    rationale TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(cycle_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_decision_meetings_item ON decision_meetings(work_item_id,meeting_at DESC);
+  CREATE TABLE IF NOT EXISTS workflow_timers (
+    id TEXT PRIMARY KEY,
+    work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+    cycle_id TEXT REFERENCES review_cycles(id) ON DELETE CASCADE,
+    submission_id TEXT REFERENCES submissions(id),
+    clarification_id TEXT REFERENCES clarification_requests(id) ON DELETE CASCADE,
+    timer_type TEXT NOT NULL CHECK(timer_type IN ('review_deadline','clarification_deadline')),
+    due_at TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('scheduled','processing','completed','cancelled','dead_letter')),
+    lease_until TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_workflow_timers_due ON workflow_timers(status,due_at);
+  CREATE INDEX IF NOT EXISTS idx_workflow_timers_cycle ON workflow_timers(cycle_id,status);
+`);
+
+run("UPDATE submissions SET submitted_by=created_by WHERE submitted_by IS NULL");
+run("UPDATE work_items SET chairman_id=(SELECT p.person_id FROM participations p WHERE p.work_item_id=work_items.id AND p.role_key IN ('chairman','decision_authority') AND p.permissions_json LIKE '%\"decide\"%' ORDER BY CASE p.role_key WHEN 'chairman' THEN 0 ELSE 1 END LIMIT 1) WHERE chairman_id IS NULL");
+run("UPDATE work_items SET status='discussion_review' WHERE status='in_review'");
+run("UPDATE work_items SET status='requestor_revision' WHERE status IN ('analysis','changes_requested')");
+run("UPDATE work_items SET status='approved_pending_close',decision_outcome='approved' WHERE status='accepted'");
+run("UPDATE work_items SET status='rejected_pending_close',decision_outcome='rejected' WHERE status='rejected'");
+
+for (const cycle of all<{id:string;work_item_id:string;submission_id:string|null;status:string;due_date:string|null;review_deadline_at:string|null;created_at:string}>(
+  "SELECT c.id,c.work_item_id,c.submission_id,c.status,c.due_date,c.review_deadline_at,c.created_at FROM review_cycles c"
+)) {
+  if (!cycle.review_deadline_at && cycle.status==="active") {
+    const parsed=cycle.due_date ? Date.parse(cycle.due_date.length===10 ? cycle.due_date+"T23:59:59.000Z" : cycle.due_date) : Date.parse(cycle.created_at)+5*86400000;
+    const deadline=new Date(Number.isFinite(parsed)?parsed:Date.now()).toISOString();
+    run("UPDATE review_cycles SET review_deadline_at=? WHERE id=?",deadline,cycle.id);
+  }
+  const item=one<{status:string}>("SELECT status FROM work_items WHERE id=?",cycle.work_item_id);
+  const deadline=one<{review_deadline_at:string|null}>("SELECT review_deadline_at FROM review_cycles WHERE id=?",cycle.id)?.review_deadline_at;
+  if (cycle.status==="active" && item?.status==="discussion_review" && deadline &&
+      !one("SELECT id FROM workflow_timers WHERE cycle_id=? AND timer_type='review_deadline' AND status IN ('scheduled','processing','completed')",cycle.id)) {
+    const timestamp=now();
+    run("INSERT INTO workflow_timers(id,work_item_id,cycle_id,submission_id,clarification_id,timer_type,due_at,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+      id("wt"),cycle.work_item_id,cycle.id,cycle.submission_id,null,"review_deadline",deadline,"scheduled",timestamp,timestamp);
+  }
+}
