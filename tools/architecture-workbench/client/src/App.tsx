@@ -281,7 +281,7 @@ export default function App() {
     if (!selected) return;
     try {
       await api.transitionWorkItem(selected.id,action,extra);
-      message.success("Request 流程已更新");
+      message.success("事项流程已更新");
       await reload();
       await refreshDetail();
     } catch (error) { message.error(error instanceof Error ? error.message : "流程转换失败"); }
@@ -422,7 +422,7 @@ export default function App() {
             <Col xs={24} lg={8}>{breakdownCard("按优先级",d.byPriority)}</Col>
           </Row>
           <Card title={"当前技术债务 · "+debtItems.filter(item=>["open","in_progress"].includes(item.debt_status)).length} className="panel-card" extra={<Button type="link" onClick={()=>navigatePage("debts")}>打开债务台账</Button>}>
-            <Paragraph type="secondary">优先展示尚未偿还的技术债务，便于从组合分析进入实际治理对象。</Paragraph>
+            <Paragraph type="secondary">这里列出尚未解决的技术债务。打开记录可查看负责人、处理计划和目标日期。</Paragraph>
             <Table size="small" rowKey="id" dataSource={debtItems.filter(item=>["open","in_progress"].includes(item.debt_status)).slice(0,8)} pagination={false} locale={{emptyText:"当前没有待偿还的技术债务"}} columns={[
               {title:"技术债务",dataIndex:"title",render:(value:string,row:DebtItem)=><div><Text strong>{row.code}</Text><div>{value}</div></div>},
               {title:"严重程度",dataIndex:"severity",render:(value:string)=><Tag color={value==="critical"?"red":value==="high"?"orange":"default"}>{value}</Tag>},
@@ -433,7 +433,7 @@ export default function App() {
           </Card>
           <Row gutter={[16,16]}>
             <Col xs={24} lg={12}>{breakdownCard("技术债务登记时长",d.aging)}</Col>
-            <Col xs={24} lg={12}><Card title="来源 Request" className="panel-card">
+            <Col xs={24} lg={12}><Card title="来源事项" className="panel-card">
               <Table size="small" rowKey="code" pagination={false} dataSource={d.byOriginRequest} columns={[
                 {title:"来源事项",dataIndex:"code",render:(v:string,row:{code:string;title:string})=><div><Text strong>{v}</Text><div className="small muted">{row.title}</div></div>},
                 {title:"技术债务数",dataIndex:"debt_count"}
@@ -481,7 +481,7 @@ export default function App() {
     const mine=(bootstrap?.workItems || []).filter(item=>item.owner_id===actor || item.requestor_id===actor);
     const activeTasks=myTasks.filter(task=>!["done","cancelled"].includes(task.status));
     const taskColumns=[
-      {title:"任务",dataIndex:"title",render:(value:string,task:MyTask)=><div><Text strong>{value}</Text><div className="small muted">{task.kind}</div></div>},
+      {title:"任务",dataIndex:"title",render:(value:string,task:MyTask)=><div><Text strong>{value}</Text><div className="small muted">{taskKindLabels[task.kind] || task.kind}</div></div>},
       {title:"所属事项",dataIndex:"work_item_title",render:(value:string,task:MyTask)=><Button type="link" className="table-link" onClick={()=>{const item=bootstrap?.workItems.find(entry=>entry.id===task.work_item_id);if(item)void openWorkItem(item);}}>{task.work_item_code} · {value}</Button>},
       {title:"任务负责人",dataIndex:"owner_name",render:(value:string|null)=>value || "—"},
       {title:"执行人",dataIndex:"assignee_name",render:(value:string|null)=>value || "尚未分配"},
@@ -529,7 +529,7 @@ export default function App() {
           {selectedPerson ? <Card className="panel-card" title="个人资料" extra={canEdit?<Button icon={<EditOutlined />} onClick={()=>openProfileEditor(selectedPerson)}>编辑资料</Button>:null}>
             <Space align="start" size={14}>
               <Avatar size={58} style={{background:selectedPerson.avatar_color,fontSize:24}}>{selectedPerson.display_name.slice(0,1)}</Avatar>
-              <div><Title level={4} style={{margin:"2px 0 4px"}}>{selectedPerson.display_name}</Title><Text type="secondary">{selectedPerson.title}</Text><div>{selectedPerson.is_admin?<Tag color="purple">Workbench Admin</Tag>:null}</div></div>
+              <div><Title level={4} style={{margin:"2px 0 4px"}}>{selectedPerson.display_name}</Title><Text type="secondary">{selectedPerson.title}</Text><div>{selectedPerson.is_admin?<Tag color="purple">管理员</Tag>:null}</div></div>
             </Space>
             <Divider />
             <Row gutter={[12,16]}>
@@ -605,9 +605,9 @@ export default function App() {
           <Paragraph type="secondary">{item.description || "尚未补充事项说明。"}</Paragraph>
         </div>
         <Space wrap>
-          {permissions.includes("contribute") && <Button icon={<PlusOutlined />} onClick={()=>setArtifactOpen(true)}>添加架构产物</Button>}
+          {permissions.includes("contribute") && <Button icon={<PlusOutlined />} onClick={()=>setArtifactOpen(true)}>添加架构材料</Button>}
           {canSubmitRequest && ["draft","requestor_revision"].includes(item.status) && <Button onClick={()=>{packageForm.setFieldsValue({...requestPackage});setPackageOpen(true);}}>编辑申请材料</Button>}
-          {detail.workflow.availableActions.includes("submit_request") && <Button type="primary" onClick={()=>void transitionWorkflow("submit_request",{submissionMessage:String(requestPackage.submissionMessage || "Request Package: "+item.title),package:requestPackage,assistedByRunId:requestPackage.assistedByRunId ? String(requestPackage.assistedByRunId) : undefined})}>提交评审</Button>}
+          {detail.workflow.availableActions.includes("submit_request") && <Button type="primary" onClick={()=>void transitionWorkflow("submit_request",{submissionMessage:String(requestPackage.submissionMessage || "申请材料："+item.title),package:requestPackage,assistedByRunId:requestPackage.assistedByRunId ? String(requestPackage.assistedByRunId) : undefined})}>提交评审</Button>}
           {detail.workflow.availableActions.includes("record_decision") && <Button type="primary" onClick={()=>{decisionForm.resetFields();decisionForm.setFieldsValue({outcome:"approved"});setDecisionOpen(true);}}>记录决定会议结论</Button>}
         </Space>
       </div>
@@ -681,7 +681,7 @@ export default function App() {
           <List size="small" dataSource={detail.externalLinks} renderItem={link=><List.Item actions={[link.url?<a key="open" href={link.url} target="_blank" rel="noreferrer">打开</a>:null,permissions.includes("contribute")?<Button key="remove" type="link" danger size="small" onClick={()=>void removeExternalLink(link.id)}>移除</Button>:null].filter(Boolean)}>
             <List.Item.Meta
               title={<Space wrap><Tag color={link.provider==="jira"?"blue":link.provider==="confluence"?"purple":link.provider==="github"?"default":"cyan"}>{link.provider.toUpperCase()}</Tag><Text strong>{link.external_key || link.title}</Text></Space>}
-              description={<>{link.title}{link.relation_type && link.relation_type!=="related_to"?" · "+link.relation_type.replaceAll("_"," "):""}</>}
+              description={<>{link.title}{link.relation_type && link.relation_type!=="related_to"?" · "+(relationTypeLabels[link.relation_type] || link.relation_type):""}</>}
             />
           </List.Item>} />
         }
@@ -746,7 +746,7 @@ export default function App() {
             </List.Item>} />
             <List size="small" dataSource={detail.agentRuns} locale={{emptyText:"尚无 Agent 执行记录"}} renderItem={run=><List.Item>
               <List.Item.Meta title={<Space wrap><Text strong>{agentProfiles.find(profile=>profile.key===run.agent_key)?.name || run.agent_key}</Text><Tag color={statusColors[run.status] || "default"}>{statusLabels[run.status] || run.status}</Tag></Space>} description={<>{run.objective}<div className="small muted">请求人：{run.requested_by_name} · 实际执行身份：{run.claimed_by_name || "尚未领取"} · {dateText(run.created_at)}</div>{run.handoff_reason?<Text type="warning">等待输入：{run.handoff_reason}</Text>:null}{run.error_message?<Text type="danger">失败：{run.error_message}</Text>:null}</>} />
-              {run.result_artifact_id?<Button type="link" size="small" onClick={()=>{const artifact=detail.artifacts.find(entry=>entry.id===run.result_artifact_id);if(artifact)showArtifact(artifact);}}>查看产物</Button>:null}
+              {run.result_artifact_id?<Button type="link" size="small" onClick={()=>{const artifact=detail.artifacts.find(entry=>entry.id===run.result_artifact_id);if(artifact)showArtifact(artifact);}}>查看材料</Button>:null}
               {run.status==="waiting_for_human" && (run.requested_by===actor || item.requestor_id===actor || actorPerson?.is_admin===1)?<Button type="link" size="small" onClick={()=>openAgentResumeDialog(run)}>补充信息</Button>:null}
             </List.Item>} />
             <Button type="link" size="small" onClick={async()=>{const capsule=await api.contextCapsule(item.id);await navigator.clipboard.writeText(JSON.stringify(capsule,null,2));message.success("事项资料已复制");}}>复制事项资料给 Agent</Button>
@@ -780,7 +780,7 @@ export default function App() {
       </Content>
     </Layout>
     <Modal title="新建事项" open={newItemOpen} onCancel={()=>setNewItemOpen(false)} onOk={()=>void submitForm(newItemForm,async()=>{const v=newItemForm.getFieldsValue();if(v.targetDate)v.targetDate=v.targetDate.format("YYYY-MM-DD");return api.createWorkItem(v);},"事项已创建",()=>setNewItemOpen(false))} confirmLoading={busy} width={720}>
-      <Form form={newItemForm} layout="vertical" initialValues={{type:"architecture_review",priority:"normal",submissionMessage:"Initial Request Package"}}>
+      <Form form={newItemForm} layout="vertical" initialValues={{type:"architecture_review",priority:"normal",submissionMessage:"初始申请材料"}}>
         <Form.Item name="title" label="事项名称" rules={[{required:true}]}><Input placeholder="例如：客户身份平台架构评估" /></Form.Item>
         <Form.Item name="type" label="事项类型"><Select options={[{value:"architecture_review",label:"架构评审"},{value:"solution_assessment",label:"方案评估"},{value:"change_assessment",label:"变更评估"},{value:"risk_assessment",label:"风险评估"},{value:"other",label:"其他"}]} /></Form.Item>
         <Form.Item name="description" label="问题背景与业务目标" rules={[{required:true}]}><TextArea rows={3} /></Form.Item>
@@ -808,7 +808,7 @@ export default function App() {
         <Form.Item name="initialProposal" label="初步方案（可选）"><TextArea rows={3}/></Form.Item>
         <Form.Item name="decisionQuestions" label="需要委员会决定的问题" rules={[{required:true}]}><TextArea rows={2}/></Form.Item>
         <Form.Item name="submissionMessage" label="本次提交说明" rules={[{required:true}]}><Input/></Form.Item>
-        <Form.Item name="assistedByRunId" label="Agent 辅助记录（可选）"><Select allowClear showSearch optionFilterProp="label" placeholder="选择用于准备本次 Request Package 的已完成 Agent Run" options={(detail?.agentRuns || []).filter(run=>run.status==="completed").map(run=>({value:run.id,label:run.skill_name+" · "+run.id.slice(0,12)}))}/></Form.Item>
+        <Form.Item name="assistedByRunId" label="Agent 辅助记录（可选）"><Select allowClear showSearch optionFilterProp="label" placeholder="选择用于准备本次申请材料的 Agent 任务" options={(detail?.agentRuns || []).filter(run=>run.status==="completed").map(run=>({value:run.id,label:run.skill_name+" · "+run.id.slice(0,12)}))}/></Form.Item>
       </Form>
     </Modal>
 
@@ -855,7 +855,7 @@ export default function App() {
         <Form.Item name="title" label="工作内容" rules={[{required:true}]}><Input disabled={Boolean(editingTaskId)} /></Form.Item>
         <Form.Item name="kind" label="任务类型"><Select disabled={Boolean(editingTaskId)} options={[{value:"analysis",label:"分析"},{value:"revision",label:"材料修改"},{value:"follow_up",label:"后续整改"},{value:"decision_prep",label:"决策准备"}]} /></Form.Item>
         <Form.Item name="ownerId" label="任务负责人" rules={[{required:true}]}><Select options={(detail?.participants || []).map(p=>({value:p.person_id,label:p.display_name+" · "+p.role_label}))} /></Form.Item>
-        <Form.Item name="assigneeId" label="执行分配"><Select allowClear options={(detail?.participants || []).map(p=>({value:p.person_id,label:p.display_name+" · "+p.role_label}))} /></Form.Item>
+        <Form.Item name="assigneeId" label="执行人"><Select allowClear options={(detail?.participants || []).map(p=>({value:p.person_id,label:p.display_name+" · "+p.role_label}))} /></Form.Item>
         <Form.Item name="dueDate" label="截止日期"><DatePicker style={{width:"100%"}} /></Form.Item>
       </Form>
     </Modal>
