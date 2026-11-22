@@ -677,7 +677,7 @@ export default function App() {
       </Card>
 
       <details className="advanced-information">
-        <summary>更多信息 <Text type="secondary">参与者、评审、决定、外部引用和 Agent 执行记录</Text></summary>
+        <summary>更多信息 <Text type="secondary">参与者、评审、决定、附件和 Agent 执行记录</Text></summary>
         <div className="advanced-grid">
           <Card size="small" title={"参与者 · "+detail.participants.length}>
             <div className="participant-grid participant-grid-managed">
