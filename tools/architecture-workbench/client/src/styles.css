@@ -54,8 +54,6 @@ body { color: #1d2939; background: #f4f6f9; }
   .detail-body { padding: 18px 14px; }
 }
 
-.analytics-bar { margin: 12px 0 16px; }
-.analytics-bar-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 
 .workflow-card .ant-steps { padding: 10px 4px 6px; }
 .workflow-history { margin-top: 18px; padding-top: 14px; border-top: 1px solid #edf0f4; }
@@ -70,9 +68,6 @@ body { color: #1d2939; background: #f4f6f9; }
 @media (min-width: 768px) {
   .app-sider { flex: 0 0 238px !important; max-width: 238px !important; min-width: 238px !important; width: 238px !important; }
 }
-.analytics-bar { margin: 10px 0 14px; }
-.analytics-track { height: 6px; overflow: hidden; border-radius: 999px; background: #edf1f6; }
-.analytics-track > span { display: block; height: 100%; border-radius: inherit; background: #6484b2; }
 .workflow-current-card { margin: 0 0 14px; border: 1px solid #dbe5f1; background: #f8fafd; }
 .workflow-current-grid { display: grid; grid-template-columns: minmax(130px, .7fr) minmax(180px, 1fr) minmax(240px, 2fr); gap: 20px; align-items: start; }
 .workflow-current-grid > div { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
@@ -142,3 +137,5 @@ body { color: #1d2939; background: #f4f6f9; }
 .work-progress-group .ant-list-item { padding-inline: 0; }
 .work-progress-group .ant-list-item-meta { min-width: 0; }
 .work-progress-group .ant-list-item-meta-description { margin-top: 4px; }
+
+.analytics-chart-card .ant-card-body { min-height: 270px; padding: 12px 16px 16px; }

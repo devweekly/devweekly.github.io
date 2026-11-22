@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   Alert, Avatar, Breadcrumb, Button, Card, Checkbox, Col, DatePicker, Divider, Empty,
   Form, Input, Layout, List, Menu, Modal, Progress, Row, Select, Space,
@@ -14,6 +14,8 @@ import {
 import dayjs from "dayjs";
 import { api, setActor } from "./api";
 import type { Activity, AgentPlan, AgentProfile, AgentRun, Artifact, Bootstrap, Comment, DebtItem, ExternalResourceRef, MyTask, Person, Participation, Review, WorkItem, WorkItemDetail, WorkTask, WorkbenchAnalytics } from "./types";
+
+const AnalyticsCharts = lazy(() => import("./AnalyticsCharts"));
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
@@ -345,24 +347,6 @@ export default function App() {
     catch (error) { message.error(error instanceof Error ? error.message : "提交失败"); }
   }
 
-  function breakdownCard(title:string,rows:Array<{key:string;count:number;label?:string}>) {
-    const max=Math.max(1,...rows.map(row=>row.count));
-    const labels:Record<string,string>={
-       draft:"事项草稿",requestor_revision:"待申请人修改",discussion_review:"讨论与评审",waiting_requestor:"等待申请人答复",decision_meeting:"决定会议",approved_pending_close:"批准待关闭",rejected_pending_close:"拒绝待关闭",closed:"已关闭",
-       analysis:"分析",in_review:"历史评审状态",changes_requested:"历史待修改",accepted:"历史已接受",rejected:"历史已拒绝",approve:"历史认可意见",request_changes:"历史修改意见",block:"历史阻断意见",
-       high:"高",normal:"普通",low:"低",architecture_review:"架构评审",change_assessment:"变更评估",solution_assessment:"方案评估",risk_assessment:"风险评估",technical_debt:"技术债务",
-       jira:"Jira",confluence:"Confluence",github:"GitHub",leanix:"LeanIX",open:"待处理",in_progress:"处理中",deferred:"已延期",resolved:"已解决",cancelled:"已取消",medium:"中"
-     };
-    const total=rows.reduce((sum,row)=>sum+row.count,0);
-    return <Card title={title} className="panel-card">
-      {rows.length===0?<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />:<>
-         {rows.map(row=><div className="analytics-bar" key={row.key}>
-          <div className="analytics-bar-label"><Text>{row.label || labels[row.key] || row.key}</Text><Space size={10}><Text type="secondary" className="small">{Math.round(row.count/Math.max(1,total)*100)}%</Text><Text strong>{row.count}</Text></Space></div>
-          <div className="analytics-track"><span style={{width:Math.round(row.count/max*100)+"%"}} /></div>
-        </div>)}
-      </>}
-    </Card>;
-  }
   function renderAnalytics() {
     if (!analyticsData) return <Card loading />;
     const r=analyticsData.requests;
@@ -381,11 +365,10 @@ export default function App() {
     };
     const debtItems=bootstrap?.debts || [];
     return <div className="page-stack">
-      <div className="page-heading"><div><Title level={2}>全局分析</Title><Paragraph type="secondary">查看事项进度、评审安排、外部资源关联情况和技术债务处理情况。</Paragraph></div><Text type="secondary" className="small">更新于 {dateText(analyticsData.generatedAt)}</Text></div>
+      <div className="page-heading"><div><Title level={2}>全局分析</Title><Paragraph type="secondary">按当前可见事项查看状态分布、类型、优先级、处理时长、外部资源和技术债务。</Paragraph></div><Text type="secondary" className="small">更新于 {dateText(analyticsData.generatedAt)}</Text></div>
       <Tabs activeKey={analyticsTab} onChange={key=>{setAnalyticsTab(key);writeRoute("analytics",null,key);}} items={[
         {key:"requests",label:"事项分析",children:<div className="page-stack">
           <Card title={"需要处理的事项 · "+attentionItems.length} className="panel-card" extra={<Button type="link" onClick={()=>navigatePage("work-items")}>全部事项</Button>}>
-            <Paragraph type="secondary">列出你有权查看且已逾期或正等待处理的事项。打开事项可查看负责人、任务和相关材料。</Paragraph>
             <Table size="small" rowKey="id" dataSource={attentionItems} pagination={{pageSize:6,hideOnSinglePage:true}} locale={{emptyText:"当前没有需要跟进的事项"}} columns={[
               {title:"事项",dataIndex:"title",render:(value:string,item:WorkItem)=><Button type="link" className="table-link" onClick={()=>void openWorkItem(item)}>{item.code} · {value}</Button>},
               {title:"阶段",dataIndex:"status",render:(value:string)=><Tag color={statusColors[value]}>{statusLabels[value] || value}</Tag>},
@@ -394,27 +377,15 @@ export default function App() {
               {title:"当前关注",render:(_:unknown,item:WorkItem)=>attentionLabel(item)}
             ]} />
           </Card>
-          <Row gutter={[16,16]}>
-            <Col xs={24} lg={12}>{breakdownCard("事项创建时长",r.aging)}</Col>
-            <Col xs={24} lg={12}>
-              <Card title="外部资源关联情况" className="panel-card">
-                <Table size="small" rowKey="key" pagination={false} dataSource={r.externalSystems} columns={[
-                  {title:"系统",dataIndex:"key",render:(v:string)=><Tag color={v==="jira"?"blue":v==="confluence"?"cyan":v==="github"?"default":"purple"}>{v.toUpperCase()}</Tag>},
-                  {title:"关联资源",dataIndex:"count"},
-                  {title:"关联事项数",dataIndex:"requestCount"}
-                ]} />
-              </Card>
-            </Col>
-          </Row>
+          <Suspense fallback={<Card loading />}>
+            <AnalyticsCharts mode="requests" data={r} />
+          </Suspense>
         </div>},
         {key:"debt",label:"技术债务分析",children:<div className="page-stack">
-          <Row gutter={[16,16]}>
-            <Col xs={24} lg={8}>{breakdownCard("按状态",d.byStatus)}</Col>
-            <Col xs={24} lg={8}>{breakdownCard("按严重程度",d.bySeverity)}</Col>
-            <Col xs={24} lg={8}>{breakdownCard("按优先级",d.byPriority)}</Col>
-          </Row>
+          <Suspense fallback={<Card loading />}>
+            <AnalyticsCharts mode="debt" data={d} />
+          </Suspense>
           <Card title={"尚未解决的技术债务 · "+debtItems.filter(item=>["open","in_progress"].includes(item.debt_status)).length} className="panel-card" extra={<Button type="link" onClick={()=>navigatePage("debts")}>打开技术债务台账</Button>}>
-            <Paragraph type="secondary">这里列出尚未解决的技术债务。打开记录可查看负责人、处理计划和目标日期。</Paragraph>
             <Table size="small" rowKey="id" dataSource={debtItems.filter(item=>["open","in_progress"].includes(item.debt_status)).slice(0,8)} pagination={false} locale={{emptyText:"当前没有待处理的技术债务"}} columns={[
               {title:"技术债务",dataIndex:"title",render:(value:string,row:DebtItem)=><div><Text strong>{row.code}</Text><div>{value}</div></div>},
               {title:"严重程度",dataIndex:"severity",render:(value:string)=><Tag color={value==="critical"?"red":value==="high"?"orange":"default"}>{value}</Tag>},
@@ -423,20 +394,12 @@ export default function App() {
               {title:"目标日期",dataIndex:"target_date",render:dateText}
             ]} />
           </Card>
-          <Row gutter={[16,16]}>
-            <Col xs={24} lg={12}>{breakdownCard("技术债务登记时长",d.aging)}</Col>
-            <Col xs={24} lg={12}><Card title="来源事项" className="panel-card">
-              <Table size="small" rowKey="code" pagination={false} dataSource={d.byOriginRequest} columns={[
-                {title:"来源事项",dataIndex:"code",render:(v:string,row:{code:string;title:string})=><div><Text strong>{v}</Text><div className="small muted">{row.title}</div></div>},
-                {title:"技术债务数",dataIndex:"debt_count"}
-              ]} locale={{emptyText:"尚无来源关联"}} />
-            </Card></Col>
-          </Row>
           <Alert type="info" showIcon message="统计范围" description="只有需要长期跟踪的技术债务才单独登记并计入台账。普通修订、分析和短期整改仍记在原事项的任务中，不会重复统计。" />
         </div>}
       ]} />
     </div>;
   }
+  
   function renderDashboard() {
     if (!bootstrap) return <Card loading />;
     return <div className="page-stack">

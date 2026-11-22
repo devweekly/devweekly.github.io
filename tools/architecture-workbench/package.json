@@ -19,6 +19,7 @@
     "agent-host": "tsx server/agents/host-cli.ts"
   },
   "dependencies": {
+    "@ant-design/charts": "^2.6.7",
     "@ant-design/icons": "^6.0.0",
     "@ant-design/x": "^2.10.0",
     "@aws-sdk/client-s3": "^3.1000.0",
