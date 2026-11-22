@@ -21,6 +21,7 @@ Base URL in development: http://localhost:4000/api
 | POST | /work-items/:id/artifacts | Submit a new Artifact version |
 | POST | /work-items/:id/reviews | Comment, request Requestor clarification or raise a blocking objection during Discussion and Review |
 | POST | /work-items/:id/clarifications/:clarificationId/answer | Answer an outstanding clarification; Requestor only |
+| POST | /work-items/:id/request-package-drafts/:draftId/apply | Apply a completed Agent Package draft to the editable Request Package; Requestor only |
 | POST | /work-items/:id/participations | Add or upsert a Work Item-scoped Participation; Requestor/Admin/manager only |
 | PUT | /work-items/:id/participations/:participationId | Update the role and permissions for a related person |
 | DELETE | /work-items/:id/participations/:participationId | Remove a related person; Requestor and Owner remain participants | 
