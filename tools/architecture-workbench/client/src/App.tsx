@@ -546,7 +546,7 @@ export default function App() {
       decision_meeting:"由指定 Chairman 主持决定会议，记录批准、要求修改或拒绝的正式结论。",
       approved_pending_close:"决定已批准，等待 Chairman 或 Admin 人工关闭。",
       rejected_pending_close:"决定已拒绝，等待 Chairman 或 Admin 人工关闭。",
-      closed:"事项已关闭，Submission、评审、会议纪要和决定记录仍可查阅。"
+      closed:"事项已关闭，讨论、评审意见、会议纪要和决定记录仍可查阅。"
     };
     const nextAction=detail.workflow.activeClarification
       ? "Requestor 回答澄清问题（截止 "+dateText(detail.workflow.activeClarification.response_due_at)+"）。"
@@ -578,7 +578,7 @@ export default function App() {
           <Paragraph type="secondary">{item.description || "尚未补充事项说明。"}</Paragraph>
         </div>
         <Space wrap>
-          {permissions.includes("contribute") && <Button icon={<PlusOutlined />} onClick={()=>setArtifactOpen(true)}>添加材料</Button>}
+          {permissions.includes("contribute") && <Button icon={<PlusOutlined />} onClick={()=>setArtifactOpen(true)}>添加架构产物</Button>}
           {canSubmitRequest && ["draft","requestor_revision"].includes(item.status) && <Button onClick={()=>{packageForm.setFieldsValue({...requestPackage});setPackageOpen(true);}}>编辑 Request Package</Button>}
           {detail.workflow.availableActions.includes("submit_request") && <Button type="primary" onClick={()=>void transitionWorkflow("submit_request",{submissionMessage:String(requestPackage.submissionMessage || "Request Package: "+item.title),package:requestPackage,assistedByRunId:requestPackage.assistedByRunId ? String(requestPackage.assistedByRunId) : undefined})}>提交 Request</Button>}
           {detail.workflow.availableActions.includes("record_decision") && <Button type="primary" onClick={()=>{decisionForm.resetFields();decisionForm.setFieldsValue({outcome:"approved"});setDecisionOpen(true);}}>记录决定会议结论</Button>}
