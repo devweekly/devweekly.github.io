@@ -647,7 +647,7 @@ export default function App() {
 
       <Card size="small" title="协作进展" className="workspace-section" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>{setEditingTaskId(null);taskForm.resetFields();taskForm.setFieldsValue({ownerId:item.owner_id,assigneeId:detail.participants.some(person=>person.person_id===actor)?actor:undefined});setTaskOpen(true);}}>添加工作项</Button>:null}>
         <Paragraph type="secondary" className="small">这里展示正在推进、等待处理或遇到阻塞的工作。普通工作更新不代表审批；正式结论只在决定会议中记录。</Paragraph>
-        {detail.tasks.length===0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂时没有协作工作项" /> : (() => {
+        {detail.tasks.length===0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有安排的任务" /> : (() => {
           const groups=[
             {key:"in_progress",label:"正在推进"},
             {key:"open",label:"待开始"},
@@ -790,7 +790,7 @@ export default function App() {
         </Row>
         <Form.Item name="constraints" label="约束与主要风险"><TextArea rows={2} /></Form.Item>
         <Form.Item name="initialProposal" label="初步方案（可选）"><TextArea rows={3} /></Form.Item>
-        <Form.Item name="decisionQuestions" label="需要委员会决定的问题" rules={[{required:true}]}><TextArea rows={2} /></Form.Item>
+        <Form.Item name="decisionQuestions" label="需要负责人决定的问题" rules={[{required:true}]}><TextArea rows={2} /></Form.Item>
         <Form.Item name="chairmanId" label="指定会议主席" rules={[{required:true,message:"必须指定决定会议主席"}]}><Select showSearch optionFilterProp="label" options={(bootstrap?.people || []).map(p=>({value:p.id,label:p.display_name+" · "+p.title}))} /></Form.Item>
         <Row gutter={12}>
           <Col span={12}><Form.Item name="priority" label="优先级"><Select options={[{value:"low",label:"低"},{value:"normal",label:"普通"},{value:"high",label:"高"}]} /></Form.Item></Col>
@@ -940,7 +940,7 @@ export default function App() {
       <Alert type="info" showIcon message="只保存外部资源链接和标识。" description="Workbench 不会连接或同步 Jira、Confluence、GitHub 和 LeanIX。已添加的资源可以关联到多个事项；新资源请填写对应的 ID、Key 和链接。Agent 如需读取原文，仍需使用自己获准访问源系统的工具。" className="modal-alert" />
       <Form form={externalLinkForm} layout="vertical">
         <Form.Item name="existingResourceId" label="选用已登记的外部资源（可选）">
-          <Select allowClear showSearch optionFilterProp="label" placeholder="按系统、Key 或名称搜索当前身份可见的引用" options={externalReferences.map(r=>({value:r.id,label:r.provider.toUpperCase()+" · "+(r.external_key || r.external_id)+" · "+r.title}))} />
+          <Select allowClear showSearch optionFilterProp="label" placeholder="按系统、编号或名称搜索你可以查看的资源" options={externalReferences.map(r=>({value:r.id,label:r.provider.toUpperCase()+" · "+(r.external_key || r.external_id)+" · "+r.title}))} />
         </Form.Item>
         <Text type="secondary" className="small">此列表只显示工作台中已保存的资源，不会搜索 Jira、Confluence、GitHub 或 LeanIX。</Text>
         <Form.Item noStyle shouldUpdate>{({getFieldValue})=>{
