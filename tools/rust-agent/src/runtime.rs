@@ -387,10 +387,12 @@ impl SessionStore {
 
     fn save(&self, record: &SessionRecord) -> Result<(), AgentError> {
         self.save_record(record)?;
+        let lock = lock_state_file(&self.latest_pointer)?;
         ensure_regular_file_or_missing(&self.latest_pointer)?;
         let temporary = self.latest_pointer.with_extension(format!("tmp-{}-{}", std::process::id(), now_ms()));
         write_private_file(&temporary, record.session_id.as_bytes(), false)?;
         fs::rename(&temporary, &self.latest_pointer)?;
+        lock.unlock()?;
         Ok(())
     }
 
@@ -1325,6 +1327,7 @@ impl AgentRuntime {
     fn record_tool_call(&self, tool: &str) {
         let result = (|| -> Result<(), AgentError> {
             if let Some(parent) = self.usage_file.parent() { ensure_real_directory(parent)?; }
+            let lock = lock_state_file(&self.usage_file)?;
             rotate_private_log(&self.usage_file, MAX_USAGE_LOG_BYTES, LOG_BACKUP_COUNT)?;
             ensure_regular_file_or_missing(&self.usage_file)?;
             let mut options = OpenOptions::new();
@@ -1336,6 +1339,8 @@ impl AgentRuntime {
                 "session_id": self.session.session_id, "tool": tool
             }))?;
             file.write_all(b"\n")?;
+            drop(file);
+            lock.unlock()?;
             Ok(())
         })();
         if let Err(error) = result { warn!(%error, "failed to write tool usage event"); }
@@ -1818,6 +1823,7 @@ impl AgentRuntime {
         if cancellation.is_cancelled() {
             return Err(AgentError::Cancelled);
         }
+        self.memory_store.bump_dreaming_activity_epoch()?;
         if self.dreaming_options.auto_enabled {
             self.dreaming_signal.signal_activity();
         }
@@ -2502,6 +2508,7 @@ impl AgentRuntime {
     fn record_usage(&self, agent_type: &str, profile_id: Option<&str>, model: &str, usage: &CompletionUsage, duration_ms: u64) {
         let result = (|| -> Result<(), AgentError> {
             if let Some(parent) = self.usage_file.parent() { ensure_real_directory(parent)?; }
+            let lock = lock_state_file(&self.usage_file)?;
             rotate_private_log(&self.usage_file, MAX_USAGE_LOG_BYTES, LOG_BACKUP_COUNT)?;
             ensure_regular_file_or_missing(&self.usage_file)?;
             let mut options = OpenOptions::new();
@@ -2522,6 +2529,8 @@ impl AgentRuntime {
             });
             serde_json::to_writer(&mut file, &event)?;
             file.write_all(b"\n")?;
+            drop(file);
+            lock.unlock()?;
             Ok(())
         })();
         if let Err(error) = result { warn!(%error, "failed to write usage event"); }
@@ -2547,6 +2556,7 @@ impl AgentRuntime {
             if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
                 ensure_real_directory(parent)?;
             }
+            let lock = lock_state_file(path)?;
             rotate_private_log(path, MAX_AUDIT_LOG_BYTES, LOG_BACKUP_COUNT)?;
             ensure_regular_file_or_missing(path)?;
             let mut options = OpenOptions::new();
@@ -2568,6 +2578,8 @@ impl AgentRuntime {
             }
             serde_json::to_writer(&mut file, &record)?;
             file.write_all(b"\n")?;
+            drop(file);
+            lock.unlock()?;
             Ok(())
         })();
         if let Err(error) = result {
