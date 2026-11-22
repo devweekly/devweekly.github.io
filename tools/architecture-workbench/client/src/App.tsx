@@ -46,6 +46,7 @@ export default function App() {
     const params=new URLSearchParams(window.location.search);
     return params.get("page") || (params.has("item") ? "work-items" : "my-work");
   });
+  const [analyticsTab,setAnalyticsTab] = useState(()=>new URLSearchParams(window.location.search).get("tab") || "requests");
   const [selected,setSelected] = useState<WorkItem|null>(null);
   const [detail,setDetail] = useState<WorkItemDetail|null>(null);
   const [loading,setLoading] = useState(true);
@@ -128,18 +129,23 @@ export default function App() {
     const params=new URLSearchParams(window.location.search);
     if(params.has("item")) params.set("page","work-items");
     else if(!params.has("page")) params.set("page",page);
+    if(params.get("page")==="analytics") params.set("tab",params.get("tab") || "requests");
+    else params.delete("tab");
     window.history.replaceState({}, "", window.location.pathname+"?"+params.toString());
   },[]);
 
-  function writeRoute(nextPage:string,itemId?:string|null) {
+  function writeRoute(nextPage:string,itemId?:string|null,tab?:string) {
     const params=new URLSearchParams();
     params.set("page",nextPage);
     if(itemId) params.set("item",itemId);
+    if(nextPage==="analytics") params.set("tab",tab || "requests");
     const queryString=params.toString();
     window.history.pushState({}, "", window.location.pathname+(queryString?"?"+queryString:""));
   }
   function navigatePage(nextPage:string) {
-    setPage(nextPage); setSelected(null); setDetail(null); writeRoute(nextPage);
+    setPage(nextPage); setSelected(null); setDetail(null);
+    if(nextPage==="analytics") setAnalyticsTab("requests");
+    writeRoute(nextPage,null,nextPage==="analytics"?"requests":undefined);
   }
   function closeItemDrawer() {
     setSelected(null); setDetail(null); setPage("work-items"); writeRoute("work-items");
@@ -150,6 +156,7 @@ export default function App() {
       const itemId=params.get("item");
       const nextPage=params.get("page") || (itemId ? "work-items" : "my-work");
       setPage(nextPage);
+      setAnalyticsTab(params.get("tab") || "requests");
       if(itemId) {
         setSelected(null); setDetail(null);
         void api.detail(itemId).then(setDetail).catch(error=>message.error(error instanceof Error?error.message:"无法打开事项"));
@@ -322,7 +329,7 @@ export default function App() {
     const d=analyticsData.technicalDebt;
     return <div className="page-stack">
       <div className="page-heading"><div><Text type="secondary">PORTFOLIO INTELLIGENCE</Text><Title level={2}>Portfolio 分析</Title><Paragraph type="secondary">分别观察 Request 组合、评审负载、外部上下文引用覆盖，以及 Tech Debt 的存量、风险和偿还情况。</Paragraph></div><Text type="secondary" className="small">更新于 {dateText(analyticsData.generatedAt)}</Text></div>
-      <Tabs items={[
+      <Tabs activeKey={analyticsTab} onChange={key=>{setAnalyticsTab(key);writeRoute("analytics",null,key);}} items={[
         {key:"requests",label:"Request 分析",children:<div className="page-stack">
           <Row gutter={[16,16]}>
             <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="Request 总数" value={r.total} /></Card></Col>
@@ -510,14 +517,16 @@ export default function App() {
       rejected:"确认拒绝决定的后续处理，再关闭事项。",
       closed:"事项已完成，材料版本、评审和决定记录仍可查阅。"
     };
-    const nextAction=activeTask
-      ? (activeTask.status==="blocked" ? "解除阻塞："+activeTask.title+"（"+(activeTask.assignee_name || "待分配执行人")+"）" : "完成当前任务："+activeTask.title+"（"+(activeTask.assignee_name || "待分配执行人")+"）")
+    const taskIsNext= ["analysis","changes_requested","accepted","rejected"].includes(item.status) && Boolean(activeTask);
+    const nextAction=taskIsNext && activeTask
+      ? (activeTask.status==="blocked" ? "解除阻塞："+activeTask.title+"（任务负责人："+(activeTask.owner_name || item.owner_name)+"；执行人："+(activeTask.assignee_name || "待分配")+"）" : "完成当前任务："+activeTask.title+"（任务负责人："+(activeTask.owner_name || item.owner_name)+"；执行人："+(activeTask.assignee_name || "待分配")+"）")
       : (phaseAction[item.status] || "确认下一步工作。");
     const latestArtifacts=detail.artifacts.filter((artifact,index,all)=>all.findIndex(candidate=>(candidate.code || candidate.id)===(artifact.code || artifact.id))===index);
-    const manifestCount=(manifest:string)=>{
-      try { const parsed=JSON.parse(manifest); return Array.isArray(parsed)?parsed.length:0; }
-      catch { return 0; }
+    const manifestEntries=(manifest:string):{id:string;version:number;code?:string|null;type?:string;title?:string;content_hash?:string}[]=>{
+      try { const parsed=JSON.parse(manifest); return Array.isArray(parsed)?parsed:[]; }
+      catch { return []; }
     };
+    const manifestCount=(manifest:string)=>manifestEntries(manifest).length;
     const showArtifact=(artifact:Artifact)=>Modal.info({
       title:(artifact.code || artifact.type)+" · "+artifact.title+" · v"+artifact.version,
       width:820,
@@ -591,10 +600,21 @@ export default function App() {
         }
         {detail.submissions.length>0 && <div className="submission-history">
           <Text type="secondary" className="small">正式提交记录</Text>
-          <List size="small" dataSource={detail.submissions} renderItem={submission=><List.Item>
-            <List.Item.Meta title={"Submission "+submission.sequence+" · "+manifestCount(submission.manifest_json)+" 份材料"} description={<>{submission.created_by_name} · {dateText(submission.created_at)} · Context v{submission.context_version ?? "legacy"}</>} />
-            {currentCycle?.submission_id===submission.id ? <Tag color="processing">当前评审基线</Tag> : null}
-          </List.Item>} />
+          <List size="small" dataSource={detail.submissions} renderItem={submission=>{
+            const entries=manifestEntries(submission.manifest_json);
+            return <List.Item>
+              <List.Item.Meta title={"Submission "+submission.sequence+" · "+entries.length+" 份材料"} description={<>
+                <div>{submission.created_by_name} · {dateText(submission.created_at)} · Context v{submission.context_version ?? "legacy"}</div>
+                <details className="submission-manifest-disclosure">
+                  <summary>查看本次提交固定的材料与版本</summary>
+                  <List size="small" dataSource={entries} renderItem={entry=><List.Item>
+                    <List.Item.Meta title={<Space wrap><Text>{entry.code || entry.type || entry.id}</Text><Text strong>{entry.title || "材料"}</Text><Tag>v{entry.version}</Tag></Space>} description={entry.content_hash ? "SHA-256 · "+entry.content_hash.slice(0,16)+"…" : "历史基线未记录内容指纹"} />
+                  </List.Item>} />
+                </details>
+              </>} />
+              {currentCycle?.submission_id===submission.id ? <Tag color="processing">当前评审基线</Tag> : null}
+            </List.Item>;
+          }} />
         </div>}
         <details className="workspace-disclosure">
           <summary>材料版本历史（{detail.artifacts.length} 个版本）</summary>
