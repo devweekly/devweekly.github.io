@@ -415,19 +415,20 @@ export default function App() {
       {title:"所属事项",dataIndex:"work_item_title",render:(value:string,task:MyTask)=><Button type="link" className="table-link" onClick={()=>{const item=bootstrap?.workItems.find(entry=>entry.id===task.work_item_id);if(item)void openWorkItem(item);}}>{task.work_item_code} · {value}</Button>},
       {title:"任务负责人",dataIndex:"owner_name",render:(value:string|null)=>value || "—"},
       {title:"执行分配",dataIndex:"assignee_name",render:(value:string|null)=>value || "尚未分配"},
+      {title:"我的角色",render:(_:unknown,task:MyTask)=>task.owner_id===actor && task.assignee_id===actor?"负责人 / 执行人":task.owner_id===actor?"任务负责人":"执行人"},
       {title:"状态",dataIndex:"status",render:(value:string,task:MyTask)=><Select size="small" value={value} style={{width:120}} onChange={status=>void updateTask(task.id,status)} options={[{value:"open",label:"待处理"},{value:"in_progress",label:"处理中"},{value:"blocked",label:"受阻"},{value:"done",label:"完成"},{value:"cancelled",label:"取消"}]} />},
       {title:"截止日期",dataIndex:"due_date",render:dateText},
       {title:"Requestor",dataIndex:"requestor_name",render:(value:string|null)=>value || "—"}
     ];
     return <div className="page-stack">
-      <div className="page-heading"><div><Text type="secondary">PERSONAL WORK QUEUE</Text><Title level={2}>我的工作</Title><Paragraph type="secondary">这里汇总当前分配给你的工作；任务负责人对结果负责，执行分配表示当前由谁处理。</Paragraph></div></div>
+      <div className="page-heading"><div><Text type="secondary">PERSONAL WORK QUEUE</Text><Title level={2}>我的工作</Title><Paragraph type="secondary">这里汇总你负责或被分配的工作；任务负责人对结果负责，执行分配表示当前由谁处理。</Paragraph></div></div>
       <Row gutter={[16,16]}>
         <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="待完成任务" value={activeTasks.length} /></Card></Col>
         <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="处理中" value={activeTasks.filter(task=>task.status==="in_progress").length} /></Card></Col>
         <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="受阻" value={activeTasks.filter(task=>task.status==="blocked").length} /></Card></Col>
         <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="已完成" value={myTasks.filter(task=>task.status==="done").length} /></Card></Col>
       </Row>
-      <Card title="分配给我的 Task" className="panel-card"><Table rowKey="id" columns={taskColumns} dataSource={activeTasks} loading={loading} pagination={{pageSize:8}} locale={{emptyText:<Empty description="当前没有分配给你的任务" />}} /></Card>
+      <Card title="我负责或执行的 Task" className="panel-card"><Table rowKey="id" columns={taskColumns} dataSource={activeTasks} loading={loading} pagination={{pageSize:8}} locale={{emptyText:<Empty description="当前没有你负责或执行的任务" />}} /></Card>
       <Card title="我发起或负责的 Request" className="panel-card"><Table rowKey="id" columns={itemColumns} dataSource={mine} pagination={{pageSize:6}} /></Card>
       <Card title="我的 Person Profile" className="panel-card" extra={<Button type="link" onClick={()=>navigatePage("people")}>查看资料</Button>}>
         <Space><Avatar size={44} style={{background:actorPerson?.avatar_color}}>{actorPerson?.display_name.slice(0,1)}</Avatar><div><Text strong>{actorPerson?.display_name}</Text><div><Text type="secondary">{actorPerson?.title} · {actorPerson?.department}</Text></div></div></Space>
@@ -723,8 +724,8 @@ export default function App() {
       return editingTaskId ? api.updateTask(editingTaskId,v) : api.createTask(selected!.id,v);
     },editingTaskId?"任务分工已更新":"Task 已创建",()=>{setTaskOpen(false);setEditingTaskId(null);})} confirmLoading={busy}>
       <Form form={taskForm} layout="vertical">
-        <Form.Item name="title" label="工作内容" rules={[{required:true}]}><Input /></Form.Item>
-        <Form.Item name="kind" label="工作类型"><Select options={[{value:"analysis",label:"分析"},{value:"revision",label:"材料修改"},{value:"follow_up",label:"后续整改"},{value:"decision_prep",label:"决策准备"}]} /></Form.Item>
+        <Form.Item name="title" label="工作内容" rules={[{required:true}]}><Input disabled={Boolean(editingTaskId)} /></Form.Item>
+        <Form.Item name="kind" label="工作类型"><Select disabled={Boolean(editingTaskId)} options={[{value:"analysis",label:"分析"},{value:"revision",label:"材料修改"},{value:"follow_up",label:"后续整改"},{value:"decision_prep",label:"决策准备"}]} /></Form.Item>
         <Form.Item name="ownerId" label="任务负责人" rules={[{required:true}]}><Select options={(detail?.participants || []).map(p=>({value:p.person_id,label:p.display_name+" · "+p.role_label}))} /></Form.Item>
         <Form.Item name="assigneeId" label="执行分配"><Select allowClear options={(detail?.participants || []).map(p=>({value:p.person_id,label:p.display_name+" · "+p.role_label}))} /></Form.Item>
         <Form.Item name="dueDate" label="截止日期"><DatePicker style={{width:"100%"}} /></Form.Item>
