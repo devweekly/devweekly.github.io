@@ -494,9 +494,11 @@ export default function App() {
         </Space>
       </div>
       {(() => {
-        const activeTask=detail.tasks.find(task=>!["done","cancelled"].includes(task.status));
+        const activeTask=detail.tasks.find(task=>task.status==="in_progress") || detail.tasks.find(task=>["open","blocked"].includes(task.status));
         const currentStep=detail.workflow.steps[detail.workflow.currentStep];
-        const nextAction=activeTask?.title || currentStep?.description || "等待流程参与人确认下一步工作";
+        const actionLabels:Record<string,string>={start_analysis:"开始分析并补充方案材料",submit_for_review:"整理当前版本并提交架构评审",close:"完成后续工作并关闭 Request"};
+        const workflowAction=detail.workflow.availableActions.map(action=>actionLabels[action] || action).join("；");
+        const nextAction=activeTask?.title || workflowAction || currentStep?.description || "等待流程参与人确认下一步工作";
         const responsible=activeTask?.assignee_name || item.owner_name || "未分配";
         return <Card className="workflow-current-card" size="small"><div className="workflow-current-grid">
           <div><Text type="secondary" className="workflow-label">当前状态</Text><div><Tag color={statusColors[item.status]}>{statusLabels[item.status] || item.status}</Tag></div></div>
