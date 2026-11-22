@@ -1,8 +1,8 @@
 # Architecture Workbench
 
-面向架构方案、ADR、跨角色评审、正式决策和后续技术债务治理的 Human-first 网站原型。
+用于管理架构方案和 ADR，组织跨角色评审、记录正式决定，并跟踪决定后需要处理的技术债务。
 
-本项目放在 devweekly 的 tools 目录中独立运行，不依赖 Astro 站点构建。它验证的是通用 Business Work Item 协作模型，不是某个架构委员会的专用审批系统。
+本项目位于 devweekly 的 tools 目录，可独立运行，不依赖 Astro 站点构建。除架构评审外，也可用于变更评估、风险评估等业务事项。
 
 ## 当前实现
 
@@ -26,38 +26,38 @@
 
 生产模式先执行 `npm run build`，再执行 `npm start`。
 
-可以切换顶部的演示身份，验证不同事项 Participation 的权限差异。除 Solution Architect 等业务参与人外，目录中还会自动创建一个 Workbench Administrator 演示身份，用于验证全局人员管理和流程维护能力。演示身份切换只是本地原型能力，不是生产认证方案；正式部署必须使用企业身份提供方和受控的 Admin Provisioning。
+可以在页面顶部切换演示身份，查看不同人员在各事项中的权限差异。系统还会创建一个管理员演示账号，用于维护人员目录和流程。演示身份切换只用于本地测试；正式部署需要接入企业身份认证，并设置受控的管理员账号管理流程。
 
 ## 原型能力
 
-1. 创建通用 Work Item，查看负责人、状态、参与者、上下文版本和关联对象。
-2. 在事项内提交 ADR、架构说明和其他有版本的 Artifact。
-3. Requestor 提交 Request Package 时自动创建不可变 Submission Manifest 和 Review Cycle，固定 Artifact 版本、内容哈希和 Context 版本，并保存类似 Git Commit Message 的本次提交说明。Agent 可以协助准备，但不能代替 Requestor 最终提交。
-4. Discussion and Review 有明确截止时间：普通评论不改变流程；澄清会暂停剩余评审时间；阻断性异议或评审期限到达后进入决定会议。
-5. Chairman 或 Workbench Admin 在决定会议后记录 Approved、Need Work 或 Rejected。Need Work 返回 Requestor 修订并产生新 Submission；Approved/Rejected 需由 Chairman/Admin 人工关闭。
-6. 创建 Task，分别记录对结果负责的 Task Owner 和当前执行分配 Assignee；Agent Run 记录实际 Executor，不会替代 Human 责任人。
-7. 在事项内管理 Participation，显式授予 read、contribute、comment、review、decide 和 manage；manage 不自动继承 decide 或 review。
-8. 技术债务保留来源事项和来源 Decision 关系，单独维护 Owner、优先级、严重程度、偿还目标、计划、状态和期限。
-9. 更新 Task 状态，管理讨论与活动记录。
-10. 上传普通文件和证据附件；本地默认存储，可切换到 AWS S3。
-11. 为 Request 关联多条 Jira Story、Confluence Page、GitHub Repository、LeanIX Application / Interface 等外部上下文引用；同一资源可供多个 Request 复用。
-12. 为 Confluence Page 记录 Template Key/Name，留给未来 Agent 通过自身 MCP/API 工具解析真实模板。
-13. Dashboard 分为 Request 分析和 Tech Debt 分析，展示状态、优先级、Aging、逾期、来源关系和外部引用覆盖。
-14. 将授权后的 Context Capsule 复制给用户自己的 Copilot、Claude 或其他 Agent；其中只包含外部资源引用和关系，不内嵌或缓存外部系统正文。
+1. 创建业务事项，查看负责人、状态、参与者和关联资源。
+2. 在事项内提交 ADR、架构方案和其他需要保留版本的材料。
+3. 申请人提交材料时，系统会记录本轮评审所依据的材料版本和内容摘要，并保留提交说明。Agent 可以协助准备，但必须由申请人确认并提交。
+4. 讨论和评审有明确截止时间：普通评论不会改变流程；提出澄清问题时暂停评审计时；出现阻断性异议或评审到期后，进入决定会议。
+5. 会议主席或管理员在决定会议后记录批准、要求修改或拒绝。要求修改时由申请人修改材料后重新提交；批准或拒绝后，还需由会议主席或管理员关闭事项。
+6. 为任务分别指定负责人和执行人；Agent 任务记录实际执行者，但不会因此转移人的责任。
+7. 管理事项参与者，并分别授予读取、提交材料、讨论、评审、决策和人员管理权限。人员管理权限不会自动包含评审或决策权限。
+8. 技术债务关联产生它的事项和决定，并单独记录负责人、优先级、严重程度、处理目标、计划、状态和期限。
+9. 更新任务状态，查看讨论和操作记录。
+10. 上传文件和证据附件；默认保存在本地，也可配置为使用 AWS S3。
+11. 将 Jira Story、Confluence Page、GitHub Repository、LeanIX Application / Interface 等外部资源关联到事项。同一资源可以被多个事项复用。
+12. 为 Confluence 页面记录模板标识，供具备相应访问权限的 Agent 读取模板内容。
+13. 全局分析分为事项分析和技术债务分析，展示状态、优先级、登记时长、逾期情况、来源事项和外部资源关联情况。
+14. 将当前人员有权查看的事项资料复制给 Copilot、Claude 或其他 Agent。资料中只包含外部资源链接和关联关系，不包含外部系统正文。
 
-## 领域模型边界
+## 核心对象及关系
 
-Work Item 是业务事项的持久化根对象。架构评审只是一个 Work Item Type；Technical Debt 也是一个关联 Work Item Type，但仅在确实需要独立治理时创建。ADR 是 Artifact 类型，不是平台核心表。Review 指向 Review Cycle、Artifact 和被审查版本。Decision 指向明确的 Work Item 或 Artifact 对象，并记录决策人、结果、理由和条件。一个 Request 可以关联多条外部资源，同一个外部资源也可以被多个 Request 引用；关联通过独立的多对多关系表达。
+Work Item 表示一项需要持续跟踪的业务工作，例如架构评审、变更评估或技术债务。架构评审和技术债务只是不同类型的 Work Item。ADR、架构方案等属于有版本的材料；Review 记录针对哪一轮评审、哪一份材料和哪个版本提出的意见；Decision 记录由谁作出决定、决定结果、理由和附加条件。一个事项可以关联多条外部资源，同一条外部资源也可以被多个事项引用。
 
-Task 表示执行工作，不等于 Review 或 Decision。Task Owner 对结果负责，Assignee 表示当前执行分配；Agent Run claimant 只表示实际执行身份。Request 生命周期由 Node.js 轻量状态机负责；Submission 创建不可变 Package/Manifest 和 Review Cycle，Discussion 与 Review 受持久化 Deadline 控制，正式决定只由 Chairman/Admin 记录。一个 Human 可以在同一 Work Item 下拥有多个 Participation，服务端合并其显式权限；manage 不会自动获得 review 或 decide。评审人不能对自己提交的 Artifact 进行独立 Review；新 Artifact Version 不会修改已创建 Review Cycle 的材料基线。
+Task 是具体要完成的工作，不等于评审意见或正式决定。任务负责人对结果负责，执行人负责处理任务；Agent Run 记录实际执行任务的 Agent，不替代人的责任。Request 的状态由 Node.js 状态机管理。每次提交都会固定本轮评审所依据的材料版本和内容摘要；评审过程按保存的截止时间运行，正式决定只能由有权限的会议主席或管理员记录。同一个人可以在同一事项中承担多个角色，系统会合并其明确授予的权限；人员管理权限不会自动获得评审或决策权限。评审人不能独立评审自己提交的材料；新版本也不会改变已经开始的评审所依据的材料。
 
 本原型用演示身份 Header 模拟当前 Human Principal，并在服务端校验 Participation permissions；上线前必须替换为企业 OIDC/OAuth 认证、Delegation Grant 和真正的资源级授权。
 
-## Work Item Workspace
+## 事项工作区
 
-事项详情采用一个连续的工作区，而不是把 Overview、Tasks、Artifacts、Reviews 和 Agent Runs 做成一排同级页面。默认视图只回答业务人员最常用的几个问题：事项处于哪个阶段、谁对事项负责、下一步做什么、当前有哪些工作、材料到了哪个版本、讨论补充了什么。
+事项详情使用一个连续的工作区，不把概览、任务、材料、评审和 Agent 执行记录拆成一排同级页面。默认视图优先展示事项阶段、负责人、下一步工作、当前任务、材料版本和讨论内容。
 
-参与者和权限、完整 Review/Decision 记录、所有材料版本、Submission Manifest、外部引用、附件、Agent Plan/Run、Context Capsule 和活动轨迹收在“更多信息”中。它们没有被删除，只是不再与当前工作争夺首屏位置。全局导航收敛为我的工作、全部事项、Portfolio 和技术债务；人员目录作为次级入口。
+参与者和权限、完整评审与决定记录、材料历史版本、提交记录、外部资源、附件、Agent 计划和执行记录、事项资料导出及操作轨迹统一放在“更多信息”中。全局导航包括我的工作、全部事项、全局分析和技术债务；人员目录作为次级入口。
 
 此设计遵循 Apple HIG 所强调的清晰层级、用户控制和渐进披露，而不是复刻某个 Apple 产品的视觉外观。业务流程、协作任务和 Agent 执行始终是三个独立层次。
 
