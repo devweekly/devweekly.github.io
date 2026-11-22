@@ -290,7 +290,7 @@ Human 确认后，系统可以自动执行后续确定性动作，例如更新�
 
 这意味着“使用 Agent”不应该是创建或处理事项的必要步骤。没有安装 MCP、没有 Skill、没有 SDK、没有脚本，用户仍然可以完整参与工作。平台提供的集成能力应逐级增强，而不是一次性要求用户改变工作习惯。
 
-### 14.1 27.16.1 Agent 接入的四个层级
+### 14.1 Agent 接入的四个层级
 
 | 层级 | 使用方式 | 网站提供什么 | 用户需要做什么 | 适用场景 |
 | --- | --- | --- | --- | --- |
@@ -307,7 +307,7 @@ Level 2 解决网站无法直接访问用户本地工作区的问题。Connector
 
 Level 3 是可选的专业化能力，不应成为参与流程的门槛。某个团队可以安装架构分析 Skill、ADR 模板或安全审查规则；另一个团队可以只使用普通 Copilot Chat 的一两句话提示。系统不能假设每个用户都愿意维护完整的 Agent 配置。
 
-### 14.2 16.2 Context Capsule：把必要业务上下文交给外部 Agent
+### 14.2 Context Capsule：把必要业务上下文交给外部 Agent
 
 网站需要提供一个可复制、可下载或通过授权 API 获取的 Context Capsule。它不是完整的 Work Item 导出，也不是把全部聊天历史塞进 Prompt，而是针对当前参与者、Task 和权限生成的最小工作上下文。
 
@@ -473,7 +473,7 @@ MCP Tool 不需要与 REST API 一一对应。面向 Agent 的工具应表达工
 | ACP（Agent Client Protocol） | 编辑器、桌面客户端或 Connector 与本地 Coding Agent Runtime | 本地 Session、Prompt、流式更新、取消和运行时能力协商 | 企业业务事项、跨部门角色和审批 |
 | CloudEvents / AsyncAPI | 业务服务与事件消费者 | 事件 Envelope、消息 Channel 和异步接口描述 | 业务事件是否合法、谁能触发事件 |
 
-### 21.1 27.22.1 REST/OpenAPI 应该是业务服务的稳定接口
+### 21.1 REST/OpenAPI 应该是业务服务的稳定接口
 
 业务系统首先应定义自己的领域 API。Web UI、移动端、CLI、Local Connector、MCP Server、Webhook 和第三方服务都通过这一层访问 Work Item 服务。
 
@@ -491,7 +491,7 @@ OpenAPI 可以描述这些接口并生成 TypeScript、Python、Java 或其他�
 
 不要因为某个 Agent 支持 MCP，就把 MCP Server 当成唯一后端。否则所有客户端、业务集成和自动化系统都必须围绕模型工具协议工作，业务接口会被 Agent Host 的实现细节绑住。
 
-### 21.2 22.2 MCP 适合包装 Agent 需要的业务操作
+### 21.2 MCP 适合包装 Agent 需要的业务操作
 
 MCP 定义 JSON-RPC 基础协议、版本与能力协商、HTTP 授权机制，以及 Server 提供的 Tools、Resources、Prompts；Client 侧还可以支持 Elicitation、Sampling 和 Roots。不同能力是按需协商的，不代表每个 MCP Client 都支持全部特性。参见 [MCP Specification](https://modelcontextprotocol.io/specification/2026-07-28) 和 [MCP Server Tools](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2026-07-28/server/tools.mdx)。
 
@@ -520,7 +520,7 @@ request_human_confirmation
 
 不向 Agent 提供 `approve_work_item`、`confirm_decision`、`reject_request` 或 `close_case`。即便外部 MCP Server 暴露了类似工具，本系统也不能信任客户端是否展示了确认对话框；服务端必须自己检查调用身份。
 
-### 21.3 22.3 A2A 负责跨独立 Agent 服务委托
+### 21.3 A2A 负责跨独立 Agent 服务委托
 
 A2A 1.0 定义 Agent Card、Message、Task、Artifact、Context ID、异步状态和 Push Notification。它适合调用其他组织或团队提供的独立 Agent 服务。例如安全情报 Agent、外部合规分析 Agent、供应商架构评估 Agent。
 
@@ -540,7 +540,7 @@ A2A 的 Task 是远端 Agent 管理的有状态工作单元；Context ID 把相�
 
 参考：[A2A 1.0 Specification](https://a2a-protocol.org/v1.0.0/specification/)、[A2A Key Concepts](https://a2a-protocol.org/latest/topics/key-concepts/)。
 
-### 21.4 22.4 ACP 是本地 Agent Runtime 接口，不是业务系统协议
+### 21.4 ACP 是本地 Agent Runtime 接口，不是业务系统协议
 
 这里的 ACP 指 [Agent Client Protocol](https://agentclientprotocol.com/)，它主要标准化编辑器或客户端与 Coding Agent Runtime 的通信。协议使用 JSON-RPC 2.0，围绕初始化、Session 创建或恢复、Prompt、Session Update 和 Cancel 等操作展开。
 
@@ -550,7 +550,7 @@ ACP 很适合需要嵌入本地 Coding Agent 的 IDE、桌面客户端或 Local 
 
 还需要留意 ACP 缩写的歧义：Agent Client Protocol 与早期 IBM/BeeAI 语境中的 Agent Communication Protocol 不是同一个概念。讨论当前 Coding Agent 集成时应写全称，避免把它与 A2A 混淆。
 
-### 21.5 22.5 Events 是状态变化通知，不是第二套业务数据库
+### 21.5 Events 是状态变化通知，不是第二套业务数据库
 
 业务事件可采用 CloudEvents Envelope，并通过 AsyncAPI 描述异步消息接口。事件例如：
 
@@ -571,7 +571,7 @@ ACP 很适合需要嵌入本地 Coding Agent 的 IDE、桌面客户端或 Local 
 
 当前设计里最值得进一步引入的不是某个 Agent Framework，而是 OMG 的 BPMN、CMMN 和 DMN。它们不是 Agent 标准，但能描述业务活动、动态工作和确定性业务规则。
 
-### 22.1 27.23.1 BPMN：流程顺序明确时使用
+### 22.1 BPMN：流程顺序明确时使用
 
 BPMN 适合步骤、条件和责任相对确定的工作，例如：
 
@@ -581,7 +581,7 @@ BPMN 适合步骤、条件和责任相对确定的工作，例如：
 
 但如果每个事项都需要先判断是否要增加 Specialist、是否要补充材料、是否要做额外风险调查，强行把每一种可能性都固化成 BPMN 节点，模型会逐渐膨胀。
 
-### 22.2 23.2 CMMN：动态事项和知识工作更接近当前场景
+### 22.2 CMMN：动态事项和知识工作更接近当前场景
 
 CMMN（Case Management Model and Notation）是 OMG 的 Adaptive Case Management 标准。它围绕 Case、Case File、Plan Model、Plan Item、Stage、Milestone 和 Sentry 建模。Case 的工作可以根据新信息和当前状态，以不固定顺序推进。
 
@@ -597,7 +597,7 @@ CMMN 的核心价值不是“Agent 可以决定下一步”，而是**Case 状�
 
 参见 [OMG CMMN](https://www.omg.org/cmmn/)、[Flowable CMMN 1.1 Concepts](https://www.flowable.com/open-source/docs/cmmn/ch06-cmmn)。
 
-### 22.3 23.3 DMN：确定性规则与 LLM 建议分开
+### 22.3 DMN：确定性规则与 LLM 建议分开
 
 DMN（Decision Model and Notation）是业务规则与决策逻辑的建模标准，能和 BPMN/CMMN 一起使用。
 
@@ -614,7 +614,7 @@ DMN（Decision Model and Notation）是业务规则与决策逻辑的建模标�
 
 OMG 的 [DMN 规范](https://www.omg.org/spec/DMN) 当前正式版本为 1.6，1.7 仍为 Beta。DMN 设计上就是与 BPMN 和 CMMN 配套的业务决策与规则模型。
 
-### 22.4 23.4 Work Item 是否应直接等于 CMMN Case？
+### 22.4 Work Item 是否应直接等于 CMMN Case？
 
 不应该强行等同。
 
@@ -628,7 +628,7 @@ CMMN 对动态 Case 特别有价值，但不代表所有事项都必须启动 Ca
 
 以下比较区分**业务事项管理、流程编排和 Agent 执行**。它们并不是同一类产品。
 
-### 23.1 27.24.1 Flowable：与动态 Case / Work Item 语义最接近
+### 23.1 Flowable：与动态 Case / Work Item 语义最接近
 
 项目：[flowable/flowable-engine](https://github.com/flowable/flowable-engine)
 
@@ -653,7 +653,7 @@ Flowable 近期的 Agentic Case Platform 把 Agent 作为 Case 中的参与者�
 
 参考：[Flowable Open Source](https://www.flowable.com/open-source)、[Agentic Case Platform](https://www.flowable.com/product/agentic-case-platform)、[AI Capabilities Overview](https://documentation.flowable.com/latest/ai/ai-introduction)、[Work MCP Server](https://documentation.flowable.com/latest/ai/ai-work-mcp-server)。
 
-### 23.2 24.2 Camunda：确定性 BPMN 与 Agent 运行结合得较好
+### 23.2 Camunda：确定性 BPMN 与 Agent 运行结合得较好
 
 项目：[camunda/camunda](https://github.com/camunda/camunda)
 
@@ -679,7 +679,7 @@ Camunda 8.10 增强了 Agent 的实时可见性和 Agent Instance API，对外�
 
 参考：[Agentic Orchestration](https://docs.camunda.io/docs/components/agentic-orchestration/agentic-orchestration-overview/)、[Connect External Agent](https://docs.camunda.io/docs/components/agentic-orchestration/connect-external-agent/)、[Agent Instance API](https://docs.camunda.io/docs/components/agentic-orchestration/agent-definitions-and-instances/)、[Camunda Licensing](https://docs.camunda.io/docs/reference/licenses/)。
 
-### 23.3 24.3 Temporal：长期运行、等待和可靠恢复能力突出
+### 23.3 Temporal：长期运行、等待和可靠恢复能力突出
 
 项目：[temporalio/temporal](https://github.com/temporalio/temporal)
 
@@ -689,7 +689,7 @@ Temporal 是 Durable Execution 平台，不是 Case Management 产品。它把 W
 
 但需要自己定义 Work Item、参与关系、权限、Artifact、Decision 和业务生命周期；Temporal Workflow 不会自动变成完整的业务事项平台。
 
-### 23.4 24.4 Temporal Agent Kit：最值得研究的 Agent Execution 实现之一
+### 23.4 Temporal Agent Kit：最值得研究的 Agent Execution 实现之一
 
 项目：[temporal-community/temporal-agent-kit](https://github.com/temporal-community/temporal-agent-kit)，许可证 MIT，但 README 明确标注 Experimental，API 仍可能变化。
 
@@ -715,7 +715,7 @@ Agent Kit 的核心思路是：**一个 Agent 是一个 Temporal Workflow**。�
 
 参考：[Agent Kit README](https://github.com/temporal-community/temporal-agent-kit)、[Capabilities](https://github.com/temporal-community/temporal-agent-kit/blob/main/docs/guides/capabilities.md)、[Approvals](https://github.com/temporal-community/temporal-agent-kit/blob/main/docs/guides/approvals.md)、[Agent Kit API](https://github.com/temporal-community/temporal-agent-kit/blob/main/docs/api/README.md)、[Approval Tests](https://github.com/temporal-community/temporal-agent-kit/blob/main/typescript/packages/worker/test/agent-workflow/approvals.test.ts)。
 
-### 23.5 24.5 LangGraph 和 n8n 的位置
+### 23.5 LangGraph 和 n8n 的位置
 
 LangGraph 适合 Agent 内部图执行、Checkpoint、Interrupt/Resume 和多 Agent 编排；它不提供完整的多人 Work Item 管理、组织身份和业务审批模型。
 
@@ -725,7 +725,7 @@ n8n 擅长自动化工作流以及在 Tool Call 周围插入 Human Review。它�
 
 ## 24. 商业产品：已有平台如何让外部 Agent 使用业务系统
 
-### 24.1 27.25.1 Atlassian Rovo MCP：最接近“用户自己的 Agent 直接连接工作网站”的实例
+### 24.1 Atlassian Rovo MCP：最接近“用户自己的 Agent 直接连接工作网站”的实例
 
 Atlassian 提供官方 Remote MCP Server，支持 Jira、Confluence、Jira Service Management、Bitbucket、Compass 等产品。它可以连接 ChatGPT、Claude、VS Code/GitHub Copilot、Cursor 等 MCP Client。
 
@@ -743,7 +743,7 @@ Atlassian 提供官方 Remote MCP Server，支持 Jira、Confluence、Jira Servi
 
 参考：[Atlassian MCP Server](https://atlassian.github.io/atlassian-mcp-server/)、[Atlassian MCP Security](https://support.atlassian.com/security-and-access-policies/docs/understand-atlassian-mcp-server/)、[Rovo MCP Developer Guide](https://developer.atlassian.com/cloud/rovo-mcp/guides/getting-started/)。
 
-### 24.2 25.2 ServiceNow：Agent 辅助现有审批记录
+### 24.2 ServiceNow：Agent 辅助现有审批记录
 
 ServiceNow 的 Approval Assistance AI Agent 可以读取当前用户待处理的 Approval Records、获取最新详情、生成基于知识库的评估 Checklist，并支持审批与拒绝操作。
 
@@ -753,7 +753,7 @@ ServiceNow 的 Approval Assistance AI Agent 可以读取当前用户待处理的
 
 参考：[ServiceNow Approval Assistance AI Agent](https://www.servicenow.com/docs/r/intelligent-experiences/plat-approval-assistance-ai-agent.html)。
 
-### 24.3 25.3 Salesforce Agentforce：把审批人工作台放进对话界面
+### 24.3 Salesforce Agentforce：把审批人工作台放进对话界面
 
 Salesforce 的 Approval Agent 可以查询审批工作项、汇总资料、生成评论建议，并在审核人员作出决定后同步底层 Approval Record。用户可以从 Salesforce 或 Slack 中操作审批。
 
@@ -761,7 +761,7 @@ Salesforce 的 Approval Agent 可以查询审批工作项、汇总资料、生�
 
 参考：[Salesforce Agentforce for Advanced Approval](https://help.salesforce.com/s/articleView?id=ind.rev_agent_approval_agent.htm&language=en_US&type=5)。
 
-### 24.4 25.4 Microsoft Copilot Studio：AI Approval 不符合当前默认治理约束
+### 24.4 Microsoft Copilot Studio：AI Approval 不符合当前默认治理约束
 
 Copilot Studio 的 Multistage Approvals 提供 Manual Approval Stage 和 AI Approval Stage。AI Stage 可以依据文档和规则直接产生 Approve / Reject，随后可以进入 Human Review，也可以按条件自动通过或跳过后续阶段。这些能力当前仍有 Preview 标记。
 
@@ -779,7 +779,7 @@ Cumora 是一个以 Team Chat 为主要产品入口的跨平台协作应用，�
 
 它对当前架构最有价值的地方，不是照搬它的聊天界面，而是学习它如何将**业务协作服务、Agent 执行 Runtime、本地机器和模型进程隔离**。
 
-### 25.1 27.26.1 它有两条 Agent 执行路径，不是单纯的 ACP Client
+### 25.1 它有两条 Agent 执行路径，不是单纯的 ACP Client
 
 Cumora 有两个执行模式：
 
@@ -796,7 +796,7 @@ Cloud Agent 由服务端为每个 Agent 管理 Pod，运行 Responses API 的多
 
 参考：[Cumora README](https://github.com/yetone/cumora)、[BYOA Design](https://github.com/yetone/cumora/blob/main/docs/BYOA.md)。
 
-### 25.2 26.2 Engine Adapter：协议兼容不等于把所有 Runtime 伪装成同一种 Runtime
+### 25.2 Engine Adapter：协议兼容不等于把所有 Runtime 伪装成同一种 Runtime
 
 Cumora 的 `server/src/agents/computer/engine.ts` 定义了不同 Engine 的启动和交互适配。
 
@@ -816,7 +816,7 @@ Cumora 的 `server/src/agents/computer/engine.ts` 定义了不同 Engine 的启�
 
 可以借鉴这种 Adapter 架构，但应增加统一的 Capability Manifest。例如某个 Runtime 是否支持持久 Session、Streaming、Cancel、MCP、Callback Tool、Workspace Access、Sandbox、Approval Request。不要假设所有 CLI 都有相同的能力和安全边界。
 
-### 25.3 26.3 Computer、Agent、Runtime Session 三者分离
+### 25.3 Computer、Agent、Runtime Session 三者分离
 
 Cumora 把 Computer 作为一个独立注册对象：
 
@@ -838,7 +838,7 @@ Cumora 把 Computer 作为一个独立注册对象：
 
 建议在当前模型增加 `Execution Endpoint` 或 `Runtime Connection` 概念，对应 Cumora Computer；不要把它直接命名为 Agent Participant。
 
-### 25.4 26.4 BYOA Daemon 的安全设计值得深入借鉴
+### 25.4 BYOA Daemon 的安全设计值得深入借鉴
 
 Cumora 的 BYOA 设计特别强调：**模型进程不应该拿到平台凭证。**
 
@@ -874,7 +874,7 @@ Cumora 的 BYOA 设计特别强调：**模型进程不应该拿到平台凭证�
 
 Cumora 也明确把不具备已验证 Sandbox 能力的 Runtime 放进显式兼容模式，而不是默认给予主机权限。它目前将 Claude Code 和 Codex 作为安全模式的主要适配器，其他 Runtime 需要显式开启不安全兼容开关。这种 Capability-based fail-closed 策略值得借鉴，但需要结合你自己的 Rust/本机工具安全设计重新评估，不能仅复制某个 CLI 的启动参数。
 
-### 25.5 26.5 Local State 与 Shared Business State 分开
+### 25.5 Local State 与 Shared Business State 分开
 
 Cumora 的 BYOA 设计将数据拆成两类：
 
@@ -893,7 +893,7 @@ Cumora 的 BYOA 设计将数据拆成两类：
 
 这是避免企业系统把 Agent 的内部记忆误当成业务知识库的重要边界。
 
-### 25.6 26.6 固定 MCP Bridge + CLI Contract：不要把模型进程变成 API 客户端
+### 25.6 固定 MCP Bridge + CLI Contract：不要把模型进程变成 API 客户端
 
 Cumora 的本地模型进程通过固定 MCP Bridge 发起业务命令，Bridge 将受限的 argv 请求交给 Daemon 的 File IPC Broker。Daemon 在可信边界内验证后，使用自己的 Token 请求服务端。
 
@@ -907,7 +907,7 @@ Cumora 的本地模型进程通过固定 MCP Bridge 发起业务命令，Bridge 
 - Agent 不允许通过任意 argv 绕过业务权限边界。
 - 服务端仍要重新验证授权，不能相信 Connector 已经做过检查。
 
-### 25.7 26.7 多 Agent 协调：Cumora 的并发处理比 Prompt 规则更值得借鉴
+### 25.7 多 Agent 协调：Cumora 的并发处理比 Prompt 规则更值得借鉴
 
 Cumora 的 `docs/COORDINATION.md` 是项目中最值得研究的文档之一。它记录了多个独立 Agent Session 同时参与同一个 Group Conversation 时发生的竞态问题。
 
@@ -940,7 +940,7 @@ Cumora 的 `docs/COORDINATION.md` 是项目中最值得研究的文档之一。�
 
 参考：[Cumora Coordination Design](https://github.com/yetone/cumora/blob/main/docs/COORDINATION.md)。
 
-### 25.8 26.8 Cumora Shipping：证据驱动的业务阶段门槛值得借鉴，但 Agent 权限不能照搬
+### 25.8 Cumora Shipping：证据驱动的业务阶段门槛值得借鉴，但 Agent 权限不能照搬
 
 Cumora 的 Shipping 模块不是通用 Workflow Engine，而是一个专门针对产品交付和发布的垂直业务工作流。它的生命周期是：
 
@@ -988,7 +988,7 @@ Cumora Shipping 最值得借鉴的是它的 Contract → Invariant → Evidence 
 
 参考：[Cumora Shipping Design](https://github.com/yetone/cumora/blob/main/docs/SHIPPING.md)、[Shipping Router](https://github.com/yetone/cumora/blob/main/server/src/api/shipping-router.ts)。
 
-### 25.9 26.9 Cumora 最值得借鉴和不应该照搬的部分
+### 25.9 Cumora 最值得借鉴和不应该照搬的部分
 
 | Cumora 设计 | 建议 | 原因 |
 | --- | --- | --- |
@@ -1015,19 +1015,19 @@ Cumora 的一个局限是：它的主要协作模型围绕 Workspace、Participa
 
 现有研究已从“多个 Agent 怎么协作”逐渐转向“Agent 在真实业务环境中怎样被授权、监督和验证”。
 
-### 26.1 27.27.1 Enterprise Agent Governance
+### 26.1 Enterprise Agent Governance
 
 Chawla 与 Thakkar 的 [Agentic AI in Enterprise Systems: A Systematic Review of Human-in-the-Loop, Governance, and Autonomous Workflow Control](https://research.google/pubs/agentic-ai-in-enterprise-systems-a-systematic-review-of-human-in-the-loop-governance-and-autonomous-workflow-control-2/) 研究企业 Agent 系统的 Human-in-the-loop、Human-on-the-loop、自治流程控制和安全治理。其结论之一是：Human 监督对企业部署非常关键，但现有系统实现并不一致，尤其在信任、记忆、安全和跨 Agent 治理方面仍有缺口。
 
 这支持一个设计原则：Human 决策权不能由 Agent Prompt 或单个 Runtime 的默认设置保证，需要独立的业务授权层。
 
-### 26.2 27.2 Human-Agent Collaboration 的长期问题并未因 LLM 而消失
+### 26.2 Human-Agent Collaboration 的长期问题并未因 LLM 而消失
 
 2026 年的 [Human–AI Collaboration Across Decision Support, Autonomous Systems, and LLM Agents: A Systematic Review and Collaboration Convergence Framework](https://doi.org/10.3390/su18115313) 综合 152 篇研究，跨越决策支持系统、自治系统和 LLM Agent。研究指出，信任校准、依赖行为、认知参与、技能保持、问责和透明性等问题，在不同 AI 技术代际反复出现。
 
 对网站设计的启示是：不能只展示 Agent 的最终回答。用户需要看到来源、输入版本、未解决问题和建议依据，同时保留 Human 的独立判断空间。Reviewer 应能基于原始材料进行独立判断，而不是只能接受 Agent 整理后的结论。
 
-### 26.3 27.3 Agent Workflow 研究需要把协调拓扑与治理机制分开
+### 26.3 Agent Workflow 研究需要把协调拓扑与治理机制分开
 
 [Agentic Workflows in Large Language Models: A Comprehensive Review](https://link.springer.com/article/10.1007/s10791-026-10743-4) 是 2026 年发表的系统性综述，覆盖 126 篇 2023 年至 2026 年 6 月的同行评审文章。它将 Single-agent、Collaborative Multi-agent 和 Hierarchical 协调拓扑，与 Role Specialization、Tool Augmentation、Hybrid Memory 和 Human-in-the-loop Governance 分成不同维度。
 
@@ -1040,7 +1040,7 @@ Chawla 与 Thakkar 的 [Agentic AI in Enterprise Systems: A Systematic Review of
 
 它们不应该被压成一个 Agent Profile 或一个 Workflow JSON。
 
-### 26.4 27.4 审批需要同时验证“拒绝确实阻止”和“批准确实完成”
+### 26.4 审批需要同时验证“拒绝确实阻止”和“批准确实完成”
 
 2026 年 11 月 14 日发布的预印本 [Auditable Authorization for LLM Agents: Empirical Evidence Across Model, Harness, and Workflow Layers](https://arxiv.org/abs/2611.19237) 研究了 Human Approval 在 Model、Harness 和 Workflow 三个执行边界中的实际效果。
 
@@ -1054,7 +1054,7 @@ Chawla 与 Thakkar 的 [Agentic AI in Enterprise Systems: A Systematic Review of
 - 决策、工具调度、恢复和最终业务状态之间必须可关联。
 - 并发审批不能发生分支丢失、重复执行或错误恢复。
 
-### 26.5 27.5 企业 Agent 上线应评估 Human-AI 联合系统
+### 26.5 企业 Agent 上线应评估 Human-AI 联合系统
 
 [READY or Not: Reliable Enterprise Agent Deployment](https://arxiv.org/abs/2609.02095) 提出根据具体工作流成功标准、Agent 可靠性、人类监督策略和运行成本共同评估企业 Agent。它提醒我们，单独看 Agent Benchmark 成绩并不能证明该 Agent 适合进入业务流程。
 
@@ -1064,7 +1064,7 @@ Chawla 与 Thakkar 的 [Agentic AI in Enterprise Systems: A Systematic Review of
 
 经过协议、Workflow、产品和 Cumora 的比较，可以得出一个比“选择一个 Agent Framework”更稳定的设计。
 
-### 27.1 27.28.1 平台的业务核心必须自己掌握
+### 27.1 平台的业务核心必须自己掌握
 
 建议将业务平台拆成以下层次：
 
@@ -1079,7 +1079,7 @@ Chawla 与 Thakkar 的 [Agentic AI in Enterprise Systems: A Systematic Review of
 
 这里要明确：Workflow Engine 可以持有流程执行状态，但业务 Decision 是 Work Item Service 中的正式记录。工作流引擎在 Human 确认后执行状态推进；不能让 Agent 通过引擎变量或外部事件直接把业务 Decision 变成已批准。
 
-### 27.2 28.2 Flowable、Camunda、Temporal 怎么选
+### 27.2 Flowable、Camunda、Temporal 怎么选
 
 | 选择 | 最适合的前提 | 当前场景的优势 | 主要代价 |
 | --- | --- | --- | --- |
@@ -1096,7 +1096,7 @@ Chawla 与 Thakkar 的 [Agentic AI in Enterprise Systems: A Systematic Review of
 
 不要同时部署 Flowable 和 Temporal 作为两个可以自由推进业务状态的引擎。若后续确实需要一个引擎管业务 Case、另一个引擎管长期 Agent Execution，必须把边界固定：前者控制业务活动，后者只执行被委托的 Agent Task；跨引擎通过带幂等键和版本的命令/事件交互。
 
-### 27.3 28.3 对外接入：先 Web API，再 MCP；本地 Runtime 由 Connector 连接
+### 27.3 对外接入：先 Web API，再 MCP；本地 Runtime 由 Connector 连接
 
 建议的接口顺序：
 
@@ -1109,7 +1109,7 @@ Chawla 与 Thakkar 的 [Agentic AI in Enterprise Systems: A Systematic Review of
 
 对 Cumora 的借鉴是：Runtime Adapter 不要泄漏到业务核心。Agent 是通过 Claude CLI、Codex App Server、ACP 还是 MCP 访问工具，不应该改变 Work Item 的业务语义。
 
-### 27.4 28.4 Human Decision Gate：从 API 到数据库都必须是强制边界
+### 27.4 Human Decision Gate：从 API 到数据库都必须是强制边界
 
 业务决策相关的接口需要独立身份约束：
 
@@ -1135,7 +1135,7 @@ Human Confirmation 还要绑定 Decision Draft Version、输入 Artifact Version
 
 不要把 `Task.status = completed` 同时用来表达 Agent 执行完成、Reviewer 通过和事项正式完成。
 
-### 27.5 28.5 建议用同一组场景做 PoC，而不是看产品演示
+### 27.5 建议用同一组场景做 PoC，而不是看产品演示
 
 至少用下面这些场景比较 Flowable、Temporal Agent Kit、Camunda 和自建方案：
 
@@ -1156,7 +1156,7 @@ Human Confirmation 还要绑定 Decision Draft Version、输入 Artifact Version
 
 审批测试尤其要验证两件事：拒绝之后实际副作用确实不存在；批准之后授权动作可以被完整追踪且不会丢失。
 
-### 27.6 28.6 最终建议
+### 27.6 最终建议
 
 目前最合理的方向不是把 Cumora、Flowable 或 Temporal 整个项目直接作为基础，而是组合它们最成熟的设计：
 
@@ -1189,7 +1189,7 @@ Human Confirmation 还要绑定 Decision Draft Version、输入 Artifact Version
 
 这不是“网站调用一个外部 Agent”，而是“外部 Agent 在 Human 的授权下调用网站服务”。两种模式的控制方向不同。当前场景应该优先实现后者。
 
-### 28.1 28.1 MCP Remote Server 是最合适的跨 Agent 接入入口
+### 28.1 MCP Remote Server 是最合适的跨 Agent 接入入口
 
 GitHub Copilot 和 Claude Code 已经支持以 MCP Client 的方式连接外部服务，而且都支持远程 HTTP MCP Server：
 
@@ -1221,7 +1221,7 @@ MCP 使用 Streamable HTTP 传输。不要把旧式 HTTP+SSE 作为新实现的�
 
 Resources 可以作为只读上下文入口的补充；Elicitation、MCP Apps、Prompts、Sampling、MCP Tasks 等能力不要成为业务流程能否工作的前提。尤其不要把 MCP Client 是否支持 Elicitation 当成人工确认的唯一入口。所有正式 Human 操作仍可回到网站 UI。
 
-### 28.2 28.2 MCP 是接入协议，Work Collaboration Contract 才是业务契约
+### 28.2 MCP 是接入协议，Work Collaboration Contract 才是业务契约
 
 MCP 解决的是不同 Agent Client 如何发现和调用工具，但它没有定义企业 Work Item、Requester、Reviewer、Approver、Task、Artifact 或 Decision 的业务语义。
 
@@ -1256,7 +1256,7 @@ MCP 解决的是不同 Agent Client 如何发现和调用工具，但它没有�
 
 Agent 提交的结果应附带它实际读取的输入版本。若事项上下文已经变化，服务端应返回 Conflict / Stale Context，而不是把基于旧事实产生的结果静默写入当前版本。
 
-### 28.3 28.3 不要求网站注册 Agent，但仍然需要记录 Human 授权
+### 28.3 不要求网站注册 Agent，但仍然需要记录 Human 授权
 
 “不需要注册 Agent”不等于“不要身份和权限”。
 
@@ -1291,7 +1291,7 @@ OAuth Scope 适合表达较粗粒度的能力，例如 `work:read`、`task:read`
 
 如果未来需要把某个长期运行的外部 Agent 作为正式工作参与者，也可以另外定义 Service Principal / Agent Principal，并明确委托范围。这是更高一级的协作模式，不应成为普通用户连接 Copilot 或 Claude 的门槛。
 
-### 28.4 28.4 连接方式应该由用户在 Agent Client 内完成
+### 28.4 连接方式应该由用户在 Agent Client 内完成
 
 网站只需要提供清晰的连接信息，不必为每个 Agent 写一个专用插件。
 
@@ -1305,7 +1305,7 @@ OAuth Scope 适合表达较粗粒度的能力，例如 `work:read`、`task:read`
 
 Agent 使用网站提供的工具完成读取和提交。Human 仍通过网站查看产物、补充信息或确认正式决定。
 
-### 28.5 28.5 Agent Skills 可选，不能成为接入依赖
+### 28.5 Agent Skills 可选，不能成为接入依赖
 
 Agent Skills 是有价值的跨 Agent 指令分发标准。它可以提供 `SKILL.md`、示例、领域术语、产物模板和任务执行建议。GitHub Copilot 已支持 Agent Skills，Claude Code 也可以通过自己的 Skill 目录使用类似的标准结构。
 
@@ -1322,7 +1322,7 @@ Agent Skills 是有价值的跨 Agent 指令分发标准。它可以提供 `SKIL
 
 参考：[Agent Skills Standard in VS Code](https://code.visualstudio.com/docs/agent-customization/agent-skills)。
 
-### 28.6 28.6 MCP Registry 可以帮助发现，但不应该是系统依赖
+### 28.6 MCP Registry 可以帮助发现，但不应该是系统依赖
 
 如果网站服务是公开可访问的，可以考虑将 MCP Server 的元数据发布到官方 MCP Registry 或其他聚合目录。官方 Registry 通过 `server.json` 描述 MCP Server 的名称、版本、连接地址、安装方式和能力。
 
@@ -1332,7 +1332,7 @@ Agent Skills 是有价值的跨 Agent 指令分发标准。它可以提供 `SKIL
 
 参考：[MCP Registry](https://github.com/modelcontextprotocol/registry)、[Registry Overview](https://github.com/modelcontextprotocol/registry/blob/main/docs/modelcontextprotocol-io/about.mdx)。
 
-### 28.7 28.7 不支持 MCP 的 Agent 也不能被排除
+### 28.7 不支持 MCP 的 Agent 也不能被排除
 
 MCP 应是最优先的集成方式，但不能成为唯一入口。至少保留三种接入级别：
 
@@ -1346,7 +1346,7 @@ MCP 应是最优先的集成方式，但不能成为唯一入口。至少保留�
 
 不要为了支持每一种客户端而重写业务操作。所有入口最终都应落到同一应用服务、同一授权体系和同一审计记录。
 
-### 28.8 28.8 这也意味着网站不需要先建设 Agent Runtime 管理平台
+### 28.8 这也意味着网站不需要先建设 Agent Runtime 管理平台
 
 在这个产品定位下，以下能力都不是第一阶段的必要条件：
 
@@ -1362,7 +1362,7 @@ MCP 应是最优先的集成方式，但不能成为唯一入口。至少保留�
 
 这可以显著降低第一阶段的产品复杂度，也避免把业务平台绑定到某个厂商的 Agent Runtime。
 
-### 28.9 28.9 第一阶段的验收标准
+### 28.9 第一阶段的验收标准
 
 不要用“网站能启动几个 Agent”来衡量第一阶段。更有价值的验证方式是：
 
