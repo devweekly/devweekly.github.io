@@ -120,8 +120,11 @@ export function seed() {
   run("INSERT INTO activity_events(id,work_item_id,actor_id,action,target_type,target_id,summary,metadata_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",id("evt"),wi,"u-sa","submitted","work_item",wi,"提交架构方案与 3 份 ADR，进入第一轮评审。","{}",created);
   run("INSERT INTO activity_events(id,work_item_id,actor_id,action,target_type,target_id,summary,metadata_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",id("evt"),wi,"u-sec","reviewed","artifact","adr-102","Security Reviewer 提交修改意见。","{}",created);
   const second = "wi-change-002";
-  run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,target_date,context_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",second,"CHG-2026-021","change_assessment","支付对账服务弹性改造","评估重试策略、批量补偿与运行时隔离的变更影响。","analysis","normal","u-dev","2026-12-15",2,created,created);
-  for (const p of [["u-dev","delivery_owner","Delivery Owner",["read","contribute","comment"]],["u-sa","architect","Architect",["read","review","comment"]],["u-chair","decision_authority","Decision Authority",["read","decide","manage"]]]) {
+  run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,requestor_id,chairman_id,request_package_json,target_date,context_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    second,"CHG-2026-021","change_assessment","支付对账服务弹性改造","评估重试策略、批量补偿与运行时隔离的变更影响。","draft","normal","u-dev","u-dev","u-chair",
+    JSON.stringify({goal:"Improve payment reconciliation reliability",scope:"Retry and compensation execution paths",constraints:"Existing settlement window and operational controls",initialProposal:"Introduce bounded retries and idempotent batch compensation",decisionQuestions:"Approve retry boundaries, recovery ownership and runtime isolation",submissionMessage:"feat(request): propose payment reconciliation resilience changes"}),
+    "2026-12-15",2,created,created);
+  for (const p of [["u-dev","delivery_owner","Delivery Owner",["read","contribute","comment"]],["u-sa","architect","Architect",["read","review","comment"]],["u-chair","chairman","Chairman",["read","decide"]]]) {
     run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",id("part"),second,p[0],p[1],p[2],JSON.stringify(p[3]),created);
   }
   run("INSERT INTO tasks(id,work_item_id,title,kind,status,owner_id,assignee_id,due_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)","task-201",second,"梳理当前失败重试与补偿路径","analysis","in_progress","u-dev","u-dev","2026-11-29",created,created);
