@@ -458,13 +458,7 @@ export default function App() {
     if (!bootstrap) return <Card loading />;
     return <div className="page-stack">
       <div className="page-heading"><div><Text type="secondary">工作台概览</Text><Title level={2}>工作概览</Title><Paragraph type="secondary">围绕业务事项组织参与者、工作、材料、评审和正式决策。</Paragraph></div><Button type="primary" icon={<PlusOutlined />} onClick={()=>setNewItemOpen(true)}>新建事项</Button></div>
-      <Row gutter={[16,16]}>
-        <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="进行中的事项" value={bootstrap.counts.openWorkItems} prefix={<ProjectOutlined />} /></Card></Col>
-        <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="等待评审" value={bootstrap.counts.awaitingReview} prefix={<AuditOutlined />} /></Card></Col>
-        <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="未解决技术债务" value={bootstrap.counts.activeDebts} prefix={<FileProtectOutlined />} /></Card></Col>
-        <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="我的待办" value={bootstrap.counts.myTasks} prefix={<ClockCircleOutlined />} /></Card></Col>
-      </Row>
-      <Card title="最近业务事项" extra={<Button type="link" onClick={()=>navigatePage("work-items")}>查看全部</Button>} className="panel-card">
+       <Card title="最近事项" extra={<Button type="link" onClick={()=>navigatePage("work-items")}>查看全部</Button>} className="panel-card">
         <Table rowKey="id" columns={itemColumns} dataSource={bootstrap.workItems.slice(0,8)} pagination={false} loading={loading} />
       </Card>
       <Card title="技术债务跟踪" extra={<Button type="link" onClick={()=>setPage("debts")}>打开台账</Button>} className="panel-card">
@@ -987,14 +981,20 @@ export default function App() {
 
     <Modal title={editingParticipationId?"编辑相关人员":"添加相关人员"} open={participantOpen} onCancel={()=>{setParticipantOpen(false);setEditingParticipationId(null);}} onOk={()=>void submitForm(participantForm,async()=>{
       const value=participantForm.getFieldsValue();
+      const roleLabel=participantRoleChoices.find(option=>option.value===value.roleKey)?.label || value.roleKey;
       return editingParticipationId
-        ? api.updateParticipation(selected!.id,editingParticipationId,{roleKey:value.roleKey,roleLabel:value.roleLabel,permissions:value.permissions})
-        : api.setParticipation(selected!.id,value);
+        ? api.updateParticipation(selected!.id,editingParticipationId,{roleKey:value.roleKey,roleLabel,permissions:value.permissions})
+        : api.setParticipation(selected!.id,{...value,roleLabel});
     },"相关人员已更新",()=>{setParticipantOpen(false);setEditingParticipationId(null);})} confirmLoading={busy}>
        <Form form={participantForm} layout="vertical">
         <Form.Item name="personId" label="参与者" rules={[{required:true}]}><Select disabled={Boolean(editingParticipationId)} showSearch optionFilterProp="label" options={(bootstrap?.people || []).map(p=>({value:p.id,label:p.display_name+" · "+p.title}))} /></Form.Item>
-        <Form.Item name="roleKey" label="角色标识" rules={[{required:true}]}><Input placeholder="security_architect" /></Form.Item>
-        <Form.Item name="roleLabel" label="职责名称" rules={[{required:true}]}><Input placeholder="Security Architect" /></Form.Item>
+        <Form.Item name="roleKey" label="职责" rules={[{required:true}]}><Select showSearch optionFilterProp="label" options={participantRoleChoices} onChange={roleKey=>{
+          const permissions=participantForm.getFieldValue("permissions") || ["read","comment"];
+          participantForm.setFieldsValue({
+            roleLabel:participantRoleChoices.find(option=>option.value===roleKey)?.label || roleKey,
+            permissions:roleKey==="chairman"?["read","decide"]:selectedParticipant?.role_key==="chairman"?["read","comment"]:permissions
+          });
+        }} /></Form.Item>
         <Form.Item name="permissions" label="事项权限" rules={[{required:true}]}><Select mode="multiple" options={[{value:"read",label:"读取"},{value:"contribute",label:"提交材料 / 管理任务"},{value:"comment",label:"讨论"},{value:"review",label:"专业评审"},{value:"decide",label:"正式决策"},{value:"manage",label:"管理相关人员"}]} /></Form.Item>
       </Form>
     </Modal>
