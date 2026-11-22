@@ -11,7 +11,6 @@ The prototype deliberately separates business facts from interaction and executi
 | Task | tasks | Executable work with owner, status and due date |
 | Artifact | artifacts | Versioned deliverable, including ADR and evidence |
 | Submission | submissions | Internal immutable review baseline linking submitted Request content and external references to a Review Cycle; not a separate user-facing material-history feature |
-| Agent Request Package Draft | request_package_drafts | Pending Agent-produced package suggestion; separately adopted by the Requestor before editing and formal submission |
 | Review Cycle | review_cycles | A review round bound to one Submission and its baseline manifest |
 | Review | reviews | Independent opinion bound to an Artifact version |
 | Decision | decisions | Formal decision by an authorized Human |
