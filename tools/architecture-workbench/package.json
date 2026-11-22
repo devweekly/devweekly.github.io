@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Human-first architecture decision and technical debt workbench prototype",
+  "description": "Architecture review, decision tracking and technical debt workbench prototype",
   "engines": {
     "node": ">=24.0.0"
   },
