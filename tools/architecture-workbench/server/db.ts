@@ -13,9 +13,10 @@ db.exec([
   "CREATE TABLE IF NOT EXISTS work_items (id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, type TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, priority TEXT NOT NULL DEFAULT 'normal', owner_id TEXT NOT NULL REFERENCES people(id), requestor_id TEXT REFERENCES people(id), target_date TEXT, context_version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);",
   "CREATE TABLE IF NOT EXISTS participations (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE, person_id TEXT NOT NULL REFERENCES people(id), role_key TEXT NOT NULL, role_label TEXT NOT NULL, permissions_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL, UNIQUE(work_item_id, person_id, role_key));",
   "CREATE TABLE IF NOT EXISTS artifacts (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE, type TEXT NOT NULL, code TEXT, title TEXT NOT NULL, version INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'draft', summary TEXT NOT NULL DEFAULT '', content TEXT NOT NULL DEFAULT '', submitted_by TEXT NOT NULL REFERENCES people(id), content_hash TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(work_item_id, code, version));",
-  "CREATE TABLE IF NOT EXISTS review_cycles (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE, name TEXT NOT NULL, baseline_json TEXT NOT NULL, status TEXT NOT NULL, due_date TEXT, created_by TEXT NOT NULL REFERENCES people(id), created_at TEXT NOT NULL);",
+  "CREATE TABLE IF NOT EXISTS submissions (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE, sequence INTEGER NOT NULL, purpose TEXT NOT NULL DEFAULT 'review', manifest_json TEXT NOT NULL, context_version INTEGER, created_by TEXT NOT NULL REFERENCES people(id), created_at TEXT NOT NULL, UNIQUE(work_item_id,sequence));",
+  "CREATE TABLE IF NOT EXISTS review_cycles (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE, submission_id TEXT REFERENCES submissions(id), name TEXT NOT NULL, baseline_json TEXT NOT NULL, status TEXT NOT NULL, due_date TEXT, created_by TEXT NOT NULL REFERENCES people(id), created_at TEXT NOT NULL);",
   "CREATE TABLE IF NOT EXISTS reviews (id TEXT PRIMARY KEY, cycle_id TEXT NOT NULL REFERENCES review_cycles(id) ON DELETE CASCADE, artifact_id TEXT NOT NULL REFERENCES artifacts(id), artifact_version INTEGER NOT NULL, reviewer_id TEXT NOT NULL REFERENCES people(id), discipline TEXT NOT NULL, outcome TEXT NOT NULL, summary TEXT NOT NULL, findings_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL);",
-  "CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE, title TEXT NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL, assignee_id TEXT REFERENCES people(id), due_date TEXT, relates_to TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);",
+  "CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE, title TEXT NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL, owner_id TEXT REFERENCES people(id), assignee_id TEXT REFERENCES people(id), due_date TEXT, relates_to TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);",
   "CREATE TABLE IF NOT EXISTS decisions (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE, subject_type TEXT NOT NULL, subject_id TEXT, outcome TEXT NOT NULL, rationale TEXT NOT NULL, conditions TEXT NOT NULL DEFAULT '', decision_maker_id TEXT NOT NULL REFERENCES people(id), policy_ref TEXT NOT NULL DEFAULT 'default-v1', created_at TEXT NOT NULL);",
   "CREATE TABLE IF NOT EXISTS work_item_relations (id TEXT PRIMARY KEY, source_work_item_id TEXT NOT NULL REFERENCES work_items(id), target_work_item_id TEXT NOT NULL REFERENCES work_items(id), relation_type TEXT NOT NULL, decision_id TEXT REFERENCES decisions(id), created_at TEXT NOT NULL);",
   "CREATE TABLE IF NOT EXISTS debt_details (work_item_id TEXT PRIMARY KEY REFERENCES work_items(id) ON DELETE CASCADE, severity TEXT NOT NULL, priority TEXT NOT NULL, target_state TEXT NOT NULL, remediation_plan TEXT NOT NULL, status TEXT NOT NULL, source_decision_id TEXT REFERENCES decisions(id), due_date TEXT);",
@@ -27,6 +28,7 @@ db.exec([
   "CREATE INDEX IF NOT EXISTS idx_work_items_status ON work_items(status, updated_at DESC);",
   "CREATE INDEX IF NOT EXISTS idx_artifacts_item ON artifacts(work_item_id, created_at DESC);",
   "CREATE INDEX IF NOT EXISTS idx_reviews_cycle ON reviews(cycle_id, created_at DESC);",
+  "CREATE INDEX IF NOT EXISTS idx_submissions_item ON submissions(work_item_id, sequence DESC);",
   "CREATE INDEX IF NOT EXISTS idx_external_resource_refs_lookup ON external_resource_refs(provider, resource_type, external_key);",
   "CREATE INDEX IF NOT EXISTS idx_external_links_item ON work_item_external_links(work_item_id, created_at DESC);",
   "CREATE INDEX IF NOT EXISTS idx_external_links_resource ON work_item_external_links(resource_id);",
@@ -71,6 +73,8 @@ ensureColumn("people","expertise_json","TEXT NOT NULL DEFAULT '[]'");
 ensureColumn("people","timezone","TEXT NOT NULL DEFAULT 'Asia/Tokyo'");
 ensureColumn("people","is_admin","INTEGER NOT NULL DEFAULT 0");
 ensureColumn("work_items","requestor_id","TEXT REFERENCES people(id)");
+ensureColumn("review_cycles","submission_id","TEXT REFERENCES submissions(id)");
+ensureColumn("tasks","owner_id","TEXT REFERENCES people(id)");
 ensureColumn("agent_runs","plan_id","TEXT REFERENCES agent_plans(id)");
 ensureColumn("agent_runs","node_key","TEXT NOT NULL DEFAULT 'root'");
 ensureColumn("agent_runs","claim_token","TEXT");
@@ -80,3 +84,15 @@ ensureColumn("agent_runs","attempt_count","INTEGER NOT NULL DEFAULT 0");
 ensureColumn("agent_runs","max_attempts","INTEGER NOT NULL DEFAULT 3");
 run("CREATE INDEX IF NOT EXISTS idx_agent_runs_lease ON agent_runs(status,lease_expires_at)");
 run("UPDATE work_items SET requestor_id=owner_id WHERE requestor_id IS NULL");
+run("UPDATE tasks SET owner_id=COALESCE(assignee_id,(SELECT owner_id FROM work_items WHERE work_items.id=tasks.work_item_id)) WHERE owner_id IS NULL");
+
+// Preserve existing review baselines as immutable legacy Submission records.
+for (const cycle of all<{id:string;work_item_id:string;baseline_json:string;created_by:string;created_at:string}>(
+  "SELECT id,work_item_id,baseline_json,created_by,created_at FROM review_cycles WHERE submission_id IS NULL ORDER BY created_at"
+)) {
+  const sequence=(one<{n:number}>("SELECT COALESCE(MAX(sequence),0) AS n FROM submissions WHERE work_item_id=?",cycle.work_item_id)?.n || 0)+1;
+  const submissionId=id("sub");
+  run("INSERT INTO submissions(id,work_item_id,sequence,purpose,manifest_json,context_version,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
+    submissionId,cycle.work_item_id,sequence,"review",cycle.baseline_json,null,cycle.created_by,cycle.created_at);
+  run("UPDATE review_cycles SET submission_id=? WHERE id=?",submissionId,cycle.id);
+}
