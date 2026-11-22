@@ -429,6 +429,67 @@ impl SessionStore {
         Ok(())
     }
 
+    fn prune_before(
+        &self,
+        cutoff_ms: u128,
+        protected_sessions: &std::collections::HashSet<String>,
+        max_delete: usize,
+    ) -> Result<usize, AgentError> {
+        if max_delete == 0 { return Ok(0); }
+        ensure_real_directory(&self.directory)?;
+        let lock = self.lock_store()?;
+        let latest_session = match fs::symlink_metadata(&self.latest_pointer) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+                return Err(AgentError::InvalidAction("latest session pointer must be a regular file".into()));
+            }
+            Ok(_) => Some(fs::read_to_string(&self.latest_pointer)?.trim().to_owned()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error.into()),
+        };
+
+        let mut candidates = Vec::new();
+        for entry in fs::read_dir(&self.directory)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_file()
+                || entry.path().extension().and_then(|value| value.to_str()) != Some("json")
+            {
+                continue;
+            }
+            let metadata = entry.metadata()?;
+            if metadata.len() as usize > MAX_SESSION_FILE_BYTES { continue; }
+            let bytes = fs::read(entry.path())?;
+            let Ok(record) = serde_json::from_slice::<SessionRecord>(&bytes) else { continue; };
+            if record.schema_version != SESSION_SCHEMA_VERSION
+                || record.session_id.is_empty()
+                || record.updated_at_ms >= cutoff_ms
+                || latest_session.as_deref() == Some(record.session_id.as_str())
+                || protected_sessions.contains(&record.session_id)
+            {
+                continue;
+            }
+            candidates.push((record.updated_at_ms, record.session_id, entry.path()));
+        }
+        candidates.sort_by(|left, right| left.0.cmp(&right.0));
+        let mut removed = 0usize;
+        for (_, session_id, path) in candidates.into_iter().take(max_delete) {
+            ensure_regular_file_or_missing(&path)?;
+            fs::remove_file(&path)?;
+            // Remove lock files left by earlier versions that used one lock per
+            // session; current writes use a single stable store lock.
+            let old_lock = path.with_extension("lock");
+            ensure_regular_file_or_missing(&old_lock)?;
+            match fs::remove_file(old_lock) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+            removed += 1;
+            let _ = session_id;
+        }
+        lock.unlock()?;
+        Ok(removed)
+    }
+
     /// Redact source transcript messages from persisted sessions without changing
     /// the current-session pointer. Tool evidence can have been stored as a user
     /// protocol message, so matching uses the exact message content.
@@ -1250,6 +1311,28 @@ impl AgentRuntime {
 
     /// Explicitly prune unreferenced transcript rows older than the requested age.
     /// A recent 1,000-row floor and all evidence-referenced rows are preserved.
+    /// Explicitly prune old Session JSON files. The current/latest Session and
+    /// parents of active or not-yet-delivered background tasks are retained.
+    pub fn prune_sessions_before_days(&self, days: u64) -> Result<usize, AgentError> {
+        if days == 0 || days > 36_500 {
+            return Err(AgentError::InvalidAction(
+                "session retention age must be between 1 and 36500 days".into(),
+            ));
+        }
+        let cutoff = now_ms().saturating_sub(u128::from(days).saturating_mul(86_400_000));
+        let mut protected = std::collections::HashSet::from([self.session.session_id.clone()]);
+        for task in self.background_task_store.list()? {
+            let keep_parent = matches!(
+                task.status,
+                BackgroundTaskStatus::Queued | BackgroundTaskStatus::Running | BackgroundTaskStatus::Cancelling
+            ) || (task.status == BackgroundTaskStatus::Completed && task.delivered_at_ms.is_none());
+            if keep_parent {
+                protected.insert(task.parent_session_id);
+            }
+        }
+        self.store.prune_before(cutoff, &protected, 1_000)
+    }
+
     pub fn prune_transcripts_before_days(&self, days: u64) -> Result<usize, AgentError> {
         if days == 0 || days > 36_500 {
             return Err(AgentError::InvalidAction(
@@ -3329,6 +3412,37 @@ mod tests {
         assert_eq!(fs::read(root.join("usage.jsonl.1")).unwrap(), vec![b'b'; 64]);
         assert_eq!(fs::read(root.join("usage.jsonl.2")).unwrap(), vec![b'a'; 64]);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn session_retention_keeps_latest_and_protected_parent_sessions() {
+        let directory = std::env::temp_dir().join(format!(
+            "rust-agent-session-prune-{}", new_session_id(now_ms())
+        ));
+        let store = SessionStore::new(directory.clone());
+        let now = now_ms();
+        let make_record = |session_id: &str, updated_at_ms: u128| SessionRecord {
+            schema_version: SESSION_SCHEMA_VERSION,
+            session_id: session_id.into(),
+            parent_session_id: None,
+            project_id: None,
+            revision: 1,
+            created_at_ms: updated_at_ms,
+            updated_at_ms,
+            messages: vec![ChatMessage { role: "system".into(), content: "system".into() }],
+        };
+        store.save(&make_record("old-unprotected", 1)).unwrap();
+        store.save(&make_record("old-parent", 2)).unwrap();
+        store.save(&make_record("latest-session", now)).unwrap();
+
+        let protected = std::collections::HashSet::from(["old-parent".to_owned()]);
+        let removed = store.prune_before(now.saturating_add(1), &protected, 10).unwrap();
+        assert_eq!(removed, 1);
+        assert!(store.load("old-unprotected").is_err());
+        assert!(store.load("old-parent").is_ok());
+        assert!(store.load("latest-session").is_ok());
+        assert_eq!(fs::read_to_string(directory.join("latest")).unwrap(), "latest-session");
+        let _ = fs::remove_dir_all(directory);
     }
 
     #[test]
