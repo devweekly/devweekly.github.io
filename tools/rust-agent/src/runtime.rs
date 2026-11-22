@@ -1508,7 +1508,9 @@ impl AgentRuntime {
             controls.insert(task_id.clone(), control);
             record.status = BackgroundTaskStatus::Running;
             record.updated_at_ms = now_ms();
-            if let Err(error) = self.background_task_store.save(&record) {
+            if let Err(error) = self.memory_store.with_background_task_lease(
+                &task_id, &lease_owner, || self.background_task_store.save(&record)
+            ) {
                 controls.remove(&task_id);
                 let _ = self.memory_store.release_background_task_lease(&task_id, &lease_owner);
                 return Err(error);
@@ -1544,6 +1546,8 @@ impl AgentRuntime {
                 &provider,
                 &executor,
                 &store,
+                &memory_store,
+                &lease_owner,
                 &cancellation,
                 &controls,
                 &profile,
@@ -1575,7 +1579,9 @@ impl AgentRuntime {
                 }
             }
             record.updated_at_ms = now_ms();
-            if let Err(error) = store.save(&record) {
+            if let Err(error) = memory_store.with_background_task_lease(
+                &task_id, &lease_owner, || store.save(&record)
+            ) {
                 warn!(task_id = %task_id, %error, "failed to persist background task result");
             }
 
@@ -2705,6 +2711,8 @@ async fn execute_background_task(
     provider: &OpenAiCompatibleProvider,
     executor: &ToolExecutor,
     store: &BackgroundTaskStore,
+    memory_store: &MemoryStore,
+    lease_owner: &str,
     cancellation: &CancellationHandle,
     controls: &SharedTaskControls,
     profile: &AgentProfile,
@@ -2712,6 +2720,9 @@ async fn execute_background_task(
     let context_manager = ContextManager::default();
     for step in record.step..profile.max_steps {
         if cancellation.is_cancelled() {
+            return Err(AgentError::Cancelled);
+        }
+        if !memory_store.renew_background_task_lease(&record.task_id, lease_owner, 120_000)? {
             return Err(AgentError::Cancelled);
         }
         let (request_messages, _, _) = context_manager.fit_messages(&record.messages);
@@ -2733,7 +2744,9 @@ async fn execute_background_task(
         }
         record.usage.add_completion(&completion.usage, completion.duration_ms);
         record.updated_at_ms = now_ms();
-        store.save(record)?;
+        memory_store.with_background_task_lease(
+            &record.task_id, lease_owner, || store.save(record)
+        )?;
         let raw = completion.content;
         if cancellation.is_cancelled() {
             return Err(AgentError::Cancelled);
@@ -2794,7 +2807,9 @@ async fn execute_background_task(
                     if cancellation.is_cancelled() {
                         return Err(AgentError::Cancelled);
                     }
-                    store.save(record)?;
+                    memory_store.with_background_task_lease(
+                        &record.task_id, lease_owner, || store.save(record)
+                    )?;
                 }
 
                 if cancellation.is_cancelled() {
