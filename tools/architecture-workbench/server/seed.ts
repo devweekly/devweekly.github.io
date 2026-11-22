@@ -13,6 +13,24 @@ export function seed() {
     ];
     for (const p of people) run("INSERT INTO people(id,display_name,title,email,avatar_color,created_at) VALUES(?,?,?,?,?,?)", ...p, created);
   }
+  const admin=one<{id:string}>("SELECT id FROM people WHERE id='u-admin'");
+  if (!admin) run("INSERT INTO people(id,display_name,title,email,avatar_color,department,location,bio,expertise_json,timezone,is_admin,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,1,?)",
+    "u-admin","Workbench Administrator","Platform Administrator","admin@example.test","#344b70","Architecture Office","Tokyo","Administers people, workflow and workspace access.",JSON.stringify(["Workflow administration","People administration","Architecture governance"]),"Asia/Tokyo",now());
+  run("UPDATE people SET is_admin=1 WHERE id='u-admin'");
+  const profiles:Record<string,{department:string;location:string;bio:string;expertise:string[]}> = {
+    "u-sa":{department:"Solution Architecture",location:"Tokyo",bio:"Owns solution architecture, system boundaries and delivery alignment.",expertise:["Solution Architecture","Integration","API Design","Cloud"]},
+    "u-ea":{department:"Enterprise Architecture",location:"Tokyo",bio:"Connects solution decisions with enterprise standards and target architecture.",expertise:["Enterprise Architecture","Capability Mapping","Standards","Technology Strategy"]},
+    "u-sec":{department:"Cyber Security",location:"Tokyo",bio:"Reviews security architecture, controls, identity and data protection.",expertise:["Security Architecture","IAM","Threat Modeling","Data Protection"]},
+    "u-sme":{department:"Business",location:"Tokyo",bio:"Provides business process and domain knowledge for architecture decisions.",expertise:["Business Process","Domain Knowledge","Requirements"]},
+    "u-dev":{department:"Engineering",location:"Tokyo",bio:"Owns delivery feasibility, engineering quality and operational readiness.",expertise:["Software Engineering","Delivery","Operations","Reliability"]},
+    "u-chair":{department:"Architecture Governance",location:"Tokyo",bio:"Makes formal architecture decisions and accepts or rejects recommendations.",expertise:["Architecture Governance","Decision Making","Risk Acceptance"]},
+    "u-admin":{department:"Architecture Office",location:"Tokyo",bio:"Administers people, workflow and workspace access.",expertise:["Workflow Administration","People Administration","Architecture Governance"]}
+  };
+  for (const [personId,profile] of Object.entries(profiles)) {
+    run("UPDATE people SET department=CASE WHEN department='' THEN ? ELSE department END,location=CASE WHEN location='' THEN ? ELSE location END,bio=CASE WHEN bio='' THEN ? ELSE bio END,expertise_json=CASE WHEN expertise_json='[]' THEN ? ELSE expertise_json END WHERE id=?",
+      profile.department,profile.location,profile.bio,JSON.stringify(profile.expertise),personId);
+  }
+  run("UPDATE work_items SET requestor_id=owner_id WHERE requestor_id IS NULL");
   if (all("SELECT id FROM work_items LIMIT 1").length > 0) {
     seedExternalReferences();
     return;
@@ -67,7 +85,18 @@ export function seed() {
   run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",id("part"),debt,"u-dev","debt_owner","Debt Owner",JSON.stringify(["read","contribute","comment","manage"]),created);
   run("INSERT INTO debt_details(work_item_id,severity,priority,target_state,remediation_plan,status,due_date) VALUES(?,?,?,?,?,?,?)",debt,"medium","high","所有消费者切换至事件驱动接口，不再依赖批处理适配器。","每次迁移一个消费者；保留双轨指标；连续两个发布窗口无调用后移除适配器。","open","2027-03-31");
   run("INSERT INTO work_item_relations(id,source_work_item_id,target_work_item_id,relation_type,created_at) VALUES(?,?,?,?,?)",id("rel"),wi,debt,"generated_technical_debt",created);
+  run("UPDATE work_items SET requestor_id=owner_id WHERE requestor_id IS NULL");
+  seedWorkflowHistory(wi,created);
   seedExternalReferences();
+}
+
+function seedWorkflowHistory(workItemId:string,created:string) {
+  if ((one<{n:number}>("SELECT COUNT(*) AS n FROM workflow_transitions WHERE work_item_id=?",workItemId)?.n || 0) > 0) return;
+  run("INSERT INTO workflow_transitions(id,work_item_id,from_status,to_status,action,reason,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?)",
+    "wf-seed-analysis",workItemId,"draft","analysis","start_analysis","Request created and analysis started.","u-sa",created);
+  const reviewCreated=new Date(Date.parse(created)+1000).toISOString();
+  run("INSERT INTO workflow_transitions(id,work_item_id,from_status,to_status,action,reason,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?)",
+    "wf-seed-review",workItemId,"analysis","in_review","submit_for_review","Architecture artifacts submitted for the first review round.","u-sa",reviewCreated);
 }
 
 function seedExternalReferences() {

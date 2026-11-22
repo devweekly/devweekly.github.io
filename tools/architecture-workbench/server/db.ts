@@ -9,8 +9,8 @@ export const db = new DatabaseSync(dbPath);
 db.exec("PRAGMA foreign_keys = ON;");
 db.exec("PRAGMA journal_mode = WAL;");
 db.exec([
-  "CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, title TEXT NOT NULL, email TEXT NOT NULL, avatar_color TEXT NOT NULL, created_at TEXT NOT NULL);",
-  "CREATE TABLE IF NOT EXISTS work_items (id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, type TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, priority TEXT NOT NULL DEFAULT 'normal', owner_id TEXT NOT NULL REFERENCES people(id), target_date TEXT, context_version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);",
+  "CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, title TEXT NOT NULL, email TEXT NOT NULL, avatar_color TEXT NOT NULL, department TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', expertise_json TEXT NOT NULL DEFAULT '[]', timezone TEXT NOT NULL DEFAULT 'Asia/Tokyo', is_admin INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);",
+  "CREATE TABLE IF NOT EXISTS work_items (id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, type TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, priority TEXT NOT NULL DEFAULT 'normal', owner_id TEXT NOT NULL REFERENCES people(id), requestor_id TEXT REFERENCES people(id), target_date TEXT, context_version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);",
   "CREATE TABLE IF NOT EXISTS participations (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE, person_id TEXT NOT NULL REFERENCES people(id), role_key TEXT NOT NULL, role_label TEXT NOT NULL, permissions_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL, UNIQUE(work_item_id, person_id, role_key));",
   "CREATE TABLE IF NOT EXISTS artifacts (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE, type TEXT NOT NULL, code TEXT, title TEXT NOT NULL, version INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'draft', summary TEXT NOT NULL DEFAULT '', content TEXT NOT NULL DEFAULT '', submitted_by TEXT NOT NULL REFERENCES people(id), content_hash TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(work_item_id, code, version));",
   "CREATE TABLE IF NOT EXISTS review_cycles (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE, name TEXT NOT NULL, baseline_json TEXT NOT NULL, status TEXT NOT NULL, due_date TEXT, created_by TEXT NOT NULL REFERENCES people(id), created_at TEXT NOT NULL);",
@@ -31,6 +31,7 @@ db.exec([
   "CREATE INDEX IF NOT EXISTS idx_external_links_item ON work_item_external_links(work_item_id, created_at DESC);",
   "CREATE INDEX IF NOT EXISTS idx_external_links_resource ON work_item_external_links(resource_id);",
   "CREATE INDEX IF NOT EXISTS idx_attachments_item ON attachments(work_item_id, created_at DESC);",
+  "CREATE TABLE IF NOT EXISTS workflow_transitions (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE, from_status TEXT NOT NULL, to_status TEXT NOT NULL, action TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '', actor_id TEXT NOT NULL REFERENCES people(id), created_at TEXT NOT NULL);",
   "CREATE INDEX IF NOT EXISTS idx_activity_item ON activity_events(work_item_id, created_at DESC);",
   "CREATE INDEX IF NOT EXISTS idx_debt_status ON debt_details(status, due_date);"
 ].join("\n"));
@@ -45,3 +46,21 @@ export function run(sql: string, ...params: unknown[]) {
 }
 export function id(prefix: string) { return prefix + "_" + randomUUID().slice(0, 8); }
 export function now() { return new Date().toISOString(); }
+
+
+function ensureColumn(table: string, column: string, definition: string) {
+  const columns = db.prepare("PRAGMA table_info(" + table + ")").all() as {name:string}[];
+  if (!columns.some(item => item.name === column)) {
+    db.exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition);
+  }
+}
+
+// Additive migrations keep existing local prototype databases usable.
+ensureColumn("people","department","TEXT NOT NULL DEFAULT ''");
+ensureColumn("people","location","TEXT NOT NULL DEFAULT ''");
+ensureColumn("people","bio","TEXT NOT NULL DEFAULT ''");
+ensureColumn("people","expertise_json","TEXT NOT NULL DEFAULT '[]'");
+ensureColumn("people","timezone","TEXT NOT NULL DEFAULT 'Asia/Tokyo'");
+ensureColumn("people","is_admin","INTEGER NOT NULL DEFAULT 0");
+ensureColumn("work_items","requestor_id","TEXT REFERENCES people(id)");
+run("UPDATE work_items SET requestor_id=owner_id WHERE requestor_id IS NULL");

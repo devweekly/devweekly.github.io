@@ -61,3 +61,12 @@ body { color: #1d2939; background: #f4f6f9; }
 
 .analytics-bar { margin: 12px 0 16px; }
 .analytics-bar-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+
+.workflow-card .ant-steps { padding: 10px 4px 6px; }
+.workflow-history { margin-top: 18px; padding-top: 14px; border-top: 1px solid #edf0f4; }
+.workflow-history .ant-timeline { margin: 12px 0 0 4px; }
+.participant-grid-managed { grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); margin-top: 14px; }
+.participant-grid-managed .participant { align-items: flex-start; padding: 12px; border: 1px solid #edf0f4; border-radius: 9px; background: #fff; }
+.participant-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.participant-main .ant-tag { margin-inline-end: 4px; margin-top: 3px; }
+.profile-expertise { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }

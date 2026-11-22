@@ -26,7 +26,7 @@
 
 生产模式先执行 `npm run build`，再执行 `npm start`。
 
-可以切换顶部的演示身份，验证不同事项 Participation 的权限差异。默认身份是 Solution Architect；只有 Decision Authority 的事项级 Participation 获得 decide 权限，才能提交正式 Decision。演示身份切换只是本地原型能力，不是生产认证方案。
+可以切换顶部的演示身份，验证不同事项 Participation 的权限差异。除 Solution Architect 等业务参与人外，目录中还会自动创建一个 Workbench Administrator 演示身份，用于验证全局人员管理和流程维护能力。演示身份切换只是本地原型能力，不是生产认证方案；正式部署必须使用企业身份提供方和受控的 Admin Provisioning。
 
 ## 原型能力
 
@@ -49,7 +49,7 @@
 
 Work Item 是业务事项的持久化根对象。架构评审只是一个 Work Item Type；Technical Debt 也是一个关联 Work Item Type，但仅在确实需要独立治理时创建。ADR 是 Artifact 类型，不是平台核心表。Review 指向 Review Cycle、Artifact 和被审查版本。Decision 指向明确的 Work Item 或 Artifact 对象，并记录决策人、结果、理由和条件。一个 Request 可以关联多条外部资源，同一个外部资源也可以被多个 Request 引用；关联通过独立的多对多关系表达。
 
-Task 表示执行工作，不等于 Review 或 Decision。外部 Agent 的 Session 不作为业务状态来源。一个 Human 可以在同一 Work Item 下拥有多个 Participation，服务端合并其显式权限；manage 不会自动获得 review 或 decide。评审人不能对自己提交的 Artifact 进行独立 Review；新 Artifact Version 不会修改已创建 Review Cycle 的材料基线。
+Task 表示执行工作，不等于 Review 或 Decision。Request 生命周期由轻量 Workflow Engine 负责状态转换、角色校验、Review Cycle 基线建立和转换历史记录；Task 状态仍然独立维护。外部 Agent 的 Session 不作为业务状态来源。一个 Human 可以在同一 Work Item 下拥有多个 Participation，服务端合并其显式权限；manage 不会自动获得 review 或 decide。评审人不能对自己提交的 Artifact 进行独立 Review；新 Artifact Version 不会修改已创建 Review Cycle 的材料基线。
 
 本原型用演示身份 Header 模拟当前 Human Principal，并在服务端校验 Participation permissions；上线前必须替换为企业 OIDC/OAuth 认证、Delegation Grant 和真正的资源级授权。
 
@@ -82,7 +82,7 @@ LangChain / DeepAgents 可以作为未来 Agent Runtime 的实现选择，LangSm
 - 演示登录通过 Header 选择身份，不可用于生产。
 - 暂无 OIDC、OAuth Delegation Grant、Remote MCP Server、网站内置 Agent Runtime、完整组织目录和策略引擎；也没有 Jira/Confluence/GitHub/LeanIX Connector。
 - 演示身份通过请求 Header 提供，不能暴露到公网或用于任何真实审批。
-- 暂无数据库迁移框架和 PostgreSQL Adapter；当前 SQLite 查询仍由 Express Server 直接调用 SQLite helper，迁移到 PostgreSQL 时需要引入异步 Repository / Unit of Work 实现，不能只替换连接字符串。
+- 当前 SQLite 通过启动时的增量 schema check 兼容本原型已有数据库；尚无通用迁移框架和 PostgreSQL Adapter。迁移到 PostgreSQL 时需要引入异步 Repository / Unit of Work 实现，不能只替换连接字符串。
 - 当前已实现本地/S3 上传和元数据记录，尚未实现经过 Work Item 授权的下载/预签名 URL，也没有病毒扫描。
 - Review Cycle 当前为轻量模型，提交 Review 时绑定 Artifact Version；正式环境还应增加完整 Submission Manifest、Reviewer Assignment、独立性规则和策略版本。
 - 决策界面为原型级状态转换，正式系统应由可版本化 Decision Policy 控制法定人数、会签、职责分离、权限和有效结果。

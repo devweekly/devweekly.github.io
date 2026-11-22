@@ -2,19 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Alert, Avatar, Breadcrumb, Button, Card, Checkbox, Col, DatePicker, Divider, Drawer, Empty,
   Form, Input, Layout, List, Menu, Modal, Progress, Row, Select, Space, Statistic,
-  Table, Tabs, Tag, Timeline, Tooltip, Typography, Upload, message
+  Steps, Table, Tabs, Tag, Timeline, Tooltip, Typography, Upload, message
 } from "antd";
 import type { FormInstance } from "antd";
 import {
   AppstoreOutlined, ApartmentOutlined, ArrowLeftOutlined, AuditOutlined,
   CheckCircleOutlined, ClockCircleOutlined, CloudUploadOutlined, CopyOutlined,
-  BarChartOutlined, DeleteOutlined, FileProtectOutlined, LinkOutlined, PlusOutlined,
-  ProjectOutlined, SafetyCertificateOutlined, UnorderedListOutlined, UserAddOutlined, UploadOutlined
+  BarChartOutlined, DeleteOutlined, EditOutlined, FileProtectOutlined, LinkOutlined, PlusOutlined,
+  ProjectOutlined, SafetyCertificateOutlined, TeamOutlined, UnorderedListOutlined, UserAddOutlined, UploadOutlined
 } from "@ant-design/icons";
 import { Welcome } from "@ant-design/x";
 import dayjs from "dayjs";
 import { api, setActor } from "./api";
-import type { Activity, Artifact, Bootstrap, Comment, DebtItem, ExternalResourceRef, Person, Review, WorkItem, WorkItemDetail, WorkTask, WorkbenchAnalytics } from "./types";
+import type { Activity, Artifact, Bootstrap, Comment, DebtItem, ExternalResourceRef, MyTask, Person, Participation, Review, WorkItem, WorkItemDetail, WorkTask, WorkbenchAnalytics } from "./types";
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
@@ -56,6 +56,10 @@ export default function App() {
   const [externalLinkOpen,setExternalLinkOpen] = useState(false);
   const [externalReferences,setExternalReferences] = useState<ExternalResourceRef[]>([]);
   const [analyticsData,setAnalyticsData] = useState<WorkbenchAnalytics|null>(null);
+  const [myTasks,setMyTasks] = useState<MyTask[]>([]);
+  const [editingParticipationId,setEditingParticipationId] = useState<string|null>(null);
+  const [profilePersonId,setProfilePersonId] = useState<string|null>(null);
+  const [profileOpen,setProfileOpen] = useState(false);
   const [newItemForm] = Form.useForm();
   const [artifactForm] = Form.useForm();
   const [reviewForm] = Form.useForm();
@@ -63,6 +67,7 @@ export default function App() {
   const [decisionForm] = Form.useForm();
   const [debtForm] = Form.useForm();
   const [participantForm] = Form.useForm();
+  const [profileForm] = Form.useForm();
   const [externalLinkForm] = Form.useForm();
   const [activeTab,setActiveTab] = useState("overview");
   const [commentText,setCommentText] = useState("");
@@ -72,9 +77,11 @@ export default function App() {
   async function reload() {
     setLoading(true);
     try {
-      const [data,analytics]=await Promise.all([api.bootstrap(),api.analytics()]);
+      const [data,analytics,tasks]=await Promise.all([api.bootstrap(),api.analytics(),api.myTasks()]);
       setBootstrap(data);
       setAnalyticsData(analytics);
+      setMyTasks(tasks);
+      if (!profilePersonId) setProfilePersonId(actor);
       if (selected) {
         const fresh=data.workItems.find(item=>item.id===selected.id);
         if (fresh) setSelected(fresh);
@@ -93,9 +100,10 @@ export default function App() {
     const [fresh,data]=await Promise.all([api.detail(selected.id),api.bootstrap()]);
     setDetail(fresh); setBootstrap(data);
   }
-  useEffect(()=>{setActor(actor);void reload();},[actor]);
+  useEffect(()=>{setActor(actor);setProfilePersonId(actor);void reload();},[actor]);
 
   const actorPerson=bootstrap?.people.find(person=>person.id===actor);
+  const profilePerson=bootstrap?.people.find(person=>person.id===(profilePersonId || actor)) || actorPerson;
   const filteredItems=useMemo(()=>(bootstrap?.workItems || []).filter(item=>
     [item.code,item.title,item.description,item.owner_name].join(" ").toLowerCase().includes(query.toLowerCase())
   ),[bootstrap,query]);
@@ -105,7 +113,8 @@ export default function App() {
     {key:"work-items",icon:<ProjectOutlined />,label:"业务事项"},
     {key:"reviews",icon:<AuditOutlined />,label:"架构与 ADR 评审"},
     {key:"debts",icon:<FileProtectOutlined />,label:"技术债务"},
-    {key:"analytics",icon:<BarChartOutlined />,label:"Portfolio 分析"}
+    {key:"analytics",icon:<BarChartOutlined />,label:"Portfolio 分析"},
+    {key:"people",icon:<TeamOutlined />,label:"人员目录 / Person Profile"}
   ];
 
   async function submitForm(form:FormInstance,action:()=>Promise<unknown>,success:string,close:()=>void) {
@@ -139,8 +148,49 @@ export default function App() {
     catch (error) { message.error(error instanceof Error ? error.message : "更新失败"); }
   }
   async function updateTask(taskId:string,status:string) {
-    try { await api.updateTask(taskId,{status}); message.success("Task 状态已更新"); await refreshDetail(); }
-    catch (error) { message.error(error instanceof Error ? error.message : "更新失败"); }
+    try {
+      await api.updateTask(taskId,{status});
+      message.success("Task 状态已更新");
+      await reload();
+      if (selected) await refreshDetail();
+    } catch (error) { message.error(error instanceof Error ? error.message : "更新失败"); }
+  }
+
+  async function transitionWorkflow(action:string) {
+    if (!selected) return;
+    try {
+      await api.transitionWorkItem(selected.id,action);
+      message.success("Request 流程已更新");
+      await reload();
+      await refreshDetail();
+    } catch (error) { message.error(error instanceof Error ? error.message : "流程转换失败"); }
+  }
+
+  function openParticipantDialog(participant?:Participation) {
+    setEditingParticipationId(participant?.id || null);
+    participantForm.resetFields();
+    participantForm.setFieldsValue(participant ? {
+      personId:participant.person_id,roleKey:participant.role_key,
+      roleLabel:participant.role_label,permissions:JSON.parse(participant.permissions_json)
+    } : {permissions:["read","comment"]});
+    setParticipantOpen(true);
+  }
+  async function removeParticipant(participant:Participation) {
+    if (!selected) return;
+    try {
+      await api.removeParticipation(selected.id,participant.id);
+      message.success("相关人员已移除");
+      await refreshDetail();
+      await reload();
+    } catch(error) { message.error(error instanceof Error ? error.message : "移除人员失败"); }
+  }
+  function openProfileEditor(person:Person) {
+    profileForm.setFieldsValue({
+      displayName:person.display_name,title:person.title,email:person.email,
+      department:person.department,location:person.location,bio:person.bio,
+      expertise:JSON.parse(person.expertise_json || "[]").join(", "),timezone:person.timezone
+    });
+    setProfileOpen(true);
   }
   async function openExternalLinkDialog() {
     try {
@@ -283,13 +333,74 @@ export default function App() {
     </div>;
   }
   function renderMyWork() {
-    const mine=(bootstrap?.workItems || []).filter(item=>item.owner_id===actor);
+    const mine=(bootstrap?.workItems || []).filter(item=>item.owner_id===actor || item.requestor_id===actor);
+    const activeTasks=myTasks.filter(task=>!["done","cancelled"].includes(task.status));
+    const taskColumns=[
+      {title:"任务",dataIndex:"title",render:(value:string,task:MyTask)=><div><Text strong>{value}</Text><div className="small muted">{task.kind}</div></div>},
+      {title:"所属 Request",dataIndex:"work_item_title",render:(value:string,task:MyTask)=><Button type="link" className="table-link" onClick={()=>{const item=bootstrap?.workItems.find(entry=>entry.id===task.work_item_id);if(item)void openWorkItem(item);}}>{task.work_item_code} · {value}</Button>},
+      {title:"状态",dataIndex:"status",render:(value:string,task:MyTask)=><Select size="small" value={value} style={{width:120}} onChange={status=>void updateTask(task.id,status)} options={[{value:"open",label:"待处理"},{value:"in_progress",label:"处理中"},{value:"blocked",label:"受阻"},{value:"done",label:"完成"},{value:"cancelled",label:"取消"}]} />},
+      {title:"截止日期",dataIndex:"due_date",render:dateText},
+      {title:"Requestor",dataIndex:"requestor_name",render:(value:string|null)=>value || "—"}
+    ];
     return <div className="page-stack">
-      <div className="page-heading"><div><Text type="secondary">PERSONAL WORK QUEUE</Text><Title level={2}>我的工作</Title><Paragraph type="secondary">当前原型按当前演示身份聚合负责人事项；后续扩展为参与关系和任务的统一收件箱。</Paragraph></div></div>
-      <Card title="我负责的事项" className="panel-card"><Table rowKey="id" columns={itemColumns} dataSource={mine} pagination={false} /></Card>
-      <Card title="当前身份" className="panel-card"><Space><Avatar style={{background:actorPerson?.avatar_color}}>{actorPerson?.display_name.slice(0,1)}</Avatar><div><Text strong>{actorPerson?.display_name}</Text><div><Text type="secondary">{actorPerson?.title}</Text></div></div></Space></Card>
+      <div className="page-heading"><div><Text type="secondary">PERSONAL WORK QUEUE</Text><Title level={2}>我的工作</Title><Paragraph type="secondary">任务按实际 Assignee 汇总；可以直接更新自己负责的 Task 状态，并返回所属 Request 查看上下文。</Paragraph></div></div>
+      <Row gutter={[16,16]}>
+        <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="待完成任务" value={activeTasks.length} /></Card></Col>
+        <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="处理中" value={activeTasks.filter(task=>task.status==="in_progress").length} /></Card></Col>
+        <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="受阻" value={activeTasks.filter(task=>task.status==="blocked").length} /></Card></Col>
+        <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="已完成" value={myTasks.filter(task=>task.status==="done").length} /></Card></Col>
+      </Row>
+      <Card title="分配给我的 Task" className="panel-card"><Table rowKey="id" columns={taskColumns} dataSource={activeTasks} loading={loading} pagination={{pageSize:8}} locale={{emptyText:<Empty description="当前没有分配给你的任务" />}} /></Card>
+      <Card title="我发起或负责的 Request" className="panel-card"><Table rowKey="id" columns={itemColumns} dataSource={mine} pagination={{pageSize:6}} /></Card>
+      <Card title="我的 Person Profile" className="panel-card" extra={<Button type="link" onClick={()=>setPage("people")}>查看资料</Button>}>
+        <Space><Avatar size={44} style={{background:actorPerson?.avatar_color}}>{actorPerson?.display_name.slice(0,1)}</Avatar><div><Text strong>{actorPerson?.display_name}</Text><div><Text type="secondary">{actorPerson?.title} · {actorPerson?.department}</Text></div></div></Space>
+      </Card>
     </div>;
   }
+  function renderPeople() {
+    if (!bootstrap) return <Card loading />;
+    const selectedPerson=profilePerson;
+    const expertise=selectedPerson ? JSON.parse(selectedPerson.expertise_json || "[]") as string[] : [];
+    const canEdit=Boolean(selectedPerson && (selectedPerson.id===actor || actorPerson?.is_admin));
+    const columns=[
+      {title:"人员",dataIndex:"display_name",render:(value:string,person:Person)=><Space><Avatar style={{background:person.avatar_color}}>{value.slice(0,1)}</Avatar><div><Text strong>{value}</Text><div className="small muted">{person.title}</div></div></Space>},
+      {title:"部门",dataIndex:"department"},
+      {title:"地点",dataIndex:"location"},
+      {title:"角色",dataIndex:"is_admin",render:(value:number)=>value?<Tag color="purple">Workbench Admin</Tag>:<Tag>Participant</Tag>}
+    ];
+    return <div className="page-stack">
+      <div className="page-heading"><div><Text type="secondary">PEOPLE & PROFILES</Text><Title level={2}>人员目录与 Person Profile</Title><Paragraph type="secondary">统一查看参与者的职责、专业领域和联系方式。个人可以维护自己的资料，Workbench Admin 可以维护目录中的其他人员。</Paragraph></div></div>
+      <Row gutter={[16,16]}>
+        <Col xs={24} xl={13}>
+          <Card title="人员目录" className="panel-card">
+            <Table rowKey="id" size="middle" dataSource={bootstrap.people} columns={columns} pagination={{pageSize:8}}
+              onRow={person=>({onClick:()=>setProfilePersonId(person.id),style:{cursor:"pointer",background:person.id===selectedPerson?.id?"#f4f7fb":undefined}})} />
+          </Card>
+        </Col>
+        <Col xs={24} xl={11}>
+          {selectedPerson ? <Card className="panel-card" title="Person Profile" extra={canEdit?<Button icon={<EditOutlined />} onClick={()=>openProfileEditor(selectedPerson)}>编辑资料</Button>:null}>
+            <Space align="start" size={14}>
+              <Avatar size={58} style={{background:selectedPerson.avatar_color,fontSize:24}}>{selectedPerson.display_name.slice(0,1)}</Avatar>
+              <div><Title level={4} style={{margin:"2px 0 4px"}}>{selectedPerson.display_name}</Title><Text type="secondary">{selectedPerson.title}</Text><div>{selectedPerson.is_admin?<Tag color="purple">Workbench Admin</Tag>:null}</div></div>
+            </Space>
+            <Divider />
+            <Row gutter={[12,16]}>
+              <Col span={12}><Text type="secondary" className="small">部门</Text><div><Text strong>{selectedPerson.department || "—"}</Text></div></Col>
+              <Col span={12}><Text type="secondary" className="small">地点</Text><div><Text strong>{selectedPerson.location || "—"}</Text></div></Col>
+              <Col span={12}><Text type="secondary" className="small">Email</Text><div><Text strong>{selectedPerson.email || "—"}</Text></div></Col>
+              <Col span={12}><Text type="secondary" className="small">Timezone</Text><div><Text strong>{selectedPerson.timezone || "—"}</Text></div></Col>
+            </Row>
+            <Divider />
+            <Text type="secondary" className="small">简介</Text>
+            <Paragraph>{selectedPerson.bio || "尚未填写个人简介。"}</Paragraph>
+            <Text type="secondary" className="small">专业领域</Text>
+            <div className="profile-expertise">{expertise.length ? expertise.map(value=><Tag key={value}>{value}</Tag>) : <Text type="secondary">尚未添加专业领域。</Text>}</div>
+          </Card> : <Card className="panel-card"><Empty description="请选择人员查看资料" /></Card>}
+        </Col>
+      </Row>
+    </div>;
+  }
+
   function renderReviews() {
     const reviewItems=(bootstrap?.workItems || []).filter(item=>item.status==="in_review");
     return <div className="page-stack">
@@ -310,13 +421,39 @@ export default function App() {
         <Space wrap>
           <Button icon={<CopyOutlined />} onClick={async()=>{const capsule=await api.contextCapsule(item.id);await navigator.clipboard.writeText(JSON.stringify(capsule,null,2));message.success("Context Capsule 已复制");}}>复制 Context</Button>
           {permissions.includes("contribute") && <Button icon={<PlusOutlined />} onClick={()=>setArtifactOpen(true)}>添加产物</Button>}
-          {permissions.includes("decide") && <Button type="primary" onClick={()=>setDecisionOpen(true)}>记录正式决定</Button>}
+          {detail.workflow.availableActions.some(action=>["accept","reject","more_analysis"].includes(action)) && <Button type="primary" onClick={()=>setDecisionOpen(true)}>记录正式决定</Button>}
         </Space>
       </div>
+      <Card className="workflow-card" title={<Space><ApartmentOutlined /><span>Request Workflow</span><Tag color={statusColors[item.status]}>{statusLabels[item.status] || item.status}</Tag></Space>}>
+        <Steps current={detail.workflow.currentStep} status={detail.workflow.visualStatus} items={detail.workflow.steps} />
+        <Divider />
+        <Space wrap>
+          {detail.workflow.availableActions.includes("start_analysis") && <Button type="primary" onClick={()=>void transitionWorkflow("start_analysis")}>开始分析</Button>}
+          {detail.workflow.availableActions.includes("submit_for_review") && <Button type="primary" onClick={()=>void transitionWorkflow("submit_for_review")}>提交架构评审</Button>}
+          {detail.workflow.availableActions.includes("close") && <Button onClick={()=>void transitionWorkflow("close")}>关闭 Request</Button>}
+          <Text type="secondary" className="small">Requestor：{item.requestor_name} · 当前阶段由服务端 Workflow Engine 校验并记录。</Text>
+        </Space>
+        {detail.workflow.history.length>0 && <div className="workflow-history">
+          <Text type="secondary" className="small">最近流程变化</Text>
+          <Timeline items={detail.workflow.history.slice(0,4).map(entry=>({children:<><Text strong>{entry.actor_name}</Text><div>{statusLabels[entry.from_status] || entry.from_status} → {statusLabels[entry.to_status] || entry.to_status}</div><Text type="secondary" className="small">{dateText(entry.created_at)} · {entry.reason || entry.action}</Text></>}))} />
+        </div>}
+      </Card>
       <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
         {key:"overview",label:"概览",children:<Row gutter={[16,16]}>
           <Col xs={24} xl={15}>
-            <Card title="参与者" size="small" extra={permissions.includes("manage")?<Button size="small" icon={<UserAddOutlined />} onClick={()=>{participantForm.setFieldsValue({permissions:["read","comment"]});setParticipantOpen(true);}}>管理参与者</Button>:null}><div className="participant-grid">{detail.participants.map(p=><div className="participant" key={p.person_id}><Avatar style={{background:p.avatar_color}}>{p.display_name.slice(0,1)}</Avatar><div><Text strong>{p.display_name}</Text><div><Tag color={roleColors[p.role_key] || "default"}>{p.role_label}</Tag></div></div></div>)}</div></Card>
+            <Card title={<Space><TeamOutlined /><span>Request 相关人员</span><Tag>{detail.participants.length}</Tag></Space>} size="small" extra={detail.canManageParticipants?<Button size="small" icon={<UserAddOutlined />} onClick={()=>openParticipantDialog()}>添加相关人</Button>:null}>
+              <Text type="secondary" className="small">Requestor：{item.requestor_name}。Requestor、Workbench Admin 或事项管理员可以维护相关人员和职责。</Text>
+              <div className="participant-grid participant-grid-managed">
+                {detail.participants.map(p=><div className="participant" key={p.id}>
+                  <Avatar style={{background:p.avatar_color}}>{p.display_name.slice(0,1)}</Avatar>
+                  <div className="participant-main"><Text strong>{p.display_name}</Text><div><Tag color={roleColors[p.role_key] || "default"}>{p.role_label}</Tag>{p.person_id===item.requestor_id?<Tag color="blue">Requestor</Tag>:null}</div><Text type="secondary" className="small">{p.title}{p.department?" · "+p.department:""}</Text></div>
+                  {detail.canManageParticipants?<Space size={0}>
+                    <Button type="text" size="small" icon={<EditOutlined />} title="编辑职责和权限" onClick={()=>openParticipantDialog(p)} />
+                    {p.person_id!==item.requestor_id && p.person_id!==item.owner_id?<Button type="text" danger size="small" icon={<DeleteOutlined />} title="移除" onClick={()=>Modal.confirm({title:"移除此相关人员？",content:"该人员将不再看到此 Request；既有 Review 和 Activity 记录会保留。",onOk:()=>removeParticipant(p)})} />:null}
+                  </Space>:null}
+                </div>)}
+              </div>
+            </Card>
             <Card title="最新产物" size="small" className="nested-card"><List dataSource={detail.artifacts.slice(0,4)} renderItem={a=><List.Item><List.Item.Meta avatar={<Avatar icon={<FileProtectOutlined />} />} title={(a.code || a.type)+" · "+a.title} description={"v"+a.version+" · "+a.submitter_name+" · "+dateText(a.created_at)} /></List.Item>} /></Card>
           </Col>
           <Col xs={24} xl={9}>
@@ -346,7 +483,7 @@ export default function App() {
         {key:"reviews",label:"Review 意见",children:<Card size="small" title="独立专业意见" extra={permissions.includes("review")?<Button size="small" icon={<PlusOutlined />} onClick={()=>{reviewForm.setFieldsValue({artifactId:detail.artifacts[0]?.id,outcome:"comment",discipline:actorPerson?.title || "General"});setReviewOpen(true);}}>提交 Review</Button>:null}><List dataSource={detail.reviews} locale={{emptyText:"尚无评审意见"}} renderItem={(r:Review)=><List.Item><List.Item.Meta avatar={<Avatar icon={<AuditOutlined />} />} title={<Space wrap><Text strong>{r.reviewer_name}</Text><Tag>{r.discipline}</Tag><Tag color={r.outcome==="approve"?"success":r.outcome==="request_changes"?"warning":"default"}>{r.outcome}</Tag></Space>} description={<><Text>{r.summary}</Text><div className="small muted">{r.artifact_code || r.artifact_title} · v{r.artifact_version} · {dateText(r.created_at)}</div></>} /></List.Item>} /></Card>},
         {key:"tasks",label:"Tasks",children:<Card size="small" title="工作与后续行动" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>{taskForm.setFieldsValue({assigneeId:actor});setTaskOpen(true);}}>创建 Task</Button>:null}><Table rowKey="id" dataSource={detail.tasks} pagination={false} columns={[
           {title:"Task",dataIndex:"title"},{title:"类型",dataIndex:"kind"},{title:"责任人",dataIndex:"assignee_name",render:(v:string|null)=>v || "未分配"},
-          {title:"状态",dataIndex:"status",render:(v:string,t:WorkTask)=><Select size="small" value={v} disabled={!permissions.includes("contribute")} style={{width:112}} onChange={value=>void updateTask(t.id,value)} options={[{value:"open",label:"待处理"},{value:"in_progress",label:"处理中"},{value:"blocked",label:"受阻"},{value:"done",label:"完成"},{value:"cancelled",label:"取消"}]} />},{title:"截止日期",dataIndex:"due_date",render:dateText}
+          {title:"状态",dataIndex:"status",render:(v:string,t:WorkTask)=><Select size="small" value={v} disabled={!permissions.includes("contribute") && t.assignee_id!==actor} style={{width:112}} onChange={value=>void updateTask(t.id,value)} options={[{value:"open",label:"待处理"},{value:"in_progress",label:"处理中"},{value:"blocked",label:"受阻"},{value:"done",label:"完成"},{value:"cancelled",label:"取消"}]} />},{title:"截止日期",dataIndex:"due_date",render:dateText}
         ]} /></Card>},
         {key:"decisions",label:"Decisions",children:<Card size="small" title="正式决策记录" extra={permissions.includes("decide")?<Button type="primary" size="small" onClick={()=>setDecisionOpen(true)}>记录决定</Button>:<Tag color="gold">当前身份无决策权限</Tag>}><List dataSource={detail.decisions} locale={{emptyText:"尚无正式决定"}} renderItem={d=><List.Item><List.Item.Meta avatar={<Avatar icon={<CheckCircleOutlined />} />} title={<Space><Tag color={statusColors[d.outcome]}>{statusLabels[d.outcome] || d.outcome}</Tag><Text strong>{d.decision_maker_name}</Text></Space>} description={<><Paragraph>{d.rationale}</Paragraph>{d.conditions && <Text type="secondary">条件：{d.conditions}</Text>}<div className="small muted">{dateText(d.created_at)}</div></>} /></List.Item>} /></Card>},
         {key:"activity",label:"讨论与活动",children:<Row gutter={[16,16]}><Col xs={24} xl={13}><Card size="small" title="讨论"><Space.Compact block><Input value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="补充信息或回应问题..." onPressEnter={()=>void submitComment()} /><Button type="primary" onClick={()=>void submitComment()}>发送</Button></Space.Compact><List className="comment-list" dataSource={detail.comments} renderItem={(c:Comment)=><List.Item><List.Item.Meta avatar={<Avatar style={{background:c.avatar_color}}>{c.author_name.slice(0,1)}</Avatar>} title={<Space><Text strong>{c.author_name}</Text><Text type="secondary" className="small">{dateText(c.created_at)}</Text></Space>} description={c.body} /></List.Item>} /></Card></Col><Col xs={24} xl={11}><Card size="small" title="活动记录"><Timeline items={detail.activity.map((a:Activity)=>({children:<><Text strong>{a.actor_name}</Text><div>{a.summary}</div><Text type="secondary" className="small">{dateText(a.created_at)}</Text></>}))} /></Card></Col></Row>}
@@ -370,6 +507,7 @@ export default function App() {
         {page==="reviews" && renderReviews()}
         {page==="debts" && renderDebts()}
         {page==="analytics" && renderAnalytics()}
+        {page==="people" && renderPeople()}
       </Content>
     </Layout>
     <Drawer open={drawerOpen} onClose={()=>setDrawerOpen(false)} placement="right" width="min(1180px, 96vw)" title={null} destroyOnClose={false} styles={{body:{padding:0}}}>{renderDetailContent()}</Drawer>
@@ -499,13 +637,38 @@ export default function App() {
       </Form>
     </Modal>
 
-    <Modal title="管理事项参与者" open={participantOpen} onCancel={()=>setParticipantOpen(false)} onOk={()=>void submitForm(participantForm,async()=>api.setParticipation(selected!.id,participantForm.getFieldsValue()),"参与关系已更新",()=>setParticipantOpen(false))} confirmLoading={busy}>
-      <Alert type="info" showIcon message="职责和 Agent 使用方式分离。此处只配置 Human 在当前事项中的业务职责和动作权限。" className="modal-alert" />
+    <Modal title="编辑 Person Profile" open={profileOpen} onCancel={()=>setProfileOpen(false)} onOk={()=>void submitForm(profileForm,async()=>{
+      const value=profileForm.getFieldsValue();
+      return api.updateProfile(profilePerson!.id,value);
+    },"个人资料已更新",()=>setProfileOpen(false))} confirmLoading={busy} width={680}>
+      <Form form={profileForm} layout="vertical">
+        <Row gutter={12}>
+          <Col span={12}><Form.Item name="displayName" label="姓名" rules={[{required:true}]}><Input /></Form.Item></Col>
+          <Col span={12}><Form.Item name="title" label="职位 / 专业角色" rules={[{required:true}]}><Input /></Form.Item></Col>
+        </Row>
+        <Form.Item name="email" label="Email" rules={[{required:true,type:"email"}]}><Input /></Form.Item>
+        <Row gutter={12}>
+          <Col span={12}><Form.Item name="department" label="部门"><Input /></Form.Item></Col>
+          <Col span={12}><Form.Item name="location" label="地点"><Input /></Form.Item></Col>
+        </Row>
+        <Form.Item name="timezone" label="时区"><Input placeholder="Asia/Tokyo" /></Form.Item>
+        <Form.Item name="bio" label="个人简介"><TextArea rows={3} /></Form.Item>
+        <Form.Item name="expertise" label="专业领域（逗号分隔）"><Input placeholder="Solution Architecture, API Design, Cloud" /></Form.Item>
+      </Form>
+    </Modal>
+
+    <Modal title={editingParticipationId?"编辑相关人员":"添加相关人员"} open={participantOpen} onCancel={()=>{setParticipantOpen(false);setEditingParticipationId(null);}} onOk={()=>void submitForm(participantForm,async()=>{
+      const value=participantForm.getFieldsValue();
+      return editingParticipationId
+        ? api.updateParticipation(selected!.id,editingParticipationId,{roleKey:value.roleKey,roleLabel:value.roleLabel,permissions:value.permissions})
+        : api.setParticipation(selected!.id,value);
+    },"相关人员已更新",()=>{setParticipantOpen(false);setEditingParticipationId(null);})} confirmLoading={busy}>
+      <Alert type="info" showIcon message="Requestor 和 Workbench Admin 可以维护相关人员；人员变更只影响当前 Request 的 Participation，不会改变其他 Request 的职责。" className="modal-alert" />
       <Form form={participantForm} layout="vertical">
-        <Form.Item name="personId" label="参与者" rules={[{required:true}]}><Select showSearch optionFilterProp="label" options={(bootstrap?.people || []).map(p=>({value:p.id,label:p.display_name+" · "+p.title}))} /></Form.Item>
+        <Form.Item name="personId" label="参与者" rules={[{required:true}]}><Select disabled={Boolean(editingParticipationId)} showSearch optionFilterProp="label" options={(bootstrap?.people || []).map(p=>({value:p.id,label:p.display_name+" · "+p.title}))} /></Form.Item>
         <Form.Item name="roleKey" label="Role Key" rules={[{required:true}]}><Input placeholder="security_architect" /></Form.Item>
         <Form.Item name="roleLabel" label="职责名称" rules={[{required:true}]}><Input placeholder="Security Architect" /></Form.Item>
-        <Form.Item name="permissions" label="事项权限" rules={[{required:true}]}><Select mode="multiple" options={[{value:"read",label:"读取"},{value:"contribute",label:"提交材料 / Task"},{value:"comment",label:"讨论"},{value:"review",label:"专业评审"},{value:"decide",label:"正式决策"},{value:"manage",label:"管理参与关系"}]} /></Form.Item>
+        <Form.Item name="permissions" label="事项权限" rules={[{required:true}]}><Select mode="multiple" options={[{value:"read",label:"读取"},{value:"contribute",label:"提交材料 / Task"},{value:"comment",label:"讨论"},{value:"review",label:"专业评审"},{value:"decide",label:"正式决策"},{value:"manage",label:"管理相关人员"}]} /></Form.Item>
       </Form>
     </Modal>
 

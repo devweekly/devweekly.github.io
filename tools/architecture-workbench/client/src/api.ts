@@ -1,4 +1,4 @@
-import type { Bootstrap, ExternalResourceRef, WorkbenchAnalytics, WorkItemDetail } from "./types";
+import type { Bootstrap, ExternalResourceRef, MyTask, WorkflowProjection, WorkbenchAnalytics, WorkItemDetail } from "./types";
 let currentActor = "u-sa";
 export function setActor(actor:string) { currentActor=actor; }
 async function request<T>(path:string,init:RequestInit={}):Promise<T> {
@@ -9,6 +9,7 @@ async function request<T>(path:string,init:RequestInit={}):Promise<T> {
 }
 export const api = {
   bootstrap:()=>request<Bootstrap>("/api/bootstrap"),
+  myTasks:()=>request<MyTask[]>("/api/my/tasks"),
   analytics:()=>request<WorkbenchAnalytics>("/api/analytics"),
   externalResourceRefs:()=>request<ExternalResourceRef[]>("/api/external-resource-refs"),
   detail:(id:string)=>request<WorkItemDetail>("/api/work-items/"+id),
@@ -18,6 +19,10 @@ export const api = {
   createTask:(id:string,body:unknown)=>request<{id:string}>("/api/work-items/"+id+"/tasks",{method:"POST",body:JSON.stringify(body)}),
   updateTask:(id:string,body:unknown)=>request<{ok:boolean}>("/api/tasks/"+id,{method:"PATCH",body:JSON.stringify(body)}),
   setParticipation:(id:string,body:unknown)=>request<{ok:boolean}>("/api/work-items/"+id+"/participations",{method:"POST",body:JSON.stringify(body)}),
+  updateParticipation:(id:string,participationId:string,body:unknown)=>request<{ok:boolean}>("/api/work-items/"+id+"/participations/"+participationId,{method:"PUT",body:JSON.stringify(body)}),
+  removeParticipation:(id:string,participationId:string)=>request<{ok:boolean}>("/api/work-items/"+id+"/participations/"+participationId,{method:"DELETE"}),
+  transitionWorkItem:(id:string,action:string,reason="")=>request<{ok:boolean;workflow:WorkflowProjection}>("/api/work-items/"+id+"/transitions",{method:"POST",body:JSON.stringify({action,reason})}),
+  updateProfile:(id:string,body:unknown)=>request<{ok:boolean}>("/api/people/"+id+"/profile",{method:"PATCH",body:JSON.stringify(body)}),
   addExternalLink:(id:string,body:unknown)=>request<{id:string;resourceId:string}>("/api/work-items/"+id+"/external-links",{method:"POST",body:JSON.stringify(body)}),
   removeExternalLink:(id:string,linkId:string)=>request<{ok:boolean}>("/api/work-items/"+id+"/external-links/"+linkId,{method:"DELETE"}),
   uploadAttachment:async(id:string,file:File)=>{
