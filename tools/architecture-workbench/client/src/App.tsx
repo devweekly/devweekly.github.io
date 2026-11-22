@@ -552,7 +552,7 @@ export default function App() {
         ? (activeTask.status==="blocked" ? "解除阻塞："+activeTask.title+"（任务负责人："+(activeTask.owner_name || item.owner_name)+"；执行人："+(activeTask.assignee_name || "待分配")+"）" : "完成当前任务："+activeTask.title+"（任务负责人："+(activeTask.owner_name || item.owner_name)+"；执行人："+(activeTask.assignee_name || "待分配")+"）")
         : (phaseAction[item.status] || "确认下一步工作。");
     const requestPackage=(()=>{try{return JSON.parse(item.request_package_json || "{}") as Record<string,unknown>;}catch{return {};}})();
-    const canSubmitRequest=item.requestor_id===actor || actorPerson?.is_admin===1;
+    const canSubmitRequest=item.requestor_id===actor;
     const latestArtifacts=detail.artifacts.filter((artifact,index,all)=>all.findIndex(candidate=>(candidate.code || candidate.id)===(artifact.code || artifact.id))===index);
     const manifestEntries=(manifest:string):{id:string;version:number;code?:string|null;type?:string;title?:string;content_hash?:string}[]=>{
       try { const parsed=JSON.parse(manifest); return Array.isArray(parsed)?parsed:[]; }
