@@ -134,7 +134,7 @@ Work Item 的 Context 不应等同于聊天记录。建议分为以下几类：
 
 **Agent Execution Workflow** 管理 Agent 的内部计划、工具调用、并行分析、重试和上下文压缩。LangGraph 等 Agent Framework 可以管理这部分状态，但它的执行状态不能成为 Work Item 的唯一业务状态来源。
 
-已有的 [AI 时代的业务流程：Workflow 应该用 BPMN 还是 Agent](./workflow%20and%20agent%20and%20bpmn) 讨论了 Business Workflow 与 Agent Workflow 的编排权边界。这里是在该边界上增加 Collaboration 层：外层业务流程持有事项状态，协作层管理人与 Agent 的参与和交接，Agent Runtime 执行被分配的工作。
+已有的 [AI 时代的业务流程：Workflow 应该用 BPMN 还是 Agent](https://devweekly.github.io/posts/workflow-and-agent-and-bpmn/) 讨论了 Business Workflow 与 Agent Workflow 的编排权边界。这里是在该边界上增加 Collaboration 层：外层业务流程持有事项状态，协作层管理人与 Agent 的参与和交接，Agent Runtime 执行被分配的工作。
 
 ### 一个架构分析事项的生命周期
 
@@ -241,6 +241,8 @@ Camunda User Task 可以配置 assignee、candidateUsers 和 candidateGroups，�
 - [Camunda 8 User Tasks](https://docs.camunda.io/docs/components/modeler/bpmn/user-tasks/)
 - [Temporal Durable Execution](https://docs.temporal.io/durable-execution)
 - [Temporal Design Patterns](https://docs.temporal.io/design-patterns)
+- [Microsoft Agent Framework：Workflow Orchestrations](https://learn.microsoft.com/en-us/agent-framework/workflows/orchestrations/)（Sequential、Concurrent、Handoff、Group Chat、Magentic）
+- [Microsoft Azure Architecture Center：AI Agent Orchestration Patterns](https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/ai-agent-design-patterns/)
 - [Google：A2A 与 MCP 的分工](https://docs.cloud.google.com/agent-registry/a2a-protocol)
 
 ## 13. 推荐的落地路径
