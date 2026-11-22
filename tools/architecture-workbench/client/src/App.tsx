@@ -16,6 +16,7 @@ import { api, setActor } from "./api";
 import type { Activity, AgentPlan, AgentProfile, AgentRun, Artifact, Bootstrap, Comment, DebtItem, ExternalResourceRef, MyTask, Person, Participation, Review, WorkItem, WorkItemDetail, WorkTask, WorkbenchAnalytics } from "./types";
 
 const AnalyticsCharts = lazy(() => import("./AnalyticsCharts"));
+const MarkdownContent = lazy(() => import("./MarkdownContent"));
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
@@ -520,8 +521,13 @@ export default function App() {
     const packageReady=Boolean(String(requestPackage.goal || "").trim() && String(requestPackage.scope || "").trim() && String(requestPackage.decisionQuestions || "").trim() && String(requestPackage.submissionMessage || "").trim());
     const showArtifact=(artifact:Artifact)=>Modal.info({
       title:(artifact.code || artifact.type)+" · "+artifact.title+" · v"+artifact.version,
-      width:820,
-      content:<div style={{maxHeight:"65vh",overflow:"auto"}}><Paragraph>{artifact.summary}</Paragraph><Paragraph style={{whiteSpace:"pre-wrap"}}>{artifact.content}</Paragraph></div>
+      width:960,
+      content:<Suspense fallback={<div style={{padding:24,textAlign:"center"}}>正在加载内容渲染器…</div>}>
+        <div className="agent-artifact-content">
+          {artifact.summary ? <MarkdownContent content={artifact.summary} /> : null}
+          {artifact.content ? <MarkdownContent content={artifact.content} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无正文" />}
+        </div>
+      </Suspense>
     });
     const taskExecutor=(task:WorkTask)=>{
       const run=detail.agentRuns.find(entry=>entry.task_id===task.id && ["running","queued","waiting_for_human"].includes(entry.status));
