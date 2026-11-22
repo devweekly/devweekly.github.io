@@ -421,9 +421,9 @@ export default function App() {
             <Col xs={24} lg={8}>{breakdownCard("按严重程度",d.bySeverity)}</Col>
             <Col xs={24} lg={8}>{breakdownCard("按优先级",d.byPriority)}</Col>
           </Row>
-          <Card title={"当前技术债务 · "+debtItems.filter(item=>["open","in_progress"].includes(item.debt_status)).length} className="panel-card" extra={<Button type="link" onClick={()=>navigatePage("debts")}>打开债务台账</Button>}>
+          <Card title={"尚未解决的技术债务 · "+debtItems.filter(item=>["open","in_progress"].includes(item.debt_status)).length} className="panel-card" extra={<Button type="link" onClick={()=>navigatePage("debts")}>打开技术债务台账</Button>}>
             <Paragraph type="secondary">这里列出尚未解决的技术债务。打开记录可查看负责人、处理计划和目标日期。</Paragraph>
-            <Table size="small" rowKey="id" dataSource={debtItems.filter(item=>["open","in_progress"].includes(item.debt_status)).slice(0,8)} pagination={false} locale={{emptyText:"当前没有待偿还的技术债务"}} columns={[
+            <Table size="small" rowKey="id" dataSource={debtItems.filter(item=>["open","in_progress"].includes(item.debt_status)).slice(0,8)} pagination={false} locale={{emptyText:"当前没有待处理的技术债务"}} columns={[
               {title:"技术债务",dataIndex:"title",render:(value:string,row:DebtItem)=><div><Text strong>{row.code}</Text><div>{value}</div></div>},
               {title:"严重程度",dataIndex:"severity",render:(value:string)=><Tag color={value==="critical"?"red":value==="high"?"orange":"default"}>{value}</Tag>},
               {title:"状态",dataIndex:"debt_status",render:(value:string)=><Tag>{statusLabels[value] || value}</Tag>},
@@ -491,7 +491,7 @@ export default function App() {
       {title:"申请人",dataIndex:"requestor_name",render:(value:string|null)=>value || "—"}
     ];
     return <div className="page-stack">
-      <div className="page-heading"><div><Text type="secondary">PERSONAL WORK QUEUE</Text><Title level={2}>我的工作</Title><Paragraph type="secondary">这里汇总你负责或正在处理的工作。任务负责人对结果负责；执行人负责具体处理。</Paragraph></div></div>
+      <div className="page-heading"><div><Text type="secondary">我的任务</Text><Title level={2}>我的工作</Title><Paragraph type="secondary">这里汇总你负责或正在处理的工作。任务负责人对结果负责；执行人负责具体处理。</Paragraph></div></div>
       <Row gutter={[16,16]}>
         <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="待完成任务" value={activeTasks.length} /></Card></Col>
         <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="处理中" value={activeTasks.filter(task=>task.status==="in_progress").length} /></Card></Col>
@@ -719,7 +719,7 @@ export default function App() {
 
           <Card size="small" title={"评审记录 · "+detail.reviews.length}>
             <Text type="secondary" className="small">{currentCycle ? currentCycle.name+" · 本轮评审材料版本" : "尚未启动评审"}</Text>
-            {permissions.includes("review") && currentCycle?.status==="active" && item.status==="discussion_review" ? <Button size="small" icon={<PlusOutlined />} onClick={()=>{reviewForm.resetFields();reviewForm.setFieldsValue({artifactId:reviewableArtifacts[0]?.id || "__request_package__",outcome:"comment",discipline:actorPerson?.title || "General"});setReviewOpen(true);}}>提交评审意见</Button>:null}
+            {permissions.includes("review") && currentCycle?.status==="active" && item.status==="discussion_review" ? <Button size="small" icon={<PlusOutlined />} onClick={()=>{reviewForm.resetFields();reviewForm.setFieldsValue({artifactId:reviewableArtifacts[0]?.id || "__request_package__",outcome:"comment",discipline:actorPerson?.title || "通用评审"});setReviewOpen(true);}}>提交评审意见</Button>:null}
             <List size="small" dataSource={detail.reviews} locale={{emptyText:"尚无评审意见"}} renderItem={(review:Review)=><List.Item><List.Item.Meta title={<Space wrap><Text strong>{review.reviewer_name}</Text><Tag>{review.discipline}</Tag><Tag color={review.outcome==="objection"?"error":review.outcome==="clarification_requested"?"warning":"default"}>{statusLabels[review.outcome] || review.outcome}</Tag></Space>} description={<>{review.summary}<div className="small muted">{review.artifact_code || review.artifact_title} · v{review.artifact_version} · {dateText(review.created_at)}</div></>} /></List.Item>} />
           </Card>
 
@@ -812,7 +812,7 @@ export default function App() {
       </Form>
     </Modal>
 
-    <Modal title="添加架构产物 / ADR" open={artifactOpen} onCancel={()=>setArtifactOpen(false)} onOk={()=>void submitForm(artifactForm,async()=>api.createArtifact(selected!.id,artifactForm.getFieldsValue()),"材料已保存",()=>setArtifactOpen(false))} confirmLoading={busy} width={720}>
+    <Modal title="添加架构材料 / ADR" open={artifactOpen} onCancel={()=>setArtifactOpen(false)} onOk={()=>void submitForm(artifactForm,async()=>api.createArtifact(selected!.id,artifactForm.getFieldsValue()),"材料已保存",()=>setArtifactOpen(false))} confirmLoading={busy} width={720}>
       <Form form={artifactForm} layout="vertical" initialValues={{type:"ADR",status:"proposed"}}>
         <Row gutter={12}><Col span={8}><Form.Item name="type" label="类型"><Select options={[{value:"ADR",label:"ADR"},{value:"Architecture Overview",label:"架构方案"},{value:"Architecture Diagram",label:"架构图"},{value:"Evidence",label:"证据"}]} /></Form.Item></Col><Col span={8}><Form.Item name="code" label="编号"><Input placeholder="ADR-004" /></Form.Item></Col><Col span={8}><Form.Item name="status" label="状态"><Select options={[{value:"draft",label:"草稿"},{value:"proposed",label:"提议"},{value:"submitted",label:"已提交"}]} /></Form.Item></Col></Row>
         <Form.Item name="title" label="标题" rules={[{required:true}]}><Input /></Form.Item>
