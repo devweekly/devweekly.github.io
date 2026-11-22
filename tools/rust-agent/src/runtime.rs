@@ -399,19 +399,12 @@ impl SessionStore {
     /// Redact source transcript messages from persisted sessions without changing
     /// the current-session pointer. Tool evidence can have been stored as a user
     /// protocol message, so matching uses the exact message content.
-    fn redact_transcript_sources(
-        &self,
-        sources: &[TranscriptEntry],
-        skip_session_id: Option<&str>,
-    ) -> Result<usize, AgentError> {
+    fn redact_transcript_sources(&self, sources: &[TranscriptEntry]) -> Result<usize, AgentError> {
         if sources.is_empty() { return Ok(0); }
         ensure_real_directory(&self.directory)?;
         let mut processed_sessions: Vec<String> = Vec::new();
         let mut removed = 0usize;
         for source in sources {
-            if skip_session_id == Some(source.session_id.as_str()) {
-                continue;
-            }
             if processed_sessions.iter().any(|session_id| session_id == &source.session_id) {
                 continue;
             }
@@ -1155,12 +1148,12 @@ impl AgentRuntime {
     }
     pub fn forget_memory(&mut self, id: &str) -> Result<(), AgentError> {
         let sources = self.memory_store.forget_with_sources(id)?;
-        self.store.redact_transcript_sources(&sources, Some(&self.session.session_id))?;
-        if !sources.is_empty() {
-            self.messages.retain(|message| !sources.iter().any(|source|
-                source.session_id == self.session.session_id && source.content == message.content
-            ));
-            self.persist()?;
+        self.store.redact_transcript_sources(&sources)?;
+        if sources.iter().any(|source| source.session_id == self.session.session_id) {
+            // Reload after the revision-checked file update so a concurrent Runtime
+            // cannot have its newer messages discarded by this instance's stale copy.
+            self.session = self.store.load(&self.session.session_id)?;
+            self.messages = self.session.messages.clone();
         }
         Ok(())
     }
@@ -3321,7 +3314,7 @@ mod tests {
             created_at_ms: now,
         };
 
-        assert_eq!(store.redact_transcript_sources(&[source], None).unwrap(), 1);
+        assert_eq!(store.redact_transcript_sources(&[source]).unwrap(), 1);
         assert_eq!(fs::read_to_string(directory.join("latest")).unwrap(), "latest-session");
         let loaded = store.load("source-session").unwrap();
         assert!(loaded.messages.iter().all(|message| message.content != "private source text"));
