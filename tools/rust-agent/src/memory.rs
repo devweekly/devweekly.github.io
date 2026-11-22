@@ -945,7 +945,7 @@ impl MemoryStore {
         loop {
             let mut changed = false;
             for (page_id, _, links_json, content) in &page_rows {
-                if page_id == "index" || deleted_pages.contains(page_id) { continue; }
+                if deleted_pages.contains(page_id) { continue; }
                 let links: Vec<String> = serde_json::from_str(links_json)?;
                 let points_to_deleted = links.iter().any(|link| deleted_pages.contains(link))
                     || markdown_page_links(content).iter().any(|link| deleted_pages.contains(link));
@@ -2760,6 +2760,72 @@ mod tests {
             delete_pages: vec![],
         };
         assert!(store.apply_dreaming(output).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn forgetting_a_source_redacts_historical_index_links_even_after_current_update() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript(
+            "s1", None, None, "user", "Create then remove an indexed knowledge item"
+        ).unwrap();
+        let source = store.propose(
+            input(MemoryScope::Global, None, "An indexed private source fact"),
+            95,
+            vec![format!("transcript:{transcript}")],
+        ).unwrap();
+        store.set_status(&source.id, MemoryStatus::Consolidated).unwrap();
+
+        store.apply_dreaming(DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![],
+            pages: vec![
+                DreamingPage {
+                    id: "indexed-private-page".into(),
+                    title: "Private page".into(),
+                    summary: "A page that will be forgotten".into(),
+                    content: "Private page content".into(),
+                    scope: MemoryScope::Global,
+                    scope_id: None,
+                    evidence: vec![format!("memory:{}", source.id)],
+                    links: vec![],
+                },
+                DreamingPage {
+                    id: "index".into(),
+                    title: "Knowledge Index".into(),
+                    summary: "Indexed pages".into(),
+                    content: "See [private](indexed-private-page.md).".into(),
+                    scope: MemoryScope::Global,
+                    scope_id: None,
+                    evidence: vec![format!("transcript:{transcript}")],
+                    links: vec![],
+                },
+            ],
+            delete_pages: vec![],
+        }).unwrap();
+        store.apply_dreaming(DreamingOutput {
+            reviewed_through: transcript,
+            notes: vec![],
+            pages: vec![DreamingPage {
+                id: "index".into(),
+                title: "Knowledge Index".into(),
+                summary: "Index after link removal".into(),
+                content: "No private item is currently listed.".into(),
+                scope: MemoryScope::Global,
+                scope_id: None,
+                evidence: vec![format!("transcript:{transcript}")],
+                links: vec![],
+            }],
+            delete_pages: vec![],
+        }).unwrap();
+
+        store.forget(&source.id).unwrap();
+        let index = store.get_page("index").unwrap();
+        assert!(index.content.contains("rebuilt from retained pages"));
+        let revisions = store.list_page_revisions("index", 10).unwrap();
+        assert_eq!(revisions.len(), 1);
+        assert_eq!(revisions[0].action, "redacted");
         let _ = fs::remove_dir_all(root);
     }
 
