@@ -586,7 +586,7 @@ export default function App() {
         <Space wrap>
           {permissions.includes("contribute") && <Button icon={<PlusOutlined />} onClick={()=>setArtifactOpen(true)}>添加材料</Button>}
           {canSubmitRequest && ["draft","requestor_revision"].includes(item.status) && <Button onClick={()=>{packageForm.setFieldsValue({...requestPackage});setPackageOpen(true);}}>编辑 Request Package</Button>}
-          {detail.workflow.availableActions.includes("submit_request") && <Button type="primary" onClick={()=>void transitionWorkflow("submit_request",{submissionMessage:String(requestPackage.submissionMessage || "Request Package: "+item.title),package:requestPackage})}>提交 Request</Button>}
+          {detail.workflow.availableActions.includes("submit_request") && <Button type="primary" onClick={()=>void transitionWorkflow("submit_request",{submissionMessage:String(requestPackage.submissionMessage || "Request Package: "+item.title),package:requestPackage,assistedByRunId:requestPackage.assistedByRunId ? String(requestPackage.assistedByRunId) : undefined})}>提交 Request</Button>}
           {detail.workflow.availableActions.includes("record_decision") && <Button type="primary" onClick={()=>{decisionForm.resetFields();decisionForm.setFieldsValue({outcome:"approved"});setDecisionOpen(true);}}>记录决定会议结论</Button>}
         </Space>
       </div>
@@ -789,6 +789,7 @@ export default function App() {
         <Form.Item name="initialProposal" label="初步方案（可选）"><TextArea rows={3}/></Form.Item>
         <Form.Item name="decisionQuestions" label="需要委员会决定的问题"><TextArea rows={2}/></Form.Item>
         <Form.Item name="submissionMessage" label="提交说明（类似 Git Commit Message）" rules={[{required:true}]}><Input/></Form.Item>
+        <Form.Item name="assistedByRunId" label="Agent 辅助记录（可选）"><Select allowClear showSearch optionFilterProp="label" placeholder="选择用于准备本次 Request Package 的已完成 Agent Run" options={(detail?.agentRuns || []).filter(run=>run.status==="completed").map(run=>({value:run.id,label:run.skill_name+" · "+run.id.slice(0,12)}))}/></Form.Item>
       </Form>
     </Modal>
 
