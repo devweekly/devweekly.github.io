@@ -238,7 +238,7 @@ app.post("/api/work-items/:id/participations",(req,res)=>{
   if (body.roleKey==="chairman" && item?.requestor_id!==actor && !isGlobalAdmin(actor)) return res.status(403).json({error:"Only the Requestor or a Workbench Admin may designate the Chairman."});
   if (body.roleKey==="chairman" && !body.permissions.includes("read")) return res.status(400).json({error:"The Chairman must have read permission."});
   const actorGrants=permissions(workItemId,actor);
-  if (!isGlobalAdmin(actor) && !actorGrants.includes("decide") && body.permissions.includes("decide")) {
+  if (!isGlobalAdmin(actor) && !actorGrants.includes("decide") && body.permissions.includes("decide") && body.roleKey!=="chairman") {
     return res.status(403).json({error:"Only a Workbench Admin or an existing Decision Authority can grant decide permission."});
   }
   if (!isGlobalAdmin(actor) && !actorGrants.includes("manage") && body.permissions.includes("manage")) {
@@ -263,7 +263,7 @@ app.put("/api/work-items/:id/participations/:participationId",(req,res)=>{
   if (!body.roleKey || !body.roleLabel || !Array.isArray(body.permissions)) return res.status(400).json({error:"roleKey, roleLabel and permissions are required"});
   if (body.permissions.some((permission:string)=>!allowed.includes(permission)) || !body.permissions.includes("read")) return res.status(400).json({error:"Participation requires read and only supported permissions."});
   const actorGrants=permissions(workItemId,actor);
-  if (!isGlobalAdmin(actor) && !actorGrants.includes("decide") && body.permissions.includes("decide")) {
+  if (!isGlobalAdmin(actor) && !actorGrants.includes("decide") && body.permissions.includes("decide") && body.roleKey!=="chairman") {
     return res.status(403).json({error:"Only a Workbench Admin or an existing Decision Authority can grant decide permission."});
   }
   if (!isGlobalAdmin(actor) && !actorGrants.includes("manage") && body.permissions.includes("manage")) {
@@ -351,8 +351,10 @@ app.post("/api/work-items/:id/reviews",(req,res)=>{
   const artifact=artifactId ? one<{id:string;version:number;title:string;submitted_by:string}>("SELECT id,version,title,submitted_by FROM artifacts WHERE id=? AND work_item_id=?",artifactId,workItemId) : null;
   if (artifactId && !artifact) return res.status(400).json({error:"Review target does not belong to this Request."});
   if (artifact?.submitted_by===actor) return res.status(403).json({error:"Independent review cannot be submitted by the Artifact author."});
-  const cycle=one<{id:string;baseline_json:string}>("SELECT id,baseline_json FROM review_cycles WHERE work_item_id=? AND status='active' ORDER BY created_at DESC LIMIT 1",workItemId);
+  const cycle=one<{id:string;baseline_json:string;reviewer_snapshot_json:string}>("SELECT id,baseline_json,reviewer_snapshot_json FROM review_cycles WHERE work_item_id=? AND status='active' ORDER BY created_at DESC LIMIT 1",workItemId);
   if (!cycle) return res.status(409).json({error:"The Request has no active Review Cycle."});
+  const reviewerSnapshot=JSON.parse(cycle.reviewer_snapshot_json || "[]") as {person_id:string}[];
+  if (!reviewerSnapshot.some(reviewer=>reviewer.person_id===actor)) return res.status(403).json({error:"This person was not assigned to the current Review Cycle."});
   const baseline=JSON.parse(cycle.baseline_json) as {id:string;version:number}[];
   if (artifact && !baseline.some(entry=>entry.id===artifact.id && entry.version===artifact.version)) {
     return res.status(409).json({error:"This Artifact version is outside the active Submission baseline."});
