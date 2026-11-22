@@ -40,7 +40,7 @@ Provide a reference MCP Agent Host process, started with npm run agent-host. It 
 
 The Host is provider-neutral. A deployment supplies a module exporting createAgentExecutors(); each executor implements the interface in server/agents/host.ts. It owns provider-specific prompt construction, model invocation, credentials and any optional source-system MCP/API clients. The Workbench owns the plan graph, role-to-Skill mapping, authorization, durable Run state and result Artifact.
 
-The Host may run multiple workers per profile. Each successful claim returns a random one-time claim token. Complete, fail, hand-off and synthesis-context operations require that token; ordinary Plan and Run listings never return it. This binds write-back to the worker that received the claim, even when multiple workers share one non-admin Service Principal. Competing workers are safe to use against the same queue because claiming remains a conditional database update. The current prototype does not yet implement expiring claim leases or automatic recovery for a Host that crashes after claiming a Run.
+The Host may run multiple workers per profile. Each successful claim returns a random one-time claim token and a server-defined lease duration. Complete, fail, hand-off, heartbeat and synthesis-context operations require that token; ordinary Plan and Run listings never return it. The Workbench Server owns lease expiry and recovery; the Host renews the lease while work is active. Expired leases are requeued with their old token invalidated, subject to a bounded attempt count. The implementation and recovery policy are detailed in ADR-0009.
 
 ## Security and accountability
 
@@ -59,7 +59,7 @@ The Host may run multiple workers per profile. Each successful claim returns a r
 - Specialist findings remain separate Artifacts, while the synthesis result has an explicit Plan-level reference.
 - The Host can be deployed separately and scaled horizontally without coupling the Workbench Server to a model vendor.
 - The Executor plugin contract still needs a concrete deployment adapter. This repository deliberately does not select or bundle a provider SDK.
-- Stale running nodes after a Host crash require operator recovery until lease/heartbeat support is added.
+- The Executor plugin contract still needs a concrete deployment adapter. This repository deliberately does not select or bundle a provider SDK.
 
 ## Validation
 
@@ -70,6 +70,7 @@ The CI MCP-over-HTTP smoke test exercises:
 - Synthesis context containing all completed specialist Artifacts.
 - Plan completion with a Plan-level result Artifact.
 - The provider-neutral Agent Host against a real MCP HTTP server using deterministic test Executors.
+- Server-side lease renewal, expiry recovery, bounded retries and stale claim-token rejection.
 
 ## References
 
