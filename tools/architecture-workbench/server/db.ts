@@ -87,7 +87,7 @@ run("UPDATE work_items SET requestor_id=owner_id WHERE requestor_id IS NULL");
 run("UPDATE tasks SET owner_id=COALESCE(assignee_id,(SELECT owner_id FROM work_items WHERE work_items.id=tasks.work_item_id)) WHERE owner_id IS NULL");
 
 // Normalize stored Artifact fingerprints to a full SHA-256 digest.
-for (const artifact of all<{id:string;content:string;content_hash:string}>("SELECT id,content,content_hash FROM artifacts")) {
+for (const artifact of all<{id:string;content:string;content_hash:string}>("SELECT id,content,content_hash FROM artifacts WHERE length(content_hash)<>64 OR content_hash GLOB '*[^0-9a-f]*'")) {
   const digest=createHash("sha256").update(artifact.content).digest("hex");
   if (artifact.content_hash!==digest) run("UPDATE artifacts SET content_hash=? WHERE id=?",digest,artifact.id);
 }
@@ -102,3 +102,25 @@ for (const cycle of all<{id:string;work_item_id:string;baseline_json:string;crea
     submissionId,cycle.work_item_id,sequence,"review",cycle.baseline_json,null,cycle.created_by,cycle.created_at);
   run("UPDATE review_cycles SET submission_id=? WHERE id=?",submissionId,cycle.id);
 }
+
+// Bring legacy and pre-SHA seed Submission manifests up to the current fingerprint format.
+for (const submission of all<{id:string;manifest_json:string}>("SELECT id,manifest_json FROM submissions")) {
+  let manifest:unknown;
+  try { manifest=JSON.parse(submission.manifest_json); } catch { continue; }
+  if (!Array.isArray(manifest)) continue;
+  let changed=false;
+  const normalized=manifest.map((entry:unknown)=>{
+    if (!entry || typeof entry!=="object") return entry;
+    const row=entry as {id?:string;version?:number;content_hash?:string;code?:string|null;type?:string;title?:string};
+    if (!row.id || !row.version) return entry;
+    const artifact=one<{code:string|null;type:string;title:string;content_hash:string}>(
+      "SELECT code,type,title,content_hash FROM artifacts WHERE id=? AND version=?",row.id,row.version
+    );
+    if (!artifact) return entry;
+    if (row.content_hash===artifact.content_hash && "code" in row && "type" in row && "title" in row) return entry;
+    changed=true;
+    return {...row,code:artifact.code,type:artifact.type,title:artifact.title,content_hash:artifact.content_hash};
+  });
+  if (changed) run("UPDATE submissions SET manifest_json=? WHERE id=?",JSON.stringify(normalized),submission.id);
+}
+
