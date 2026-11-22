@@ -61,8 +61,16 @@ export function seed() {
   ];
   for (const a of artifacts) run("INSERT INTO artifacts(id,work_item_id,type,code,title,version,status,summary,content,submitted_by,content_hash,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
     a[0],wi,a[1],a[2],a[3],1,a[4],a[5],a[6],"u-sa","seed-"+a[0],created);
-  run("INSERT INTO review_cycles(id,work_item_id,name,baseline_json,status,due_date,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
-    "cycle-101",wi,"Architecture Review · Round 1",JSON.stringify([{id:"adr-101",version:1},{id:"adr-102",version:1},{id:"adr-103",version:1},{id:"doc-101",version:1}]),"active","2026-11-27","u-sa",created);
+  const reviewBaseline=[
+    {id:"adr-101",version:1,code:"ADR-001",type:"ADR",title:"API Gateway 与领域服务的边界",content_hash:"seed-adr-101"},
+    {id:"adr-102",version:1,code:"ADR-002",type:"ADR",title:"客户敏感数据的隔离策略",content_hash:"seed-adr-102"},
+    {id:"adr-103",version:1,code:"ADR-003",type:"ADR",title:"遗留批处理的过渡兼容方案",content_hash:"seed-adr-103"},
+    {id:"doc-101",version:1,code:null,type:"Architecture Overview",title:"目标架构与迁移路线",content_hash:"seed-doc-101"}
+  ];
+  run("INSERT INTO submissions(id,work_item_id,sequence,purpose,manifest_json,context_version,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
+    "sub-101",wi,1,"review",JSON.stringify(reviewBaseline),4,"u-sa",created);
+  run("INSERT INTO review_cycles(id,work_item_id,submission_id,name,baseline_json,status,due_date,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+    "cycle-101",wi,"sub-101","Review · Submission 1",JSON.stringify(reviewBaseline),"active","2026-11-27","u-sa",created);
   const reviews = [
     ["rev-101","adr-101","u-ea","Enterprise Architecture","approve","边界清晰，建议补充 API 生命周期与标准目录的关联。",["补充 API 版本治理","明确领域服务的标准责任"]],
     ["rev-102","adr-102","u-sec","Security","request_changes","整体方向可行，但字段级保护与审计留存要求需要明确。",["给出敏感字段分类依据","说明审计保留周期与查询权限"]],
@@ -71,11 +79,11 @@ export function seed() {
   for (const r of reviews) run("INSERT INTO reviews(id,cycle_id,artifact_id,artifact_version,reviewer_id,discipline,outcome,summary,findings_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
     r[0],"cycle-101",r[1],1,r[2],r[3],r[4],r[5],JSON.stringify(r[6]),created);
   const tasks = [
-    ["task-101","补充 ADR-002 敏感字段分类与审计要求","revision","in_progress","u-sa","2026-11-25","adr-102"],
-    ["task-102","确认批处理适配器退出条件","analysis","open","u-sme","2026-11-28","adr-103"],
-    ["task-103","准备架构评审决策材料","decision_prep","open","u-chair","2026-11-27",null]
+    ["task-101","补充 ADR-002 敏感字段分类与审计要求","revision","in_progress","u-sa","u-sa","2026-11-25","adr-102"],
+    ["task-102","确认批处理适配器退出条件","analysis","open","u-sa","u-sme","2026-11-28","adr-103"],
+    ["task-103","准备架构评审决策材料","decision_prep","open","u-sa","u-chair","2026-11-27",null]
   ];
-  for (const t of tasks) run("INSERT INTO tasks(id,work_item_id,title,kind,status,assignee_id,due_date,relates_to,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",t[0],wi,t[1],t[2],t[3],t[4],t[5],t[6],created,created);
+  for (const t of tasks) run("INSERT INTO tasks(id,work_item_id,title,kind,status,owner_id,assignee_id,due_date,relates_to,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",t[0],wi,t[1],t[2],t[3],t[4],t[5],t[6],t[7],created,created);
   run("INSERT INTO comments(id,work_item_id,author_id,body,created_at) VALUES(?,?,?,?,?)","comment-101",wi,"u-sme","业务侧确认：首期必须兼容现有日终批处理窗口，不能要求所有消费者同步切换。",created);
   run("INSERT INTO activity_events(id,work_item_id,actor_id,action,target_type,target_id,summary,metadata_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",id("evt"),wi,"u-sa","submitted","work_item",wi,"提交架构方案与 3 份 ADR，进入第一轮评审。","{}",created);
   run("INSERT INTO activity_events(id,work_item_id,actor_id,action,target_type,target_id,summary,metadata_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",id("evt"),wi,"u-sec","reviewed","artifact","adr-102","Security Reviewer 提交修改意见。","{}",created);
@@ -84,7 +92,7 @@ export function seed() {
   for (const p of [["u-dev","delivery_owner","Delivery Owner",["read","contribute","comment"]],["u-sa","architect","Architect",["read","review","comment"]],["u-chair","decision_authority","Decision Authority",["read","decide","manage"]]]) {
     run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",id("part"),second,p[0],p[1],p[2],JSON.stringify(p[3]),created);
   }
-  run("INSERT INTO tasks(id,work_item_id,title,kind,status,assignee_id,due_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)","task-201",second,"梳理当前失败重试与补偿路径","analysis","in_progress","u-dev","2026-11-29",created,created);
+  run("INSERT INTO tasks(id,work_item_id,title,kind,status,owner_id,assignee_id,due_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)","task-201",second,"梳理当前失败重试与补偿路径","analysis","in_progress","u-dev","u-dev","2026-11-29",created,created);
   const debt = "wi-debt-001";
   run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,target_date,context_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",debt,"DEBT-2026-006","technical_debt","移除客户数据平台遗留批处理适配器","当前 ADR-003 接受的阶段性 workaround。目标是在消费者迁移完成后移除适配器。","open","high","u-dev","2027-03-31",1,created,created);
   run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",id("part"),debt,"u-dev","debt_owner","Debt Owner",JSON.stringify(["read","contribute","comment","manage"]),created);
