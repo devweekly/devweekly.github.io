@@ -9,8 +9,6 @@ body { color: #1d2939; background: #f4f6f9; }
 .app-sider .ant-menu { border-inline-end: 0; padding: 0 10px; }
 .app-sider .ant-menu-item { margin: 4px 0; width: 100%; }
 .sider-footer { position: absolute; bottom: 18px; width: 100%; }
-.sider-footer .workspace-label { padding-top: 12px; }
-.sider-note { color: #667085; font-size: 12px; display: flex; align-items: center; gap: 9px; padding: 7px 22px; }
 .sider-version { border-top: 1px solid #edf0f4; padding: 14px 22px 0; margin-top: 12px; color: #98a2b3; font-size: 11px; }
 .app-header { background: rgba(255,255,255,.92); border-bottom: 1px solid #e8edf3; height: 64px; padding: 0 28px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 5; }
 .app-content { padding: 28px 30px 40px; max-width: 1680px; width: 100%; margin: 0 auto; }
@@ -47,7 +45,7 @@ body { color: #1d2939; background: #f4f6f9; }
 .comment-list { margin-top: 16px; }
 .comment-list .ant-list-item { padding: 14px 0; }
 .modal-alert { margin-bottom: 18px; }
-@media (max-width: 900px) {
+@media (max-width: 767px) {
   .app-sider { width: 72px !important; min-width: 72px !important; max-width: 72px !important; }
   .brand { padding: 0 18px; }
   .brand > div:last-child, .workspace-label, .app-sider .ant-menu-title-content, .sider-footer { display: none; }
@@ -70,3 +68,24 @@ body { color: #1d2939; background: #f4f6f9; }
 .participant-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .participant-main .ant-tag { margin-inline-end: 4px; margin-top: 3px; }
 .profile-expertise { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+/* Stable navigation and explicit workflow hierarchy. */
+@media (min-width: 768px) {
+  .app-sider { flex: 0 0 238px !important; max-width: 238px !important; min-width: 238px !important; width: 238px !important; }
+}
+.analytics-insight { display: block; margin: 0 0 10px; font-size: 12px; }
+.analytics-bar { margin: 10px 0 14px; }
+.analytics-track { height: 6px; overflow: hidden; border-radius: 999px; background: #edf1f6; }
+.analytics-track > span { display: block; height: 100%; border-radius: inherit; background: #6484b2; }
+.workflow-current-card { margin: 0 0 14px; border: 1px solid #dbe5f1; background: #f8fafd; }
+.workflow-current-grid { display: grid; grid-template-columns: minmax(130px, .7fr) minmax(180px, 1fr) minmax(240px, 2fr); gap: 20px; align-items: start; }
+.workflow-current-grid > div { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.workflow-label { font-size: 11px; }
+.workflow-next-action { padding-left: 20px; border-left: 1px solid #dbe5f1; }
+.ant-modal .ant-modal-content { background: #fff !important; }
+.ant-modal .ant-modal-header, .ant-modal .ant-modal-body, .ant-modal .ant-modal-footer { background: transparent !important; }
+.ant-modal-mask { background: rgba(16, 24, 40, .48) !important; }
+@media (max-width: 767px) {
+  .workflow-current-grid { grid-template-columns: 1fr; gap: 12px; }
+  .workflow-next-action { padding-left: 0; border-left: 0; padding-top: 10px; border-top: 1px solid #dbe5f1; }
+}
