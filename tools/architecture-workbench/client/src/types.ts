@@ -52,7 +52,7 @@ export interface WorkItemDetail {
   activity:Activity[]; attachments:Attachment[]; externalLinks:ExternalResourceLink[]; agentRuns:AgentRun[]; agentPlans:AgentPlan[];
   permissions:string[]; canManageParticipants:boolean; workflow:WorkflowProjection;
 }
-export interface Bootstrap { actorId:string; people:Person[]; workItems:WorkItem[]; debts:DebtItem[]; counts:{openWorkItems:number;awaitingReview:number;activeDebts:number;myTasks:number}; }
+export interface Bootstrap { actorId:string; people:Person[]; workItems:WorkItem[]; debts:DebtItem[]; }
 
 export interface Attachment { id:string; original_name:string; content_type:string; size_bytes:number; uploaded_by:string; created_at:string; }
 
