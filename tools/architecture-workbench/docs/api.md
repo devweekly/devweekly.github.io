@@ -40,7 +40,7 @@ The prototype uses x-demo-user-id to simulate the authenticated Human Principal.
 
 ## Task accountability
 
-A Task has an accountable `owner_id` and an optional current `assignee_id`. Both Human principals must be Work Item participants. When creating a Task, the server defaults the Owner to the Work Item Owner if `ownerId` is omitted; `assigneeId` may be omitted when work has not yet been allocated. The current Assignee or Task Owner can update task status. Only a Work Item contributor can reassign either principal or change the due date. The Agent Run's `claimed_by` remains execution metadata and does not modify either field.
+A Task has an accountable `owner_id` and an optional current `assignee_id`. Both Human principals must be Work Item participants. When creating a Task, the server defaults the Owner to the Work Item Owner if `ownerId` is omitted; `assigneeId` may be omitted when work has not yet been allocated. The current Assignee or Task Owner can update task status. Only a Work Item contributor can reassign either principal or change the due date. The Agent Run's `claimed_by` remains execution metadata and does not modify either field. The REST endpoints and `workbench_create_task` / `workbench_update_task` MCP tools enforce the same participant and accountability rules; Agent Hosts cannot bypass them by writing through MCP.
 
 ## External resource references
 
