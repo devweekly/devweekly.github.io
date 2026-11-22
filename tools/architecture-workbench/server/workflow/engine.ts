@@ -71,20 +71,29 @@ function createRequestSubmission(workItemId:string,actorId:string,input:Submissi
   );
   if (!item) throw new Error("Work Item not found.");
   if (item.requestor_id!==actorId) throw new Error("Only the Requestor may submit this Request Package.");
-  if (input.assistedByRunId) {
-    const agentRun=one<{work_item_id:string;status:string}>("SELECT work_item_id,status FROM agent_runs WHERE id=?",input.assistedByRunId);
+  const packageValue=(input.package ?? (item.request_package_json ? JSON.parse(item.request_package_json) : {})) as Record<string,unknown>;
+  const message=String(input.submissionMessage || packageValue.submissionMessage || "").trim();
+  if (!String(packageValue.goal || "").trim() || !String(packageValue.scope || "").trim() || !String(packageValue.decisionQuestions || "").trim() || !message) {
+    throw new Error("The Request Package requires a goal, scope, committee decision questions and a submission message before it can be submitted.");
+  }
+  const assistedByRunId=input.assistedByRunId || (typeof packageValue.assistedByRunId==="string" ? packageValue.assistedByRunId : null);
+  if (assistedByRunId) {
+    const agentRun=one<{work_item_id:string;status:string}>("SELECT work_item_id,status FROM agent_runs WHERE id=?",assistedByRunId);
     if (!agentRun || agentRun.work_item_id!==workItemId || agentRun.status!=="completed") {
       throw new Error("The assisting Agent Run must be completed and belong to this Request.");
     }
   }
+  const externalReferences=all<{provider:string;resource_type:string;external_id:string;external_key:string;title:string;url:string;relation_type:string;confluence_template_key:string|null;confluence_template_name:string|null}>(
+    "SELECT r.provider,r.resource_type,r.external_id,r.external_key,r.title,r.url,l.relation_type,l.confluence_template_key,l.confluence_template_name FROM work_item_external_links l JOIN external_resource_refs r ON r.id=l.resource_id WHERE l.work_item_id=? ORDER BY r.provider,r.resource_type,r.external_key",
+    workItemId
+  );
+  const packageSnapshot={...packageValue,externalReferences};
   const prior=one<{id:string}>("SELECT id FROM submissions WHERE work_item_id=? ORDER BY sequence DESC LIMIT 1",workItemId);
   const sequence=(one<{n:number}>("SELECT COALESCE(MAX(sequence),0) AS n FROM submissions WHERE work_item_id=?",workItemId)?.n || 0)+1;
   const manifest=snapshotManifest(workItemId);
-  const packageValue=input.package ?? (item.request_package_json ? JSON.parse(item.request_package_json) : {});
-  const message=String(input.submissionMessage || (packageValue as Record<string,unknown>).submissionMessage || "Initial Request Package").trim();
   const submissionId=id("sub");
   run("INSERT INTO submissions(id,work_item_id,sequence,purpose,manifest_json,context_version,created_by,created_at,submission_message,package_json,assisted_by_run_id,source_submission_id,submitted_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-    submissionId,workItemId,sequence,"request",JSON.stringify(manifest),item.context_version,actorId,timestamp,message,JSON.stringify(packageValue),input.assistedByRunId || null,prior?.id || null,item.requestor_id || actorId);
+    submissionId,workItemId,sequence,"request",JSON.stringify(manifest),item.context_version,actorId,timestamp,message,JSON.stringify(packageSnapshot),assistedByRunId || null,prior?.id || null,item.requestor_id || actorId);
   const reviewerCandidates=all<{person_id:string;display_name:string;role_key:string;permissions_json:string}>(
     "SELECT p.person_id,people.display_name,p.role_key,p.permissions_json FROM participations p JOIN people ON people.id=p.person_id WHERE p.work_item_id=? AND p.person_id<>? AND p.role_key NOT IN ('chairman','decision_authority') ORDER BY people.display_name",
     workItemId,item.requestor_id || actorId
