@@ -12,11 +12,17 @@ This is the entry point for the repository's LLM-maintained knowledge base. Orig
 ## Concepts
 
 - [Agent Memory](concepts/agent-memory.md) - Memory layers, consolidation, retrieval, and context injection.
+- [Memory Hierarchy](concepts/memory-hierarchy.md) - Working context, short-term records, and long-term episodic, semantic, and procedural memory.
+- [Personal Intelligence](concepts/personal-intelligence.md) - User models, context-sensitive preferences, personalization, and user control.
+- [Memory Dreaming](concepts/memory-dreaming.md) - Asynchronous consolidation, repair, generalization, and selective forgetting.
+- [Context Management](concepts/context-management.md) - Runtime context selection, retrieval, clearing, compaction, and cross-session persistence.
 - [LLM Wiki](concepts/llm-wiki.md) - An agent-maintained knowledge representation built incrementally from source material.
 
 ## References
 
-- [The components of agent memory](references/the-components-of-agent-memory.md) - Anthropic research on memory capture, consolidation, and wiki representations.
+- [The components of agent memory](references/the-components-of-agent-memory.md) - Anthropic's memory hierarchy and empirical wiki evaluation.
+- [Industry practice: personal memory and context](references/industry-memory-and-context.md) - Public product and engineering patterns from Anthropic, OpenAI, Google, and Letta.
+- [Research: memory, personalization, and context](references/research-memory-and-context-2026.md) - Recent surveys, architectures, and benchmarks.
 
 ## Maintenance
 
