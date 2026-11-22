@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { all, id, now, one, run } from "./db.js";
 
 export function seed() {
@@ -60,13 +61,10 @@ export function seed() {
     ["doc-101","Architecture Overview",null,"目标架构与迁移路线","submitted","分阶段迁移：数据接入、统一访问层、消费者切换。","Target state\nA shared customer data access layer with domain-owned controls.\n\nMigration\n1. Establish canonical customer identifiers.\n2. Introduce API façade and data contracts.\n3. Migrate consumers by business capability."]
   ];
   for (const a of artifacts) run("INSERT INTO artifacts(id,work_item_id,type,code,title,version,status,summary,content,submitted_by,content_hash,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-    a[0],wi,a[1],a[2],a[3],1,a[4],a[5],a[6],"u-sa","seed-"+a[0],created);
-  const reviewBaseline=[
-    {id:"adr-101",version:1,code:"ADR-001",type:"ADR",title:"API Gateway 与领域服务的边界",content_hash:"seed-adr-101"},
-    {id:"adr-102",version:1,code:"ADR-002",type:"ADR",title:"客户敏感数据的隔离策略",content_hash:"seed-adr-102"},
-    {id:"adr-103",version:1,code:"ADR-003",type:"ADR",title:"遗留批处理的过渡兼容方案",content_hash:"seed-adr-103"},
-    {id:"doc-101",version:1,code:null,type:"Architecture Overview",title:"目标架构与迁移路线",content_hash:"seed-doc-101"}
-  ];
+    a[0],wi,a[1],a[2],a[3],1,a[4],a[5],a[6],"u-sa",createHash("sha256").update(String(a[6]),"utf8").digest("hex"),created);
+  const reviewBaseline=all<{id:string;version:number;code:string|null;type:string;title:string;content_hash:string}>(
+    "SELECT id,version,code,type,title,content_hash FROM artifacts WHERE work_item_id=? ORDER BY id",wi
+  );
   run("INSERT INTO submissions(id,work_item_id,sequence,purpose,manifest_json,context_version,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
     "sub-101",wi,1,"review",JSON.stringify(reviewBaseline),4,"u-sa",created);
   run("INSERT INTO review_cycles(id,work_item_id,submission_id,name,baseline_json,status,due_date,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
