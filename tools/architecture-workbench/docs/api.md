@@ -93,6 +93,7 @@ The `/mcp` endpoint registers the following business and coordination tools alon
 | `agent_get_plan_context` | Read completed specialist outputs from a claimed synthesis node | synthesis claimant with contribute |
 | `agent_claim_next_run` | Poll and atomically claim the oldest queued node whose dependencies are complete; returns a per-claim token | read + contribute |
 | `agent_claim_run` | Claim a known queued Run assigned to the profile | read + contribute |
+| `agent_heartbeat_run` | Renew an unexpired Run lease; requires the current claim token | claimant with contribute + claim token |
 | `agent_complete_run` | Persist the claimed Run result as a draft Artifact; requires its claim token | claimant with contribute + claim token |
 | `agent_request_human_handoff` | Pause a Run and record Human questions/actions; requires its claim token | claimant with contribute + claim token |
 | `agent_fail_run` | Record a claimed Run failure; requires its claim token | claimant with contribute + claim token |
