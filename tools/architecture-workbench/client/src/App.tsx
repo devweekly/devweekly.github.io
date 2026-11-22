@@ -617,7 +617,7 @@ export default function App() {
         </Row>
       </Card>
       <Card size="small" title="Request Package" className="workspace-section">
-        {pendingPackageDraft && <Alert
+        {pendingPackageDraft && ["draft","requestor_revision"].includes(item.status) && <Alert
           type="info"
           showIcon
           message="Agent 已准备 Request Package 草案"
