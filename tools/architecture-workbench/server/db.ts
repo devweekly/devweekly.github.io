@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 const dbPath = resolve(process.env.DATABASE_PATH || "./data/architecture-workbench.sqlite");
 mkdirSync(dirname(dbPath), { recursive: true });
@@ -85,6 +85,12 @@ ensureColumn("agent_runs","max_attempts","INTEGER NOT NULL DEFAULT 3");
 run("CREATE INDEX IF NOT EXISTS idx_agent_runs_lease ON agent_runs(status,lease_expires_at)");
 run("UPDATE work_items SET requestor_id=owner_id WHERE requestor_id IS NULL");
 run("UPDATE tasks SET owner_id=COALESCE(assignee_id,(SELECT owner_id FROM work_items WHERE work_items.id=tasks.work_item_id)) WHERE owner_id IS NULL");
+
+// Normalize stored Artifact fingerprints to a full SHA-256 digest.
+for (const artifact of all<{id:string;content:string;content_hash:string}>("SELECT id,content,content_hash FROM artifacts")) {
+  const digest=createHash("sha256").update(artifact.content).digest("hex");
+  if (artifact.content_hash!==digest) run("UPDATE artifacts SET content_hash=? WHERE id=?",digest,artifact.id);
+}
 
 // Preserve existing review baselines as immutable legacy Submission records.
 for (const cycle of all<{id:string;work_item_id:string;baseline_json:string;created_by:string;created_at:string}>(
