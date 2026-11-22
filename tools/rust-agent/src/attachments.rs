@@ -45,22 +45,23 @@ impl AttachmentStore {
 
         let data_path = self.directory.join(format!("{id}.bin"));
         let metadata_path = self.directory.join(format!("{id}.json"));
-        let mut found = false;
-        for path in [&data_path, &metadata_path] {
+        let paths = [&data_path, &metadata_path];
+        let mut existing = Vec::new();
+        for path in paths {
             match fs::symlink_metadata(path) {
                 Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
                     return Err(AgentError::InvalidAction("attachment must be a regular file".into()));
                 }
-                Ok(_) => {
-                    fs::remove_file(path)?;
-                    found = true;
-                }
+                Ok(_) => existing.push(path),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => return Err(error.into()),
             }
         }
+        for path in &existing {
+            fs::remove_file(path)?;
+        }
         quota_lock.unlock()?;
-        Ok(found)
+        Ok(!existing.is_empty())
     }
 
     pub fn store(&self, filename: &str, content_type: &str, bytes: &[u8]) -> Result<AttachmentMetadata, AgentError> {
