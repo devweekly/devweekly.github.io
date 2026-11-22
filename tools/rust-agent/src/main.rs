@@ -373,7 +373,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         if let Some(id) = input.strip_prefix("/forget-memory ") {
             match runtime.forget_memory(id.trim()) {
-                Ok(()) => println!("Memory {} and its unshared transcript sources were forgotten.", id.trim()),
+                Ok(()) => println!("Memory {}, dependent notes/pages, and unshared transcript sources were forgotten.", id.trim()),
                 Err(error) => eprintln!("Could not forget memory: {error}"),
             }
             continue;
