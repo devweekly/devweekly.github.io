@@ -599,6 +599,16 @@ export default function App() {
           <Col xs={24} md={9}><Text type="secondary" className="workflow-label">下一步</Text><div><Text strong>{nextAction}</Text></div></Col>
         </Row>
       </Card>
+      <Card size="small" title="Request Package" className="workspace-section">
+        <Row gutter={[20,12]}>
+          <Col xs={24} md={12}><Text type="secondary" className="workflow-label">业务目标</Text><Paragraph>{String(requestPackage.goal || item.description || "尚未填写")}</Paragraph></Col>
+          <Col xs={24} md={12}><Text type="secondary" className="workflow-label">范围</Text><Paragraph>{String(requestPackage.scope || "尚未填写")}</Paragraph></Col>
+          <Col xs={24} md={12}><Text type="secondary" className="workflow-label">约束与风险</Text><Paragraph>{String(requestPackage.constraints || "尚未填写")}</Paragraph></Col>
+          <Col xs={24} md={12}><Text type="secondary" className="workflow-label">初步方案</Text><Paragraph>{String(requestPackage.initialProposal || "未提供")}</Paragraph></Col>
+          <Col xs={24}><Text type="secondary" className="workflow-label">需要决定的问题</Text><Paragraph>{String(requestPackage.decisionQuestions || "尚未填写")}</Paragraph></Col>
+        </Row>
+        {requestPackage.submissionMessage ? <Text type="secondary" className="small">提交说明：{String(requestPackage.submissionMessage)}</Text> : null}
+      </Card>
 
       <Card className="workflow-card" size="small" title="事项进展">
         <Steps current={detail.workflow.currentStep} status={detail.workflow.visualStatus} items={detail.workflow.steps} />
@@ -638,8 +648,8 @@ export default function App() {
           <List size="small" dataSource={detail.submissions} renderItem={submission=>{
             const entries=manifestEntries(submission.manifest_json);
             return <List.Item>
-              <List.Item.Meta title={"Submission "+submission.sequence+" · "+entries.length+" 份材料"} description={<>
-                <div>{submission.created_by_name} · {dateText(submission.created_at)} · Context v{submission.context_version ?? "legacy"}</div>
+              <List.Item.Meta title={<Space direction="vertical" size={2}><Text strong>{"Submission "+submission.sequence+" · "+entries.length+" 份材料"}</Text>{submission.submission_message ? <Text type="secondary">{submission.submission_message}</Text> : null}</Space>} description={<>
+                <div>{submission.created_by_name} · {dateText(submission.created_at)} · Context v{submission.context_version ?? "legacy"}{submission.assisted_by_run_id ? " · Agent Run "+submission.assisted_by_run_id : ""}</div>
                 <details className="submission-manifest-disclosure">
                   <summary>查看本次提交固定的材料与版本</summary>
                   <List size="small" dataSource={entries} renderItem={entry=><List.Item>
@@ -682,12 +692,19 @@ export default function App() {
 
           <Card size="small" title={"评审记录 · "+detail.reviews.length}>
             <Text type="secondary" className="small">{currentCycle ? currentCycle.name+" · 固定材料基线" : "尚未启动评审"}</Text>
-            {permissions.includes("review") && currentCycle?.status==="active" && item.status==="discussion_review" ? <Button size="small" icon={<PlusOutlined />} disabled={reviewableArtifacts.length===0} onClick={()=>{reviewForm.resetFields();reviewForm.setFieldsValue({artifactId:reviewableArtifacts[0]?.id,outcome:"comment",discipline:actorPerson?.title || "General"});setReviewOpen(true);}}>提交评审意见</Button>:null}
+            {permissions.includes("review") && currentCycle?.status==="active" && item.status==="discussion_review" ? <Button size="small" icon={<PlusOutlined />} onClick={()=>{reviewForm.resetFields();reviewForm.setFieldsValue({artifactId:reviewableArtifacts[0]?.id || "__request_package__",outcome:"comment",discipline:actorPerson?.title || "General"});setReviewOpen(true);}}>提交评审意见</Button>:null}
             <List size="small" dataSource={detail.reviews} locale={{emptyText:"尚无评审意见"}} renderItem={(review:Review)=><List.Item><List.Item.Meta title={<Space wrap><Text strong>{review.reviewer_name}</Text><Tag>{review.discipline}</Tag><Tag color={review.outcome==="objection"?"error":review.outcome==="clarification_requested"?"warning":"default"}>{statusLabels[review.outcome] || review.outcome}</Tag></Space>} description={<>{review.summary}<div className="small muted">{review.artifact_code || review.artifact_title} · v{review.artifact_version} · {dateText(review.created_at)}</div></>} /></List.Item>} />
+          </Card>
+
+          <Card size="small" title={"澄清记录 · "+detail.clarifications.length}>
+            <List size="small" dataSource={detail.clarifications} locale={{emptyText:"尚无澄清请求"}} renderItem={clarification=><List.Item><List.Item.Meta title={<Space wrap><Text strong>{clarification.question}</Text><Tag color={clarification.status==="answered"?"success":clarification.status==="unanswered"?"error":"warning"}>{clarification.status==="answered"?"已答复":clarification.status==="unanswered"?"未答复":clarification.status==="requested"?"等待答复":"已取消"}</Tag></Space>} description={<>{clarification.requester_name} · {clarification.artifact_title || "Request Package"} · 截止 {dateText(clarification.response_due_at)}{clarification.answer?<div className="small muted">答复：{clarification.answer}</div>:null}</>} /></List.Item>} />
           </Card>
 
           <Card size="small" title={"正式决定 · "+detail.decisions.length}>
             <List size="small" dataSource={detail.decisions} locale={{emptyText:"尚无正式决定"}} renderItem={decision=><List.Item><List.Item.Meta title={<Space><Tag color={statusColors[decision.outcome]}>{statusLabels[decision.outcome] || decision.outcome}</Tag><Text strong>{decision.decision_maker_name}</Text></Space>} description={<>{decision.rationale}{decision.conditions?<div className="small muted">条件：{decision.conditions}</div>:null}<div className="small muted">{dateText(decision.created_at)}</div></>} /></List.Item>} />
+          </Card>
+          <Card size="small" title={"决定会议纪要 · "+detail.decisionMeetings.length}>
+            <List size="small" dataSource={detail.decisionMeetings} locale={{emptyText:"尚无决定会议"}} renderItem={meeting=><List.Item><List.Item.Meta title={<Space wrap><Tag color={statusColors[meeting.outcome]}>{statusLabels[meeting.outcome] || meeting.outcome}</Tag><Text strong>{meeting.chairman_name}</Text><Text type="secondary">{dayjs(meeting.meeting_at).format("YYYY-MM-DD HH:mm")}</Text></Space>} description={<>{meeting.rationale}{meeting.minutes?<div className="small muted">会议纪要：{meeting.minutes}</div>:null}</>} /></List.Item>} />
           </Card>
 
           <Card size="small" title={"外部引用 · "+detail.externalLinks.length}>
@@ -790,7 +807,7 @@ export default function App() {
       return api.createReview(selected!.id,value);
     },"评审意见已提交",()=>setReviewOpen(false))} confirmLoading={busy}>
       <Form form={reviewForm} layout="vertical">
-        <Form.Item name="artifactId" label="评审对象" rules={[{required:true}]}><Select options={(detail?.cycles[0] ? (JSON.parse(detail.cycles[0].baseline_json) as {id:string;version:number}[]).map(entry=>detail.artifacts.find(a=>a.id===entry.id && a.version===entry.version)).filter(Boolean).map(a=>({value:(a as Artifact).id,label:((a as Artifact).code || (a as Artifact).type)+" · "+(a as Artifact).title+" v"+(a as Artifact).version})) : [])} /></Form.Item>
+        <Form.Item name="artifactId" label="评审对象"><Select options={[{value:"__request_package__",label:"整个 Request Package"},...(detail?.cycles[0] ? (JSON.parse(detail.cycles[0].baseline_json) as {id:string;version:number}[]).map(entry=>detail.artifacts.find(a=>a.id===entry.id && a.version===entry.version)).filter(Boolean).map(a=>({value:(a as Artifact).id,label:((a as Artifact).code || (a as Artifact).type)+" · "+(a as Artifact).title+" v"+(a as Artifact).version})) : [])]} /></Form.Item>
         <Form.Item name="discipline" label="专业领域" rules={[{required:true}]}><Input /></Form.Item>
         <Form.Item name="outcome" label="操作类型" rules={[{required:true}]}><Select options={[{value:"comment",label:"评论（不改变流程）"},{value:"clarification_requested",label:"请求 Requestor 澄清（暂停评审计时）"},{value:"objection",label:"提出阻断性异议（提前进入决定会议）"}]} /></Form.Item>
         <Form.Item name="summary" label="意见 / 澄清问题" rules={[{required:true}]}><TextArea rows={4} /></Form.Item>
