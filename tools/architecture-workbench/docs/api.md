@@ -6,12 +6,12 @@ Base URL in development: http://localhost:4000/api
 | --- | --- | --- |
 | GET | /health | Health and adapter status |
 | GET | /bootstrap | People directory, visible Work Items, debt register and counters |
-| GET | /my/tasks | Tasks assigned to the current principal |
+| GET | /my/tasks | Tasks assigned to the current principal, including Task Owner and Assignee projections |
 | PATCH | /people/:id/profile | Update own profile; Workbench Admin may update another person's profile |
 | GET | /work-items | List business Work Items |
 | POST | /work-items | Create a Work Item |
 | GET | /agent-profiles | Registered Agent profiles and runtime adapter capabilities |
-| GET | /work-items/:id | Work Item detail projection, including Agent Run history |
+| GET | /work-items/:id | Work Item detail projection, including Submission manifests and Agent Run history |
 | GET | /work-items/:id/agent-runs | List Agent Runs visible to a Work Item participant |
 | POST | /work-items/:id/agent-runs | Queue a standalone Agent Run as the current Human principal |
 | GET | /work-items/:id/agent-plans | List multi-role Agent Plans and dependency graphs |
@@ -22,12 +22,12 @@ Base URL in development: http://localhost:4000/api
 | POST | /work-items/:id/participations | Add or upsert a Work Item-scoped Participation; Requestor/Admin/manager only |
 | PUT | /work-items/:id/participations/:participationId | Update the role and permissions for a related person |
 | DELETE | /work-items/:id/participations/:participationId | Remove a related person; Requestor and Owner remain participants | 
-| POST | /work-items/:id/tasks | Create a Task |
+| POST | /work-items/:id/tasks | Create a Task with an accountable owner and optional current assignee |
 | POST | /work-items/:id/decisions | Record a formal human Decision; the Workflow Engine applies the related lifecycle transition |
 | POST | /work-items/:id/transitions | Start analysis, submit for review or close a Request |
 | GET | /work-items/:id/context-capsule | Export a participant-scoped context projection, including external resource references |
 | POST | /tech-debts | Create a linked Technical Debt Work Item |
-| PATCH | /tasks/:id | Update Task status, assignee or due date |
+| PATCH | /tasks/:id | Update Task status; Work Item contributors may change Task Owner, Assignee or due date |
 | PATCH | /tech-debts/:id | Update debt status and remediation plan |
 | POST | /work-items/:id/comments | Add a discussion message |
 | POST | /work-items/:id/attachments | Upload an authorized attachment using the configured ObjectStore |
@@ -38,6 +38,10 @@ Base URL in development: http://localhost:4000/api
 
 The prototype uses x-demo-user-id to simulate the authenticated Human Principal. Do not expose that header as a production authentication mechanism. The server resolves permissions from Participation for every protected write.
 
+## Task accountability
+
+A Task has an accountable `owner_id` and an optional current `assignee_id`. Both Human principals must be Work Item participants. When creating a Task, the server defaults the Owner to the Work Item Owner if `ownerId` is omitted; `assigneeId` may be omitted when work has not yet been allocated. The current Assignee or Task Owner can update task status. Only a Work Item contributor can reassign either principal or change the due date. The Agent Run's `claimed_by` remains execution metadata and does not modify either field.
+
 ## External resource references
 
 The external-links endpoints only persist pointers and Work Item relationship semantics. They do not access Jira, Confluence, GitHub or LeanIX. A Confluence Page may carry a Template key/name; the actual Template definition is retrieved by an optional Agent through its own MCP/API tool, not by this API.
@@ -46,7 +50,9 @@ The Context Capsule returns external resource IDs/keys/URLs and relationship typ
 
 ## Workflow Engine
 
-The API returns a `workflow` projection in Work Item detail: current status, Steps metadata, available actions and the latest transition history. Clients may request only `start_analysis`, `submit_for_review` or `close` through the transitions endpoint. Review outcomes and formal Decision outcomes trigger their corresponding transitions through their own commands.
+The API returns a `workflow` projection in Work Item detail: current status, Steps metadata, available actions and the latest transition history. The same detail projection includes `submissions`; each Review Cycle exposes `submission_id` and its existing `baseline_json`. Clients may request only `start_analysis`, `submit_for_review` or `close` through the transitions endpoint. Review outcomes and formal Decision outcomes trigger their corresponding transitions through their own commands.
+
+Submitting for review creates an immutable Submission manifest from the latest version of each Artifact stream. It records Artifact IDs, versions, content hashes, context version, submitting principal and time. The server binds the new Review Cycle to this Submission and commits the Submission, Review Cycle, Work Item transition and activity record in one SQLite transaction. A subsequent revision does not alter this baseline; resubmission creates a new Submission and Review Cycle. Existing Review Cycles are backfilled into legacy Submission records at startup.
 
 Every successful transition updates `work_items.status`, appends `workflow_transitions`, and records an activity event. The transition rules and permission checks are server-side; the UI cannot force a target status.
 
