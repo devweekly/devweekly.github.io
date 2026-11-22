@@ -21,7 +21,6 @@ Base URL in development: http://localhost:4000/api
 | POST | /work-items/:id/artifacts | Submit a new Artifact version |
 | POST | /work-items/:id/reviews | Comment, request Requestor clarification or raise a blocking objection during Discussion and Review |
 | POST | /work-items/:id/clarifications/:clarificationId/answer | Answer an outstanding clarification; Requestor only |
-| POST | /work-items/:id/request-package-drafts/:draftId/apply | Apply a completed Agent Package draft to the editable Request Package; Requestor only |
 | POST | /work-items/:id/participations | Add or upsert a Work Item-scoped Participation; Requestor/Admin/manager only |
 | PUT | /work-items/:id/participations/:participationId | Update the role and permissions for a related person |
 | DELETE | /work-items/:id/participations/:participationId | Remove a related person; Requestor and Owner remain participants | 
@@ -55,7 +54,7 @@ The Context Capsule returns external resource IDs/keys/URLs and relationship typ
 
 ## Workflow Engine
 
-The API returns a `workflow` projection in Work Item detail: current phase, Chairman, formal outcome, review deadline, active clarification, reviewer snapshot, available actions and transition history. Request detail also returns `relatedDebts`, the Technical Debt Work Items directly linked from the Request. A participant who can read the originating Request receives read-only access to those linked debt records; this does not grant debt-management permission. Request submission creates an internal immutable review baseline containing the Request content and current external reference identities, then creates a Review Cycle, fixed reviewer snapshot and persisted review timer in one SQLite transaction. This baseline is an implementation detail for review consistency, not a separate user-facing materials-history feature. Request Package composition and any Agent assistance happen in the Client; there is no server-side Package Draft endpoint or MCP tool. The transitions endpoint accepts `submit_request` and `close`; the former is Requestor-confirmed and the latter is Chairman/Admin-only.
+The API returns a `workflow` projection in Work Item detail: current phase, Chairman, formal outcome, review deadline, active clarification, reviewer snapshot, available actions and transition history. Request detail also returns `relatedDebts`, the Technical Debt Work Items directly linked from the Request. A participant who can read the originating Request receives read-only access to those linked debt records; this does not grant debt-management permission. Request detail also returns `relatedDebts`, the Technical Debt Work Items directly linked from the Request. A participant who can read the originating Request receives read-only access to those linked debt records; this does not grant debt-management permission. Request submission creates an internal immutable review baseline containing the Request content and current external reference identities, then creates a Review Cycle, fixed reviewer snapshot and persisted review timer in one SQLite transaction. This baseline is an implementation detail for review consistency, not a separate user-facing materials-history feature. Request Package composition and any Agent assistance happen in the Client; there is no server-side Package Draft endpoint or MCP tool. The transitions endpoint accepts `submit_request` and `close`; the former is Requestor-confirmed and the latter is Chairman/Admin-only.
 
 Review operations are limited to `comment`, `clarification_requested` and `objection`. A comment never changes status. A clarification pauses the remaining review duration and creates a response deadline. When all open clarifications are answered, the remaining review time resumes. An unanswered clarification or review deadline expiry moves the Request to `decision_meeting`; a blocking objection does so immediately. None of these events produces an approval or rejection.
 
@@ -101,7 +100,6 @@ The `/mcp` endpoint registers the following business and coordination tools alon
 | `workbench_create_task` | Create a Task; human assignee must be a participant | contribute |
 | `workbench_update_task` | Update Task status; assignees may update status and contributors may reassign | assignee or contribute |
 | `workbench_create_artifact_draft` | Save a versioned draft Artifact | contribute |
-| `workbench_draft_request_package` | Save an Agent-authored Request Package suggestion bound to its active Run claim; Requestor confirmation is still required | contribute + active Run claim |
 | `workbench_add_comment` | Add a discussion note | comment |
 | `agent_list_profiles` | List role-oriented Agent profiles and mapped Skills | none |
 | `agent_request_run` | Queue a standalone Agent Run for a Work Item | contribute |
