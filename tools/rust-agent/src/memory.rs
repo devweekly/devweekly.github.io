@@ -1446,19 +1446,63 @@ impl MemoryStore {
     }
 
     pub fn search_pages(&self, query: &str, limit: usize) -> Result<Vec<MemoryPage>, AgentError> {
+        self.search_pages_scoped(query, &MemoryQuery {
+            query: query.to_owned(),
+            session_id: None,
+            project_id: None,
+            task_id: None,
+            limit,
+        }, limit)
+    }
+
+    /// Apply scope filtering before ranking so other projects' recent pages cannot
+    /// displace relevant pages from the active project/session/task.
+    pub fn search_pages_scoped(
+        &self,
+        query: &str,
+        scope: &MemoryQuery,
+        limit: usize,
+    ) -> Result<Vec<MemoryPage>, AgentError> {
         let query_terms = terms(query);
         if query_terms.is_empty() {
             return Ok(Vec::new());
         }
-        let pages = self.list_pages(200)?;
-        let mut ranked = pages.into_iter().filter_map(|page| {
+        let connection = self.conn()?;
+        let mut statement = connection.prepare(
+            "SELECT id,title,summary,content,scope,scope_id,source_refs_json,links_json,updated_at_ms,revision
+             FROM memory_pages
+             WHERE scope='global'
+                OR (scope='project' AND ?1 IS NOT NULL AND scope_id=?1)
+                OR (scope='session' AND ?2 IS NOT NULL AND scope_id=?2)
+                OR (scope='task' AND ?3 IS NOT NULL AND scope_id=?3)
+             ORDER BY updated_at_ms DESC,id LIMIT 2000"
+        )?;
+        let pages = statement.query_map(
+            params![scope.project_id,scope.session_id,scope.task_id],
+            row_page,
+        )?.collect::<Result<Vec<_>, _>>()?;
+        drop(statement);
+
+        let mut ranked = Vec::new();
+        for page in pages {
+            if !scope_matches(page.scope, page.scope_id.as_deref(), scope)
+                || validate_evidence_scope_recursive(
+                    &connection, &page.source_refs, page.scope, page.scope_id.as_deref(), &mut HashSet::new()
+                ).is_err()
+            {
+                continue;
+            }
             let searchable = format!("{} {} {}", page.title, page.summary, page.content);
             let page_terms = terms(&searchable);
             let overlap = query_terms.intersection(&page_terms).count();
-            (overlap > 0).then_some((overlap, page))
-        }).collect::<Vec<_>>();
-        ranked.sort_by(|left, right| right.0.cmp(&left.0).then(right.1.updated_at_ms.cmp(&left.1.updated_at_ms)));
-        Ok(ranked.into_iter().take(limit.clamp(1, 50)).map(|(_, page)| page).collect())
+            if overlap > 0 {
+                ranked.push((overlap, page));
+            }
+        }
+        ranked.sort_by(|left, right| right.0.cmp(&left.0)
+            .then(right.1.updated_at_ms.cmp(&left.1.updated_at_ms)));
+        Ok(ranked.into_iter().take(limit.clamp(1, 50))
+            .map(|(_, page)| page).collect())
     }
 
     pub fn start_dreaming_run(
@@ -2735,6 +2779,50 @@ mod tests {
     fn markdown_wiki_links_are_extracted_without_external_urls() {
         let links = markdown_page_links("See [Policy](policy-page.md), [Other](./other-page), [external](https://example.com), and [anchor](#top).");
         assert_eq!(links, vec!["policy-page", "other-page"]);
+    }
+
+    #[test]
+    fn scoped_page_search_does_not_drop_old_project_pages_behind_global_results() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript(
+            "project-session", Some("project-a"), None, "user", "source evidence"
+        ).unwrap();
+        {
+            let connection = store.conn().unwrap();
+            for index in 0..205 {
+                connection.execute(
+                    "INSERT INTO memory_pages (
+                        id,title,summary,content,scope,scope_id,source_refs_json,links_json,updated_at_ms,revision
+                    ) VALUES (?1,?2,?3,?4,'global',NULL,'[]','[]',?5,1)",
+                    params![
+                        format!("global-{index}"),
+                        format!("Global note {index}"),
+                        "common project policy",
+                        "common project policy content",
+                        to_i64(now_ms().saturating_add(index as u128 + 1)).unwrap(),
+                    ],
+                ).unwrap();
+            }
+            connection.execute(
+                "INSERT INTO memory_pages (
+                    id,title,summary,content,scope,scope_id,source_refs_json,links_json,updated_at_ms,revision
+                ) VALUES ('project-old','Project policy','Relevant project policy','common project policy content',
+                    'project','project-a',?1,'[]',1,1)",
+                [serde_json::to_string(&vec![format!("transcript:{transcript}")]).unwrap()],
+            ).unwrap();
+        }
+
+        let scope = MemoryQuery {
+            query: "common project policy".into(),
+            session_id: Some("project-session".into()),
+            project_id: Some("project-a".into()),
+            task_id: None,
+            limit: 5,
+        };
+        let pages = store.search_pages_scoped("common project policy", &scope, 5).unwrap();
+        assert!(pages.iter().any(|page| page.id == "project-old"));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
