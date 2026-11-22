@@ -15,6 +15,7 @@ import {
   canChair,
   createClarification,
   answerClarification,
+  applyRequestPackageDraft,
   recordFormalDecision,
   raiseObjection,
   getWorkItemPermissions,
@@ -267,43 +268,11 @@ app.patch("/api/work-items/:id/request-package",(req,res)=>{
 });
 
 app.post("/api/work-items/:id/request-package-drafts/:draftId/apply",(req,res)=>{
-  const workItemId=String(req.params.id); const draftId=String(req.params.draftId); const actor=actorId(req);
-  const item=one<{requestor_id:string|null;status:string}>("SELECT requestor_id,status FROM work_items WHERE id=?",workItemId);
-  if (!item) return res.status(404).json({error:"Request not found."});
-  if (item.requestor_id!==actor) return res.status(403).json({error:"Only the Requestor may apply an Agent Request Package draft."});
-  if (!["draft","requestor_revision"].includes(item.status)) return res.status(409).json({error:"The Request Package is frozen after submission."});
-  const draft=one<{id:string;agent_run_id:string;draft_json:string;status:string}>(
-    "SELECT id,agent_run_id,draft_json,status FROM request_package_drafts WHERE id=? AND work_item_id=?",draftId,workItemId
-  );
-  if (!draft || draft.status!=="pending") return res.status(404).json({error:"Pending Agent Request Package draft not found."});
-  const agentRun=one<{status:string}>("SELECT status FROM agent_runs WHERE id=? AND work_item_id=?",draft.agent_run_id,workItemId);
-  if (agentRun?.status!=="completed") return res.status(409).json({error:"The assisting Agent Run must complete before its draft can be applied."});
-  let packageValue:Record<string,unknown>;
-  try { packageValue=JSON.parse(draft.draft_json) as Record<string,unknown>; }
-  catch { return res.status(409).json({error:"The Agent Request Package draft is invalid."}); }
-  if (!String(packageValue.goal || "").trim() || !String(packageValue.scope || "").trim() || !String(packageValue.submissionMessage || "").trim()) {
-    return res.status(409).json({error:"The Agent Request Package draft is incomplete."});
-  }
-  const timestamp=now();
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const applied=run("UPDATE request_package_drafts SET status='applied',applied_by=?,applied_at=? WHERE id=? AND status='pending'",
-      actor,timestamp,draftId);
-    if (Number(applied.changes)!==1) {
-      db.exec("ROLLBACK");
-      return res.status(409).json({error:"This Agent draft has already been applied or superseded."});
-    }
-    run("UPDATE request_package_drafts SET status='superseded' WHERE work_item_id=? AND id<>? AND status='pending'",workItemId,draftId);
-    run("UPDATE work_items SET request_package_json=?,context_version=context_version+1,updated_at=? WHERE id=?",
-      JSON.stringify(packageValue),timestamp,workItemId);
-    logActivity(workItemId,actor,"request_package_draft_applied","request_package_draft",draftId,
-      "Requestor applied an Agent-prepared Request Package draft; final submission remains a separate action.",{agentRunId:draft.agent_run_id});
-    db.exec("COMMIT");
-    res.json({ok:true});
-  } catch(error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
+  const workItemId=String(req.params.id);
+  const draftId=String(req.params.draftId);
+  const result=applyRequestPackageDraft(workItemId,draftId,actorId(req));
+  if (!result.ok) return res.status(result.statusCode).json({error:result.error});
+  res.json({ok:true,id:result.id});
 });
 
 app.post("/api/work-items/:id/participations",(req,res)=>{
