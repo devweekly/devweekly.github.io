@@ -2,7 +2,7 @@
 author: W
 featured: false
 draft: false
-description: 面向多人、多角色和多个 Agent 的业务事项协作架构，分析 A2A、共享项目上下文、Case Management、BPMN 与 Agent Orchestration 的边界，并给出可落地的设计。
+description: 面向多人、多角色和多种 Agent Runtime 的 Human-led 业务事项协作架构，明确 Agent 分析与草拟、Human 确认和决策的权责边界。
 pubDatetime: 2026-11-22T03:00:00Z
 title: 从 A2A 到共享业务事项：多角色 Agent 协作架构怎么设计
 tags:
@@ -245,7 +245,7 @@ Camunda User Task 可以配置 assignee、candidateUsers 和 candidateGroups，�
 - [Microsoft Azure Architecture Center：AI Agent Orchestration Patterns](https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/ai-agent-design-patterns/)
 - [Google：A2A 与 MCP 的分工](https://docs.cloud.google.com/agent-registry/a2a-protocol)
 
-## 15. 关键原则：Agent 可以分析和起草，不能替 Human 作决定
+## 13. 关键原则：Agent 可以分析和起草，不能替 Human 作决定
 
 这是整个协作系统必须贯彻的业务控制边界，而不是某个 Agent Prompt 的行为约定。
 
@@ -275,7 +275,7 @@ Review 也采用相同原则。Agent 可以生成 Review Findings 或 Review Rec
 
 Human 确认后，系统可以自动执行后续确定性动作，例如更新状态、创建下一个 Task、通知参与者或归档版本。这是工作流引擎执行已确认的业务规则，不是 Agent 自主作出决定。任何“自动化”都不能绕过 Human 确认这一业务边界。
 
-## 16. 多入口协作：网站是业务协作中心，不是所有人的 Agent Host
+## 14. 多入口协作：网站是业务协作中心，不是所有人的 Agent Host
 
 参与者使用的工作环境不应该被平台统一。有人完全不用 Agent；有人日常使用 VS Code 中的 GitHub Copilot Chat；有人使用 Copilot CLI 或 SDK；有人使用 Claude Code 或其他本地 Agent Runtime；也有人直接使用网站内置 Agent。平台要统一的是业务事项、任务、上下文、产物和责任，而不是每个人的模型、IDE、插件或本地工作区。
 
@@ -323,7 +323,7 @@ Capsule 应明确区分已确认事实、待验证假设、历史建议和正式
 
 对于 Level 0，平台无法可靠观测用户在 Copilot 或 Claude Code 中做了什么，也不应伪装成能够完整追踪。网站只记录 Context Capsule 的生成、用户提交的 Artifact 和相关 Human 操作。对于 MCP 和 Connector，平台可以记录经由授权工具发生的活动，但仍不需要采集 Agent 的内部思维过程。
 
-## 17. Work Session：区分业务任务与实际工作过程
+## 15. Work Session：区分业务任务与实际工作过程
 
 Task 是业务工作单元，Work Session 是某个参与者围绕该 Task 实际开展的一段工作。二者不能混为一谈。
 
@@ -342,7 +342,7 @@ Work Session 不是所有场景的强制对象。纯人工参与可以只记录�
 
 Task 可以有多个 Session，Session 可以由 Human、Agent 或二者共同参与。Task 的责任人仍然是 Human 或被指定的业务责任主体；Agent Session 只是被授权的执行过程。即使 Agent 生成了完整报告，Task 是否完成、是否提交、是否进入评审，仍由业务规则和有权限的 Human 操作决定。
 
-## 18. 端到端场景：同一事项，多种工作方式
+## 16. 端到端场景：同一事项，多种工作方式
 
 ### 场景 A：纯 Human 协作
 
@@ -378,7 +378,7 @@ Alice 作为 Reviewer 获得被授权的材料，独立审查这些产物。Agen
 
 这些场景应共享同一套业务模型。差异在于工作入口和执行方式，不应为每一种 Agent Runtime 建立一套独立的事项、状态和产物系统。
 
-## 19. 记录模型：业务事实、工作过程、产物和讨论分开保存
+## 17. 记录模型：业务事实、工作过程、产物和讨论分开保存
 
 不要把所有交互压成 Chat History。建议明确区分四类记录：
 
@@ -391,7 +391,7 @@ Alice 作为 Reviewer 获得被授权的材料，独立审查这些产物。Agen
 
 Work Activity 可以记录“Copilot 辅助生成了架构分析草稿”，但不能记录成“架构方案已批准”。Decision Draft 可以保存 Agent 推荐的选项和理由，但只有 Human 确认后才创建正式 Decision。业务审计日志不应依赖 Agent 自己声称“我已批准”；它必须来自服务端验证过的 Human Principal 和授权操作。
 
-## 20. 身份、SSO 与 Agent 委托授权
+## 18. 身份、SSO 与 Agent 委托授权
 
 网站有 SSO，并不意味着用户本机的 Copilot、Claude Code 或其他 Agent 自动获得网站权限。用户登录浏览器，也不代表本地 Agent 可以读取浏览器 Cookie。不要把浏览器会话凭证复制给 Agent，也不要让 Agent 通过共享用户密码模拟 Human。
 
@@ -406,7 +406,7 @@ Work Activity 可以记录“Copilot 辅助生成了架构分析草稿”，但�
 
 审计链应能表达“Bob 委托本地 Connector 启动 Copilot Session 123，Session 生成 Artifact v2，Bob 检查并提交”。不能把 Agent 的执行行为记在 Bob 名下而隐藏 Agent 身份，也不能因为 Agent 是 Bob 启动的就认为它可以执行 Bob 有权执行的所有动作。Human 委托给 Agent 的权限只能是其本人权限的受限子集，并且仍受 Agent Principal 的动作限制；正式决定权不能通过委托转移给 Agent。
 
-## 21. API 与工具边界
+## 19. API 与工具边界
 
 API 应围绕 Work Item 和 Task 提供明确的业务操作，而不是开放一个可以任意修改对象的万能接口。一个初始 REST API 可以包括：
 
@@ -427,7 +427,7 @@ MCP Tool 不需要与 REST API 一一对应。面向 Agent 的工具应表达工
 
 `POST /tasks/{id}/complete` 对 Agent 应解释为“提交工作结果或完成请求”，不是直接把业务事项推进到已批准或已关闭。服务端需要区分 Task Execution Status、Artifact Submission Status 和 Business Workflow Status。Agent 可以完成自己的分析执行，但 Task 是否被业务接受、Review 是否通过、Decision 是否生效，都由相应 Human 或确定性业务规则处理。
 
-## 22. 调整后的落地顺序与验收重点
+## 20. 调整后的落地顺序与验收重点
 
 实施时建议先把 Human 主导的业务闭环做正确，再逐步增加 Agent 接入能力：
 
@@ -452,7 +452,7 @@ MCP Tool 不需要与 REST API 一一对应。面向 Agent 的工具应表达工
 - SSO 登录不会自动授予本地 Agent 权限；委托范围可查看、可撤销、可过期。
 - 对 Level 0 Copy / Paste，系统不声称可以追踪 Agent 内部执行；对集成方式，只记录实际经过平台的活动。
 
-## 23. 结论
+## 21. 结论
 
 这类系统最合适的设计单位不是 Agent，也不是一个共享聊天会话，而是长期存在的业务事项。参与者通过 Participation 加入事项，角色决定其责任，Task 承载具体工作，Artifact 保存交付物，Review 和 Decision 表达正式判断，Workflow Runtime 管理业务生命周期。
 
