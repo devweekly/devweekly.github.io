@@ -2,13 +2,15 @@ export interface Person {
   id:string; display_name:string; title:string; email:string; avatar_color:string;
   department:string; location:string; bio:string; expertise_json:string; timezone:string; is_admin:number;
 }
-export interface WorkItem { id:string; code:string; type:string; title:string; description:string; status:string; priority:string; owner_id:string; owner_name:string; requestor_id:string|null; requestor_name:string; target_date?:string; context_version:number; artifact_count:number; open_task_count:number; }
+export interface WorkItem { id:string; code:string; type:string; title:string; description:string; status:string; priority:string; owner_id:string; owner_name:string; requestor_id:string|null; requestor_name:string; chairman_id?:string|null; decision_outcome?:string|null; request_package_json?:string; target_date?:string; context_version:number; artifact_count:number; open_task_count:number; }
 export interface DebtItem { id:string; code:string; title:string; status:string; owner_id:string; owner_name:string; target_date?:string; priority:string; severity:string; target_state:string; remediation_plan:string; debt_status:string; }
 export interface Artifact { id:string; type:string; code:string|null; title:string; version:number; status:string; summary:string; content:string; submitter_name:string; created_at:string; }
 export interface Participation { id:string; person_id:string; role_key:string; role_label:string; permissions_json:string; display_name:string; title:string; email:string; avatar_color:string; department:string; }
 export interface Review { id:string; discipline:string; outcome:string; summary:string; findings_json:string; reviewer_name:string; artifact_code:string|null; artifact_title:string; artifact_version:number; created_at:string; }
 export interface WorkTask { id:string; title:string; kind:string; status:string; owner_id:string|null; owner_name:string|null; assignee_id:string|null; assignee_name:string|null; due_date:string|null; }
-export interface Submission { id:string; sequence:number; purpose:string; manifest_json:string; context_version:number|null; created_by:string; created_by_name:string; created_at:string; }
+export interface Submission { id:string; sequence:number; purpose:string; manifest_json:string; package_json?:string; submission_message?:string; assisted_by_run_id?:string|null; source_submission_id?:string|null; submitted_by?:string|null; context_version:number|null; created_by:string; created_by_name:string; created_at:string; }
+export interface ClarificationRequest { id:string; question:string; response_due_at:string; status:string; answer?:string|null; requested_by:string; requester_name?:string; answered_by?:string|null; answerer_name?:string|null; artifact_id:string; artifact_title?:string; created_at:string; answered_at?:string|null; }
+export interface DecisionMeeting { id:string; cycle_id:string|null; submission_id:string|null; chairman_id:string; chairman_name:string; meeting_at:string; minutes:string; outcome:string; rationale:string; created_at:string; }
 export interface Decision { id:string; subject_type:string; subject_id:string|null; outcome:string; rationale:string; conditions:string; decision_maker_name:string; created_at:string; }
 export interface Comment { id:string; body:string; author_name:string; avatar_color:string; created_at:string; }
 export interface Activity { id:string; summary:string; actor_name:string; created_at:string; }
@@ -16,6 +18,8 @@ export interface WorkflowStep { title:string; description:string; status:"wait"|
 export interface WorkflowTransition { id:string; from_status:string; to_status:string; action:string; reason:string; actor_name:string; created_at:string; }
 export interface WorkflowProjection {
   status:string; currentStep:number; visualStatus:"wait"|"process"|"finish"|"error";
+  chairmanId:string|null; decisionOutcome:string|null; reviewDeadlineAt:string|null;
+  activeClarification:ClarificationRequest|null; reviewerSnapshot:{person_id:string;display_name:string;role_key:string}[];
   steps:WorkflowStep[]; availableActions:string[]; history:WorkflowTransition[];
 }
 export interface AgentProfile {
@@ -43,8 +47,8 @@ export interface AgentPlan {
 }
 export interface WorkItemDetail {
   workItem:WorkItem; participants:Participation[]; artifacts:Artifact[];
-  cycles:{id:string;submission_id:string|null;name:string;status:string;due_date:string;baseline_json:string}[]; submissions:Submission[];
-  reviews:Review[]; tasks:WorkTask[]; decisions:Decision[]; comments:Comment[];
+  cycles:{id:string;submission_id:string|null;name:string;status:string;due_date:string;review_deadline_at?:string|null;remaining_review_ms?:number|null;paused_at?:string|null;reviewer_snapshot_json?:string;baseline_json:string}[]; submissions:Submission[];
+  reviews:Review[]; tasks:WorkTask[]; decisions:Decision[]; clarifications:ClarificationRequest[]; decisionMeetings:DecisionMeeting[]; comments:Comment[];
   activity:Activity[]; attachments:Attachment[]; externalLinks:ExternalResourceLink[]; agentRuns:AgentRun[]; agentPlans:AgentPlan[];
   permissions:string[]; canManageParticipants:boolean; workflow:WorkflowProjection;
 }
