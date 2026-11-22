@@ -58,9 +58,9 @@
 <path class="edge-dash" d="M1060 338 V360 H640 V426"/>
 <path class="edge" d="M370 466 H490"/>
 <path class="edge-dash" d="M370 506 V534 H1060 V506"/>
-<path class="edge" d="M220 506 V560 H420 V616"/>
-<path class="edge" d="M370 486 H700 V616 H860"/>
-<path class="edge-dash" d="M790 466 H900"/><g><rect x="391.5" y="353" width="77" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="430" y="365" text-anchor="middle">MCP tools</text></g><g><rect x="804.5" y="342" width="91" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="850" y="354" text-anchor="middle">remote task</text></g><g><rect x="374" y="538" width="112" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="430" y="550" text-anchor="middle">business state</text></g><g><rect x="502" y="588" width="126" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="565" y="600" text-anchor="middle">artifact / audit</text></g><g>
+<path class="edge" d="M200 506 V568 H420 V616"/>
+<path class="edge" d="M350 506 V552 H860 V616"/>
+<path class="edge-dash" d="M790 466 H900"/><g><rect x="391.5" y="353" width="77" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="430" y="365" text-anchor="middle">MCP tools</text></g><g><rect x="804.5" y="342" width="91" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="850" y="354" text-anchor="middle">remote task</text></g><g><rect x="374" y="538" width="112" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="312" y="562" text-anchor="middle">business state</text></g><g><rect x="502" y="588" width="126" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="750" y="545" text-anchor="middle">artifact / audit</text></g><g>
 <rect class="node" x="90" y="120" width="260" height="74" rx="12"/>
 <rect x="106" y="130" width="53" height="16" rx="8" fill="#D8EEE8"/>
 <text class="chip" x="132.5" y="141" text-anchor="middle">HUMAN</text>
@@ -82,20 +82,20 @@
 <rect class="node" x="90" y="274" width="260" height="64" rx="12"/>
 <rect x="106" y="284" width="52" height="16" rx="8" fill="#D8EEE8"/>
 <text class="chip" x="132" y="295" text-anchor="middle">API</text>
-<text class="node-name" x="106" y="319">REST / OpenAPI</text>
-<text class="node-sub" x="106" y="328">stable business contract</text>
+<text class="node-name" x="106" y="314">REST / OpenAPI</text>
+<text class="node-sub" x="106" y="330">stable business contract</text>
 </g><g>
 <rect class="node" x="510" y="274" width="260" height="64" rx="12"/>
 <rect x="526" y="284" width="52" height="16" rx="8" fill="#DCE5F4"/>
 <text class="chip" x="552" y="295" text-anchor="middle">MCP</text>
-<text class="node-name" x="526" y="319">Remote MCP</text>
-<text class="node-sub" x="526" y="328">tools · resources · OAuth</text>
+<text class="node-name" x="526" y="314">Remote MCP</text>
+<text class="node-sub" x="526" y="330">tools · resources · OAuth</text>
 </g><g>
 <rect class="node" x="930" y="274" width="260" height="64" rx="12"/>
 <rect x="946" y="284" width="52" height="16" rx="8" fill="#F0DDEB"/>
 <text class="chip" x="972" y="295" text-anchor="middle">A2A</text>
-<text class="node-name" x="946" y="319">A2A Adapter</text>
-<text class="node-sub" x="946" y="328">remote Agent task delegation</text>
+<text class="node-name" x="946" y="314">A2A Adapter</text>
+<text class="node-sub" x="946" y="330">remote Agent task delegation</text>
 </g><g>
 <rect class="node" x="90" y="426" width="280" height="80" rx="12"/>
 <rect x="106" y="436" width="60" height="16" rx="8" fill="#F5E7D4"/>
