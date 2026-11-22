@@ -59,7 +59,6 @@ The Host may run multiple workers per profile. Each successful claim returns a r
 - Specialist findings remain separate Artifacts, while the synthesis result has an explicit Plan-level reference.
 - The Host can be deployed separately and scaled horizontally without coupling the Workbench Server to a model vendor.
 - The Executor plugin contract still needs a concrete deployment adapter. This repository deliberately does not select or bundle a provider SDK.
-- The Executor plugin contract still needs a concrete deployment adapter. This repository deliberately does not select or bundle a provider SDK.
 
 ## Validation
 
