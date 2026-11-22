@@ -2199,11 +2199,11 @@ impl AgentRuntime {
                     if questions.is_empty() {
                         self.push_tool_result(false, "ask_user requires at least one question");
                     } else {
-                        let answers = tokio::select! {
-                            biased;
-                            _ = cancellation.cancelled() => return Err(AgentError::Cancelled),
-                            result = self.request_user_answers(&questions) => result?,
-                        };
+                        // The CLI fallback uses spawn_blocking around stdin. Do not
+                        // drop that JoinHandle on cancellation: the detached reader would
+                        // otherwise consume a later CLI command from the same stdin stream.
+                        // Cancellation is observed immediately after the user answers.
+                        let answers = self.request_user_answers(&questions).await?;
                         if cancellation.is_cancelled() {
                             self.push_tool_result(false, "Question interaction was cancelled by the host.");
                             return Err(AgentError::Cancelled);
