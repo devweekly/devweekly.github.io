@@ -63,7 +63,7 @@ sources:
   - id: ai-scientist
     resource: https://sakana.ai/ai-scientist/
     title: "The AI Scientist: Towards Fully Automated Open-Ended Scientific Discovery"
-  - id: alph aevolve
+  - id: alphaevolve
     resource: https://deepmind.google/blog/alphaevolve-a-gemini-powered-coding-agent-for-designing-advanced-algorithms/
     title: "AlphaEvolve: A Gemini-Powered Coding Agent for Designing Advanced Algorithms"
   - id: safety-self-evolving
