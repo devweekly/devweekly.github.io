@@ -185,7 +185,8 @@ app.post("/api/work-items",(req,res)=>{
   const actor=actorId(req); const body=req.body || {};
   if (!body.title || !body.type) return res.status(400).json({error:"title and type are required"});
   const chairmanId=body.chairmanId ? String(body.chairmanId) : null;
-  if (chairmanId && !one("SELECT id FROM people WHERE id=?",chairmanId)) return res.status(400).json({error:"Unknown Chairman"});
+  if (!chairmanId) return res.status(400).json({error:"A Chairman must be assigned before creating a Request."});
+  if (!one("SELECT id FROM people WHERE id=?",chairmanId)) return res.status(400).json({error:"Unknown Chairman"});
   const requestPackage={
     goal:String(body.goal || ""),scope:String(body.scope || ""),constraints:String(body.constraints || ""),
     initialProposal:String(body.initialProposal || ""),decisionQuestions:String(body.decisionQuestions || ""),
@@ -202,6 +203,25 @@ app.post("/api/work-items",(req,res)=>{
     id("part"),workItemId,chairmanId,"chairman","Chairman",JSON.stringify(["read","review","decide"]),timestamp);
   logActivity(workItemId,actor,"created","work_item",workItemId,"Created Request "+code);
   res.status(201).json({id:workItemId,code});
+});
+
+app.patch("/api/work-items/:id/request-package",(req,res)=>{
+  const workItemId=String(req.params.id); const actor=actorId(req); const body=req.body || {};
+  const item=one<{requestor_id:string|null;status:string}>("SELECT requestor_id,status FROM work_items WHERE id=?",workItemId);
+  if (!item) return res.status(404).json({error:"Request not found."});
+  if (item.requestor_id!==actor && !isGlobalAdmin(actor)) return res.status(403).json({error:"Only the Requestor or a Workbench Admin may update the Request Package."});
+  if (!["draft","requestor_revision"].includes(item.status)) return res.status(409).json({error:"The Request Package is frozen after submission. Create a new revision after a Need Work decision."});
+  const packageValue={
+    goal:String(body.goal || ""),scope:String(body.scope || ""),constraints:String(body.constraints || ""),
+    initialProposal:String(body.initialProposal || ""),decisionQuestions:String(body.decisionQuestions || ""),
+    submissionMessage:String(body.submissionMessage || "")
+  };
+  if (!packageValue.submissionMessage.trim()) return res.status(400).json({error:"A submission message is required."});
+  const timestamp=now();
+  run("UPDATE work_items SET request_package_json=?,context_version=context_version+1,updated_at=? WHERE id=?",
+    JSON.stringify(packageValue),timestamp,workItemId);
+  logActivity(workItemId,actor,"request_package_updated","request_package",workItemId,"Updated the Request Package before submission.");
+  res.json({ok:true});
 });
 
 app.post("/api/work-items/:id/participations",(req,res)=>{
