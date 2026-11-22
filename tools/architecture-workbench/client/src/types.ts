@@ -25,13 +25,15 @@ export interface AgentRun {
   id:string; work_item_id:string; task_id:string|null; plan_id:string|null; node_key:string; agent_key:string; skill_name:string; objective:string;
   requested_by:string; claimed_by:string|null; status:AgentRunStatus; handoff_reason:string;
   result_artifact_id:string|null; error_message:string; created_at:string; updated_at:string;
-  started_at:string|null; finished_at:string|null; requested_by_name:string; claimed_by_name:string|null;
+  started_at:string|null; finished_at:string|null; heartbeat_at?:string|null; lease_expires_at?:string|null;
+  attempt_count?:number; max_attempts?:number; requested_by_name:string; claimed_by_name:string|null;
 }
 export interface AgentPlanNode {
   id:string; node_key:string; agent_key:string; skill_name:string; objective:string; status:string;
   claimed_by:string|null; claimed_by_name:string|null; result_artifact_id:string|null;
   handoff_reason:string; error_message:string; created_at:string; updated_at:string;
-  started_at:string|null; finished_at:string|null; dependsOn:string[];
+  started_at:string|null; finished_at:string|null; heartbeat_at?:string|null; lease_expires_at?:string|null;
+  attempt_count?:number; max_attempts?:number; dependsOn:string[];
 }
 export interface AgentPlan {
   id:string; work_item_id:string; name:string; objective:string; status:string; created_by:string;
