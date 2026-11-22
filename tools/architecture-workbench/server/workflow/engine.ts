@@ -55,6 +55,13 @@ function cancelCycleTimers(cycleId:string,timestamp:string) {
   run("UPDATE workflow_timers SET status='cancelled',updated_at=? WHERE cycle_id=? AND status IN ('scheduled','processing')",timestamp,cycleId);
 }
 
+function isReviewCycleReviewer(cycleId:string,actorId:string):boolean {
+  const cycle=one<{reviewer_snapshot_json:string}>("SELECT reviewer_snapshot_json FROM review_cycles WHERE id=?",cycleId);
+  if (!cycle) return false;
+  const reviewers=JSON.parse(cycle.reviewer_snapshot_json || "[]") as {person_id:string}[];
+  return reviewers.some(reviewer=>reviewer.person_id===actorId);
+}
+
 function snapshotManifest(workItemId:string) {
   return all<{id:string;version:number;code:string|null;type:string;title:string;content_hash:string}>(
     "SELECT a.id,a.version,a.code,a.type,a.title,a.content_hash FROM artifacts a WHERE a.work_item_id=? AND NOT EXISTS (SELECT 1 FROM artifacts newer WHERE newer.work_item_id=a.work_item_id AND COALESCE(newer.code,newer.id)=COALESCE(a.code,a.id) AND newer.version>a.version)",
@@ -151,6 +158,7 @@ export function raiseObjection(workItemId:string,actorId:string,reason:string) {
   const item=one<{status:string}>("SELECT status FROM work_items WHERE id=?",workItemId);
   const cycle=one<{id:string}>("SELECT id FROM review_cycles WHERE work_item_id=? AND status='active' ORDER BY created_at DESC LIMIT 1",workItemId);
   if (item?.status!=="discussion_review" || !cycle) return {ok:false as const,statusCode:409,error:"A blocking objection can only be raised during active discussion and review."};
+  if (!isReviewCycleReviewer(cycle.id,actorId)) return {ok:false as const,statusCode:403,error:"Only reviewers captured in this Submission's reviewer snapshot may raise a blocking objection."};
   const timestamp=now();
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -174,6 +182,7 @@ export function createClarification(workItemId:string,actorId:string,input:{arti
     "SELECT id,submission_id,baseline_json,review_deadline_at FROM review_cycles WHERE work_item_id=? AND status='active' ORDER BY created_at DESC LIMIT 1",workItemId
   );
   if (!cycle) return {ok:false as const,statusCode:409,error:"No active Review Cycle exists."};
+  if (!isReviewCycleReviewer(cycle.id,actorId)) return {ok:false as const,statusCode:403,error:"Only reviewers captured in this Submission's reviewer snapshot may request clarification."};
   const artifact=input.artifactId
     ? one<{id:string;version:number;title:string;submitted_by:string}>("SELECT id,version,title,submitted_by FROM artifacts WHERE id=? AND work_item_id=?",input.artifactId,workItemId)
     : null;
