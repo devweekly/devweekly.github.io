@@ -1876,8 +1876,15 @@ impl AgentRuntime {
                 index.content.chars().take(2_400).collect::<String>()
             ));
         }
-        for page in self.memory_store.search_pages(input, 4)? {
-            if self.can_access_memory_scope(page.scope, page.scope_id.as_deref()) && page.id != "index" {
+        let page_scope = MemoryQuery {
+            query: input.to_owned(),
+            session_id: Some(self.session.session_id.clone()),
+            project_id: self.project_id.clone(),
+            task_id: self.task_scope.clone(),
+            limit: 4,
+        };
+        for page in self.memory_store.search_pages_scoped(input, &page_scope, 4)? {
+            if page.id != "index" {
                 memory_text.push(format!("[Knowledge page: {} ({})] {}", page.title, page.id, page.summary));
             }
         }
