@@ -460,7 +460,7 @@ MCP Tool 不需要与 REST API 一一对应。面向 Agent 的工具应表达工
 - 对 Level 0 Copy / Paste，系统不声称可以追踪 Agent 内部执行；对集成方式，只记录实际经过平台的活动。
 
 
-## 22. 协议边界：REST/OpenAPI、MCP、A2A 和 ACP 不是同一层
+## 21. 协议边界：REST/OpenAPI、MCP、A2A 和 ACP 不是同一层
 
 讨论“网站如何连接 Agent”时，容易把所有协议都当成 Agent Protocol。实际上，它们解决的是不同的连接关系。设计时应先确定哪一方是 Client、哪一方是 Server、谁持有业务状态，再决定使用哪种协议。
 
@@ -567,7 +567,7 @@ ACP 很适合需要嵌入本地 Coding Agent 的 IDE、桌面客户端或 Local 
 
 事件本身不能绕开命令入口。Agent 不能通过发布一个 `DecisionConfirmed` 事件来伪造 Human 决定；事件必须来自服务端验证过的业务命令，并保留 Actor、Principal Type、Role、Resource Version 和 Policy Version。
 
-## 23. BPMN、CMMN、DMN：三种业务建模标准各自解决什么问题
+## 22. BPMN、CMMN、DMN：三种业务建模标准各自解决什么问题
 
 当前设计里最值得进一步引入的不是某个 Agent Framework，而是 OMG 的 BPMN、CMMN 和 DMN。它们不是 Agent 标准，但能描述业务活动、动态工作和确定性业务规则。
 
@@ -624,7 +624,7 @@ Work Item 是本系统的业务领域对象；CMMN Case 是工作流引擎中的
 
 CMMN 对动态 Case 特别有价值，但不代表所有事项都必须启动 Case Engine。简单的咨询、一次性任务和无需正式流程的事项，不应该被流程模型强行复杂化。
 
-## 24. 工作流与 Agent 执行项目比较
+## 23. 工作流与 Agent 执行项目比较
 
 以下比较区分**业务事项管理、流程编排和 Agent 执行**。它们并不是同一类产品。
 
@@ -723,7 +723,7 @@ n8n 擅长自动化工作流以及在 Tool Call 周围插入 Human Review。它�
 
 选择时应按层比较，而不是简单地把这些框架排成一个“最好用”的榜单。
 
-## 25. 商业产品：已有平台如何让外部 Agent 使用业务系统
+## 24. 商业产品：已有平台如何让外部 Agent 使用业务系统
 
 ### 25.1 Atlassian Rovo MCP：最接近“用户自己的 Agent 直接连接工作网站”的实例
 
@@ -771,7 +771,7 @@ Microsoft 自己也提示，财务、法律、人事和合规等敏感审批应�
 
 参考：[Copilot Studio Multistage and AI Approvals](https://learn.microsoft.com/en-us/microsoft-copilot-studio/flows-advanced-approvals)、[Human-in-the-loop Workflow Steps](https://learn.microsoft.com/en-us/training/modules/add-human-loop-workflows-copilot-studio/)。
 
-## 26. Cumora 源码解读：最值得参考的是 Runtime 解耦、授权代理和并发控制
+## 25. Cumora 源码解读：最值得参考的是 Runtime 解耦、授权代理和并发控制
 
 项目：[yetone/cumora](https://github.com/yetone/cumora)
 
@@ -1011,7 +1011,7 @@ Cumora 的一个局限是：它的主要协作模型围绕 Workspace、Participa
 
 因此，建议把 Cumora 视为**Agent Runtime 接入与多 Agent 协调的参考实现**，而不是完整业务事项平台的替代品。
 
-## 27. 研究进展：真正需要关注的是授权边界，而不只是 Agent 协作拓扑
+## 26. 研究进展：真正需要关注的是授权边界，而不只是 Agent 协作拓扑
 
 现有研究已从“多个 Agent 怎么协作”逐渐转向“Agent 在真实业务环境中怎样被授权、监督和验证”。
 
@@ -1060,7 +1060,7 @@ Chawla 与 Thakkar 的 [Agentic AI in Enterprise Systems: A Systematic Review of
 
 对当前平台而言，PoC 不应该只问“Agent 能不能完成分析”，而应测量整个 Human + Agent + Workflow 的端到端质量、错误恢复、审批延迟、人工负担和运行成本。
 
-## 28. 推荐架构与选型：先固定业务契约，再选择执行引擎
+## 27. 推荐架构与选型：先固定业务契约，再选择执行引擎
 
 经过协议、Workflow、产品和 Cumora 的比较，可以得出一个比“选择一个 Agent Framework”更稳定的设计。
 
@@ -1172,7 +1172,7 @@ Human Confirmation 还要绑定 Decision Draft Version、输入 Artifact Version
 这套组合既能支持完全不用 Agent 的用户，也能容纳 Copilot、Claude Code、网站 Agent 和多个外部 Agent，不会把业务平台变成某个 Agent Runtime 的专用前端。
 
 
-## 29. 结论
+## 28. 结论
 
 这类系统最合适的设计单位不是 Agent，也不是一个共享聊天会话，而是长期存在的业务事项。参与者通过 Participation 加入事项，角色决定其责任，Task 承载具体工作，Artifact 保存交付物，Review 和 Decision 表达正式判断，Workflow Runtime 管理业务生命周期。
 
