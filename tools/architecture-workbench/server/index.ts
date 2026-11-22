@@ -12,6 +12,11 @@ import { agentProfiles, listAgentPlans, listAgentRuns, requestAgentPlan, request
 import { agentRuntimeAdapter } from "./agents/runtime.js";
 import {
   canManageParticipants,
+  canChair,
+  createClarification,
+  answerClarification,
+  recordFormalDecision,
+  raiseObjection,
   getWorkItemPermissions,
   getWorkflowProjection,
   isGlobalAdmin,
@@ -19,8 +24,10 @@ import {
   validateWorkflowTransition,
   type WorkflowAction
 } from "./workflow/engine.js";
+import { startWorkflowTimerService } from "./workflow/timer-service.js";
 
 seed();
+const workflowTimers=startWorkflowTimerService();
 const stopAgentRunLeaseReaper=startAgentRunLeaseReaper();
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -176,12 +183,25 @@ app.get("/api/work-items",(req,res)=>{
 });
 
 app.post("/api/work-items",(req,res)=>{
-  const actor = actorId(req); const body = req.body || {};
+  const actor=actorId(req); const body=req.body || {};
   if (!body.title || !body.type) return res.status(400).json({error:"title and type are required"});
-  const workItemId = id("wi"); const code = "WI-"+new Date().getFullYear()+"-"+Math.floor(Date.now()/1000).toString().slice(-6); const timestamp=now();
-  run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,requestor_id,target_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",workItemId,code,body.type,String(body.title),String(body.description || ""),"draft",body.priority || "normal",actor,actor,body.targetDate || null,timestamp,timestamp);
-  run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",id("part"),workItemId,actor,"owner","Work Item Owner",JSON.stringify(["read","contribute","comment","review","manage"]),timestamp);
-  logActivity(workItemId,actor,"created","work_item",workItemId,"Created Work Item "+code);
+  const chairmanId=body.chairmanId ? String(body.chairmanId) : null;
+  if (chairmanId && !one("SELECT id FROM people WHERE id=?",chairmanId)) return res.status(400).json({error:"Unknown Chairman"});
+  const requestPackage={
+    goal:String(body.goal || ""),scope:String(body.scope || ""),constraints:String(body.constraints || ""),
+    initialProposal:String(body.initialProposal || ""),decisionQuestions:String(body.decisionQuestions || ""),
+    submissionMessage:String(body.submissionMessage || "Initial Request Package")
+  };
+  const workItemId=id("wi");
+  const code="WI-"+new Date().getFullYear()+"-"+Math.floor(Date.now()/1000).toString().slice(-6);
+  const timestamp=now();
+  run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,requestor_id,chairman_id,request_package_json,target_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    workItemId,code,body.type,String(body.title),String(body.description || ""),"draft",body.priority || "normal",actor,actor,chairmanId,JSON.stringify(requestPackage),body.targetDate || null,timestamp,timestamp);
+  run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",
+    id("part"),workItemId,actor,"owner","Work Item Owner",JSON.stringify(["read","contribute","comment","review","manage"]),timestamp);
+  if (chairmanId) run("INSERT OR IGNORE INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",
+    id("part"),workItemId,chairmanId,"chairman","Chairman",JSON.stringify(["read","review","decide"]),timestamp);
+  logActivity(workItemId,actor,"created","work_item",workItemId,"Created Request "+code);
   res.status(201).json({id:workItemId,code});
 });
 
@@ -260,13 +280,15 @@ app.get("/api/work-items/:id",(req,res)=>{
   const reviews=all("SELECT r.*,p.display_name AS reviewer_name,a.code AS artifact_code,a.title AS artifact_title FROM reviews r JOIN people p ON p.id=r.reviewer_id JOIN artifacts a ON a.id=r.artifact_id JOIN review_cycles c ON c.id=r.cycle_id WHERE c.work_item_id=? ORDER BY r.created_at DESC",workItemId);
   const tasks=all("SELECT t.*,a.display_name AS assignee_name,o.display_name AS owner_name FROM tasks t LEFT JOIN people a ON a.id=t.assignee_id LEFT JOIN people o ON o.id=t.owner_id WHERE t.work_item_id=? ORDER BY CASE t.status WHEN 'in_progress' THEN 0 WHEN 'blocked' THEN 1 WHEN 'open' THEN 2 ELSE 3 END,t.due_date",workItemId);
   const decisions=all("SELECT d.*,p.display_name AS decision_maker_name FROM decisions d JOIN people p ON p.id=d.decision_maker_id WHERE d.work_item_id=? ORDER BY d.created_at DESC",workItemId);
+  const clarifications=all("SELECT c.*,requester.display_name AS requester_name,answerer.display_name AS answerer_name,a.title AS artifact_title FROM clarification_requests c JOIN people requester ON requester.id=c.requested_by LEFT JOIN people answerer ON answerer.id=c.answered_by JOIN artifacts a ON a.id=c.artifact_id WHERE c.work_item_id=? ORDER BY c.created_at DESC",workItemId);
+  const decisionMeetings=all("SELECT m.*,p.display_name AS chairman_name FROM decision_meetings m JOIN people p ON p.id=m.chairman_id WHERE m.work_item_id=? ORDER BY m.meeting_at DESC",workItemId);
   const comments=all("SELECT c.*,p.display_name AS author_name,p.avatar_color FROM comments c JOIN people p ON p.id=c.author_id WHERE c.work_item_id=? ORDER BY c.created_at DESC",workItemId);
   const activity=all("SELECT e.*,p.display_name AS actor_name FROM activity_events e JOIN people p ON p.id=e.actor_id WHERE e.work_item_id=? ORDER BY e.created_at DESC LIMIT 30",workItemId);
   const attachments=all("SELECT id,original_name,content_type,size_bytes,uploaded_by,created_at FROM attachments WHERE work_item_id=? ORDER BY created_at DESC",workItemId);
   const externalLinks=all("SELECT l.id,l.relation_type,l.confluence_template_key,l.confluence_template_name,l.created_at,r.provider,r.resource_type,r.external_id,r.external_key,r.title,r.url FROM work_item_external_links l JOIN external_resource_refs r ON r.id=l.resource_id WHERE l.work_item_id=? ORDER BY r.provider,r.resource_type,r.title",workItemId);
   const agentRuns=all("SELECT r.id,r.work_item_id,r.task_id,r.plan_id,r.node_key,r.agent_key,r.skill_name,r.objective,r.requested_by,r.claimed_by,r.status,r.handoff_reason,r.result_artifact_id,r.error_message,r.created_at,r.updated_at,r.started_at,r.finished_at,r.heartbeat_at,r.lease_expires_at,r.attempt_count,r.max_attempts,requestor.display_name AS requested_by_name,claimer.display_name AS claimed_by_name FROM agent_runs r JOIN people requestor ON requestor.id=r.requested_by LEFT JOIN people claimer ON claimer.id=r.claimed_by WHERE r.work_item_id=? ORDER BY r.created_at DESC",workItemId);
   const agentPlans=listAgentPlans(workItemId,actor);
-  res.json({workItem,participants,artifacts,submissions,cycles,reviews,tasks,decisions,comments,activity,attachments,externalLinks,agentRuns,agentPlans,permissions:permissions(workItemId,actor),canManageParticipants:canManageParticipants(workItemId,actor),workflow:getWorkflowProjection(workItemId,actor)});
+  res.json({workItem,participants,artifacts,submissions,cycles,reviews,tasks,decisions,clarifications,decisionMeetings,comments,activity,attachments,externalLinks,agentRuns,agentPlans,permissions:permissions(workItemId,actor),canManageParticipants:canManageParticipants(workItemId,actor),workflow:getWorkflowProjection(workItemId,actor)});
 });
 
 app.post("/api/work-items/:id/artifacts",(req,res)=>{
@@ -288,26 +310,48 @@ app.post("/api/work-items/:id/reviews",(req,res)=>{
   const workItemId=String(req.params.id); const actor=actorId(req);
   if (!requirePermission(res,workItemId,actor,"review")) return;
   const body=req.body || {};
+  const outcome=String(body.outcome || "comment");
+  if (!["comment","objection","clarification_requested"].includes(outcome)) {
+    return res.status(400).json({error:"Reviewers may comment, request clarification or raise a blocking objection. Formal outcomes belong to the Decision Meeting."});
+  }
+  const item=one<{status:string}>("SELECT status FROM work_items WHERE id=?",workItemId);
+  if (item?.status!=="discussion_review") return res.status(409).json({error:"The Request is not in the discussion and review stage."});
   const artifact=one<{id:string;version:number;title:string;submitted_by:string}>("SELECT id,version,title,submitted_by FROM artifacts WHERE id=? AND work_item_id=?",body.artifactId,workItemId);
-  if (!artifact) return res.status(400).json({error:"Review target does not belong to this Work Item."});
+  if (!artifact) return res.status(400).json({error:"Review target does not belong to this Request."});
   if (artifact.submitted_by===actor) return res.status(403).json({error:"Independent review cannot be submitted by the Artifact author."});
-  const cycle=one<{id:string;baseline_json:string}>(
-    "SELECT id,baseline_json FROM review_cycles WHERE work_item_id=? AND status='active' ORDER BY created_at DESC LIMIT 1",workItemId
-  );
-  if (!cycle) return res.status(409).json({error:"The Request has no active Review Cycle. The Requestor must submit it for review first."});
+  const cycle=one<{id:string;baseline_json:string}>("SELECT id,baseline_json FROM review_cycles WHERE work_item_id=? AND status='active' ORDER BY created_at DESC LIMIT 1",workItemId);
+  if (!cycle) return res.status(409).json({error:"The Request has no active Review Cycle."});
   const baseline=JSON.parse(cycle.baseline_json) as {id:string;version:number}[];
   if (!baseline.some(entry=>entry.id===artifact.id && entry.version===artifact.version)) {
-    return res.status(409).json({error:"This Artifact version is not part of the active review baseline. Submit the updated Request for review to start a new cycle."});
+    return res.status(409).json({error:"This Artifact version is outside the active Submission baseline."});
+  }
+  if (outcome==="clarification_requested") {
+    const result=createClarification(workItemId,actor,{artifactId:artifact.id,question:String(body.summary || ""),responseDueAt:String(body.responseDueAt || "")});
+    if (!result.ok) return res.status(result.statusCode).json({error:result.error});
+    workflowTimers.wake();
+    return res.status(201).json({id:result.id});
   }
   const reviewId=id("rev");
   run("INSERT INTO reviews(id,cycle_id,artifact_id,artifact_version,reviewer_id,discipline,outcome,summary,findings_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-    reviewId,cycle.id,artifact.id,artifact.version,actor,body.discipline || "General",body.outcome || "comment",body.summary || "",JSON.stringify(body.findings || []),now());
-  logActivity(workItemId,actor,"reviewed","artifact",artifact.id,"Submitted "+(body.outcome || "comment")+" review for "+artifact.title);
-  if (body.outcome==="request_changes" && one<{status:string}>("SELECT status FROM work_items WHERE id=?",workItemId)?.status==="in_review") {
-    const transition=transitionWorkItem(workItemId,actor,"request_changes",body.summary || "Reviewer requested changes");
+    reviewId,cycle.id,artifact.id,artifact.version,actor,body.discipline || "General",outcome,String(body.summary || ""),JSON.stringify(body.findings || []),now());
+  logActivity(workItemId,actor,"reviewed","artifact",artifact.id,"Submitted "+outcome+" review for "+artifact.title);
+  if (outcome==="objection") {
+    const transition=raiseObjection(workItemId,actor,String(body.summary || "Blocking objection raised"));
     if (!transition.ok) return res.status(transition.statusCode).json({error:transition.error});
+    workflowTimers.wake();
   }
   res.status(201).json({id:reviewId});
+});
+
+app.post("/api/work-items/:id/clarifications/:clarificationId/answer",(req,res)=>{
+  const workItemId=String(req.params.id); const actor=actorId(req);
+  if (!can(workItemId,actor,"read")) return res.status(403).json({error:"The current principal cannot access this Work Item."});
+  const answer=String((req.body || {}).answer || "").trim();
+  if (!answer) return res.status(400).json({error:"An answer is required."});
+  const result=answerClarification(workItemId,String(req.params.clarificationId),actor,answer);
+  if (!result.ok) return res.status(result.statusCode).json({error:result.error});
+  workflowTimers.wake();
+  res.json({ok:true});
 });
 
 app.post("/api/work-items/:id/tasks",(req,res)=>{
@@ -351,47 +395,33 @@ app.patch("/api/tasks/:id",(req,res)=>{
 
 app.post("/api/work-items/:id/decisions",(req,res)=>{
   const workItemId=String(req.params.id); const actor=actorId(req);
-  if (!requirePermission(res,workItemId,actor,"decide")) return;
-  const body=req.body || {}; const outcomes=["accepted","rejected","more_analysis","accepted_with_conditions"];
-  if (!outcomes.includes(body.outcome)) return res.status(400).json({error:"Unsupported decision outcome"});
-  if (!body.rationale) return res.status(400).json({error:"A rationale is required"});
-  if (body.subjectType==="artifact" && !one("SELECT id FROM artifacts WHERE id=? AND work_item_id=?",body.subjectId,workItemId)) {
-    return res.status(400).json({error:"Decision subject must be an Artifact in this Work Item."});
-  }
-  const subjectType=body.subjectType || "work_item";
-  let workflowAction:WorkflowAction|null=null;
-  if (subjectType==="work_item") {
-    workflowAction=body.outcome==="accepted" || body.outcome==="accepted_with_conditions" ? "accept" :
-      body.outcome==="rejected" ? "reject" : "more_analysis";
-    const validation=validateWorkflowTransition(workItemId,actor,workflowAction);
-    if (!validation.ok) return res.status(validation.statusCode).json({error:validation.error});
-  }
-  const decisionId=id("dec");
-  run("INSERT INTO decisions(id,work_item_id,subject_type,subject_id,outcome,rationale,conditions,decision_maker_id,policy_ref,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",decisionId,workItemId,subjectType,body.subjectId || null,body.outcome,body.rationale,body.conditions || "",actor,"prototype-policy-v1",now());
-  logActivity(workItemId,actor,"decided","decision",decisionId,"Decision recorded: "+body.outcome,{subjectType:body.subjectType || "work_item",subjectId:body.subjectId || null});
-  if (workflowAction) {
-    const transition=transitionWorkItem(workItemId,actor,workflowAction,body.rationale);
-    if (!transition.ok) return res.status(transition.statusCode).json({error:transition.error});
-  }
-  if (body.outcome==="more_analysis") {
-    if (body.followUpOwnerId && !one("SELECT id FROM participations WHERE work_item_id=? AND person_id=?",workItemId,body.followUpOwnerId)) {
-      return res.status(400).json({error:"Follow-up Task assignee must be a participant of this Request."});
-    }
-    const taskId=id("task");
-    const followUpOwner=body.followUpOwnerId || one<{owner_id:string}>("SELECT owner_id FROM work_items WHERE id=?",workItemId)?.owner_id || actor;
-    run("INSERT INTO tasks(id,work_item_id,title,kind,status,owner_id,assignee_id,due_date,relates_to,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",taskId,workItemId,body.followUpTitle || "Complete additional analysis","analysis","open",followUpOwner,body.followUpOwnerId || null,body.followUpDueDate || null,body.subjectId || null,now(),now());
-  }
-  let debtId: string | null=null;
-  if (body.technicalDebt?.title && body.outcome==="accepted_with_conditions") {
-    const debt=body.technicalDebt; debtId=id("wi");
+  if (!canChair(workItemId,actor)) return res.status(403).json({error:"Only the assigned Chairman or a Workbench Admin may record a formal decision."});
+  const body=req.body || {};
+  if (!["approved","needs_work","rejected"].includes(body.outcome)) return res.status(400).json({error:"Decision outcome must be approved, needs_work or rejected."});
+  if (!String(body.rationale || "").trim()) return res.status(400).json({error:"A decision rationale is required."});
+  const result=recordFormalDecision(workItemId,actor,{
+    outcome:body.outcome,rationale:String(body.rationale),conditions:String(body.conditions || ""),
+    meetingAt:body.meetingAt ? String(body.meetingAt) : undefined,minutes:String(body.minutes || "")
+  });
+  if (!result.ok) return res.status(result.statusCode).json({error:result.error});
+  let debtId:string|null=null;
+  if (body.technicalDebt?.title && body.outcome==="approved") {
+    const debt=body.technicalDebt; const ownerId=debt.ownerId || actor;
+    if (!one("SELECT id FROM people WHERE id=?",ownerId)) return res.status(400).json({error:"Unknown Technical Debt owner."});
+    debtId=id("wi");
     const debtCode="DEBT-"+new Date().getFullYear()+"-"+Math.floor(Date.now()/1000).toString().slice(-6);
-    run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,requestor_id,target_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",debtId,debtCode,"technical_debt",debt.title,debt.description || body.conditions || "","open",debt.priority || "normal",debt.ownerId || actor,actor,debt.dueDate || null,now(),now());
-    run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",id("part"),debtId,debt.ownerId || actor,"debt_owner","Technical Debt Owner",JSON.stringify(["read","contribute","comment","manage"]),now());
-    run("INSERT INTO debt_details(work_item_id,severity,priority,target_state,remediation_plan,status,source_decision_id,due_date) VALUES(?,?,?,?,?,?,?,?)",debtId,debt.severity || "medium",debt.priority || "normal",debt.targetState || "",debt.remediationPlan || "","open",decisionId,debt.dueDate || null);
-    run("INSERT INTO work_item_relations(id,source_work_item_id,target_work_item_id,relation_type,decision_id,created_at) VALUES(?,?,?,?,?,?)",id("rel"),workItemId,debtId,"generated_technical_debt",decisionId,now());
-    logActivity(debtId,actor,"created","technical_debt",debtId,"Created from decision "+decisionId);
+    run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,requestor_id,target_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+      debtId,debtCode,"technical_debt",debt.title,debt.description || body.conditions || "","open",debt.priority || "normal",ownerId,actor,debt.dueDate || null,now(),now());
+    run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",
+      id("part"),debtId,ownerId,"debt_owner","Technical Debt Owner",JSON.stringify(["read","contribute","comment","manage"]),now());
+    run("INSERT INTO debt_details(work_item_id,severity,priority,target_state,remediation_plan,status,source_decision_id,due_date) VALUES(?,?,?,?,?,?,?,?)",
+      debtId,debt.severity || "medium",debt.priority || "normal",debt.targetState || "",debt.remediationPlan || "","open",result.id,debt.dueDate || null);
+    run("INSERT INTO work_item_relations(id,source_work_item_id,target_work_item_id,relation_type,decision_id,created_at) VALUES(?,?,?,?,?,?)",
+      id("rel"),workItemId,debtId,"generated_technical_debt",result.id,now());
+    logActivity(debtId,actor,"created","technical_debt",debtId,"Created from decision "+result.id);
   }
-  res.status(201).json({id:decisionId,technicalDebtId:debtId});
+  workflowTimers.wake();
+  res.status(201).json({id:result.id,technicalDebtId:debtId,to:result.to});
 });
 
 app.post("/api/tech-debts",(req,res)=>{
@@ -433,13 +463,15 @@ app.post("/api/work-items/:id/comments",(req,res)=>{
 app.post("/api/work-items/:id/transitions",(req,res)=>{
   const workItemId=String(req.params.id); const actor=actorId(req);
   if (!can(workItemId,actor,"read")) return res.status(403).json({error:"The current principal cannot access this Work Item."});
-  const body=req.body || {};
-  const action=String(body.action) as WorkflowAction;
-  if (!["start_analysis","submit_for_review","close"].includes(action)) {
-    return res.status(400).json({error:"This endpoint only accepts start_analysis, submit_for_review or close. Formal decisions and review outcomes use their own APIs."});
-  }
-  const result=transitionWorkItem(workItemId,actor,action,String(body.reason || ""));
+  const body=req.body || {}; const action=String(body.action) as WorkflowAction;
+  if (!["submit_request","close"].includes(action)) return res.status(400).json({error:"Only Request submission and explicit closure use this endpoint; Reviews and Decisions use dedicated operations."});
+  const result=transitionWorkItem(workItemId,actor,action,String(body.reason || ""),{
+    submissionMessage:body.submissionMessage ? String(body.submissionMessage) : undefined,
+    package:body.package && typeof body.package==="object" ? body.package : undefined,
+    assistedByRunId:body.assistedByRunId ? String(body.assistedByRunId) : null
+  });
   if (!result.ok) return res.status(result.statusCode).json({error:result.error});
+  workflowTimers.wake();
   res.json({ok:true,workflow:getWorkflowProjection(workItemId,actor)});
 });
 
@@ -602,5 +634,5 @@ app.listen(port,()=>{
   console.log("SQLite database: "+(process.env.DATABASE_PATH || "./data/architecture-workbench.sqlite"));
   console.log("MCP Skills endpoint: http://localhost:"+port+"/mcp ("+publishedSkillCount+" skills)");
 });
-process.on("SIGINT",()=>{stopAgentRunLeaseReaper();db.close();process.exit(0);});
-process.on("SIGTERM",()=>{stopAgentRunLeaseReaper();db.close();process.exit(0);});
+process.on("SIGINT",()=>{workflowTimers.stop();stopAgentRunLeaseReaper();db.close();process.exit(0);});
+process.on("SIGTERM",()=>{workflowTimers.stop();stopAgentRunLeaseReaper();db.close();process.exit(0);});
