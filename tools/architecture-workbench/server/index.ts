@@ -225,6 +225,46 @@ app.patch("/api/work-items/:id/request-package",(req,res)=>{
   res.json({ok:true});
 });
 
+app.post("/api/work-items/:id/request-package-drafts/:draftId/apply",(req,res)=>{
+  const workItemId=String(req.params.id); const draftId=String(req.params.draftId); const actor=actorId(req);
+  const item=one<{requestor_id:string|null;status:string}>("SELECT requestor_id,status FROM work_items WHERE id=?",workItemId);
+  if (!item) return res.status(404).json({error:"Request not found."});
+  if (item.requestor_id!==actor) return res.status(403).json({error:"Only the Requestor may apply an Agent Request Package draft."});
+  if (!["draft","requestor_revision"].includes(item.status)) return res.status(409).json({error:"The Request Package is frozen after submission."});
+  const draft=one<{id:string;agent_run_id:string;draft_json:string;status:string}>(
+    "SELECT id,agent_run_id,draft_json,status FROM request_package_drafts WHERE id=? AND work_item_id=?",draftId,workItemId
+  );
+  if (!draft || draft.status!=="pending") return res.status(404).json({error:"Pending Agent Request Package draft not found."});
+  const agentRun=one<{status:string}>("SELECT status FROM agent_runs WHERE id=? AND work_item_id=?",draft.agent_run_id,workItemId);
+  if (agentRun?.status!=="completed") return res.status(409).json({error:"The assisting Agent Run must complete before its draft can be applied."});
+  let packageValue:Record<string,unknown>;
+  try { packageValue=JSON.parse(draft.draft_json) as Record<string,unknown>; }
+  catch { return res.status(409).json({error:"The Agent Request Package draft is invalid."}); }
+  if (!String(packageValue.goal || "").trim() || !String(packageValue.scope || "").trim() || !String(packageValue.submissionMessage || "").trim()) {
+    return res.status(409).json({error:"The Agent Request Package draft is incomplete."});
+  }
+  const timestamp=now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const applied=run("UPDATE request_package_drafts SET status='applied',applied_by=?,applied_at=? WHERE id=? AND status='pending'",
+      actor,timestamp,draftId);
+    if (Number(applied.changes)!==1) {
+      db.exec("ROLLBACK");
+      return res.status(409).json({error:"This Agent draft has already been applied or superseded."});
+    }
+    run("UPDATE request_package_drafts SET status='superseded' WHERE work_item_id=? AND id<>? AND status='pending'",workItemId,draftId);
+    run("UPDATE work_items SET request_package_json=?,context_version=context_version+1,updated_at=? WHERE id=?",
+      JSON.stringify(packageValue),timestamp,workItemId);
+    logActivity(workItemId,actor,"request_package_draft_applied","request_package_draft",draftId,
+      "Requestor applied an Agent-prepared Request Package draft; final submission remains a separate action.",{agentRunId:draft.agent_run_id});
+    db.exec("COMMIT");
+    res.json({ok:true});
+  } catch(error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+});
+
 app.post("/api/work-items/:id/participations",(req,res)=>{
   const workItemId=String(req.params.id); const actor=actorId(req);
   if (!requireParticipantManager(res,workItemId,actor)) return;
@@ -312,13 +352,14 @@ app.get("/api/work-items/:id",(req,res)=>{
   const decisions=all("SELECT d.*,p.display_name AS decision_maker_name FROM decisions d JOIN people p ON p.id=d.decision_maker_id WHERE d.work_item_id=? ORDER BY d.created_at DESC",workItemId);
   const clarifications=all("SELECT c.*,requester.display_name AS requester_name,answerer.display_name AS answerer_name,a.title AS artifact_title FROM clarification_requests c JOIN people requester ON requester.id=c.requested_by LEFT JOIN people answerer ON answerer.id=c.answered_by LEFT JOIN artifacts a ON a.id=c.artifact_id WHERE c.work_item_id=? ORDER BY c.created_at DESC",workItemId);
   const decisionMeetings=all("SELECT m.*,p.display_name AS chairman_name FROM decision_meetings m JOIN people p ON p.id=m.chairman_id WHERE m.work_item_id=? ORDER BY m.meeting_at DESC",workItemId);
+  const requestPackageDrafts=all("SELECT d.id,d.agent_run_id,d.draft_json,d.status,d.created_by,d.created_at,d.applied_at,p.display_name AS created_by_name,r.skill_name AS agent_skill_name,r.status AS agent_run_status FROM request_package_drafts d JOIN people p ON p.id=d.created_by JOIN agent_runs r ON r.id=d.agent_run_id WHERE d.work_item_id=? ORDER BY d.created_at DESC LIMIT 10",workItemId);
   const comments=all("SELECT c.*,p.display_name AS author_name,p.avatar_color FROM comments c JOIN people p ON p.id=c.author_id WHERE c.work_item_id=? ORDER BY c.created_at DESC",workItemId);
   const activity=all("SELECT e.*,p.display_name AS actor_name FROM activity_events e JOIN people p ON p.id=e.actor_id WHERE e.work_item_id=? ORDER BY e.created_at DESC LIMIT 30",workItemId);
   const attachments=all("SELECT id,original_name,content_type,size_bytes,uploaded_by,created_at FROM attachments WHERE work_item_id=? ORDER BY created_at DESC",workItemId);
   const externalLinks=all("SELECT l.id,l.relation_type,l.confluence_template_key,l.confluence_template_name,l.created_at,r.provider,r.resource_type,r.external_id,r.external_key,r.title,r.url FROM work_item_external_links l JOIN external_resource_refs r ON r.id=l.resource_id WHERE l.work_item_id=? ORDER BY r.provider,r.resource_type,r.title",workItemId);
   const agentRuns=all("SELECT r.id,r.work_item_id,r.task_id,r.plan_id,r.node_key,r.agent_key,r.skill_name,r.objective,r.requested_by,r.claimed_by,r.status,r.handoff_reason,r.result_artifact_id,r.error_message,r.created_at,r.updated_at,r.started_at,r.finished_at,r.heartbeat_at,r.lease_expires_at,r.attempt_count,r.max_attempts,requestor.display_name AS requested_by_name,claimer.display_name AS claimed_by_name FROM agent_runs r JOIN people requestor ON requestor.id=r.requested_by LEFT JOIN people claimer ON claimer.id=r.claimed_by WHERE r.work_item_id=? ORDER BY r.created_at DESC",workItemId);
   const agentPlans=listAgentPlans(workItemId,actor);
-  res.json({workItem,participants,artifacts,submissions,cycles,reviews,tasks,decisions,clarifications,decisionMeetings,comments,activity,attachments,externalLinks,agentRuns,agentPlans,permissions:permissions(workItemId,actor),canManageParticipants:canManageParticipants(workItemId,actor),workflow:getWorkflowProjection(workItemId,actor)});
+  res.json({workItem,participants,artifacts,submissions,cycles,reviews,tasks,decisions,clarifications,decisionMeetings,requestPackageDrafts,comments,activity,attachments,externalLinks,agentRuns,agentPlans,permissions:permissions(workItemId,actor),canManageParticipants:canManageParticipants(workItemId,actor),workflow:getWorkflowProjection(workItemId,actor)});
 });
 
 app.post("/api/work-items/:id/artifacts",(req,res)=>{
