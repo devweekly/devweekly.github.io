@@ -777,6 +777,35 @@ impl BackgroundTaskStore {
         result
     }
 
+    fn remove_completed_for_parent(
+        &self,
+        task_id: &str,
+        parent_session_id: &str,
+    ) -> Result<bool, AgentError> {
+        ensure_real_directory(&self.directory)?;
+        let path = self.path_for(task_id)?;
+        let lock = self.lock_store()?;
+        ensure_regular_file_or_missing(&path)?;
+        let bytes = match fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                lock.unlock()?;
+                return Ok(false);
+            }
+            Err(error) => return Err(error.into()),
+        };
+        let record: BackgroundTaskRecord = serde_json::from_slice(&bytes)?;
+        if record.status != BackgroundTaskStatus::Completed
+            || record.parent_session_id != parent_session_id
+        {
+            lock.unlock()?;
+            return Ok(false);
+        }
+        fs::remove_file(path)?;
+        lock.unlock()?;
+        Ok(true)
+    }
+
     fn list(&self) -> Result<Vec<BackgroundTaskRecord>, AgentError> {
         ensure_real_directory(&self.directory)?;
         let lock = self.lock_store()?;
@@ -1306,6 +1335,13 @@ impl AgentRuntime {
     }
     pub fn forget_memory(&mut self, id: &str) -> Result<(), AgentError> {
         let sources = self.memory_store.forget_with_sources(id)?;
+        for source in &sources {
+            if source.role == "assistant" {
+                if let Some(task_id) = background_task_id_from_transcript(&source.content) {
+                    self.background_task_store.remove_completed_for_parent(task_id, &source.session_id)?;
+                }
+            }
+        }
         let current_session_id = self.session.session_id.clone();
         let redaction = self.store.redact_transcript_sources(&sources);
         if sources.iter().any(|source| source.session_id == current_session_id) {
@@ -1318,7 +1354,8 @@ impl AgentRuntime {
                 // Never let the just-forgotten source remain in the active model context,
                 // even if the persisted session was concurrently modified or inaccessible.
                 self.messages.retain(|message| !sources.iter().any(|source|
-                    source.session_id == current_session_id && source.content == message.content
+                    source.session_id == current_session_id
+                        && transcript_matches_session_message(source, message)
                 ));
             }
         }
@@ -3372,6 +3409,12 @@ fn lock_state_file(path: &Path) -> Result<fs::File, AgentError> {
     Ok(file)
 }
 
+fn background_task_id_from_transcript(content: &str) -> Option<&str> {
+    let tail = content.strip_prefix("Background task result [")?;
+    let (task_id, suffix) = tail.split_once(']')?;
+    (!task_id.is_empty() && suffix.starts_with(':')).then_some(task_id)
+}
+
 fn transcript_matches_session_message(source: &TranscriptEntry, message: &ChatMessage) -> bool {
     if source.content.is_empty() { return false; }
     if message.content == source.content { return true; }
@@ -3886,6 +3929,47 @@ mod tests {
         record.status = BackgroundTaskStatus::Completed;
         assert!(store.save(&record).is_err());
         assert_eq!(store.load("task-cancel-guard").unwrap().status, BackgroundTaskStatus::Cancelled);
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn forgetting_a_delivered_background_result_removes_its_task_record() {
+        let directory = std::env::temp_dir().join(format!(
+            "rust-agent-task-forget-{}", new_session_id(now_ms())
+        ));
+        let store = BackgroundTaskStore::new(directory.clone());
+        let mut record = BackgroundTaskRecord {
+            schema_version: super::BACKGROUND_TASK_SCHEMA_VERSION,
+            task_id: "task-forget-result".into(),
+            name: "forget result".into(),
+            parent_session_id: "parent-session".into(),
+            model: "test-model".into(),
+            status: BackgroundTaskStatus::Queued,
+            step: 0,
+            created_at_ms: now_ms(),
+            updated_at_ms: now_ms(),
+            result: None,
+            error: None,
+            delivered_at_ms: None,
+            agent_profile: Some(AgentProfile::default_background()),
+            usage: UsageTotals::default(),
+            messages: vec![
+                ChatMessage { role: "system".into(), content: "system".into() },
+                ChatMessage { role: "user".into(), content: "task".into() },
+                ChatMessage { role: "assistant".into(), content: "secret generated result".into() },
+            ],
+        };
+        store.save(&record).unwrap();
+        record.status = BackgroundTaskStatus::Running;
+        store.save(&record).unwrap();
+        record.status = BackgroundTaskStatus::Completed;
+        record.result = Some("secret generated result".into());
+        record.delivered_at_ms = Some(now_ms());
+        store.save(&record).unwrap();
+
+        assert!(!store.remove_completed_for_parent("task-forget-result", "wrong-parent").unwrap());
+        assert!(store.remove_completed_for_parent("task-forget-result", "parent-session").unwrap());
+        assert!(store.load("task-forget-result").is_err());
         let _ = fs::remove_dir_all(directory);
     }
 
