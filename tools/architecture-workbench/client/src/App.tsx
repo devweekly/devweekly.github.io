@@ -11,7 +11,6 @@ import {
   BarChartOutlined, DeleteOutlined, EditOutlined, FileProtectOutlined, LinkOutlined, PlusOutlined,
   ProjectOutlined, SafetyCertificateOutlined, TeamOutlined, UnorderedListOutlined, UserAddOutlined, UploadOutlined
 } from "@ant-design/icons";
-import { Welcome } from "@ant-design/x";
 import dayjs from "dayjs";
 import { api, setActor } from "./api";
 import type { Activity, AgentPlan, AgentProfile, AgentRun, Artifact, Bootstrap, Comment, DebtItem, ExternalResourceRef, MyTask, Person, Participation, Review, WorkItem, WorkItemDetail, WorkTask, WorkbenchAnalytics } from "./types";
@@ -43,7 +42,7 @@ const dateText = (value?: string | null) => value ? dayjs(value).format("YYYY-MM
 export default function App() {
   const [bootstrap,setBootstrap] = useState<Bootstrap|null>(null);
   const [actor,setActorState] = useState("u-sa");
-  const [page,setPage] = useState("overview");
+  const [page,setPage] = useState(()=>new URLSearchParams(window.location.search).get("page") || "overview");
   const [selected,setSelected] = useState<WorkItem|null>(null);
   const [detail,setDetail] = useState<WorkItemDetail|null>(null);
   const [loading,setLoading] = useState(true);
@@ -79,7 +78,7 @@ export default function App() {
   const [agentForm] = Form.useForm();
   const [agentPlanForm] = Form.useForm();
   const [agentResumeForm] = Form.useForm();
-  const [activeTab,setActiveTab] = useState("overview");
+  const [activeTab,setActiveTab] = useState(()=>new URLSearchParams(window.location.search).get("tab") || "overview");
   const [commentText,setCommentText] = useState("");
   const [query,setQuery] = useState("");
   const [busy,setBusy] = useState(false);
@@ -102,7 +101,8 @@ export default function App() {
     } finally { setLoading(false); }
   }
   async function openWorkItem(item:WorkItem) {
-    setSelected(item); setDrawerOpen(true);
+    setSelected(item); setDrawerOpen(true); setPage("work-items"); setActiveTab("overview");
+    writeRoute("work-items",item.id,"overview");
     try { setDetail(await api.detail(item.id)); }
     catch (error) { message.error(error instanceof Error ? error.message : "无法打开事项"); }
   }
@@ -112,6 +112,51 @@ export default function App() {
     setDetail(fresh); setBootstrap(data);
   }
   useEffect(()=>{setActor(actor);setProfilePersonId(actor);void reload();},[actor]);
+
+  function writeRoute(nextPage:string,itemId?:string|null,tab?:string) {
+    const params=new URLSearchParams();
+    params.set("page",nextPage);
+    if(itemId) params.set("item",itemId);
+    if(itemId && tab && tab!=="overview") params.set("tab",tab);
+    const queryString=params.toString();
+    window.history.pushState({}, "", window.location.pathname+(queryString?"?"+queryString:""));
+  }
+  function navigatePage(nextPage:string) {
+    setPage(nextPage); setDrawerOpen(false); setSelected(null); setDetail(null);
+    setActiveTab("overview"); writeRoute(nextPage);
+  }
+  function closeItemDrawer() {
+    setDrawerOpen(false); setSelected(null); setDetail(null); writeRoute(page);
+  }
+  function changeDetailTab(nextTab:string) {
+    setActiveTab(nextTab);
+    if(selected) writeRoute("work-items",selected.id,nextTab);
+  }
+  useEffect(()=>{
+    const syncFromUrl=()=>{
+      const params=new URLSearchParams(window.location.search);
+      const nextPage=params.get("page") || "overview";
+      const itemId=params.get("item");
+      setPage(nextPage); setActiveTab(params.get("tab") || "overview");
+      if(itemId) {
+        setDrawerOpen(true);
+        void api.detail(itemId).then(setDetail).catch(error=>message.error(error instanceof Error?error.message:"无法打开事项"));
+      } else {
+        setDrawerOpen(false); setSelected(null); setDetail(null);
+      }
+    };
+    window.addEventListener("popstate",syncFromUrl);
+    return ()=>window.removeEventListener("popstate",syncFromUrl);
+  },[]);
+  useEffect(()=>{
+    const itemId=new URLSearchParams(window.location.search).get("item");
+    if(!itemId || !bootstrap) return;
+    const item=bootstrap.workItems.find(candidate=>candidate.id===itemId);
+    if(item) {
+      setSelected(item);
+      if(!detail || detail.workItem.id!==itemId) void api.detail(itemId).then(setDetail).catch(error=>message.error(error instanceof Error?error.message:"无法打开事项"));
+    }
+  },[bootstrap]);
 
   const actorPerson=bootstrap?.people.find(person=>person.id===actor);
   const profilePerson=bootstrap?.people.find(person=>person.id===(profilePersonId || actor)) || actorPerson;
@@ -249,11 +294,16 @@ export default function App() {
   function breakdownCard(title:string,rows:Array<{key:string;count:number;label?:string}>) {
     const max=Math.max(1,...rows.map(row=>row.count));
     const labels:Record<string,string>={draft:"草稿",analysis:"分析中",in_review:"评审中",changes_requested:"待修改",accepted:"已接受",accepted_with_conditions:"附条件接受",rejected:"已拒绝",closed:"已关闭",high:"高",normal:"普通",low:"低",architecture_review:"架构评审",change_assessment:"变更评估",solution_assessment:"Solution 评估",risk_assessment:"风险评估",technical_debt:"技术债务",jira:"Jira",confluence:"Confluence",github:"GitHub",leanix:"LeanIX",open:"待处理",in_progress:"处理中",deferred:"已延期",resolved:"已解决",cancelled:"已取消",medium:"中"};
+    const leader=[...rows].sort((a,b)=>b.count-a.count)[0];
+    const total=rows.reduce((sum,row)=>sum+row.count,0);
     return <Card title={title} className="panel-card">
-      {rows.length===0?<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />:rows.map(row=><div className="analytics-bar" key={row.key}>
-        <div className="analytics-bar-label"><Text>{row.label || labels[row.key] || row.key}</Text><Text strong>{row.count}</Text></div>
-        <Progress percent={Math.round(row.count/max*100)} showInfo={false} size="small" />
-      </div>)}
+      {rows.length===0?<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />:<>
+        {leader?<Text type="secondary" className="analytics-insight">当前最多：{leader.label || labels[leader.key] || leader.key}，{leader.count} 项（{Math.round(leader.count/Math.max(1,total)*100)}%）。</Text>:null}
+        {rows.map(row=><div className="analytics-bar" key={row.key}>
+          <div className="analytics-bar-label"><Text>{row.label || labels[row.key] || row.key}</Text><Space size={10}><Text type="secondary" className="small">{Math.round(row.count/Math.max(1,total)*100)}%</Text><Text strong>{row.count}</Text></Space></div>
+          <div className="analytics-track"><span style={{width:Math.round(row.count/max*100)+"%"}} /></div>
+        </div>)}
+      </>}
     </Card>;
   }
   function renderAnalytics() {
@@ -328,23 +378,9 @@ export default function App() {
         <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="未解决技术债务" value={bootstrap.counts.activeDebts} prefix={<FileProtectOutlined />} /></Card></Col>
         <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="我的待办" value={bootstrap.counts.myTasks} prefix={<ClockCircleOutlined />} /></Card></Col>
       </Row>
-      <Row gutter={[16,16]}>
-        <Col xs={24} xl={16}>
-          <Card title="最近业务事项" extra={<Button type="link" onClick={()=>setPage("work-items")}>查看全部</Button>} className="panel-card">
-            <Table rowKey="id" columns={itemColumns} dataSource={bootstrap.workItems.slice(0,5)} pagination={false} loading={loading} />
-          </Card>
-        </Col>
-        <Col xs={24} xl={8}>
-          <Card title="工作原则" className="panel-card">
-            <div className="principle"><CheckCircleOutlined /><div><Text strong>Human-led</Text><Text type="secondary">正式 Review 和 Decision 由有授权的人确认。</Text></div></div>
-            <div className="principle"><ApartmentOutlined /><div><Text strong>Work Item-centric</Text><Text type="secondary">事项是业务上下文，Task 和 Session 只是工作过程。</Text></div></div>
-            <div className="principle"><SafetyCertificateOutlined /><div><Text strong>Agent-optional</Text><Text type="secondary">支持外部 Agent，但不要求指定 Runtime 或模型。</Text></div></div>
-            <Divider />
-            <Welcome className="agent-welcome" title="连接你自己的 Agent" description="复制当前事项的 Context Capsule，交给 Copilot、Claude 或其他工具。正式结果仍需提交回业务事项。" />
-            <Text type="secondary" className="small">本原型尚未启用模型调用；此处只演示外部 Agent 的接入边界。</Text>
-          </Card>
-        </Col>
-      </Row>
+      <Card title="最近业务事项" extra={<Button type="link" onClick={()=>navigatePage("work-items")}>查看全部</Button>} className="panel-card">
+        <Table rowKey="id" columns={itemColumns} dataSource={bootstrap.workItems.slice(0,8)} pagination={false} loading={loading} />
+      </Card>
       <Card title="技术债务跟踪" extra={<Button type="link" onClick={()=>setPage("debts")}>打开台账</Button>} className="panel-card">
         <Table rowKey="id" columns={debtColumns} dataSource={bootstrap.debts.slice(0,3)} pagination={false} />
       </Card>
@@ -447,7 +483,7 @@ export default function App() {
     const permissions=detail.permissions;
     const currentCycle=detail.cycles[0];
     return <div className="detail-body">
-      <div className="detail-topline"><Space><Button icon={<ArrowLeftOutlined />} onClick={()=>setDrawerOpen(false)}>返回</Button><Breadcrumb items={[{title:"业务事项"},{title:item.code}]} /></Space><Space><Tag color={statusColors[item.status]}>{statusLabels[item.status] || item.status}</Tag><Tag>{item.type}</Tag></Space></div>
+      <div className="detail-topline"><Space><Button icon={<ArrowLeftOutlined />} onClick={closeItemDrawer}>返回</Button><Breadcrumb items={[{title:"业务事项"},{title:item.code}]} /></Space><Space><Tag color={statusColors[item.status]}>{statusLabels[item.status] || item.status}</Tag><Tag>{item.type}</Tag></Space></div>
       <div className="detail-heading">
         <div><Text type="secondary">{item.code} · Context v{item.context_version}</Text><Title level={3}>{item.title}</Title><Paragraph type="secondary">{item.description}</Paragraph></div>
         <Space wrap>
@@ -456,6 +492,17 @@ export default function App() {
           {detail.workflow.availableActions.some(action=>["accept","reject","more_analysis"].includes(action)) && <Button type="primary" onClick={()=>setDecisionOpen(true)}>记录正式决定</Button>}
         </Space>
       </div>
+      {(() => {
+        const activeTask=detail.tasks.find(task=>!["done","cancelled"].includes(task.status));
+        const currentStep=detail.workflow.steps[detail.workflow.currentStep];
+        const nextAction=activeTask?.title || currentStep?.description || "等待流程参与人确认下一步工作";
+        const responsible=activeTask?.assignee_name || item.owner_name || "未分配";
+        return <Card className="workflow-current-card" size="small"><div className="workflow-current-grid">
+          <div><Text type="secondary" className="workflow-label">当前状态</Text><div><Tag color={statusColors[item.status]}>{statusLabels[item.status] || item.status}</Tag></div></div>
+          <div><Text type="secondary" className="workflow-label">当前责任人</Text><Text strong>{responsible}</Text>{activeTask?<Text type="secondary" className="small">任务：{activeTask.title}</Text>:null}</div>
+          <div className="workflow-next-action"><Text type="secondary" className="workflow-label">接下来要做</Text><Text strong>{nextAction}</Text></div>
+        </div></Card>;
+      })()}
       <Card className="workflow-card" title={<Space><ApartmentOutlined /><span>Request Workflow</span><Tag color={statusColors[item.status]}>{statusLabels[item.status] || item.status}</Tag></Space>}>
         <Steps current={detail.workflow.currentStep} status={detail.workflow.visualStatus} items={detail.workflow.steps} />
         <Divider />
@@ -467,10 +514,10 @@ export default function App() {
         </Space>
         {detail.workflow.history.length>0 && <div className="workflow-history">
           <Text type="secondary" className="small">最近流程变化</Text>
-          <Timeline items={detail.workflow.history.slice(0,4).map(entry=>({children:<><Text strong>{entry.actor_name}</Text><div>{statusLabels[entry.from_status] || entry.from_status} → {statusLabels[entry.to_status] || entry.to_status}</div><Text type="secondary" className="small">{dateText(entry.created_at)} · {entry.reason || entry.action}</Text></>}))} />
+          <Timeline items={detail.workflow.history.map(entry=>({children:<><Text strong>{entry.actor_name}</Text><div>{statusLabels[entry.from_status] || entry.from_status} → {statusLabels[entry.to_status] || entry.to_status}</div><Text type="secondary" className="small">{dateText(entry.created_at)} · {entry.reason || entry.action}</Text></>}))} />
         </div>}
       </Card>
-      <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
+      <Tabs activeKey={activeTab} onChange={changeDetailTab} items={[
         {key:"overview",label:"概览",children:<Row gutter={[16,16]}>
           <Col xs={24} xl={15}>
             <Card title={<Space><TeamOutlined /><span>Request 相关人员</span><Tag>{detail.participants.length}</Tag></Space>} size="small" extra={detail.canManageParticipants?<Button size="small" icon={<UserAddOutlined />} onClick={()=>openParticipantDialog()}>添加相关人</Button>:null}>
@@ -493,7 +540,7 @@ export default function App() {
             <Card title="未完成任务" size="small" className="nested-card"><Statistic value={detail.tasks.filter(t=>!["done","cancelled"].includes(t.status)).length} suffix="项" /></Card>
           </Col>
         </Row>},
-        {key:"artifacts",label:"架构产物 / ADR",children:<><Card size="small" title="版本化产物" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>setArtifactOpen(true)}>添加产物</Button>:null}><Table rowKey="id" dataSource={detail.artifacts} pagination={false} columns={[
+        {key:"artifacts",label:"架构产物 / ADR",children:<><Card size="small" title="材料与版本历史" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>setArtifactOpen(true)}>添加产物</Button>:null}><Paragraph type="secondary">同一编号的产物再次提交时会生成新版本；评审记录绑定提交时的具体版本，后续修改不会覆盖已评审材料。</Paragraph><Table rowKey="id" dataSource={[...detail.artifacts].sort((a,b)=>b.created_at.localeCompare(a.created_at))} pagination={false} columns={[
           {title:"编号",dataIndex:"code",render:(v:string|null)=>v || "—"},
           {title:"产物",dataIndex:"title",render:(v:string,a:Artifact)=><div><Text strong>{v}</Text><div><Text type="secondary" className="small">{a.type}</Text></div></div>},
           {title:"版本",dataIndex:"version",render:(v:number)=>"v"+v},
@@ -549,11 +596,11 @@ export default function App() {
   }
 
   return <Layout className="app-shell">
-    <Sider width={238} theme="light" className="app-sider">
+    <Sider width={238} theme="light" className="app-sider" breakpoint="sm" collapsedWidth={72}>
       <div className="brand"><div className="brand-mark">A</div><div><Text strong>Architecture</Text><div><Text type="secondary" className="small">Workbench</Text></div></div></div>
       <div className="workspace-label">WORKSPACE</div>
-      <Menu mode="inline" selectedKeys={[page]} items={menuItems} onClick={e=>{setPage(e.key);setDrawerOpen(false);}} />
-      <div className="sider-footer"><div className="workspace-label">DESIGN PRINCIPLES</div><div className="sider-note"><SafetyCertificateOutlined /> Human-led decision</div><div className="sider-note"><ApartmentOutlined /> Shared Work Item context</div><div className="sider-note"><CloudUploadOutlined /> External Agent optional</div><div className="sider-version">Prototype · 0.1.0</div></div>
+      <Menu mode="inline" selectedKeys={[page]} items={menuItems} onClick={e=>navigatePage(e.key)} />
+      <div className="sider-footer"><div className="sider-version">Prototype · 0.1.0</div></div>
     </Sider>
     <Layout>
       <Header className="app-header"><div><Text type="secondary">业务协作平台 / </Text><Text strong>{menuItems.find(m=>m.key===page)?.label}</Text></div><Space><Text type="secondary" className="small">演示身份</Text><Select value={actor} onChange={setActorState} style={{width:220}} options={(bootstrap?.people || []).map((p:Person)=>({value:p.id,label:p.display_name+" · "+p.title}))} /><Avatar style={{background:actorPerson?.avatar_color}}>{actorPerson?.display_name.slice(0,1)}</Avatar></Space></Header>
@@ -567,7 +614,7 @@ export default function App() {
         {page==="people" && renderPeople()}
       </Content>
     </Layout>
-    <Drawer open={drawerOpen} onClose={()=>setDrawerOpen(false)} placement="right" width="min(1180px, 96vw)" title={null} destroyOnClose={false} styles={{body:{padding:0}}}>{renderDetailContent()}</Drawer>
+    <Drawer open={drawerOpen} onClose={closeItemDrawer} placement="right" width="min(1180px, 96vw)" title={null} destroyOnClose={false} styles={{body:{padding:0}}}>{renderDetailContent()}</Drawer>
 
     <Modal title="新建业务事项" open={newItemOpen} onCancel={()=>setNewItemOpen(false)} onOk={()=>void submitForm(newItemForm,async()=>{const v=newItemForm.getFieldsValue();if(v.targetDate)v.targetDate=v.targetDate.format("YYYY-MM-DD");return api.createWorkItem(v);},"业务事项已创建",()=>setNewItemOpen(false))} confirmLoading={busy}>
       <Form form={newItemForm} layout="vertical" initialValues={{type:"architecture_review",priority:"normal"}}>
