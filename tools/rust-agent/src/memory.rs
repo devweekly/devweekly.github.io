@@ -2177,7 +2177,7 @@ fn validate_evidence_scope_recursive(
                     )))?;
                 let trusted_role = matches!(role.as_str(), "user" | "tool");
                 trusted_role && match target_scope {
-                    MemoryScope::Global => role == "user" && task_id.is_none(),
+                    MemoryScope::Global => role == "user" && project_id.is_none() && task_id.is_none(),
                     MemoryScope::Project => project_id.as_deref() == target_scope_id && task_id.is_none(),
                     MemoryScope::Session => session_id == target_scope_id.unwrap_or_default(),
                     MemoryScope::Task => task_id.as_deref() == target_scope_id,
@@ -2515,6 +2515,22 @@ mod tests {
         let refs = store.latest_turn_evidence_refs("session-1", Some("project-a"), None, true).unwrap();
         assert_eq!(refs.len(), 2);
         assert_eq!(refs[1], format!("transcript:{}", records[1].id));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn global_memory_cannot_use_project_scoped_transcript_evidence() {
+        let root = workspace();
+        let store = MemoryStore::new(&root).unwrap();
+        let transcript = store.record_transcript(
+            "session-a", Some("project-a"), None, "user", "A project-specific observation"
+        ).unwrap();
+        let proposed = store.propose(
+            input(MemoryScope::Global, None, "Global memory must not use project evidence"),
+            70,
+            vec![format!("transcript:{transcript}")],
+        ).unwrap();
+        assert!(store.set_status(&proposed.id, MemoryStatus::Consolidated).is_err());
         let _ = fs::remove_dir_all(root);
     }
 
