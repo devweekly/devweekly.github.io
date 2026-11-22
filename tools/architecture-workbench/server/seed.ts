@@ -37,14 +37,23 @@ export function seed() {
       profile.department,profile.location,profile.bio,JSON.stringify(profile.expertise),personId);
   }
   run("UPDATE work_items SET requestor_id=owner_id WHERE requestor_id IS NULL");
+  const workflowPrincipal=one<{id:string}>("SELECT id FROM people WHERE id='u-workflow'");
+  if (!workflowPrincipal) run("INSERT INTO people(id,display_name,title,email,avatar_color,department,location,bio,expertise_json,timezone,is_admin,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,0,?)",
+    "u-workflow","Workflow Automation","System Workflow Principal","workflow@example.test","#667788","Architecture Platform","Local","Records timer-driven workflow transitions and deadline events.",JSON.stringify(["Deadline processing","Workflow automation"]),"Asia/Tokyo",now());
+  const existingSeed=one<{id:string}>("SELECT id FROM work_items WHERE id='wi-arch-001'");
+  if (existingSeed) {
+    run("UPDATE work_items SET request_package_json=CASE WHEN request_package_json='{}' THEN ? ELSE request_package_json END WHERE id=?",
+      JSON.stringify({goal:"Modernize the customer data platform",scope:"Customer master data and transaction access",constraints:"Legacy batch compatibility and data isolation",initialProposal:"Introduce a unified data access layer in phases",decisionQuestions:"Confirm API boundary, isolation model and migration sequence",submissionMessage:"feat(request): submit customer data platform modernization package"}),existingSeed.id);
+    run("UPDATE submissions SET purpose='request',submission_message=CASE WHEN submission_message='' THEN ? ELSE submission_message END,package_json=CASE WHEN package_json='{}' THEN ? ELSE package_json END,submitted_by=COALESCE(submitted_by,created_by) WHERE work_item_id=? AND sequence=1",
+      "feat(request): submit customer data platform modernization package",
+      JSON.stringify({goal:"Modernize the customer data platform",scope:"Customer master data and transaction access",constraints:"Legacy batch compatibility and data isolation",initialProposal:"Introduce a unified data access layer in phases",decisionQuestions:"Confirm API boundary, isolation model and migration sequence"}),
+      existingSeed.id);
+  }
   if (all("SELECT id FROM work_items LIMIT 1").length > 0) {
     seedExternalReferences();
     return;
   }
   const created = now();
-  const workflowPrincipal=one<{id:string}>("SELECT id FROM people WHERE id='u-workflow'");
-  if (!workflowPrincipal) run("INSERT INTO people(id,display_name,title,email,avatar_color,department,location,bio,expertise_json,timezone,is_admin,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,0,?)",
-    "u-workflow","Workflow Automation","System Workflow Principal","workflow@example.test","#667788","Architecture Platform","Local","Records timer-driven workflow transitions and deadline events.",JSON.stringify(["Deadline processing","Workflow automation"]),"Asia/Tokyo",now());
   const wi = "wi-arch-001";
   run("UPDATE work_items SET requestor_id=COALESCE(requestor_id,owner_id) WHERE id=?",wi);
   run("UPDATE work_items SET request_package_json=? WHERE id=? AND request_package_json='{}'",
