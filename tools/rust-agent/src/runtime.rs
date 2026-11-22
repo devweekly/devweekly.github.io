@@ -704,11 +704,14 @@ impl BackgroundTaskStore {
                     // A terminal task is immutable except for its delivery marker.
                     // This permits idempotent result delivery without allowing a stale
                     // Runtime to replace the completed result or conversation history.
+                    let delivery_marker_is_monotonic = current.delivered_at_ms.is_none()
+                        || current.delivered_at_ms == record.delivered_at_ms;
                     persisted.delivered_at_ms = None;
                     requested.delivered_at_ms = None;
                     persisted.updated_at_ms = 0;
                     requested.updated_at_ms = 0;
                     if current.status != record.status
+                        || !delivery_marker_is_monotonic
                         || serde_json::to_value(persisted)? != serde_json::to_value(requested)?
                     {
                         return Err(AgentError::InvalidAction(format!(
