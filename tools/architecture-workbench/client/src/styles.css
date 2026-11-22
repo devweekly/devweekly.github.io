@@ -1,0 +1,60 @@
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; min-height: 100%; }
+body { color: #1d2939; background: #f4f6f9; }
+.app-shell { min-height: 100vh; }
+.app-sider { border-right: 1px solid #e8edf3; box-shadow: 2px 0 12px rgba(26,45,75,.025); }
+.brand { height: 76px; padding: 0 22px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #edf0f4; }
+.brand-mark { width: 34px; height: 34px; display: grid; place-items: center; background: #315c9b; color: #fff; border-radius: 10px; font-weight: 700; font-size: 19px; }
+.workspace-label { color: #98a2b3; font-size: 10px; letter-spacing: .12em; font-weight: 700; padding: 22px 22px 9px; }
+.app-sider .ant-menu { border-inline-end: 0; padding: 0 10px; }
+.app-sider .ant-menu-item { margin: 4px 0; width: 100%; }
+.sider-footer { position: absolute; bottom: 18px; width: 100%; }
+.sider-footer .workspace-label { padding-top: 12px; }
+.sider-note { color: #667085; font-size: 12px; display: flex; align-items: center; gap: 9px; padding: 7px 22px; }
+.sider-version { border-top: 1px solid #edf0f4; padding: 14px 22px 0; margin-top: 12px; color: #98a2b3; font-size: 11px; }
+.app-header { background: rgba(255,255,255,.92); border-bottom: 1px solid #e8edf3; height: 64px; padding: 0 28px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 5; }
+.app-content { padding: 28px 30px 40px; max-width: 1680px; width: 100%; margin: 0 auto; }
+.page-stack { display: flex; flex-direction: column; gap: 18px; }
+.page-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 3px; }
+.page-heading h2 { margin: 5px 0 4px !important; font-weight: 650; }
+.page-heading p { margin-bottom: 0; max-width: 720px; }
+.metric-card, .panel-card { border: 1px solid #e8edf3; box-shadow: 0 3px 12px rgba(26,45,75,.025); }
+.metric-card .ant-statistic-title { color: #667085; }
+.metric-card .ant-statistic-content { color: #233c61; font-size: 27px; }
+.metric-card .ant-statistic-content-prefix { margin-right: 10px; font-size: 20px; color: #5577a6; }
+.panel-card .ant-card-head { min-height: 52px; }
+.panel-card .ant-card-head-title { font-weight: 600; }
+.table-link { padding: 0; height: auto; white-space: normal; text-align: left; font-weight: 600; }
+.small { font-size: 11px; }
+.muted { color: #98a2b3; }
+.table-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.principle { display: flex; gap: 12px; padding: 11px 0; color: #315c9b; }
+.principle > div { display: flex; flex-direction: column; gap: 3px; color: #344054; }
+.principle .ant-typography-secondary { font-size: 12px; }
+.agent-welcome { padding: 12px 0 2px; }
+.detail-body { padding: 22px 28px 34px; }
+.detail-topline { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; gap: 12px; }
+.detail-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 14px; }
+.detail-heading h3 { margin: 5px 0 8px !important; }
+.detail-heading p { max-width: 720px; }
+.detail-body .ant-tabs-nav { margin-bottom: 18px; }
+.participant-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: 16px; }
+.participant { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.participant > div { min-width: 0; }
+.participant .ant-tag { margin-top: 4px; }
+.nested-card { margin-top: 16px; }
+.spacer { height: 10px; }
+.comment-list { margin-top: 16px; }
+.comment-list .ant-list-item { padding: 14px 0; }
+.modal-alert { margin-bottom: 18px; }
+@media (max-width: 900px) {
+  .app-sider { width: 72px !important; min-width: 72px !important; max-width: 72px !important; }
+  .brand { padding: 0 18px; }
+  .brand > div:last-child, .workspace-label, .app-sider .ant-menu-title-content, .sider-footer { display: none; }
+  .app-sider .ant-menu { padding: 0 8px; }
+  .app-sider .ant-menu-item { padding-inline: 17px !important; }
+  .app-content { padding: 20px 14px; }
+  .app-header { padding: 0 14px; }
+  .page-heading, .detail-heading { align-items: flex-start; flex-direction: column; }
+  .detail-body { padding: 18px 14px; }
+}

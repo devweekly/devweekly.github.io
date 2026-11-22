@@ -1,0 +1,76 @@
+# Architecture Workbench
+
+面向架构方案、ADR、跨角色评审、正式决策和后续技术债务治理的 Human-first 网站原型。
+
+本项目放在 devweekly 的 tools 目录中独立运行，不依赖 Astro 站点构建。它验证的是通用 Business Work Item 协作模型，不是某个架构委员会的专用审批系统。
+
+## 当前实现
+
+- React 19、Vite、TypeScript。
+- Ant Design 6 作为通用企业 UI，Ant Design X 提供 Agent/上下文辅助区域。
+- Express 5 提供 REST API。
+- Node 内置 node:sqlite 作为第一阶段存储，要求 Node.js 22.13 或更高版本。
+- 非结构化文件通过 ObjectStore 接口存储，默认写入本地目录；配置 S3 后使用 AWS SDK。
+- AI Runtime 暂不启用。界面提供 Context Capsule 复制能力；将来外部 Agent 可通过 Remote MCP 或 REST 接入，不需要网站管理 Agent Runtime。
+
+## 启动
+
+需要 Node.js >=22.13 和 pnpm 或 npm。
+
+    cd tools/architecture-workbench
+    cp .env.example .env
+    npm install
+    npm run dev
+
+前端地址为 http://localhost:5173，API 地址为 http://localhost:4000。首次启动会自动创建 SQLite schema 和演示数据。默认数据库在 data/architecture-workbench.sqlite。
+
+可以切换顶部的演示身份，验证不同事项 Participation 的权限差异。默认身份是 Solution Architect；只有 Decision Authority 的事项级 Participation 获得 decide 权限，才能提交正式 Decision。演示身份切换只是本地原型能力，不是生产认证方案。
+
+## 原型能力
+
+1. 创建通用 Work Item，查看负责人、状态、参与者、上下文版本和关联对象。
+2. 在事项内提交 ADR、架构说明和其他有版本的 Artifact。
+3. 创建或复用 Review Cycle，并针对明确 Artifact Version 提交独立 Review。
+4. 创建 Task，记录责任人和目标日期。
+5. 由具备 decide 权限的 Human 记录接受、附条件接受、要求更多分析或拒绝的正式 Decision。
+6. Decision 要求更多分析时创建后续 Task；附条件接受时可以同时建立独立 Technical Debt Work Item。
+7. 技术债务保留来源事项和来源 Decision 关系，单独维护 Owner、优先级、严重程度、偿还目标、计划、状态和期限。
+8. 将授权后的 Context Capsule 复制给用户自己的 Copilot、Claude 或其他 Agent。
+
+## 领域模型边界
+
+Work Item 是业务事项的持久化根对象。架构评审只是一个 Work Item Type；Technical Debt 也是一个关联 Work Item Type。ADR 是 Artifact 类型，不是平台核心表。Review 指向 Review Cycle、Artifact 和被审查版本。Decision 指向明确的 Work Item 或 Artifact 对象，并记录决策人、结果、理由和条件。
+
+Task 表示执行工作，不等于 Review 或 Decision。外部 Agent 的 Session 不作为业务状态来源。本原型用演示身份 Header 模拟当前 Human Principal，并在服务端校验 Participation permissions；上线前必须替换为企业 OIDC/OAuth 认证、Delegation Grant 和真正的资源级授权。
+
+## 存储设计
+
+SQLite 仅作为本地原型存储。数据访问集中在 server/db.ts 和 Express Application Service 中，前端不直接访问数据库。后续迁移 PostgreSQL 时，保留领域 API 与业务约束，替换数据库连接和 repository 实现，并补充正式迁移脚本、并发控制和备份恢复策略。当前尚未实现 PostgreSQL 驱动。
+
+对象存储通过 server/object-store.ts 的 ObjectStore 接口隔离。默认 LocalObjectStore 将文件放在 LOCAL_OBJECT_DIR。设置 STORAGE_DRIVER=s3、S3_BUCKET 和 AWS_REGION 后切换为 S3ObjectStore；部署环境应优先使用 IAM Role / Workload Identity，不要把长期 AWS Key 写入代码或提交到仓库。文件元数据和访问授权在业务数据库中管理；S3 URI 本身不应被视为授权。
+
+## AI 与 Agent 接入
+
+当前阶段不接入 LangChain、DeepAgents 或 LangSmith。这个原型的首要验证对象是业务状态、授权、评审和决策，不是 Agent 编排。Ant Design X 用于可选的 Agent 辅助体验，页面提供 Context Capsule 导出。
+
+后续接入时建议：
+- LangChain / DeepAgents 只负责被委托的分析和任务执行，不成为 Work Item 状态的权威来源。
+- LangSmith 只记录模型执行与追踪；敏感内容、业务决策和审计事实仍由本业务系统保存并按企业策略脱敏。
+- Agent Client 使用 Remote MCP + OAuth 或 REST API 访问平台，网站不要求 Agent 预注册或安装指定 Runtime。
+- Agent 可以生成 Artifact 和 Decision Draft；正式 Review Outcome、Decision、风险接受和关闭事项必须经过 Human 权限检查。
+
+## 目录
+
+    client/              React + Ant Design + Ant Design X
+    server/              Express API、SQLite schema/seed、对象存储适配
+    ADR/                 本工具架构决策记录
+    docs/                领域模型、权限与 API 说明
+    data/                 本地运行时数据（gitignore）
+
+## 当前限制
+
+- 演示登录通过 Header 选择身份，不可用于生产。
+- 暂无 OIDC、OAuth Delegation Grant、Remote MCP Server、完整组织目录和策略引擎。
+- 暂无数据库迁移框架、PostgreSQL Adapter、S3 下载授权或病毒扫描。
+- Review Cycle 当前为轻量模型，提交 Review 时绑定 Artifact Version；正式环境还应增加完整 Submission Manifest、Reviewer Assignment、独立性规则和策略版本。
+- 决策界面为原型级状态转换，正式系统应由可版本化 Decision Policy 控制法定人数、会签、职责分离、权限和有效结果。
