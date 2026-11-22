@@ -21,7 +21,6 @@ import {
   getWorkflowProjection,
   isGlobalAdmin,
   transitionWorkItem,
-  validateWorkflowTransition,
   type WorkflowAction
 } from "./workflow/engine.js";
 import { startWorkflowTimerService } from "./workflow/timer-service.js";
