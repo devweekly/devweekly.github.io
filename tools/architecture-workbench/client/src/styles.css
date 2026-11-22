@@ -139,3 +139,41 @@ body { color: #1d2939; background: #f4f6f9; }
 .work-progress-group .ant-list-item-meta-description { margin-top: 4px; }
 
 .analytics-chart-card .ant-card-body { min-height: 270px; padding: 12px 16px 16px; }
+
+/* Agent-generated artifacts are Markdown documents, not plain text blocks. */
+.agent-artifact-content {
+  max-height: 65vh;
+  overflow: auto;
+  padding: 2px 4px;
+  color: #344054;
+}
+.markdown-content {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.markdown-content > :first-child { margin-top: 0; }
+.markdown-content > :last-child { margin-bottom: 0; }
+.markdown-content img { max-width: 100%; height: auto; }
+.markdown-content pre { max-width: 100%; overflow: auto; border-radius: 8px; }
+.markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+.markdown-content th,
+.markdown-content td {
+  padding: 8px 10px;
+  border: 1px solid #e8edf3;
+  text-align: left;
+  vertical-align: top;
+}
+.markdown-content th { background: #f8fafc; font-weight: 600; }
+.markdown-content blockquote {
+  margin: 12px 0;
+  padding: 2px 14px;
+  border-left: 3px solid #d0d5dd;
+  color: #667085;
+}
+.markdown-content hr { border: 0; border-top: 1px solid #e8edf3; margin: 18px 0; }
