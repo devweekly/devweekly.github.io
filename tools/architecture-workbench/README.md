@@ -32,8 +32,8 @@
 
 1. 创建通用 Work Item，查看负责人、状态、参与者、上下文版本和关联对象。
 2. 在事项内提交 ADR、架构说明和其他有版本的 Artifact。
-3. 创建或复用 Review Cycle，并针对明确 Artifact Version 提交独立 Review。
-4. 创建 Task，记录责任人和目标日期。
+3. 提交评审时自动创建不可变 Submission Manifest，固定本次包含的 Artifact 版本、内容哈希和 Context 版本；Review Cycle 绑定该次提交。Review 意见只能针对该基线中的材料版本。
+4. 创建 Task，分别记录对结果负责的 Task Owner 和当前执行分配 Assignee；Agent Run 记录实际 Executor，不会替代 Human 责任人。
 5. 在事项内管理 Participation，显式授予 read、contribute、comment、review、decide 和 manage；manage 不自动继承 decide 或 review。
 6. 由具备 decide 权限的 Human 记录接受、附条件接受、要求更多分析或拒绝的正式 Decision。
 7. Decision 要求更多分析时创建后续 Task；附条件接受时可以选择是否建立独立 Technical Debt Work Item，不需要把每个 Request 都转成 Tech Debt。
@@ -49,9 +49,17 @@
 
 Work Item 是业务事项的持久化根对象。架构评审只是一个 Work Item Type；Technical Debt 也是一个关联 Work Item Type，但仅在确实需要独立治理时创建。ADR 是 Artifact 类型，不是平台核心表。Review 指向 Review Cycle、Artifact 和被审查版本。Decision 指向明确的 Work Item 或 Artifact 对象，并记录决策人、结果、理由和条件。一个 Request 可以关联多条外部资源，同一个外部资源也可以被多个 Request 引用；关联通过独立的多对多关系表达。
 
-Task 表示执行工作，不等于 Review 或 Decision。Request 生命周期由轻量 Workflow Engine 负责状态转换、角色校验、Review Cycle 基线建立和转换历史记录；Task 状态仍然独立维护。外部 Agent 的 Session 不作为业务状态来源。一个 Human 可以在同一 Work Item 下拥有多个 Participation，服务端合并其显式权限；manage 不会自动获得 review 或 decide。评审人不能对自己提交的 Artifact 进行独立 Review；新 Artifact Version 不会修改已创建 Review Cycle 的材料基线。
+Task 表示执行工作，不等于 Review 或 Decision。Task Owner 对结果负责，Assignee 表示当前执行分配；Agent Run claimant 只表示实际执行身份。Request 生命周期由轻量 Workflow Engine 负责状态转换和转换历史，提交评审时创建 Submission Manifest 并绑定 Review Cycle；Task 状态和 Agent Run 状态都不会替代 Work Item 业务状态。一个 Human 可以在同一 Work Item 下拥有多个 Participation，服务端合并其显式权限；manage 不会自动获得 review 或 decide。评审人不能对自己提交的 Artifact 进行独立 Review；新 Artifact Version 不会修改已创建 Review Cycle 的材料基线。
 
 本原型用演示身份 Header 模拟当前 Human Principal，并在服务端校验 Participation permissions；上线前必须替换为企业 OIDC/OAuth 认证、Delegation Grant 和真正的资源级授权。
+
+## Work Item Workspace
+
+事项详情采用一个连续的工作区，而不是把 Overview、Tasks、Artifacts、Reviews 和 Agent Runs 做成一排同级页面。默认视图只回答业务人员最常用的几个问题：事项处于哪个阶段、谁对事项负责、下一步做什么、当前有哪些工作、材料到了哪个版本、讨论补充了什么。
+
+参与者和权限、完整 Review/Decision 记录、所有材料版本、Submission Manifest、外部引用、附件、Agent Plan/Run、Context Capsule 和活动轨迹收在“更多信息”中。它们没有被删除，只是不再与当前工作争夺首屏位置。全局导航收敛为我的工作、全部事项、Portfolio 和技术债务；人员目录作为次级入口。
+
+此设计遵循 Apple HIG 所强调的清晰层级、用户控制和渐进披露，而不是复刻某个 Apple 产品的视觉外观。业务流程、协作任务和 Agent 执行始终是三个独立层次。
 
 ## 存储设计
 
@@ -120,5 +128,5 @@ Remote Host 使用 MCP_URL、MCP_BEARER_TOKEN 和服务器配置的 MCP_SERVICE_
 - 本地 MCP 默认只允许 localhost Host，并通过 `x-demo-user-id` 模拟调用者；不能用于生产身份认证。远程 MCP 必须同时配置 `MCP_ALLOWED_HOSTS`、长度至少 32 字符的 `MCP_BEARER_TOKEN` 和非 Admin 的 `MCP_SERVICE_USER_ID`。默认 Seed 会创建 `u-agent` 服务身份；必须由 Requestor/Admin 将它作为相关人员加入具体 Work Item，并只授予必要的 `read` / `contribute` / `comment` 权限。远程模式忽略请求自带的 `x-demo-user-id`，所有调用固定映射到该服务身份。静态 Bearer Token 是原型级服务认证，不替代企业 OAuth/OIDC 与用户级 Delegation Grant。
 - 当前 SQLite 通过启动时的增量 schema check 兼容本原型已有数据库；尚无通用迁移框架和 PostgreSQL Adapter。迁移到 PostgreSQL 时需要引入异步 Repository / Unit of Work 实现，不能只替换连接字符串。
 - 当前已实现本地/S3 上传和元数据记录，尚未实现经过 Work Item 授权的下载/预签名 URL，也没有病毒扫描。
-- Review Cycle 当前为轻量模型，提交 Review 时绑定 Artifact Version；正式环境还应增加完整 Submission Manifest、Reviewer Assignment、独立性规则和策略版本。
+- 已实现 Submission Manifest，并将每次 Review Cycle 固定到一次正式提交；正式环境仍需补充 Reviewer Assignment、独立性规则、法定人数和可版本化评审策略。
 - 决策界面为原型级状态转换，正式系统应由可版本化 Decision Policy 控制法定人数、会签、职责分离、权限和有效结果。
