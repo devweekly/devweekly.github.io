@@ -287,10 +287,11 @@ export function recordFormalDecision(workItemId:string,actorId:string,input:{out
       return {ok:false as const,statusCode:409,error:"The Decision Meeting has already been completed. Refresh the Request."};
     }
     const decisionId=id("dec");
-    run("INSERT INTO decisions(id,work_item_id,subject_type,subject_id,outcome,rationale,conditions,decision_maker_id,policy_ref,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-      decisionId,workItemId,"work_item",null,input.outcome,input.rationale,input.conditions || "",actorId,"chairman-meeting-v1",timestamp);
+    const meetingId=id("meeting");
+    run("INSERT INTO decisions(id,work_item_id,subject_type,subject_id,outcome,rationale,conditions,decision_maker_id,policy_ref,created_at,meeting_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+      decisionId,workItemId,"work_item",null,input.outcome,input.rationale,input.conditions || "",actorId,"chairman-meeting-v1",timestamp,meetingId);
     run("INSERT INTO decision_meetings(id,work_item_id,cycle_id,submission_id,chairman_id,meeting_at,minutes,outcome,rationale,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-      id("meeting"),workItemId,cycle?.id || null,cycle?.submission_id || null,actorId,input.meetingAt || timestamp,input.minutes || "",input.outcome,input.rationale,timestamp);
+      meetingId,workItemId,cycle?.id || null,cycle?.submission_id || null,actorId,input.meetingAt || timestamp,input.minutes || "",input.outcome,input.rationale,timestamp);
     if (cycle) {
       run("UPDATE review_cycles SET status='closed' WHERE id=?",cycle.id);
       cancelCycleTimers(cycle.id,timestamp);
