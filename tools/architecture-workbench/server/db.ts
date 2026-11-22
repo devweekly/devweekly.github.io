@@ -260,8 +260,8 @@ for (const cycle of all<{id:string;work_item_id:string;reviewer_snapshot_json:st
   if (!cycle.reviewer_snapshot_json || cycle.reviewer_snapshot_json==="[]") {
     const requestor=one<{requestor_id:string|null}>("SELECT requestor_id FROM work_items WHERE id=?",cycle.work_item_id);
     const candidates=all<{person_id:string;display_name:string;role_key:string;permissions_json:string}>(
-      "SELECT p.person_id,people.display_name,p.role_key,p.permissions_json FROM participations p JOIN people ON people.id=p.person_id WHERE p.work_item_id=? AND p.person_id<>COALESCE(?, '') AND p.role_key NOT IN ('chairman','decision_authority') ORDER BY people.display_name",
-      cycle.work_item_id,requestor?.requestor_id || ""
+      "SELECT p.person_id,people.display_name,p.role_key,p.permissions_json FROM participations p JOIN people ON people.id=p.person_id WHERE p.work_item_id=? AND p.person_id<>COALESCE(?, '') AND p.person_id<>(SELECT chairman_id FROM work_items WHERE id=?) AND p.role_key NOT IN ('chairman','decision_authority') ORDER BY people.display_name",
+      cycle.work_item_id,requestor?.requestor_id || "",cycle.work_item_id
     );
     const reviewers=candidates
       .filter(person=>(JSON.parse(person.permissions_json) as string[]).includes("review"))
@@ -269,7 +269,21 @@ for (const cycle of all<{id:string;work_item_id:string;reviewer_snapshot_json:st
     run("UPDATE review_cycles SET reviewer_snapshot_json=? WHERE id=?",JSON.stringify(reviewers),cycle.id);
   }
 }
-run("UPDATE work_items SET chairman_id=(SELECT p.person_id FROM participations p WHERE p.work_item_id=work_items.id AND p.role_key IN ('chairman','decision_authority') AND p.permissions_json LIKE '%\"decide\"%' ORDER BY CASE p.role_key WHEN 'chairman' THEN 0 ELSE 1 END LIMIT 1) WHERE chairman_id IS NULL");
+run("UPDATE work_items SET chairman_id=NULL WHERE chairman_id=requestor_id");
+for (const item of all<{id:string;requestor_id:string|null}>("SELECT id,requestor_id FROM work_items WHERE chairman_id IS NULL")) {
+  const candidates=all<{person_id:string;role_key:string;permissions_json:string}>(
+    "SELECT person_id,role_key,permissions_json FROM participations WHERE work_item_id=? AND person_id<>COALESCE(?, '') ORDER BY CASE role_key WHEN 'chairman' THEN 0 ELSE 1 END",
+    item.id,item.requestor_id
+  );
+  const chairman=candidates.find(candidate=>
+    ["chairman","decision_authority"].includes(candidate.role_key) &&
+    (JSON.parse(candidate.permissions_json) as string[]).includes("decide")
+  );
+  if (chairman) run("UPDATE work_items SET chairman_id=? WHERE id=? AND chairman_id IS NULL",chairman.person_id,item.id);
+}
+run("UPDATE participations SET role_key='chairman',role_label='Chairman',permissions_json='[\\"read\\",\\"decide\\"]' WHERE role_key='decision_authority' AND EXISTS (SELECT 1 FROM work_items w WHERE w.id=participations.work_item_id AND w.chairman_id=participations.person_id)");
+run("UPDATE participations SET role_label='Chairman',permissions_json='[\\"read\\",\\"decide\\"]' WHERE role_key='chairman' AND EXISTS (SELECT 1 FROM work_items w WHERE w.id=participations.work_item_id AND w.chairman_id=participations.person_id)");
+
 run("UPDATE work_items SET status='discussion_review' WHERE status='in_review'");
 run("UPDATE work_items SET status='requestor_revision' WHERE status IN ('analysis','changes_requested')");
 run("UPDATE work_items SET status='approved_pending_close',decision_outcome='approved' WHERE status='accepted'");
