@@ -19,13 +19,13 @@ export const AGENT_RUN_LEASE_MS=boundedInteger(process.env.AGENT_RUN_LEASE_MS,60
 const AGENT_RUN_LEASE_SWEEP_MS=boundedInteger(process.env.AGENT_RUN_LEASE_SWEEP_MS,10_000,1_000,60_000);
 
 export const agentProfiles = [
-  { key:"business-analyst", name:"Business Analyst", description:"Clarifies business outcomes, stakeholders, requirements and acceptance criteria.", skillName:"business-analysis" },
-  { key:"solution-architect", name:"Solution Architect", description:"Develops solution options, system boundaries and architecture trade-offs.", skillName:"solution-architecture" },
-  { key:"data-architect", name:"Data Architect", description:"Analyses data ownership, flows, persistence, integration and governance.", skillName:"data-architecture" },
-  { key:"security-reviewer", name:"Security Reviewer", description:"Identifies security risks, control gaps and residual risks.", skillName:"security-review" },
-  { key:"architecture-reviewer", name:"Architecture Reviewer", description:"Independently reviews a fixed Artifact version against requirements and quality attributes.", skillName:"architecture-review" },
-  { key:"decision-analyst", name:"Decision Analyst", description:"Prepares evidence-based options and decision briefs without recording a formal decision.", skillName:"decision-preparation" },
-  { key:"request-coordinator", name:"Request Coordinator", description:"Coordinates specialist work, dependencies, hand-offs and human intervention.", skillName:"request-coordination" }
+  { key:"business-analyst", name:"业务分析师", description:"梳理业务目标、相关人员、需求和验收标准。", skillName:"business-analysis" },
+  { key:"solution-architect", name:"解决方案架构师", description:"提出可行方案，明确系统职责、接口和主要取舍。", skillName:"solution-architecture" },
+  { key:"data-architect", name:"数据架构师", description:"梳理数据归属、流转方式、存储和集成方案。", skillName:"data-architecture" },
+  { key:"security-reviewer", name:"安全评审员", description:"检查身份权限、数据保护、接口和运行安全风险。", skillName:"security-review" },
+  { key:"architecture-reviewer", name:"架构评审员", description:"对照需求和指定材料版本检查架构设计。", skillName:"architecture-review" },
+  { key:"decision-analyst", name:"决策分析员", description:"整理备选方案、判断依据和影响，供负责人作出决定。", skillName:"decision-preparation" },
+  { key:"request-coordinator", name:"协作协调员", description:"拆分任务，跟踪依赖、交接和进展。", skillName:"request-coordination" }
 ] as const;
 
 export type AgentKey = typeof agentProfiles[number]["key"];
