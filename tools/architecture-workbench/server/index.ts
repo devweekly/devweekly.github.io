@@ -299,7 +299,7 @@ app.get("/api/work-items/:id",(req,res)=>{
   const reviews=all("SELECT r.*,p.display_name AS reviewer_name,a.code AS artifact_code,a.title AS artifact_title FROM reviews r JOIN people p ON p.id=r.reviewer_id JOIN artifacts a ON a.id=r.artifact_id JOIN review_cycles c ON c.id=r.cycle_id WHERE c.work_item_id=? ORDER BY r.created_at DESC",workItemId);
   const tasks=all("SELECT t.*,a.display_name AS assignee_name,o.display_name AS owner_name FROM tasks t LEFT JOIN people a ON a.id=t.assignee_id LEFT JOIN people o ON o.id=t.owner_id WHERE t.work_item_id=? ORDER BY CASE t.status WHEN 'in_progress' THEN 0 WHEN 'blocked' THEN 1 WHEN 'open' THEN 2 ELSE 3 END,t.due_date",workItemId);
   const decisions=all("SELECT d.*,p.display_name AS decision_maker_name FROM decisions d JOIN people p ON p.id=d.decision_maker_id WHERE d.work_item_id=? ORDER BY d.created_at DESC",workItemId);
-  const clarifications=all("SELECT c.*,requester.display_name AS requester_name,answerer.display_name AS answerer_name,a.title AS artifact_title FROM clarification_requests c JOIN people requester ON requester.id=c.requested_by LEFT JOIN people answerer ON answerer.id=c.answered_by JOIN artifacts a ON a.id=c.artifact_id WHERE c.work_item_id=? ORDER BY c.created_at DESC",workItemId);
+  const clarifications=all("SELECT c.*,requester.display_name AS requester_name,answerer.display_name AS answerer_name,a.title AS artifact_title FROM clarification_requests c JOIN people requester ON requester.id=c.requested_by LEFT JOIN people answerer ON answerer.id=c.answered_by LEFT JOIN artifacts a ON a.id=c.artifact_id WHERE c.work_item_id=? ORDER BY c.created_at DESC",workItemId);
   const decisionMeetings=all("SELECT m.*,p.display_name AS chairman_name FROM decision_meetings m JOIN people p ON p.id=m.chairman_id WHERE m.work_item_id=? ORDER BY m.meeting_at DESC",workItemId);
   const comments=all("SELECT c.*,p.display_name AS author_name,p.avatar_color FROM comments c JOIN people p ON p.id=c.author_id WHERE c.work_item_id=? ORDER BY c.created_at DESC",workItemId);
   const activity=all("SELECT e.*,p.display_name AS actor_name FROM activity_events e JOIN people p ON p.id=e.actor_id WHERE e.work_item_id=? ORDER BY e.created_at DESC LIMIT 30",workItemId);
@@ -335,25 +335,33 @@ app.post("/api/work-items/:id/reviews",(req,res)=>{
   }
   const item=one<{status:string}>("SELECT status FROM work_items WHERE id=?",workItemId);
   if (item?.status!=="discussion_review") return res.status(409).json({error:"The Request is not in the discussion and review stage."});
-  const artifact=one<{id:string;version:number;title:string;submitted_by:string}>("SELECT id,version,title,submitted_by FROM artifacts WHERE id=? AND work_item_id=?",body.artifactId,workItemId);
-  if (!artifact) return res.status(400).json({error:"Review target does not belong to this Request."});
-  if (artifact.submitted_by===actor) return res.status(403).json({error:"Independent review cannot be submitted by the Artifact author."});
+  const artifactId=body.artifactId && body.artifactId!=="__request_package__" ? String(body.artifactId) : null;
+  const artifact=artifactId ? one<{id:string;version:number;title:string;submitted_by:string}>("SELECT id,version,title,submitted_by FROM artifacts WHERE id=? AND work_item_id=?",artifactId,workItemId) : null;
+  if (artifactId && !artifact) return res.status(400).json({error:"Review target does not belong to this Request."});
+  if (artifact?.submitted_by===actor) return res.status(403).json({error:"Independent review cannot be submitted by the Artifact author."});
   const cycle=one<{id:string;baseline_json:string}>("SELECT id,baseline_json FROM review_cycles WHERE work_item_id=? AND status='active' ORDER BY created_at DESC LIMIT 1",workItemId);
   if (!cycle) return res.status(409).json({error:"The Request has no active Review Cycle."});
   const baseline=JSON.parse(cycle.baseline_json) as {id:string;version:number}[];
-  if (!baseline.some(entry=>entry.id===artifact.id && entry.version===artifact.version)) {
+  if (artifact && !baseline.some(entry=>entry.id===artifact.id && entry.version===artifact.version)) {
     return res.status(409).json({error:"This Artifact version is outside the active Submission baseline."});
   }
   if (outcome==="clarification_requested") {
-    const result=createClarification(workItemId,actor,{artifactId:artifact.id,question:String(body.summary || ""),responseDueAt:String(body.responseDueAt || "")});
+    const result=createClarification(workItemId,actor,{artifactId:artifact?.id || null,question:String(body.summary || ""),responseDueAt:String(body.responseDueAt || "")});
     if (!result.ok) return res.status(result.statusCode).json({error:result.error});
     workflowTimers.wake();
     return res.status(201).json({id:result.id});
   }
-  const reviewId=id("rev");
-  run("INSERT INTO reviews(id,cycle_id,artifact_id,artifact_version,reviewer_id,discipline,outcome,summary,findings_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-    reviewId,cycle.id,artifact.id,artifact.version,actor,body.discipline || "General",outcome,String(body.summary || ""),JSON.stringify(body.findings || []),now());
-  logActivity(workItemId,actor,"reviewed","artifact",artifact.id,"Submitted "+outcome+" review for "+artifact.title);
+  let reviewId:string|null=null;
+  const timestamp=now();
+  if (artifact) {
+    reviewId=id("rev");
+    run("INSERT INTO reviews(id,cycle_id,artifact_id,artifact_version,reviewer_id,discipline,outcome,summary,findings_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+      reviewId,cycle.id,artifact.id,artifact.version,actor,body.discipline || "General",outcome,String(body.summary || ""),JSON.stringify(body.findings || []),timestamp);
+  } else if (outcome==="comment") {
+    run("INSERT INTO comments(id,work_item_id,author_id,body,created_at) VALUES(?,?,?,?,?)",id("comment"),workItemId,actor,String(body.summary || ""),timestamp);
+  }
+  logActivity(workItemId,actor,"reviewed",artifact ? "artifact" : "request",artifact?.id || workItemId,
+    "Submitted "+outcome+" review"+(artifact ? " for "+artifact.title : " on the Request Package"));
   if (outcome==="objection") {
     const transition=raiseObjection(workItemId,actor,String(body.summary || "Blocking objection raised"));
     if (!transition.ok) return res.status(transition.statusCode).json({error:transition.error});
