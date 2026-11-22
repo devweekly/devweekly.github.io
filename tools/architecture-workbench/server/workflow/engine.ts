@@ -36,12 +36,7 @@ export function canManageParticipants(workItemId:string,actorId:string):boolean 
 export function canChair(workItemId:string,actorId:string):boolean {
   if (isGlobalAdmin(actorId)) return true;
   const item=one<{chairman_id:string|null}>("SELECT chairman_id FROM work_items WHERE id=?",workItemId);
-  if (item?.chairman_id) return item.chairman_id===actorId;
-  const authorityRoles=all<{permissions_json:string}>(
-    "SELECT permissions_json FROM participations WHERE work_item_id=? AND person_id=? AND role_key IN ('chairman','decision_authority')",
-    workItemId,actorId
-  );
-  return authorityRoles.some(row=>(JSON.parse(row.permissions_json) as string[]).includes("decide"));
+  return Boolean(item && item.chairman_id===actorId);
 }
 
 function appendTransition(workItemId:string,from:string,to:string,action:string,reason:string,actorId:string,timestamp:string) {
@@ -232,7 +227,7 @@ export function answerClarification(workItemId:string,clarificationId:string,act
     "SELECT id,cycle_id,status,response_due_at FROM clarification_requests WHERE id=? AND work_item_id=?",clarificationId,workItemId
   );
   if (!item || !clarification) return {ok:false as const,statusCode:404,error:"Clarification not found."};
-  if (item.requestor_id!==actorId && !isGlobalAdmin(actorId)) return {ok:false as const,statusCode:403,error:"Only the Requestor may answer a clarification."};
+  if (item.requestor_id!==actorId) return {ok:false as const,statusCode:403,error:"Only the Requestor may answer a clarification."};
   if (item.status!=="waiting_requestor" || clarification.status!=="requested") return {ok:false as const,statusCode:409,error:"This clarification is no longer awaiting an answer."};
   if (Date.parse(clarification.response_due_at)<=Date.now()) return {ok:false as const,statusCode:409,error:"The clarification response deadline has passed; the Request will proceed to the decision meeting."};
   const timestamp=now();
