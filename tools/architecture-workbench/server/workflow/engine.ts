@@ -95,8 +95,8 @@ function createRequestSubmission(workItemId:string,actorId:string,input:Submissi
   run("INSERT INTO submissions(id,work_item_id,sequence,purpose,manifest_json,context_version,created_by,created_at,submission_message,package_json,assisted_by_run_id,source_submission_id,submitted_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
     submissionId,workItemId,sequence,"request",JSON.stringify(manifest),item.context_version,actorId,timestamp,message,JSON.stringify(packageSnapshot),assistedByRunId || null,prior?.id || null,item.requestor_id || actorId);
   const reviewerCandidates=all<{person_id:string;display_name:string;role_key:string;permissions_json:string}>(
-    "SELECT p.person_id,people.display_name,p.role_key,p.permissions_json FROM participations p JOIN people ON people.id=p.person_id WHERE p.work_item_id=? AND p.person_id<>? AND p.role_key NOT IN ('chairman','decision_authority') ORDER BY people.display_name",
-    workItemId,item.requestor_id || actorId
+    "SELECT p.person_id,people.display_name,p.role_key,p.permissions_json FROM participations p JOIN people ON people.id=p.person_id WHERE p.work_item_id=? AND p.person_id<>? AND p.person_id<>(SELECT chairman_id FROM work_items WHERE id=?) AND p.role_key NOT IN ('chairman','decision_authority') ORDER BY people.display_name",
+    workItemId,item.requestor_id || actorId,workItemId
   );
   const reviewers=reviewerCandidates
     .filter(person=>(JSON.parse(person.permissions_json) as string[]).includes("review"))
