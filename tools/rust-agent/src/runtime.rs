@@ -520,8 +520,7 @@ impl SessionStore {
                 record.messages.retain(|message| {
                     !sources.iter().any(|item|
                         item.session_id == session_id
-                            && !item.content.is_empty()
-                            && message.content.contains(&item.content)
+                            && transcript_matches_session_message(item, message)
                     )
                 });
                 let count = previous.saturating_sub(record.messages.len());
@@ -3345,6 +3344,31 @@ fn lock_state_file(path: &Path) -> Result<fs::File, AgentError> {
     Ok(file)
 }
 
+fn transcript_matches_session_message(source: &TranscriptEntry, message: &ChatMessage) -> bool {
+    if source.content.is_empty() { return false; }
+    if message.content == source.content { return true; }
+
+    match source.role.as_str() {
+        "user" if source.content.starts_with("User answers: ") => false,
+        "user" => {
+            let prompt = message.content
+                .split("\\n\\nAttachments supplied with this turn")
+                .next()
+                .unwrap_or(&message.content);
+            // Normal prompts are appended after the optional memory prefix. Very
+            // large prompts may instead be truncated to a prefix by the context budget.
+            prompt.ends_with(&source.content)
+                || (prompt.len() >= 1_024 && source.content.starts_with(prompt))
+        }
+        "assistant" if source.content.starts_with("Background task result [") => {
+            let marker = source.content.split(':').next().unwrap_or(&source.content);
+            message.content.starts_with(&format!("{marker}:\\n"))
+                || message.content.starts_with(&format!("{marker}: "))
+        }
+        _ => false,
+    }
+}
+
 fn ensure_real_directory(path: &Path) -> Result<(), AgentError> {
     if let Some(parent) = path.parent() {
         match fs::symlink_metadata(parent) {
@@ -3455,6 +3479,38 @@ mod tests {
         assert!(store.load("latest-session").is_ok());
         assert_eq!(fs::read_to_string(directory.join("latest")).unwrap(), "latest-session");
         let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn transcript_redaction_matches_composed_prompts_without_short_substring_collisions() {
+        let source = TranscriptEntry {
+            id: 1,
+            session_id: "session-a".into(),
+            project_id: None,
+            task_id: None,
+            role: "user".into(),
+            content: "private request phrase".into(),
+            created_at_ms: now_ms(),
+        };
+        let composed = ChatMessage {
+            role: "user".into(),
+            content: "Reference memories:\\n- preferred language: Rust\\n\\nprivate request phrase\\n\\nAttachments supplied with this turn:\\n- id=att-1".into(),
+        };
+        let unrelated = ChatMessage {
+            role: "user".into(),
+            content: "Quoted example: private request phrase should remain in this unrelated message.".into(),
+        };
+        assert!(super::transcript_matches_session_message(&source, &composed));
+        assert!(!super::transcript_matches_session_message(&source, &unrelated));
+
+        let short_source = TranscriptEntry {
+            content: "yes".into(),
+            ..source.clone()
+        };
+        let short_exact = ChatMessage { role: "user".into(), content: "yes".into() };
+        let short_unrelated = ChatMessage { role: "user".into(), content: "yesterday was sunny".into() };
+        assert!(super::transcript_matches_session_message(&short_source, &short_exact));
+        assert!(!super::transcript_matches_session_message(&short_source, &short_unrelated));
     }
 
     #[test]
