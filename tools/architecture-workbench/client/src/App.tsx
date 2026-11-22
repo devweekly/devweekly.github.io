@@ -667,7 +667,7 @@ export default function App() {
             description={<Space wrap><Text type="secondary" className="small">负责人：{debt.owner_name}</Text>{debt.target_date?<Text type="secondary" className="small">目标：{dateText(debt.target_date)}</Text>:null}<Text type="secondary" className="small">优先级：{debt.priority}</Text></Space>}
           />
         </List.Item>} />
-      </Card>}
+      </Card>
       
       <Card size="small" title="讨论" className="workspace-section">
         <Space.Compact block><Input value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="补充事实、提出问题或回应讨论..." onPressEnter={()=>void submitComment()} /><Button type="primary" onClick={()=>void submitComment()}>发送</Button></Space.Compact>
