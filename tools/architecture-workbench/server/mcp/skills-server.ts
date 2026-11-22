@@ -60,7 +60,7 @@ export async function mountSkillsMcpEndpoint(app: Express): Promise<number> {
     const auth = requireBearerAuth({
       verifier,
       requiredScopes: config.requiredScopes.map(scope => config.resourceUrl.href + "/" + scope),
-      resourceMetadataUrl,
+      resourceMetadataUrl: resourceMetadataUrl.href,
       expectedResource: config.resourceUrl,
     });
 
