@@ -26,6 +26,8 @@ Keep source evidence unchanged. During ingestion, update the concepts affected b
 
 A wiki is a knowledge representation layer, not a replacement for episodic history, source search, or a current user model. It is especially useful for stable concepts that connect evidence across many documents. Fast-changing personal preferences or task-specific state should remain time-aware and independently addressable. See [Memory Hierarchy](memory-hierarchy.md).
 
+An LLM Wiki is an RSI substrate only in the limited sense that it exposes accumulated knowledge in an editable, reusable form. Updating pages from new evidence may improve future retrieval, but the wiki itself does not demonstrate a recursive improvement loop. For that, the system that discovers, validates, and applies future wiki changes must also improve, with evidence from independent tasks. See [Recursive Self-Improvement](recursive-self-improvement.md).
+
 # When it helps
 
 A wiki is most useful when questions require combining facts across documents or revisiting knowledge over time. It may add little for a fact contained in one easy-to-search document; an over-detailed wiki can become larger than the material it represents. Anthropic's 2026 evaluation found that a growing wiki worked best in combination with search, rather than as the only way to access the corpus.[^anthropic-wiki-evaluation]
