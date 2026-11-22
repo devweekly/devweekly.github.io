@@ -62,9 +62,10 @@ The normal workspace puts business work ahead of implementation detail.
 The primary view presents:
 1. Work Item identity, current stage, Work Item Owner and the next useful action.
 2. The server-provided lifecycle and its available actions.
-3. Current Tasks with Task Owner, Assignee, status and due date.
-4. Latest deliverable versions and the history of immutable Submissions.
-5. Discussion attached to the Work Item.
+3. Collaboration progress grouped by work state (in progress, to start, needs coordination, completed), with ownership and due-date details shown as supporting context rather than an approval checklist.
+4. External source references from Jira, Confluence, GitHub and LeanIX.
+5. Technical Debt Work Items linked to the Request, including status, severity and owner.
+6. Discussion attached to the Work Item.
 
 An Additional Information disclosure contains participation and permission administration, full review and decision records, all Artifact versions, attachments, external references, Agent Plans/Runs, Context Capsule export and activity/technical traces. These remain available but do not compete with the primary work.
 
@@ -77,6 +78,6 @@ The UI follows Apple's design principles as product behavior rather than visual 
 - The existing Workflow Engine and Agent DAG coordinator remain in place; this ADR changes their boundaries and presentation, not their responsibilities.
 - Submission manifests make review scope inspectable and immutable. The current implementation records Artifact identity/version/hash and context version; a fully versioned, field-level Context View remains a future extension.
 - Task Owner is additive. Existing Task rows are backfilled using the previous assignee when present, otherwise the Work Item Owner, preserving a named accountable person while retaining the current assignee.
-- The primary workspace becomes simpler without deleting advanced capabilities or domain records.
-- Submission history is now a first-class business record. Any future API that creates Review Cycles must create and bind a Submission in the same transaction.
+- The primary workspace avoids repeating the same business information as separate material, submission-history and version-history panels. Internal Submission snapshots remain available to bind Reviews to the correct baseline; they are not a parallel user-facing deliverables register. Linked Technical Debt is visible from the originating Request.
+- The internal Submission baseline is created with each Review Cycle to preserve review consistency. The normal Request view does not expose a second formal-submission register or a separate Artifact-version-history panel.
 - Production authorization, reviewer assignment/quorum policy and enterprise identity delegation remain separate hardening work; UI visibility is never an authorization boundary.
