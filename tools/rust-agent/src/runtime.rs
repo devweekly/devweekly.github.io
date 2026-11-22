@@ -366,12 +366,12 @@ impl SessionStore {
         let path = self.path_for(&record.session_id)?;
         let lock = self.lock_store()?;
         ensure_regular_file_or_missing(&path)?;
-        let expected_revision = match fs::read(&path) {
+        let (expected_revision, is_new_session) = match fs::read(&path) {
             Ok(bytes) => {
                 let current: SessionRecord = serde_json::from_slice(&bytes)?;
-                current.revision.saturating_add(1)
+                (current.revision.saturating_add(1), false)
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => 1,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (1, true),
             Err(error) => return Err(error.into()),
         };
         if record.revision != expected_revision {
@@ -400,7 +400,7 @@ impl SessionStore {
                 stored_bytes = stored_bytes.saturating_add(entry.metadata()?.len());
             }
         }
-        if expected_revision == 1 && stored_count >= MAX_STORED_SESSION_FILES {
+        if is_new_session && stored_count >= MAX_STORED_SESSION_FILES {
             return Err(AgentError::InvalidAction(format!(
                 "session store reached the {MAX_STORED_SESSION_FILES} file limit; prune old sessions"
             )));
