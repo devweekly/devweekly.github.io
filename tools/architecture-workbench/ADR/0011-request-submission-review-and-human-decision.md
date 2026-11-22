@@ -27,7 +27,7 @@ The Requestor prepares and confirms a Request Package containing:
 - an immutable material manifest;
 - a Git-commit-style submission message describing the intent of this revision.
 
-An Agent may prepare or revise the package and supporting draft Artifacts. The Agent Run ID is recorded as provenance when applicable. The Requestor remains the submitter and must explicitly confirm the final submission. Agent execution, plan completion or artifact creation never submits a Request.
+An Agent running in the Client may help the Requestor compose or revise the Request description. This is ordinary Client-side assistance; it does not create a server-side Agent Package Draft, database entity or MCP tool. The Requestor remains the submitter and explicitly confirms submission. Agent execution, plan completion or artifact creation never submits a Request.
 
 A later revision creates a new Submission linked to the prior Submission. It does not overwrite the previous package or review baseline.
 
@@ -78,11 +78,11 @@ The timer service is a scheduler, not a second workflow engine. Business transit
 - Reviewers comment, request clarification or raise a blocking objection. They cannot approve or reject the Request.
 - Chairman/Admin records the meeting time, minutes, rationale and formal outcome.
 - Chairman/Admin explicitly closes approved and rejected Requests.
-- Agents may draft packages, evidence and analysis. They cannot submit on behalf of the Requestor, raise formal decisions, accept risk or close a Request.
+- Client-side Agents may assist with drafting and analysis. Workbench Server does not expose a separate Package Draft workflow or MCP tool. Agents cannot submit on behalf of the Requestor, raise formal decisions, accept risk or close a Request.
 
 ## Consequences
 
-- ADR-0010 remains in force for the Work Item workspace, immutable Submission baseline, Task accountability and separation of Business Workflow, Collaboration Workflow and Agent Execution Workflow. Its earlier five-stage lifecycle table is replaced by this ADR.
+- ADR-0010 remains in force for the Work Item workspace, internal immutable Review baseline, Task accountability and separation of Business Workflow, Collaboration Workflow and Agent Execution Workflow. Its earlier five-stage lifecycle table is replaced by this ADR.
 - Existing `analysis` and `changes_requested` Requests migrate to `requestor_revision`; `in_review` migrates to `discussion_review`; old `accepted` and `rejected` records migrate to their pending-close states. Historical transitions and Review records are retained.
 - Existing Review Cycles retain their original baseline. Their due dates are converted into durable timers where possible.
 - SQLite and the Node.js process remain the only runtime dependencies for lifecycle scheduling. Multi-instance deployment would require database-backed timer claiming with leases; the current single-process deployment does not require an external queue.
