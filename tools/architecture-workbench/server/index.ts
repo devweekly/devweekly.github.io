@@ -247,9 +247,6 @@ app.patch("/api/work-items/:id/request-package",(req,res)=>{
     submissionMessage:String(body.submissionMessage || ""),
     assistedByRunId:body.assistedByRunId ? String(body.assistedByRunId) : null
   };
-  if (!packageValue.goal.trim() || !packageValue.scope.trim() || !packageValue.decisionQuestions.trim() || !packageValue.submissionMessage.trim()) {
-    return res.status(400).json({error:"Request Package requires a goal, scope, committee decision questions and a submission message."});
-  }
   const timestamp=now();
   run("UPDATE work_items SET request_package_json=?,context_version=context_version+1,updated_at=? WHERE id=?",
     JSON.stringify(packageValue),timestamp,workItemId);
