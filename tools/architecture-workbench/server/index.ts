@@ -511,11 +511,16 @@ app.post("/api/work-items/:id/transitions",(req,res)=>{
   if (!can(workItemId,actor,"read")) return res.status(403).json({error:"The current principal cannot access this Work Item."});
   const body=req.body || {}; const action=String(body.action) as WorkflowAction;
   if (!["submit_request","close"].includes(action)) return res.status(400).json({error:"Only Request submission and explicit closure use this endpoint; Reviews and Decisions use dedicated operations."});
-  const result=transitionWorkItem(workItemId,actor,action,String(body.reason || ""),{
-    submissionMessage:body.submissionMessage ? String(body.submissionMessage) : undefined,
-    package:body.package && typeof body.package==="object" ? body.package : undefined,
-    assistedByRunId:body.assistedByRunId ? String(body.assistedByRunId) : null
-  });
+  let result;
+  try {
+    result=transitionWorkItem(workItemId,actor,action,String(body.reason || ""),{
+      submissionMessage:body.submissionMessage ? String(body.submissionMessage) : undefined,
+      package:body.package && typeof body.package==="object" ? body.package : undefined,
+      assistedByRunId:body.assistedByRunId ? String(body.assistedByRunId) : null
+    });
+  } catch(error) {
+    return res.status(400).json({error:error instanceof Error ? error.message : "Could not submit Request"});
+  }
   if (!result.ok) return res.status(result.statusCode).json({error:result.error});
   workflowTimers.wake();
   res.json({ok:true,workflow:getWorkflowProjection(workItemId,actor)});
