@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert, Avatar, Breadcrumb, Button, Card, Checkbox, Col, DatePicker, Divider, Empty,
-  Form, Input, Layout, List, Menu, Modal, Progress, Row, Select, Space, Statistic,
+  Form, Input, Layout, List, Menu, Modal, Progress, Row, Select, Space,
   Steps, Table, Tabs, Tag, Timeline, Tooltip, Typography, Upload, message
 } from "antd";
 import type { FormInstance } from "antd";
@@ -384,14 +384,6 @@ export default function App() {
       <div className="page-heading"><div><Title level={2}>全局分析</Title><Paragraph type="secondary">查看事项进度、评审安排、外部资源关联情况和技术债务处理情况。</Paragraph></div><Text type="secondary" className="small">更新于 {dateText(analyticsData.generatedAt)}</Text></div>
       <Tabs activeKey={analyticsTab} onChange={key=>{setAnalyticsTab(key);writeRoute("analytics",null,key);}} items={[
         {key:"requests",label:"事项分析",children:<div className="page-stack">
-          <Row gutter={[16,16]}>
-            <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="事项总数" value={r.total} /></Card></Col>
-            <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="进行中的事项" value={r.active} /></Card></Col>
-            <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="评审中" value={r.inReview} /></Card></Col>
-            <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="已逾期" value={r.overdue} valueStyle={{color:r.overdue?"#cf1322":undefined}} /></Card></Col>
-            <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="已关联外部资源的事项" value={r.linked} /></Card></Col>
-            <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="外部资源数" value={r.externalReferenceCount} /></Card></Col>
-          </Row>
           <Card title={"需要处理的事项 · "+attentionItems.length} className="panel-card" extra={<Button type="link" onClick={()=>navigatePage("work-items")}>全部事项</Button>}>
             <Paragraph type="secondary">列出你有权查看且已逾期或正等待处理的事项。打开事项可查看负责人、任务和相关材料。</Paragraph>
             <Table size="small" rowKey="id" dataSource={attentionItems} pagination={{pageSize:6,hideOnSinglePage:true}} locale={{emptyText:"当前没有需要跟进的事项"}} columns={[
@@ -411,19 +403,11 @@ export default function App() {
                   {title:"关联资源",dataIndex:"count"},
                   {title:"关联事项数",dataIndex:"requestCount"}
                 ]} />
-                <Divider />
-                <Text type="secondary">已关联外部资源的事项：{r.linked}；尚未关联：{r.withoutExternalLinks}。这里只统计工作台中登记的链接，不代表外部系统已经连接或同步。</Text>
               </Card>
             </Col>
           </Row>
         </div>},
         {key:"debt",label:"技术债务分析",children:<div className="page-stack">
-          <Row gutter={[16,16]}>
-            <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="技术债务总数" value={d.total} /></Card></Col>
-            <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="未解决" value={d.active} /></Card></Col>
-            <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="已逾期" value={d.overdue} valueStyle={{color:d.overdue?"#cf1322":undefined}} /></Card></Col>
-            <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="30 天内到期" value={d.dueNext30Days} /></Card></Col>
-          </Row>
           <Row gutter={[16,16]}>
             <Col xs={24} lg={8}>{breakdownCard("按状态",d.byStatus)}</Col>
             <Col xs={24} lg={8}>{breakdownCard("按严重程度",d.bySeverity)}</Col>
