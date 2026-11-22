@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert, Avatar, Breadcrumb, Button, Card, Checkbox, Col, DatePicker, Divider, Empty,
-  Form, Input, Layout, List, Menu, Modal, Progress, Row, Select, Space, Statistic,
+  Form, Input, Layout, List, Menu, Modal, Progress, Row, Select, Space,
   Steps, Table, Tabs, Tag, Timeline, Tooltip, Typography, Upload, message
 } from "antd";
 import type { FormInstance } from "antd";
 import {
   AppstoreOutlined, ApartmentOutlined, ArrowLeftOutlined, AuditOutlined,
-  CheckCircleOutlined, ClockCircleOutlined, CloudUploadOutlined, CopyOutlined,
+  CheckCircleOutlined, CloudUploadOutlined, CopyOutlined,
   BarChartOutlined, DeleteOutlined, EditOutlined, FileProtectOutlined, LinkOutlined, PlusOutlined,
   ProjectOutlined, SafetyCertificateOutlined, TeamOutlined, UnorderedListOutlined, UserAddOutlined, UploadOutlined
 } from "@ant-design/icons";
@@ -40,6 +40,20 @@ const roleColors: Record<string,string> = {
   solution_architect:"blue", enterprise_architect:"purple", security_architect:"red",
   solution_sme:"cyan", development_manager:"gold", decision_authority:"green"
 };
+const participationRoleOptions = [
+  {value:"owner",label:"事项负责人"},
+  {value:"chairman",label:"会议主席"},
+  {value:"solution_architect",label:"解决方案架构师"},
+  {value:"enterprise_architect",label:"企业架构师"},
+  {value:"data_architect",label:"数据架构师"},
+  {value:"security_architect",label:"安全架构师"},
+  {value:"solution_sme",label:"业务专家"},
+  {value:"development_manager",label:"开发经理"},
+  {value:"architecture_reviewer",label:"架构评审员"},
+  {value:"reviewer",label:"评审人"},
+  {value:"contributor",label:"参与者"},
+  {value:"other",label:"其他"}
+];
 const dateText = (value?: string | null) => value ? dayjs(value).format("YYYY-MM-DD") : "—";
 
 const workItemTypeLabels: Record<string,string> = {
@@ -82,8 +96,7 @@ export default function App() {
   const [analyticsData,setAnalyticsData] = useState<WorkbenchAnalytics|null>(null);
   const [myTasks,setMyTasks] = useState<MyTask[]>([]);
   const [agentProfiles,setAgentProfiles] = useState<AgentProfile[]>([]);
-  const [agentRunOpen,setAgentRunOpen] = useState(false);
-  const [agentPlanOpen,setAgentPlanOpen] = useState(false);
+   const [agentPlanOpen,setAgentPlanOpen] = useState(false);
   const [agentResumeOpen,setAgentResumeOpen] = useState(false);
   const [agentResumeRunId,setAgentResumeRunId] = useState<string|null>(null);
   const [editingParticipationId,setEditingParticipationId] = useState<string|null>(null);
@@ -100,8 +113,7 @@ export default function App() {
   const [participantForm] = Form.useForm();
   const [profileForm] = Form.useForm();
   const [externalLinkForm] = Form.useForm();
-  const [agentForm] = Form.useForm();
-  const [agentPlanForm] = Form.useForm();
+   const [agentPlanForm] = Form.useForm();
   const [agentResumeForm] = Form.useForm();
   const [commentText,setCommentText] = useState("");
   const [query,setQuery] = useState("");
@@ -197,6 +209,10 @@ export default function App() {
   useEffect(()=>{if(detail) setSelected(detail.workItem);},[detail]);
 
   const actorPerson=bootstrap?.people.find(person=>person.id===actor);
+  const selectedParticipant=detail?.participants.find(participant=>participant.id===editingParticipationId);
+  const participantRoleChoices=selectedParticipant && !participationRoleOptions.some(option=>option.value===selectedParticipant.role_key)
+    ? [...participationRoleOptions,{value:selectedParticipant.role_key,label:selectedParticipant.role_label}]
+    : participationRoleOptions;
   const profilePerson=bootstrap?.people.find(person=>person.id===(profilePersonId || actor)) || actorPerson;
   const filteredItems=useMemo(()=>(bootstrap?.workItems || []).filter(item=>
     [item.code,item.title,item.description,item.owner_name].join(" ").toLowerCase().includes(query.toLowerCase())
@@ -256,12 +272,7 @@ export default function App() {
   }
   function itemFallbackOwner() { return detail?.workItem.owner_id || selected?.owner_id || actor; }
 
-  function openAgentRunDialog() {
-    agentForm.resetFields();
-    agentForm.setFieldsValue({agentKey:"solution-architect",objective:"分析本事项的目标、约束、可选方案和仍需确认的问题。"});
-    setAgentRunOpen(true);
-  }
-  function openAgentPlanDialog() {
+   function openAgentPlanDialog() {
     agentPlanForm.resetFields();
     agentPlanForm.setFieldsValue({
       name:"多角色架构评估",
@@ -343,12 +354,10 @@ export default function App() {
        high:"高",normal:"普通",low:"低",architecture_review:"架构评审",change_assessment:"变更评估",solution_assessment:"方案评估",risk_assessment:"风险评估",technical_debt:"技术债务",
        jira:"Jira",confluence:"Confluence",github:"GitHub",leanix:"LeanIX",open:"待处理",in_progress:"处理中",deferred:"已延期",resolved:"已解决",cancelled:"已取消",medium:"中"
      };
-    const leader=[...rows].sort((a,b)=>b.count-a.count)[0];
     const total=rows.reduce((sum,row)=>sum+row.count,0);
     return <Card title={title} className="panel-card">
       {rows.length===0?<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />:<>
-        {leader?<Text type="secondary" className="analytics-insight">当前最多：{leader.label || labels[leader.key] || leader.key}，{leader.count} 项（{Math.round(leader.count/Math.max(1,total)*100)}%）。</Text>:null}
-        {rows.map(row=><div className="analytics-bar" key={row.key}>
+         {rows.map(row=><div className="analytics-bar" key={row.key}>
           <div className="analytics-bar-label"><Text>{row.label || labels[row.key] || row.key}</Text><Space size={10}><Text type="secondary" className="small">{Math.round(row.count/Math.max(1,total)*100)}%</Text><Text strong>{row.count}</Text></Space></div>
           <div className="analytics-track"><span style={{width:Math.round(row.count/max*100)+"%"}} /></div>
         </div>)}
@@ -373,7 +382,7 @@ export default function App() {
     };
     const debtItems=bootstrap?.debts || [];
     return <div className="page-stack">
-      <div className="page-heading"><div><Text type="secondary">全局统计</Text><Title level={2}>全局分析</Title><Paragraph type="secondary">查看事项进度、评审安排、外部资源关联情况和技术债务处理情况。</Paragraph></div><Text type="secondary" className="small">更新于 {dateText(analyticsData.generatedAt)}</Text></div>
+      <div className="page-heading"><div><Title level={2}>全局分析</Title><Paragraph type="secondary">查看事项进度、评审安排、外部资源关联情况和技术债务处理情况。</Paragraph></div><Text type="secondary" className="small">更新于 {dateText(analyticsData.generatedAt)}</Text></div>
       <Tabs activeKey={analyticsTab} onChange={key=>{setAnalyticsTab(key);writeRoute("analytics",null,key);}} items={[
         {key:"requests",label:"事项分析",children:<div className="page-stack">
           <Row gutter={[16,16]}>
@@ -384,7 +393,7 @@ export default function App() {
             <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="已关联外部资源的事项" value={r.linked} /></Card></Col>
             <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="外部资源数" value={r.externalReferenceCount} /></Card></Col>
           </Row>
-          <Card title={"需要跟进的事项 · "+attentionItems.length} className="panel-card" extra={<Button type="link" onClick={()=>navigatePage("work-items")}>全部事项</Button>}>
+          <Card title={"需要处理的事项 · "+attentionItems.length} className="panel-card" extra={<Button type="link" onClick={()=>navigatePage("work-items")}>全部事项</Button>}>
             <Paragraph type="secondary">列出你有权查看且已逾期或正等待处理的事项。打开事项可查看负责人、任务和相关材料。</Paragraph>
             <Table size="small" rowKey="id" dataSource={attentionItems} pagination={{pageSize:6,hideOnSinglePage:true}} locale={{emptyText:"当前没有需要跟进的事项"}} columns={[
               {title:"事项",dataIndex:"title",render:(value:string,item:WorkItem)=><Button type="link" className="table-link" onClick={()=>void openWorkItem(item)}>{item.code} · {value}</Button>},
@@ -466,7 +475,7 @@ export default function App() {
 
   function renderWorkItems() {
     return <div className="page-stack">
-      <div className="page-heading"><div><Text type="secondary">事项管理</Text><Title level={2}>业务事项</Title><Paragraph type="secondary">同一事项可由不同团队成员通过网站或外部 Agent 协作完成。</Paragraph></div><Button type="primary" icon={<PlusOutlined />} onClick={()=>setNewItemOpen(true)}>新建事项</Button></div>
+      <div className="page-heading"><div><Text type="secondary">事项管理</Text><Title level={2}>业务事项</Title><Paragraph type="secondary">按负责人、状态和目标日期查看事项。</Paragraph></div><Button type="primary" icon={<PlusOutlined />} onClick={()=>setNewItemOpen(true)}>新建事项</Button></div>
       <Card className="panel-card"><div className="table-toolbar"><Input.Search allowClear placeholder="搜索事项、编号或负责人" onSearch={setQuery} onChange={e=>setQuery(e.target.value)} style={{maxWidth:360}} /><Text type="secondary">{filteredItems.length} 个事项</Text></div><Table rowKey="id" columns={itemColumns} dataSource={filteredItems} loading={loading} pagination={{pageSize:8}} /></Card>
     </div>;
   }
@@ -479,30 +488,18 @@ export default function App() {
   }
   function renderMyWork() {
     const mine=(bootstrap?.workItems || []).filter(item=>item.owner_id===actor || item.requestor_id===actor);
-    const activeTasks=myTasks.filter(task=>!["done","cancelled"].includes(task.status));
     const taskColumns=[
-      {title:"任务",dataIndex:"title",render:(value:string,task:MyTask)=><div><Text strong>{value}</Text><div className="small muted">{taskKindLabels[task.kind] || task.kind}</div></div>},
+      {title:"任务",dataIndex:"title",render:(value:string)=><Text strong>{value}</Text>},
       {title:"所属事项",dataIndex:"work_item_title",render:(value:string,task:MyTask)=><Button type="link" className="table-link" onClick={()=>{const item=bootstrap?.workItems.find(entry=>entry.id===task.work_item_id);if(item)void openWorkItem(item);}}>{task.work_item_code} · {value}</Button>},
-      {title:"任务负责人",dataIndex:"owner_name",render:(value:string|null)=>value || "—"},
+      {title:"负责人",dataIndex:"owner_name",render:(value:string|null)=>value || "—"},
       {title:"执行人",dataIndex:"assignee_name",render:(value:string|null)=>value || "尚未分配"},
-      {title:"我的角色",render:(_:unknown,task:MyTask)=>task.owner_id===actor && task.assignee_id===actor?"负责人 / 执行人":task.owner_id===actor?"任务负责人":"执行人"},
-      {title:"状态",dataIndex:"status",render:(value:string,task:MyTask)=><Select size="small" value={value} style={{width:120}} onChange={status=>void updateTask(task.id,status)} options={[{value:"open",label:"待处理"},{value:"in_progress",label:"处理中"},{value:"blocked",label:"受阻"},{value:"done",label:"完成"},{value:"cancelled",label:"取消"}]} />},
+       {title:"状态",dataIndex:"status",render:(value:string,task:MyTask)=><Select size="small" value={value} style={{width:120}} onChange={status=>void updateTask(task.id,status)} options={[{value:"open",label:"待处理"},{value:"in_progress",label:"处理中"},{value:"blocked",label:"受阻"},{value:"done",label:"完成"},{value:"cancelled",label:"取消"}]} />},
       {title:"截止日期",dataIndex:"due_date",render:dateText},
-      {title:"申请人",dataIndex:"requestor_name",render:(value:string|null)=>value || "—"}
-    ];
+     ];
     return <div className="page-stack">
-      <div className="page-heading"><div><Text type="secondary">我的任务</Text><Title level={2}>我的工作</Title><Paragraph type="secondary">这里汇总你负责或正在处理的工作。任务负责人对结果负责；执行人负责具体处理。</Paragraph></div></div>
-      <Row gutter={[16,16]}>
-        <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="待完成任务" value={activeTasks.length} /></Card></Col>
-        <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="处理中" value={activeTasks.filter(task=>task.status==="in_progress").length} /></Card></Col>
-        <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="受阻" value={activeTasks.filter(task=>task.status==="blocked").length} /></Card></Col>
-        <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="已完成" value={myTasks.filter(task=>task.status==="done").length} /></Card></Col>
-      </Row>
-      <Card title="我负责或处理的任务" className="panel-card"><Table rowKey="id" columns={taskColumns} dataSource={activeTasks} loading={loading} pagination={{pageSize:8}} locale={{emptyText:<Empty description="当前没有你负责或执行的任务" />}} /></Card>
+      <div className="page-heading"><div><Title level={2}>我的任务</Title><Paragraph type="secondary">查看分配给你的任务，以及你发起或负责的事项。</Paragraph></div></div>
+      <Card title="我的任务" className="panel-card"><Table rowKey="id" columns={taskColumns} dataSource={myTasks} loading={loading} pagination={{pageSize:8}} locale={{emptyText:<Empty description="当前没有分配给你的任务" />}} /></Card>
       <Card title="我发起或负责的事项" className="panel-card"><Table rowKey="id" columns={itemColumns} dataSource={mine} pagination={{pageSize:6}} /></Card>
-      <Card title="我的个人资料" className="panel-card" extra={<Button type="link" onClick={()=>navigatePage("people")}>查看资料</Button>}>
-        <Space><Avatar size={44} style={{background:actorPerson?.avatar_color}}>{actorPerson?.display_name.slice(0,1)}</Avatar><div><Text strong>{actorPerson?.display_name}</Text><div><Text type="secondary">{actorPerson?.title} · {actorPerson?.department}</Text></div></div></Space>
-      </Card>
     </div>;
   }
   function renderPeople() {
@@ -580,6 +577,7 @@ export default function App() {
       : (phaseAction[item.status] || "根据当前进展继续处理。");
     const requestPackage=(()=>{try{return JSON.parse(item.request_package_json || "{}") as Record<string,unknown>;}catch{return {};}})();
     const canSubmitRequest=item.requestor_id===actor;
+    const packageReady=Boolean(String(requestPackage.goal || "").trim() && String(requestPackage.scope || "").trim() && String(requestPackage.decisionQuestions || "").trim() && String(requestPackage.submissionMessage || "").trim());
     const showArtifact=(artifact:Artifact)=>Modal.info({
       title:(artifact.code || artifact.type)+" · "+artifact.title+" · v"+artifact.version,
       width:820,
@@ -606,8 +604,8 @@ export default function App() {
         </div>
         <Space wrap>
           {permissions.includes("contribute") && <Button icon={<PlusOutlined />} onClick={()=>setArtifactOpen(true)}>添加架构材料</Button>}
-          {canSubmitRequest && ["draft","requestor_revision"].includes(item.status) && <Button onClick={()=>{packageForm.setFieldsValue({...requestPackage});setPackageOpen(true);}}>编辑申请材料</Button>}
-          {detail.workflow.availableActions.includes("submit_request") && <Button type="primary" onClick={()=>void transitionWorkflow("submit_request",{submissionMessage:String(requestPackage.submissionMessage || "申请材料："+item.title),package:requestPackage,assistedByRunId:requestPackage.assistedByRunId ? String(requestPackage.assistedByRunId) : undefined})}>提交评审</Button>}
+          {canSubmitRequest && ["draft","requestor_revision"].includes(item.status) && <Button onClick={()=>{packageForm.setFieldsValue({...requestPackage});setPackageOpen(true);}}>{packageReady?"编辑申请材料":"完善申请材料"}</Button>}
+          {detail.workflow.availableActions.includes("submit_request") && packageReady && <Button type="primary" onClick={()=>void transitionWorkflow("submit_request",{submissionMessage:String(requestPackage.submissionMessage),package:requestPackage,assistedByRunId:requestPackage.assistedByRunId ? String(requestPackage.assistedByRunId) : undefined})}>提交评审</Button>}
           {detail.workflow.availableActions.includes("record_decision") && <Button type="primary" onClick={()=>{decisionForm.resetFields();decisionForm.setFieldsValue({outcome:"approved"});setDecisionOpen(true);}}>记录决定会议结论</Button>}
         </Space>
       </div>
@@ -676,7 +674,7 @@ export default function App() {
       </Card>
 
       <Card size="small" title={"关联资源 · "+detail.externalLinks.length} className="workspace-section" extra={permissions.includes("contribute")?<Button size="small" icon={<LinkOutlined />} onClick={()=>void openExternalLinkDialog()}>添加外部资源</Button>:null}>
-        <Paragraph type="secondary" className="small">原始业务材料保留在 Jira、Confluence、GitHub 和 LeanIX 等源系统中；这里仅记录关联链接，不复制或维护另一套材料版本。</Paragraph>
+        <Paragraph type="secondary" className="small">材料仍保留在 Jira、Confluence、GitHub 和 LeanIX；这里仅保存链接。</Paragraph>
         {detail.externalLinks.length===0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未关联外部资源" /> :
           <List size="small" dataSource={detail.externalLinks} renderItem={link=><List.Item actions={[link.url?<a key="open" href={link.url} target="_blank" rel="noreferrer">打开</a>:null,permissions.includes("contribute")?<Button key="remove" type="link" danger size="small" onClick={()=>void removeExternalLink(link.id)}>移除</Button>:null].filter(Boolean)}>
             <List.Item.Meta
@@ -704,7 +702,7 @@ export default function App() {
       </Card>
 
       <details className="advanced-information">
-        <summary>更多信息 <Text type="secondary">参与者、评审、决定、附件和 Agent 执行记录</Text></summary>
+        <summary>更多信息 <Text type="secondary">参与者、评审意见、决定记录、附件和分析记录</Text></summary>
         <div className="advanced-grid">
           <Card size="small" title={"参与者 · "+detail.participants.length}>
             <div className="participant-grid participant-grid-managed">
@@ -738,18 +736,18 @@ export default function App() {
             <List size="small" dataSource={detail.attachments} locale={{emptyText:"尚无附件"}} renderItem={attachment=><List.Item><List.Item.Meta title={attachment.original_name} description={dateText(attachment.created_at)} /></List.Item>} />
           </Card>
 
-          <Card size="small" title="Agent 协作（高级）" className="advanced-agent-card">
-            <Space wrap><Text type="secondary" className="small">Agent 只准备草案；正式评审和决定仍由授权人员完成。</Text>{permissions.includes("contribute")?<Button size="small" onClick={openAgentPlanDialog}>发起多角色分析</Button>:null}</Space>
+          <Card size="small" title="Agent 分析记录" className="advanced-agent-card">
+            {permissions.includes("contribute")?<Button size="small" onClick={openAgentPlanDialog}>发起分析</Button>:null}
             <List size="small" dataSource={detail.agentPlans} locale={{emptyText:"尚无多角色分析计划"}} renderItem={plan=><List.Item>
-              <List.Item.Meta title={<Space wrap><Text strong>{plan.name}</Text><Tag color={statusColors[plan.status] || "default"}>{statusLabels[plan.status] || plan.status}</Tag></Space>} description={<>{plan.objective}<div className="small muted">{plan.nodes.filter(node=>node.status==="completed").length}/{plan.nodes.length} 个执行节点已完成</div></>} />
+              <List.Item.Meta title={<Space wrap><Text strong>{plan.name}</Text><Tag color={statusColors[plan.status] || "default"}>{statusLabels[plan.status] || plan.status}</Tag></Space>} description={<>{plan.objective}<div className="small muted">已完成 {plan.nodes.filter(node=>node.status==="completed").length}/{plan.nodes.length} 个角色分析</div></>} />
               {plan.result_artifact_id?<Button type="link" size="small" onClick={()=>{const artifact=detail.artifacts.find(entry=>entry.id===plan.result_artifact_id);if(artifact)showArtifact(artifact);}}>查看草案</Button>:null}
             </List.Item>} />
             <List size="small" dataSource={detail.agentRuns} locale={{emptyText:"尚无 Agent 执行记录"}} renderItem={run=><List.Item>
-              <List.Item.Meta title={<Space wrap><Text strong>{agentProfiles.find(profile=>profile.key===run.agent_key)?.name || run.agent_key}</Text><Tag color={statusColors[run.status] || "default"}>{statusLabels[run.status] || run.status}</Tag></Space>} description={<>{run.objective}<div className="small muted">请求人：{run.requested_by_name} · 实际执行身份：{run.claimed_by_name || "尚未领取"} · {dateText(run.created_at)}</div>{run.handoff_reason?<Text type="warning">等待输入：{run.handoff_reason}</Text>:null}{run.error_message?<Text type="danger">失败：{run.error_message}</Text>:null}</>} />
+              <List.Item.Meta title={<Space wrap><Text strong>{agentProfiles.find(profile=>profile.key===run.agent_key)?.name || run.agent_key}</Text><Tag color={statusColors[run.status] || "default"}>{statusLabels[run.status] || run.status}</Tag></Space>} description={<>{run.objective}<div className="small muted">发起人：{run.requested_by_name} · {dateText(run.created_at)}</div>{run.handoff_reason?<Text type="warning">等待输入：{run.handoff_reason}</Text>:null}{run.error_message?<Text type="danger">失败：{run.error_message}</Text>:null}</>} />
               {run.result_artifact_id?<Button type="link" size="small" onClick={()=>{const artifact=detail.artifacts.find(entry=>entry.id===run.result_artifact_id);if(artifact)showArtifact(artifact);}}>查看材料</Button>:null}
               {run.status==="waiting_for_human" && (run.requested_by===actor || item.requestor_id===actor || actorPerson?.is_admin===1)?<Button type="link" size="small" onClick={()=>openAgentResumeDialog(run)}>补充信息</Button>:null}
             </List.Item>} />
-            <Button type="link" size="small" onClick={async()=>{const capsule=await api.contextCapsule(item.id);await navigator.clipboard.writeText(JSON.stringify(capsule,null,2));message.success("事项资料已复制");}}>复制事项资料给 Agent</Button>
+            <Button type="link" size="small" onClick={async()=>{const capsule=await api.contextCapsule(item.id);await navigator.clipboard.writeText(JSON.stringify(capsule,null,2));message.success("事项资料已复制");}}>复制事项资料</Button>
           </Card>
 
           <Card size="small" title="活动与流程记录">
@@ -780,23 +778,15 @@ export default function App() {
       </Content>
     </Layout>
     <Modal title="新建事项" open={newItemOpen} onCancel={()=>setNewItemOpen(false)} onOk={()=>void submitForm(newItemForm,async()=>{const v=newItemForm.getFieldsValue();if(v.targetDate)v.targetDate=v.targetDate.format("YYYY-MM-DD");return api.createWorkItem(v);},"事项已创建",()=>setNewItemOpen(false))} confirmLoading={busy} width={720}>
-      <Form form={newItemForm} layout="vertical" initialValues={{type:"architecture_review",priority:"normal",submissionMessage:"提交事项评审申请"}}>
+      <Form form={newItemForm} layout="vertical" initialValues={{type:"architecture_review",priority:"normal"}}>
         <Form.Item name="title" label="事项名称" rules={[{required:true}]}><Input placeholder="例如：客户身份平台架构评估" /></Form.Item>
         <Form.Item name="type" label="事项类型"><Select options={[{value:"architecture_review",label:"架构评审"},{value:"solution_assessment",label:"方案评估"},{value:"change_assessment",label:"变更评估"},{value:"risk_assessment",label:"风险评估"},{value:"other",label:"其他"}]} /></Form.Item>
-        <Form.Item name="description" label="问题背景与业务目标" rules={[{required:true}]}><TextArea rows={3} /></Form.Item>
-        <Row gutter={12}>
-          <Col span={12}><Form.Item name="goal" label="预期结果" rules={[{required:true}]}><TextArea rows={2} /></Form.Item></Col>
-          <Col span={12}><Form.Item name="scope" label="范围" rules={[{required:true}]}><TextArea rows={2} /></Form.Item></Col>
-        </Row>
-        <Form.Item name="constraints" label="约束与主要风险"><TextArea rows={2} /></Form.Item>
-        <Form.Item name="initialProposal" label="初步方案（可选）"><TextArea rows={3} /></Form.Item>
-        <Form.Item name="decisionQuestions" label="需要负责人决定的问题" rules={[{required:true}]}><TextArea rows={2} /></Form.Item>
-        <Form.Item name="chairmanId" label="指定会议主席" rules={[{required:true,message:"必须指定决定会议主席"}]}><Select showSearch optionFilterProp="label" options={(bootstrap?.people || []).map(p=>({value:p.id,label:p.display_name+" · "+p.title}))} /></Form.Item>
+        <Form.Item name="description" label="问题背景" rules={[{required:true}]}><TextArea rows={4} /></Form.Item>
+        <Form.Item name="chairmanId" label="会议主席" rules={[{required:true,message:"请选择会议主席"}]}><Select showSearch optionFilterProp="label" options={(bootstrap?.people || []).filter(p=>p.id!==actor).map(p=>({value:p.id,label:p.display_name+" · "+p.title}))} /></Form.Item>
         <Row gutter={12}>
           <Col span={12}><Form.Item name="priority" label="优先级"><Select options={[{value:"low",label:"低"},{value:"normal",label:"普通"},{value:"high",label:"高"}]} /></Form.Item></Col>
-          <Col span={12}><Form.Item name="targetDate" label="业务目标日期"><DatePicker style={{width:"100%"}} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="targetDate" label="目标日期"><DatePicker style={{width:"100%"}} /></Form.Item></Col>
         </Row>
-        <Form.Item name="submissionMessage" label="本次提交说明" rules={[{required:true}]}><Input placeholder="说明本次提交要解决的问题和主要变化" /></Form.Item>
       </Form>
     </Modal>
 
@@ -806,10 +796,9 @@ export default function App() {
         <Form.Item name="scope" label="范围" rules={[{required:true}]}><TextArea rows={2}/></Form.Item>
         <Form.Item name="constraints" label="约束与主要风险"><TextArea rows={2}/></Form.Item>
         <Form.Item name="initialProposal" label="初步方案（可选）"><TextArea rows={3}/></Form.Item>
-        <Form.Item name="decisionQuestions" label="需要委员会决定的问题" rules={[{required:true}]}><TextArea rows={2}/></Form.Item>
+        <Form.Item name="decisionQuestions" label="需要负责人决定的问题" rules={[{required:true}]}><TextArea rows={2}/></Form.Item>
         <Form.Item name="submissionMessage" label="本次提交说明" rules={[{required:true}]}><Input/></Form.Item>
-        <Form.Item name="assistedByRunId" label="Agent 辅助记录（可选）"><Select allowClear showSearch optionFilterProp="label" placeholder="选择用于准备本次申请材料的 Agent 任务" options={(detail?.agentRuns || []).filter(run=>run.status==="completed").map(run=>({value:run.id,label:run.skill_name+" · "+run.id.slice(0,12)}))}/></Form.Item>
-      </Form>
+               </Form>
     </Modal>
 
     <Modal title="添加架构材料 / ADR" open={artifactOpen} onCancel={()=>setArtifactOpen(false)} onOk={()=>void submitForm(artifactForm,async()=>api.createArtifact(selected!.id,artifactForm.getFieldsValue()),"材料已保存",()=>setArtifactOpen(false))} confirmLoading={busy} width={720}>
@@ -860,7 +849,7 @@ export default function App() {
       </Form>
     </Modal>
 
-    <Modal title="发起多角色分析" open={agentPlanOpen} onCancel={()=>setAgentPlanOpen(false)} onOk={()=>void submitForm(agentPlanForm,async()=>{
+    <Modal title="Agent 分析" open={agentPlanOpen} onCancel={()=>setAgentPlanOpen(false)} onOk={()=>void submitForm(agentPlanForm,async()=>{
       const value=agentPlanForm.getFieldsValue();
       if(!String(value.name || "").trim() || !String(value.objective || "").trim() || !Array.isArray(value.agentKeys) || value.agentKeys.length===0) throw new Error("计划名称、分析目标和至少一个角色为必填项。");
       const nodes=(value.agentKeys as string[]).map(agentKey=>({
@@ -870,21 +859,11 @@ export default function App() {
       }));
       return api.requestAgentPlan(selected!.id,{name:value.name,objective:value.objective,taskId:value.taskId,nodes});
     },"多角色分析任务已创建",()=>setAgentPlanOpen(false))} confirmLoading={busy} width={760}>
-      <Alert type="info" showIcon message="系统会在最后汇总分析结果" description="各专业角色可以并行分析。分析完成后，决策分析员会汇总各方意见、标出分歧，并整理需要负责人决定的问题。" className="modal-alert" />
-      <Form form={agentPlanForm} layout="vertical">
-        <Form.Item name="name" label="计划名称" rules={[{required:true}]}><Input maxLength={200} /></Form.Item>
+             <Form form={agentPlanForm} layout="vertical">
+        <Form.Item name="name" label="分析名称" rules={[{required:true}]}><Input maxLength={200} /></Form.Item>
         <Form.Item name="agentKeys" label="参与角色" rules={[{required:true,message:"至少选择一个角色"}]}><Select mode="multiple" options={agentProfiles.filter(profile=>profile.key!=="decision-analyst").map(profile=>({value:profile.key,label:profile.name+" · "+profile.description}))} /></Form.Item>
         <Form.Item name="taskId" label="关联任务（可选）"><Select allowClear options={detail?.tasks.filter(task=>!["done","cancelled"].includes(task.status)).map(task=>({value:task.id,label:task.title})) || []} /></Form.Item>
         <Form.Item name="objective" label="分析目标和注意事项" rules={[{required:true}]}><TextArea rows={5} maxLength={4000} showCount /></Form.Item>
-      </Form>
-    </Modal>
-
-    <Modal title="发起 Agent 任务" open={agentRunOpen} onCancel={()=>setAgentRunOpen(false)} onOk={()=>void submitForm(agentForm,async()=>api.requestAgentRun(selected!.id,agentForm.getFieldsValue()),"Agent 任务已加入队列",()=>setAgentRunOpen(false))} confirmLoading={busy} width={680}>
-      <Alert type="info" showIcon message="Agent 只能提交分析草稿" description="Agent 的输出会保存为草稿，不能代替正式评审、风险接受或决定。这些操作仍由有相应权限的人员完成。" className="modal-alert" />
-      <Form form={agentForm} layout="vertical">
-        <Form.Item name="agentKey" label="Agent 角色" rules={[{required:true}]}><Select options={agentProfiles.map(profile=>({value:profile.key,label:profile.name+" · "+profile.description}))} /></Form.Item>
-        <Form.Item name="taskId" label="关联任务（可选）"><Select allowClear options={detail?.tasks.filter(task=>!["done","cancelled"].includes(task.status)).map(task=>({value:task.id,label:task.title})) || []} /></Form.Item>
-        <Form.Item name="objective" label="本次工作目标" rules={[{required:true,message:"请说明本次 Agent 需要完成的工作"}]}><TextArea rows={5} maxLength={4000} showCount placeholder="说明需要分析的问题、预期输出和需要遵守的限制。" /></Form.Item>
       </Form>
     </Modal>
 
@@ -937,12 +916,12 @@ export default function App() {
       delete value.existingResourceId;
       return api.addExternalLink(selected!.id,value);
     },"外部资源已添加",()=>setExternalLinkOpen(false))} confirmLoading={busy} width={760}>
-      <Alert type="info" showIcon message="只保存外部资源链接和标识。" description="Workbench 不会连接或同步 Jira、Confluence、GitHub 和 LeanIX。已添加的资源可以关联到多个事项；新资源请填写对应的 ID、Key 和链接。Agent 如需读取原文，仍需使用自己获准访问源系统的工具。" className="modal-alert" />
+      <Alert type="info" showIcon message="这里只记录外部资源链接，不读取源系统内容。" description="已登记的资源可以关联到多个事项；新资源请填写对应的 ID、Key 和链接。" className="modal-alert" />
       <Form form={externalLinkForm} layout="vertical">
         <Form.Item name="existingResourceId" label="选用已登记的外部资源（可选）">
           <Select allowClear showSearch optionFilterProp="label" placeholder="按系统、编号或名称搜索你可以查看的资源" options={externalReferences.map(r=>({value:r.id,label:r.provider.toUpperCase()+" · "+(r.external_key || r.external_id)+" · "+r.title}))} />
         </Form.Item>
-        <Text type="secondary" className="small">此列表只显示工作台中已保存的资源，不会搜索 Jira、Confluence、GitHub 或 LeanIX。</Text>
+        <Text type="secondary" className="small">这里只显示工作台中已登记的资源，不会搜索外部系统。</Text>
         <Form.Item noStyle shouldUpdate>{({getFieldValue})=>{
           const chosen=externalReferences.find(r=>r.id===getFieldValue("existingResourceId"));
           if (chosen) return <>
@@ -951,7 +930,7 @@ export default function App() {
               <Divider titlePlacement="start">Confluence 页面模板</Divider>
               <Form.Item name="templateKey" label="Template Key / ID" rules={[{required:true,message:"请填写该 Page 使用的 Template 标识"}]}><Input placeholder="例如 architecture-decision-record" /></Form.Item>
               <Form.Item name="templateName" label="Template 名称"><Input placeholder="例如 Architecture Decision Record" /></Form.Item>
-              <Text type="secondary" className="small">这里只记录模板标识；Agent 需要模板内容时，再通过获准使用的 Confluence 工具读取。</Text>
+              <Text type="secondary" className="small">这里只记录模板标识，不读取模板内容。</Text>
             </>:null}
           </>;
           return <>
@@ -967,7 +946,7 @@ export default function App() {
               <Divider titlePlacement="start">Confluence 页面模板</Divider>
               <Form.Item name="templateKey" label="Template Key / ID" rules={[{required:true,message:"请填写该 Page 使用的 Template 标识"}]}><Input placeholder="例如 architecture-decision-record" /></Form.Item>
               <Form.Item name="templateName" label="Template 名称"><Input placeholder="例如 Architecture Decision Record" /></Form.Item>
-              <Text type="secondary" className="small">这里只记录模板标识；Agent 需要模板内容时，再通过获准使用的 Confluence 工具读取。</Text>
+              <Text type="secondary" className="small">这里只记录模板标识，不读取模板内容。</Text>
             </>:null}
           </>;
         }}</Form.Item>
@@ -1002,7 +981,7 @@ export default function App() {
         </Row>
         <Form.Item name="timezone" label="时区"><Input placeholder="Asia/Tokyo" /></Form.Item>
         <Form.Item name="bio" label="个人简介"><TextArea rows={3} /></Form.Item>
-        <Form.Item name="expertise" label="专业领域（逗号分隔）"><Input placeholder="Solution Architecture, API Design, Cloud" /></Form.Item>
+        <Form.Item name="expertise" label="专业领域（逗号分隔）"><Input placeholder="解决方案架构、API 设计、云平台" /></Form.Item>
       </Form>
     </Modal>
 
@@ -1012,8 +991,7 @@ export default function App() {
         ? api.updateParticipation(selected!.id,editingParticipationId,{roleKey:value.roleKey,roleLabel:value.roleLabel,permissions:value.permissions})
         : api.setParticipation(selected!.id,value);
     },"相关人员已更新",()=>{setParticipantOpen(false);setEditingParticipationId(null);})} confirmLoading={busy}>
-      <Alert type="info" showIcon message="申请人和管理员可以维护本事项的参与者。调整参与者不会影响其他事项。" className="modal-alert" />
-      <Form form={participantForm} layout="vertical">
+       <Form form={participantForm} layout="vertical">
         <Form.Item name="personId" label="参与者" rules={[{required:true}]}><Select disabled={Boolean(editingParticipationId)} showSearch optionFilterProp="label" options={(bootstrap?.people || []).map(p=>({value:p.id,label:p.display_name+" · "+p.title}))} /></Form.Item>
         <Form.Item name="roleKey" label="角色标识" rules={[{required:true}]}><Input placeholder="security_architect" /></Form.Item>
         <Form.Item name="roleLabel" label="职责名称" rules={[{required:true}]}><Input placeholder="Security Architect" /></Form.Item>
