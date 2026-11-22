@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="work-item-lifecycle-title work-item-lifecycle-desc">
+<title id="work-item-lifecycle-title">Work Item 的业务生命周期</title>
+<desc id="work-item-lifecycle-desc">Work Item 的阶段状态与单个 Task 的等待状态分离；每次转移由业务事件、状态约束和授权策略控制。</desc>
+<style>
+  text{font-family:'IBM Plex Mono','Noto Sans SC',sans-serif;fill:#221C17}
+  .title{font-size:27px;font-weight:500;letter-spacing:-.02em}
+  .subtitle{font-size:12px;fill:#65584D}
+  .zone{fill:#F1EDE4;stroke:rgba(34,28,23,.12);stroke-width:1}
+  .zone-label{font-size:9px;letter-spacing:.16em;fill:#75695F;font-weight:500}
+  .node{fill:#FFFEFA;stroke:rgba(34,28,23,.16);stroke-width:1;filter:url(#work-item-lifecycle-shadow)}
+  .node-name{font-size:15px;font-weight:600}
+  .node-sub{font-size:10px;fill:#65584D}
+  .chip{font-size:8px;letter-spacing:.12em;font-weight:600}
+  .edge{fill:none;stroke:#65584D;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#work-item-lifecycle-arrow)}
+  .edge-accent{fill:none;stroke:#8B5A2B;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#work-item-lifecycle-arrow-accent)}
+  .edge-dash{fill:none;stroke:#75695F;stroke-width:1.25;stroke-dasharray:5 4;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#work-item-lifecycle-arrow)}
+  .edge-label{font-size:9px;fill:#65584D}
+  .actor{fill:#FFFEFA;stroke:rgba(34,28,23,.18);stroke-width:1;filter:url(#work-item-lifecycle-shadow)}
+  .lifeline{stroke:rgba(34,28,23,.28);stroke-width:1;stroke-dasharray:4 5}
+  .activation{fill:rgba(34,28,23,.06);stroke:#65584D;stroke-width:.8}
+  .message{stroke:#65584D;stroke-width:1.5;fill:none;marker-end:url(#work-item-lifecycle-arrow)}
+  .message-return{stroke:#75695F;stroke-width:1.25;stroke-dasharray:5 4;fill:none;marker-end:url(#work-item-lifecycle-arrow)}
+  .message-main{stroke:#8B5A2B;stroke-width:1.8;fill:none;marker-end:url(#work-item-lifecycle-arrow-accent)}
+  .message-label{font-size:10px;fill:#221C17}
+  .state{fill:#FFFEFA;stroke:rgba(34,28,23,.22);stroke-width:1;filter:url(#work-item-lifecycle-shadow)}
+  .state-main{fill:#F5E7D4;stroke:#8B5A2B;stroke-width:1.5;filter:url(#work-item-lifecycle-shadow)}
+  .state-text{font-size:14px;font-weight:600}
+  .state-sub{font-size:10px;fill:#65584D}
+  .note{fill:#F1EDE4;stroke:rgba(34,28,23,.16);stroke-width:1}
+  .small{font-size:10px;fill:#65584D}
+</style>
+<defs>
+  <filter id="work-item-lifecycle-shadow" x="-20%" y="-20%" width="140%" height="150%">
+    <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#221C17" flood-opacity=".09"/>
+  </filter>
+  <marker id="work-item-lifecycle-arrow" markerWidth="8" markerHeight="7" refX="7" refY="3.5" orient="auto">
+    <path d="M0 0 L8 3.5 L0 7 Z" fill="#65584D"/>
+  </marker>
+  <marker id="work-item-lifecycle-arrow-accent" markerWidth="8" markerHeight="7" refX="7" refY="3.5" orient="auto">
+    <path d="M0 0 L8 3.5 L0 7 Z" fill="#8B5A2B"/>
+  </marker>
+</defs>
+<rect width="1280" height="720" fill="#F9F6EF"/><text class="title" x="48" y="43">Work Item 的业务生命周期</text>
+<text class="subtitle" x="48" y="65">业务状态表达事项进展；Task / Workflow Runtime 负责具体工作、等待和恢复</text><circle cx="56" cy="330" r="7" fill="#221C17"/>
+<path class="edge" d="M64 330 H104"/>
+<path class="edge" d="M250 330 H300"/>
+<path class="edge" d="M450 330 H500"/>
+<path class="edge" d="M650 330 H700"/>
+<path class="edge" d="M850 330 H900"/>
+<path class="edge" d="M1050 330 H1100"/>
+<path class="edge-dash" d="M775 372 V470 H575 V372"/>
+<path class="edge-dash" d="M575 372 V536 H375 V372"/><g><rect x="215.5" y="304" width="119" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="275" y="316" text-anchor="middle">intake accepted</text></g><g><rect x="426" y="304" width="98" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="475" y="316" text-anchor="middle">task claimed</text></g><g><rect x="605" y="304" width="140" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="675" y="316" text-anchor="middle">artifact submitted</text></g><g><rect x="815.5" y="304" width="119" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="875" y="316" text-anchor="middle">review accepted</text></g><g><rect x="1019" y="304" width="112" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="1075" y="316" text-anchor="middle">human decision</text></g><g><rect x="608.5" y="480" width="133" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="675" y="492" text-anchor="middle">changes requested</text></g><g><rect x="410.5" y="546" width="119" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="470" y="558" text-anchor="middle">resume / revise</text></g><g><rect class="state" x="104" y="292" width="150" height="76" rx="12"/>
+<text class="state-text" x="179" y="324" text-anchor="middle">Draft</text>
+<text class="state-sub" x="179" y="345" text-anchor="middle">内容待提交</text></g><g><rect class="state" x="300" y="292" width="150" height="76" rx="12"/>
+<text class="state-text" x="375" y="324" text-anchor="middle">Ready</text>
+<text class="state-sub" x="375" y="345" text-anchor="middle">受理 / 分配</text></g><g><rect class="state" x="500" y="292" width="150" height="76" rx="12"/>
+<text class="state-text" x="575" y="324" text-anchor="middle">In Progress</text>
+<text class="state-sub" x="575" y="345" text-anchor="middle">任务执行中</text></g><g><rect class="state" x="700" y="292" width="150" height="76" rx="12"/>
+<text class="state-text" x="775" y="324" text-anchor="middle">Review</text>
+<text class="state-sub" x="775" y="345" text-anchor="middle">独立评审</text></g><g><rect class="state-main" x="900" y="292" width="150" height="76" rx="12"/>
+<text class="state-text" x="975" y="324" text-anchor="middle">Decision</text>
+<text class="state-sub" x="975" y="345" text-anchor="middle">Human 决策门</text></g><g><rect class="state" x="1100" y="292" width="150" height="76" rx="12"/>
+<text class="state-text" x="1175" y="324" text-anchor="middle">Closed</text>
+<text class="state-sub" x="1175" y="345" text-anchor="middle">结果已记录</text></g><rect class="note" x="82" y="112" width="1116" height="106" rx="10"/>
+<text class="zone-label" x="106" y="138">STATE OWNERSHIP</text>
+<text class="node-name" x="106" y="170">Work Item 状态由业务服务和确定性 Workflow 共同约束</text>
+<text class="small" x="106" y="194">Agent Task 完成 ≠ Review 通过 ≠ Decision 已批准；每一层都必须有独立事件和授权检查。</text>
+<rect class="note" x="82" y="600" width="1116" height="70" rx="10"/>
+<text class="zone-label" x="106" y="625">PERSISTED WAIT STATES · TASK / WORKFLOW LEVEL</text>
+<text class="small" x="106" y="650">Waiting for Requester · Waiting for Reviewer · Waiting for Approval · Waiting for External Agent</text><text class="small" x="48" y="698">等待必须持久化并释放执行资源；收到输入或外部事件后恢复，不应依赖进程常驻或让 Agent 占住线程。</text></svg>
