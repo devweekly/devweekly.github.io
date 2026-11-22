@@ -260,7 +260,7 @@ for (const cycle of all<{id:string;work_item_id:string;reviewer_snapshot_json:st
   if (!cycle.reviewer_snapshot_json || cycle.reviewer_snapshot_json==="[]") {
     const requestor=one<{requestor_id:string|null}>("SELECT requestor_id FROM work_items WHERE id=?",cycle.work_item_id);
     const candidates=all<{person_id:string;display_name:string;role_key:string;permissions_json:string}>(
-      "SELECT p.person_id,people.display_name,p.role_key,p.permissions_json FROM participations p JOIN people ON people.id=p.person_id WHERE p.work_item_id=? AND p.person_id<>COALESCE(?, '') ORDER BY people.display_name",
+      "SELECT p.person_id,people.display_name,p.role_key,p.permissions_json FROM participations p JOIN people ON people.id=p.person_id WHERE p.work_item_id=? AND p.person_id<>COALESCE(?, '') AND p.role_key NOT IN ('chairman','decision_authority') ORDER BY people.display_name",
       cycle.work_item_id,requestor?.requestor_id || ""
     );
     const reviewers=candidates
