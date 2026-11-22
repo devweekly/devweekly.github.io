@@ -156,14 +156,15 @@ export function transitionWorkItem(workItemId:string,actorId:string,action:Workf
 
 export function raiseObjection(workItemId:string,actorId:string,reason:string) {
   const item=one<{status:string}>("SELECT status FROM work_items WHERE id=?",workItemId);
-  const cycle=one<{id:string}>("SELECT id FROM review_cycles WHERE work_item_id=? AND status='active' ORDER BY created_at DESC LIMIT 1",workItemId);
+  const cycle=one<{id:string;review_deadline_at:string|null}>("SELECT id,review_deadline_at FROM review_cycles WHERE work_item_id=? AND status='active' ORDER BY created_at DESC LIMIT 1",workItemId);
   if (item?.status!=="discussion_review" || !cycle) return {ok:false as const,statusCode:409,error:"A blocking objection can only be raised during active discussion and review."};
+  if (!cycle.review_deadline_at || Date.parse(cycle.review_deadline_at)<=Date.now()) return {ok:false as const,statusCode:409,error:"The review deadline has expired; the Request is due to enter the Decision Meeting."};
   if (!isReviewCycleReviewer(cycle.id,actorId)) return {ok:false as const,statusCode:403,error:"Only reviewers captured in this Submission's reviewer snapshot may raise a blocking objection."};
   const timestamp=now();
   db.exec("BEGIN IMMEDIATE");
   try {
     const itemChanged=run("UPDATE work_items SET status='decision_meeting',updated_at=? WHERE id=? AND status='discussion_review'",timestamp,workItemId);
-    const cycleChanged=run("UPDATE review_cycles SET status='closed' WHERE id=? AND status='active'",cycle.id);
+    const cycleChanged=run("UPDATE review_cycles SET status='closed' WHERE id=? AND status='active' AND review_deadline_at>?",cycle.id,timestamp);
     if (Number(itemChanged.changes)!==1 || Number(cycleChanged.changes)!==1) {
       db.exec("ROLLBACK");
       return {ok:false as const,statusCode:409,error:"The review window has already ended. Refresh the Request before raising an objection."};
@@ -196,12 +197,14 @@ export function createClarification(workItemId:string,actorId:string,input:{arti
   if (!Number.isFinite(responseDeadline) || responseDeadline<=Date.now()) return {ok:false as const,statusCode:400,error:"Clarification response deadline must be in the future."};
   const dueAt=new Date(responseDeadline).toISOString();
   const timestamp=now();
-  const remaining=Math.max(0,Date.parse(cycle.review_deadline_at || timestamp)-Date.now());
+  const reviewDeadline=cycle.review_deadline_at ? Date.parse(cycle.review_deadline_at) : Number.NaN;
+  if (!Number.isFinite(reviewDeadline) || reviewDeadline<=Date.now()) return {ok:false as const,statusCode:409,error:"The review deadline has expired; the Request is due to enter the Decision Meeting."};
+  const remaining=Math.max(0,reviewDeadline-Date.now());
   db.exec("BEGIN IMMEDIATE");
   try {
     const clarificationId=id("clar");
     const itemChanged=run("UPDATE work_items SET status='waiting_requestor',updated_at=? WHERE id=? AND status='discussion_review'",timestamp,workItemId);
-    const cycleChanged=run("UPDATE review_cycles SET status='waiting_requestor',remaining_review_ms=?,paused_at=? WHERE id=? AND status='active'",remaining,timestamp,cycle.id);
+    const cycleChanged=run("UPDATE review_cycles SET status='waiting_requestor',remaining_review_ms=?,paused_at=? WHERE id=? AND status='active' AND review_deadline_at>?",remaining,timestamp,cycle.id,timestamp);
     if (Number(itemChanged.changes)!==1 || Number(cycleChanged.changes)!==1) {
       db.exec("ROLLBACK");
       return {ok:false as const,statusCode:409,error:"The review window has already ended. Refresh the Request before asking for clarification."};
