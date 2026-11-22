@@ -61,7 +61,7 @@ app.get("/api/bootstrap",(req,res)=>{
     openWorkItems: one<{n:number}>("SELECT COUNT(*) AS n FROM work_items WHERE type <> 'technical_debt' AND status NOT IN ('closed','rejected')")?.n || 0,
     awaitingReview: one<{n:number}>("SELECT COUNT(*) AS n FROM work_items WHERE type <> 'technical_debt' AND status='in_review'")?.n || 0,
     activeDebts: one<{n:number}>("SELECT COUNT(*) AS n FROM debt_details WHERE status IN ('open','in_progress')")?.n || 0,
-    myTasks: one<{n:number}>("SELECT COUNT(*) AS n FROM tasks WHERE assignee_id=? AND status NOT IN ('done','cancelled')",actor)?.n || 0
+    myTasks: one<{n:number}>("SELECT COUNT(*) AS n FROM tasks WHERE (assignee_id=? OR owner_id=?) AND status NOT IN ('done','cancelled')",actor,actor)?.n || 0
   };
   res.json({actorId:actor,people,workItems,debts,counts});
 });
