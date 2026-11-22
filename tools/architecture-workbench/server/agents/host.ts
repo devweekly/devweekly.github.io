@@ -15,6 +15,7 @@ export interface HostAgentRun {
   objective:string;
   status:string;
   claim_token:string;
+  heartbeat_at:string;
   lease_expires_at:string;
   lease_duration_ms:number;
   attempt_count:number;
