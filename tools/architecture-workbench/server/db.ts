@@ -194,6 +194,21 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_workflow_timers_cycle ON workflow_timers(cycle_id,status);
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS request_package_drafts (
+    id TEXT PRIMARY KEY,
+    work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+    agent_run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+    draft_json TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pending','applied','superseded')),
+    created_by TEXT NOT NULL REFERENCES people(id),
+    created_at TEXT NOT NULL,
+    applied_by TEXT REFERENCES people(id),
+    applied_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_request_package_drafts_item ON request_package_drafts(work_item_id,status,created_at DESC);
+`);
+
 // Early versions made clarification targets Artifact-only. Rebuild the table so
 // a reviewer can also ask a question about the Request Package itself.
 const clarificationColumns=all<{name:string;notnull:number}>("PRAGMA table_info(clarification_requests)");
