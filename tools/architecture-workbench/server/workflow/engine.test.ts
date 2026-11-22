@@ -27,7 +27,7 @@ function person(id:string,isAdmin=0) {
 function request(id:string) {
   run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,requestor_id,chairman_id,request_package_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
     id,"WI-"+id,"architecture_review","Request "+id,"Business background","draft","normal","requestor","requestor","chairman",
-    JSON.stringify({goal:"Target outcome",scope:"Platform",submissionMessage:"Initial Request Package"}),now(),now());
+    JSON.stringify({goal:"Target outcome",scope:"Platform",decisionQuestions:"Confirm architecture direction.",submissionMessage:"Initial Request Package"}),now(),now());
   const participants=[
     ["requestor","requestor","Requestor",["read","contribute","comment","manage"]],
     ["reviewer","reviewer","Reviewer",["read","comment","review"]],
@@ -54,7 +54,7 @@ test("Request lifecycle freezes submissions, pauses review for clarification and
 
   const first=transitionWorkItem("workflow-one","requestor","submit_request","Initial submission",{
     submissionMessage:"feat(request): initial platform review package",
-    package:{goal:"Platform outcome",scope:"Customer identity",submissionMessage:"feat(request): initial platform review package"}
+    package:{goal:"Platform outcome",scope:"Customer identity",decisionQuestions:"Approve the identity boundary and migration sequence.",submissionMessage:"feat(request): initial platform review package"}
   });
   assert.equal(first.ok,true);
   assert.equal(status("workflow-one")?.status,"discussion_review");
@@ -108,7 +108,7 @@ test("Request lifecycle freezes submissions, pauses review for clarification and
     JSON.stringify({goal:"Updated outcome",submissionMessage:"fix(request): clarify trust boundary"}),"workflow-one");
   const second=transitionWorkItem("workflow-one","requestor","submit_request","Revised submission",{
     submissionMessage:"fix(request): clarify trust boundary",
-    package:{goal:"Updated outcome",submissionMessage:"fix(request): clarify trust boundary"}
+    package:{goal:"Updated outcome",scope:"Customer identity",decisionQuestions:"Approve the revised trust boundary.",submissionMessage:"fix(request): clarify trust boundary"}
   });
   assert.equal(second.ok,true);
   const submissions=one<{count:number}>("SELECT COUNT(*) AS count FROM submissions WHERE work_item_id=?","workflow-one");
