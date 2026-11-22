@@ -67,7 +67,7 @@ function createRequestSubmission(workItemId:string,actorId:string,input:Submissi
     "SELECT requestor_id,context_version,request_package_json FROM work_items WHERE id=?",workItemId
   );
   if (!item) throw new Error("Work Item not found.");
-  if (item.requestor_id!==actorId && !isGlobalAdmin(actorId)) throw new Error("Only the Requestor or a Workbench Admin may submit this Request.");
+  if (item.requestor_id!==actorId) throw new Error("Only the Requestor may submit this Request Package.");
   if (input.assistedByRunId) {
     const agentRun=one<{work_item_id:string;status:string}>("SELECT work_item_id,status FROM agent_runs WHERE id=?",input.assistedByRunId);
     if (!agentRun || agentRun.work_item_id!==workItemId || agentRun.status!=="completed") {
@@ -102,8 +102,8 @@ function validateWorkflowTransition(workItemId:string,actorId:string,action:Work
     if (!["draft","requestor_revision"].includes(item.status)) {
       return {ok:false as const,statusCode:409,error:"A Request Package can only be submitted from draft or requestor revision."};
     }
-    if (item.requestor_id!==actorId && !isGlobalAdmin(actorId)) {
-      return {ok:false as const,statusCode:403,error:"Only the Requestor or a Workbench Admin may submit this Request."};
+    if (item.requestor_id!==actorId) {
+      return {ok:false as const,statusCode:403,error:"Only the Requestor may submit this Request Package."};
     }
     return {ok:true as const,from:item.status,to:"discussion_review"};
   }
@@ -287,7 +287,7 @@ function currentStep(status:string) {
   if (status==="discussion_review" || status==="waiting_requestor") return 1;
   if (status==="decision_meeting") return 2;
   if (status==="approved_pending_close" || status==="rejected_pending_close") return 3;
-  if (status==="closed") return 4;
+  if (status==="closed") return 3;
   return 0;
 }
 
@@ -322,7 +322,7 @@ export function getWorkflowProjection(workItemId:string,actorId:string) {
     steps:workflowStepDefinitions.map((step,index)=>({
       title:index===3 && status==="rejected_pending_close" ? "拒绝后待关闭" : index===0 && status==="requestor_revision" ? "Requestor 修订" : step.title,
       description:index===0 && status==="requestor_revision" ? "根据决定会议要求修订并重新提交新的 Submission" : step.description,
-      status:index<activeStep ? "finish" as const : index===activeStep ? (status==="rejected_pending_close" ? "error" as const : "process" as const) : "wait" as const
+      status:status==="closed" || index<activeStep ? "finish" as const : index===activeStep ? (status==="rejected_pending_close" ? "error" as const : "process" as const) : "wait" as const
     })),
     availableActions,
     history
