@@ -371,7 +371,7 @@ function requireClaimedRun(runId:string,actorId:string,claimToken:string) {
 }
 
 export function heartbeatAgentRun(input:{runId:string;actorId:string;claimToken:string}) {
-  const current=requireClaimedRun(input.runId,input.actorId,input.claimToken);
+  requireClaimedRun(input.runId,input.actorId,input.claimToken);
   const timestamp=now();
   const expiresAt=newLeaseExpiry(timestamp);
   const result=run("UPDATE agent_runs SET heartbeat_at=?,lease_expires_at=?,updated_at=? WHERE id=? AND status='running' AND claimed_by=? AND claim_token=? AND lease_expires_at>?",
