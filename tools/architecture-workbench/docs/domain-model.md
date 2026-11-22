@@ -22,7 +22,7 @@ The prototype deliberately separates business facts from interaction and executi
 | Activity | activity_events | Append-oriented business activity record |
 | Agent Profile | server/agents/coordinator.ts registry | Role-oriented execution capability mapped to one Skill; not a Person or model provider |
 | Agent Plan | agent_plans | Multi-role collaboration request with an overall status and final synthesis Artifact |
-| Agent Run | agent_runs | One role-specific Plan node or standalone execution against a Work Item, with status and optional Task/Artifact links |
+| Agent Run | agent_runs | One role-specific Plan node or standalone execution against a Work Item, with status, claim lease, bounded attempt count and optional Task/Artifact links |
 | Agent Run Dependency | agent_run_dependencies | Directed edge that prevents a downstream node from being claimed until its prerequisites complete |
 | Agent Run Event | agent_run_events | Append-only execution, failure, completion and Human hand-off history |
 | Agent Runtime Adapter | server/agents/runtime.ts | Provider-neutral capability contract |
