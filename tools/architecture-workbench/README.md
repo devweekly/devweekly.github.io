@@ -77,7 +77,7 @@ Workbench Server 使用官方 MCP TypeScript SDK v2，在 `http://localhost:4000
 
 外部 Agent Host 是 MCP/API 工具的调用方：它读取 Work Item 的引用信息，使用自身配置和授权的源系统工具按需查询外部内容，再将分析、证据和草案提交回 Workbench。外部权限仍由各源系统及 Agent 使用的身份/授权决定。Agent 返回的信息要保留来源和获取时间；它不能据此自动创建正式 Review Outcome 或 Decision。
 
-Agent Plan 是一次多角色协作请求；Plan 下的 Agent Run 是执行节点，依赖关系存储在 agent_run_dependencies。创建计划时，Workbench 自动增加最终 Decision Analyst 汇总节点，并让它依赖所有专业节点。Agent Host 通过 agent_claim_next_run 轮询时，服务端只会返回依赖已完成且当前服务身份有权限执行的节点。无依赖的节点可以并行，依赖节点在前置节点成功后才进入可领取状态。节点产出保存为 Draft Artifact，汇总节点会读取全部专业产物，生成最终决策简报草案。
+Agent Plan 是一次多角色分析任务；其中的 Agent Run 是具体执行节点，依赖关系存储在 agent_run_dependencies。创建计划时，Workbench 会自动增加最后的汇总节点，并等待所有专业角色完成分析后再执行。Agent Host 通过 agent_claim_next_run 轮询时，服务端只会返回依赖已完成且当前服务身份有权限执行的节点。无依赖的节点可以并行，依赖节点在前置节点成功后才进入可领取状态。各节点的结果会保存为材料草稿；汇总节点读取各角色的分析结果，整理成供负责人审议的决策简报。
 
 Run 领取采用服务端管理的 Claim Lease。默认租约为 60 秒，Host 每三分之一租期发送一次心跳；Workbench Service 周期性扫描过期租约，并在新任务分配前再次执行回收。租约过期后，原 Claim Token 失效，Run 自动回到队列，由其他 Host 使用新 Token 重新领取。每个 Run 最多允许三次领取，连续崩溃耗尽次数后转为 failed。Artifact 创建与 Run 完成在同一 SQLite 事务提交，避免过期 Worker 留下孤立产物。
 
@@ -128,5 +128,5 @@ Remote Host 使用 MCP_URL、MCP_BEARER_TOKEN 和服务器配置的 MCP_SERVICE_
 - 本地 MCP 默认只允许 localhost Host，并通过 `x-demo-user-id` 模拟调用者；不能用于生产身份认证。远程 MCP 必须同时配置 `MCP_ALLOWED_HOSTS`、长度至少 32 字符的 `MCP_BEARER_TOKEN` 和非 Admin 的 `MCP_SERVICE_USER_ID`。默认 Seed 会创建 `u-agent` 服务身份；必须由 Requestor/Admin 将它作为相关人员加入具体 Work Item，并只授予必要的 `read` / `contribute` / `comment` 权限。远程模式忽略请求自带的 `x-demo-user-id`，所有调用固定映射到该服务身份。静态 Bearer Token 是原型级服务认证，不替代企业 OAuth/OIDC 与用户级 Delegation Grant。
 - 当前 SQLite 通过启动时的增量 schema check 兼容本原型已有数据库；尚无通用迁移框架和 PostgreSQL Adapter。迁移到 PostgreSQL 时需要引入异步 Repository / Unit of Work 实现，不能只替换连接字符串。
 - 当前已实现本地/S3 上传和元数据记录，尚未实现经过 Work Item 授权的下载/预签名 URL，也没有病毒扫描。
-- 已实现 Request Package、不可变 Submission/Review Cycle、评论/澄清/阻断性异议、决定会议与 Chairman/Admin 关闭。Reviewer Snapshot 已保存；正式环境仍需补充通知送达、独立性规则、法定人数和可版本化评审策略。
+- 已实现申请材料提交、评审材料版本留存、评论、澄清、阻断性异议、决定会议，以及由会议主席或管理员关闭事项。系统已保存评审开始时的评审人员名单；正式环境仍需补充通知送达、评审独立性规则、法定人数和可配置的评审策略。
 - 定时服务使用单个 Node.js `setTimeout` + SQLite 持久化任务。它面向当前单实例原型；多实例部署需进一步实现严格的任务认领、租约和恢复协调。
