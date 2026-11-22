@@ -29,7 +29,12 @@ flowchart TB
   Domain --> SQLite
   Domain --> Files
   Files -. production storage adapter .-> S3
-  External["External Agent Client<br/>future Remote MCP + OAuth"] -. future adapter .-> Domain
+  API -. Context Capsule handoff .-> Agent["Optional Workbench Agent Runtime"]
+  Agent --> ToolLayer["Agent-owned MCP / API tools"]
+  ToolLayer --> Jira["Jira"]
+  ToolLayer --> Confluence["Confluence"]
+  ToolLayer --> GitHub["GitHub"]
+  ToolLayer --> LeanIX["LeanIX"]
 ```
 
 ## Application boundaries
@@ -39,7 +44,8 @@ flowchart TB
 - Work Item owns the durable business context. A Task is executable work; an Artifact is a versioned deliverable; a Review is an independent opinion tied to an Artifact version; a Decision is a formal action by a principal with explicit `decide` permission.
 - Technical Debt is a separate Work Item with its own owner and lifecycle, linked to its origin Work Item and optional Decision.
 - `ObjectStore` hides local vs S3 upload mechanics. The database stores attachment metadata, object key and storage URI. Storage URI is not a security token.
-- Agent Runtime is intentionally outside this application. Context Capsule export is a user-controlled handoff; no external prompt or model result can directly become a formal Decision.
+- No Jira, Confluence, GitHub or LeanIX Connector exists in the Workbench backend. The application stores only external resource references and their Work Item relationships. There is no source-system polling, synchronization, content cache or source credential storage.
+- If a native Agent is added later, it owns its MCP/API tool clients and uses the stored references to retrieve context on demand. The Agent Runtime is separate from business services and does not bypass Participation or Decision authorization. The same applies when a user hands a Context Capsule to an external Agent Client.
 
 ## SQLite and PostgreSQL migration
 
@@ -54,3 +60,9 @@ The default LocalObjectStore writes files under `LOCAL_OBJECT_DIR`. Set `STORAGE
 ## Security assumptions and non-goals
 
 The `x-demo-user-id` header is a local prototype identity selector, not authentication. Do not expose this service to untrusted networks. A production deployment needs OIDC login, OAuth Delegation Grant for external Agents, tenant/resource authorization, CSRF/CORS policy, request validation, attachment content scanning, rate limits, durable audit retention and backups.
+
+## External system access boundary
+
+The Workbench persists reference metadata only: provider, resource type, external ID/key, URL, relationship semantics and (for a Confluence Page) Template key/name. A reference is not evidence that the remote resource was successfully retrieved or remains current.
+
+A future Agent may resolve these references through MCP or API tools configured for that Agent Runtime. Tool credentials and source authorization belong to the Agent/tool connection, not to this Express application. The Agent should capture the source identifier, retrieval timestamp and relevant excerpt/citation in its analysis Artifact. Failure to read a reference must be visible as missing context, not silently replaced with invented facts.

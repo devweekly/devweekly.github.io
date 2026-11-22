@@ -11,7 +11,7 @@ The first prototype needs to validate business collaboration, Artifact versionin
 
 ## Decision
 
-Do not include LangChain, DeepAgents or LangSmith in the initial runtime. Use Ant Design X only for optional Agent-oriented UI affordances and Context Capsule handoff. Keep REST API as the business service boundary. Later Remote MCP and OAuth Delegation Grant support will call the same Application Services as the Web UI.
+Do not include LangChain, DeepAgents or LangSmith in the initial runtime. Use Ant Design X only for optional Agent-oriented UI affordances and Context Capsule handoff. Keep REST API as the business service boundary. Any future native Agent is a distinct runtime that may use MCP/API tools for external knowledge retrieval. External system tool connections do not belong to the Workbench's business API or persistence layer.
 
 Agent analysis can produce draft Artifacts, questions and recommendations. The platform records the Human participation that owns the responsibility. Agent identity and grant provenance may be recorded for connected clients, but an Agent's declared Persona does not grant organizational role or Decision authority.
 

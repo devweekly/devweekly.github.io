@@ -58,3 +58,6 @@ body { color: #1d2939; background: #f4f6f9; }
   .page-heading, .detail-heading { align-items: flex-start; flex-direction: column; }
   .detail-body { padding: 18px 14px; }
 }
+
+.analytics-bar { margin: 12px 0 16px; }
+.analytics-bar-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }

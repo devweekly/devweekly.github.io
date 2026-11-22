@@ -11,7 +11,9 @@ The prototype deliberately separates business facts from interaction and executi
 | Review Cycle | review_cycles | A review round and its baseline manifest |
 | Review | reviews | Independent opinion bound to an Artifact version |
 | Decision | decisions | Formal decision by an authorized Human |
-| Technical Debt | Work Item + debt_details + relation | Long-lived follow-up with origin and owner |
+| Technical Debt | Work Item + debt_details + relation | Optional long-lived follow-up; not created for every Request |
+| External Resource Reference | external_resource_refs | Pointer/identifier for an external Jira, Confluence, GitHub or LeanIX resource; no synchronized content |
+| Work Item External Link | work_item_external_links | Many-to-many relation between Work Items and external resources, with a business relation type and optional Confluence Template reference |
 | Thread | comments | Human discussion attached to a Work Item |
 | Attachment | attachments + ObjectStore | File metadata and authorization in SQLite; bytes in local storage or S3 |
 | Activity | activity_events | Append-oriented business activity record |
@@ -33,3 +35,11 @@ Each Participation stores a set of permissions such as read, contribute, comment
 ## Technical debt lifecycle
 
 Technical Debt is represented as a Work Item so that it can have its own owner, status, priority, due date, artifacts, tasks and future review. The work_item_relations link identifies its origin; debt_details holds debt-specific attributes. It is not a boolean attribute on an ADR.
+
+## External context references
+
+External resources are references, not integrations. The Workbench stores identifiers, keys, URLs, resource types and the relationship to a Work Item. A resource reference may be linked to multiple Work Items, and a Work Item may link to multiple resources.
+
+For a Confluence Page, the association may include a Template key/name reference. This is not a copy of the actual Confluence Template definition. If a future Workbench Agent needs the page or template content, the Agent resolves it using its own configured MCP/API tool connection. The Workbench API does not connect to source systems, synchronize status, cache source content or hold their credentials.
+
+A Context Capsule carries the references, not the remote page contents or live Jira/LeanIX facts. Any Agent retrieval must respect source-system authorization and preserve source identity and retrieval time in its analysis.

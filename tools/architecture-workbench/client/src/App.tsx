@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Alert, Avatar, Breadcrumb, Button, Card, Col, DatePicker, Divider, Drawer, Empty,
+  Alert, Avatar, Breadcrumb, Button, Card, Checkbox, Col, DatePicker, Divider, Drawer, Empty,
   Form, Input, Layout, List, Menu, Modal, Progress, Row, Select, Space, Statistic,
   Table, Tabs, Tag, Timeline, Tooltip, Typography, Upload, message
 } from "antd";
@@ -8,13 +8,13 @@ import type { FormInstance } from "antd";
 import {
   AppstoreOutlined, ApartmentOutlined, ArrowLeftOutlined, AuditOutlined,
   CheckCircleOutlined, ClockCircleOutlined, CloudUploadOutlined, CopyOutlined,
-  FileProtectOutlined, PlusOutlined, ProjectOutlined, SafetyCertificateOutlined,
-  UnorderedListOutlined, UserAddOutlined, UploadOutlined
+  BarChartOutlined, DeleteOutlined, FileProtectOutlined, LinkOutlined, PlusOutlined,
+  ProjectOutlined, SafetyCertificateOutlined, UnorderedListOutlined, UserAddOutlined, UploadOutlined
 } from "@ant-design/icons";
 import { Welcome } from "@ant-design/x";
 import dayjs from "dayjs";
 import { api, setActor } from "./api";
-import type { Activity, Artifact, Bootstrap, Comment, DebtItem, Person, Review, WorkItem, WorkItemDetail, WorkTask } from "./types";
+import type { Activity, Artifact, Bootstrap, Comment, DebtItem, Person, Review, WorkItem, WorkItemDetail, WorkTask, WorkbenchAnalytics } from "./types";
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
@@ -53,6 +53,8 @@ export default function App() {
   const [decisionOpen,setDecisionOpen] = useState(false);
   const [debtOpen,setDebtOpen] = useState(false);
   const [participantOpen,setParticipantOpen] = useState(false);
+  const [externalLinkOpen,setExternalLinkOpen] = useState(false);
+  const [analyticsData,setAnalyticsData] = useState<WorkbenchAnalytics|null>(null);
   const [newItemForm] = Form.useForm();
   const [artifactForm] = Form.useForm();
   const [reviewForm] = Form.useForm();
@@ -60,6 +62,7 @@ export default function App() {
   const [decisionForm] = Form.useForm();
   const [debtForm] = Form.useForm();
   const [participantForm] = Form.useForm();
+  const [externalLinkForm] = Form.useForm();
   const [activeTab,setActiveTab] = useState("overview");
   const [commentText,setCommentText] = useState("");
   const [query,setQuery] = useState("");
@@ -68,8 +71,9 @@ export default function App() {
   async function reload() {
     setLoading(true);
     try {
-      const data=await api.bootstrap();
+      const [data,analytics]=await Promise.all([api.bootstrap(),api.analytics()]);
       setBootstrap(data);
+      setAnalyticsData(analytics);
       if (selected) {
         const fresh=data.workItems.find(item=>item.id===selected.id);
         if (fresh) setSelected(fresh);
@@ -99,7 +103,8 @@ export default function App() {
     {key:"my-work",icon:<UnorderedListOutlined />,label:"我的工作"},
     {key:"work-items",icon:<ProjectOutlined />,label:"业务事项"},
     {key:"reviews",icon:<AuditOutlined />,label:"架构与 ADR 评审"},
-    {key:"debts",icon:<FileProtectOutlined />,label:"技术债务"}
+    {key:"debts",icon:<FileProtectOutlined />,label:"技术债务"},
+    {key:"analytics",icon:<BarChartOutlined />,label:"Portfolio 分析"}
   ];
 
   async function submitForm(form:FormInstance,action:()=>Promise<unknown>,success:string,close:()=>void) {
@@ -136,12 +141,94 @@ export default function App() {
     try { await api.updateTask(taskId,{status}); message.success("Task 状态已更新"); await refreshDetail(); }
     catch (error) { message.error(error instanceof Error ? error.message : "更新失败"); }
   }
+  function openExternalLinkDialog() {
+    externalLinkForm.resetFields();
+    externalLinkForm.setFieldsValue({provider:"jira",resourceType:"Story",relationType:"related_to"});
+    setExternalLinkOpen(true);
+  }
+  async function removeExternalLink(linkId:string) {
+    if (!selected) return;
+    try { await api.removeExternalLink(selected.id,linkId); message.success("外部关联已移除"); await refreshDetail(); }
+    catch(error) { message.error(error instanceof Error ? error.message : "移除关联失败"); }
+  }
   async function submitComment() {
     if (!selected || !commentText.trim()) return;
     try { await api.comment(selected.id,commentText.trim()); setCommentText(""); await refreshDetail(); }
     catch (error) { message.error(error instanceof Error ? error.message : "提交失败"); }
   }
 
+  function breakdownCard(title:string,rows:Array<{key:string;count:number;label?:string}>) {
+    const max=Math.max(1,...rows.map(row=>row.count));
+    const labels:Record<string,string>={draft:"草稿",analysis:"分析中",in_review:"评审中",changes_requested:"待修改",accepted:"已接受",accepted_with_conditions:"附条件接受",rejected:"已拒绝",closed:"已关闭",high:"高",normal:"普通",low:"低",architecture_review:"架构评审",change_assessment:"变更评估",solution_assessment:"Solution 评估",risk_assessment:"风险评估",technical_debt:"技术债务",jira:"Jira",confluence:"Confluence",github:"GitHub",leanix:"LeanIX",open:"待处理",in_progress:"处理中",deferred:"已延期",resolved:"已解决",cancelled:"已取消",medium:"中"};
+    return <Card title={title} className="panel-card">
+      {rows.length===0?<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />:rows.map(row=><div className="analytics-bar" key={row.key}>
+        <div className="analytics-bar-label"><Text>{row.label || labels[row.key] || row.key}</Text><Text strong>{row.count}</Text></div>
+        <Progress percent={Math.round(row.count/max*100)} showInfo={false} size="small" />
+      </div>)}
+    </Card>;
+  }
+  function renderAnalytics() {
+    if (!analyticsData) return <Card loading />;
+    const r=analyticsData.requests;
+    const d=analyticsData.technicalDebt;
+    return <div className="page-stack">
+      <div className="page-heading"><div><Text type="secondary">PORTFOLIO INTELLIGENCE</Text><Title level={2}>Portfolio 分析</Title><Paragraph type="secondary">分别观察 Request 组合、评审负载、外部上下文引用覆盖，以及 Tech Debt 的存量、风险和偿还情况。</Paragraph></div><Text type="secondary" className="small">更新于 {dateText(analyticsData.generatedAt)}</Text></div>
+      <Tabs items={[
+        {key:"requests",label:"Request 分析",children:<div className="page-stack">
+          <Row gutter={[16,16]}>
+            <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="Request 总数" value={r.total} /></Card></Col>
+            <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="活动中的 Request" value={r.active} /></Card></Col>
+            <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="评审中" value={r.inReview} /></Card></Col>
+            <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="已逾期" value={r.overdue} valueStyle={{color:r.overdue?"#cf1322":undefined}} /></Card></Col>
+            <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="已有关联的 Request" value={r.linked} /></Card></Col>
+            <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="外部引用数" value={r.externalReferenceCount} /></Card></Col>
+          </Row>
+          <Row gutter={[16,16]}>
+            <Col xs={24} lg={8}>{breakdownCard("按状态分布",r.byStatus)}</Col>
+            <Col xs={24} lg={8}>{breakdownCard("按 Request 类型",r.byType)}</Col>
+            <Col xs={24} lg={8}>{breakdownCard("按优先级",r.byPriority)}</Col>
+          </Row>
+          <Row gutter={[16,16]}>
+            <Col xs={24} lg={12}>{breakdownCard("Request Aging",r.aging)}</Col>
+            <Col xs={24} lg={12}>
+              <Card title="外部上下文引用覆盖" className="panel-card">
+                <Table size="small" rowKey="key" pagination={false} dataSource={r.externalSystems} columns={[
+                  {title:"系统",dataIndex:"key",render:(v:string)=><Tag color={v==="jira"?"blue":v==="confluence"?"cyan":v==="github"?"default":"purple"}>{v.toUpperCase()}</Tag>},
+                  {title:"关联资源",dataIndex:"count"},
+                  {title:"覆盖 Request",dataIndex:"requestCount"}
+                ]} />
+                <Divider />
+                <Text type="secondary">有外部上下文引用的 Request：{r.linked}；尚无引用：{r.withoutExternalLinks}。该指标统计登记的引用关系，不代表外部系统已连接或数据已同步。</Text>
+              </Card>
+            </Col>
+          </Row>
+        </div>},
+        {key:"debt",label:"Tech Debt 分析",children:<div className="page-stack">
+          <Row gutter={[16,16]}>
+            <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="Tech Debt 总数" value={d.total} /></Card></Col>
+            <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="未解决" value={d.active} /></Card></Col>
+            <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="已逾期" value={d.overdue} valueStyle={{color:d.overdue?"#cf1322":undefined}} /></Card></Col>
+            <Col xs={12} lg={6}><Card className="metric-card"><Statistic title="30 天内到期" value={d.dueNext30Days} /></Card></Col>
+          </Row>
+          <Row gutter={[16,16]}>
+            <Col xs={24} lg={8}>{breakdownCard("按状态",d.byStatus)}</Col>
+            <Col xs={24} lg={8}>{breakdownCard("按严重程度",d.bySeverity)}</Col>
+            <Col xs={24} lg={8}>{breakdownCard("按优先级",d.byPriority)}</Col>
+          </Row>
+          <Row gutter={[16,16]}>
+            <Col xs={24} lg={12}>{breakdownCard("Tech Debt Aging",d.aging)}</Col>
+            <Col xs={24} lg={12}><Card title="来源 Request" className="panel-card">
+              <Table size="small" rowKey="code" pagination={false} dataSource={d.byOriginRequest} columns={[
+                {title:"Request",dataIndex:"code",render:(v:string,row:{code:string;title:string})=><div><Text strong>{v}</Text><div className="small muted">{row.title}</div></div>},
+                {title:"Tech Debt 数",dataIndex:"debt_count"}
+              ]} locale={{emptyText:"尚无来源关联"}} />
+            </Card></Col>
+          </Row>
+          <Alert type="info" showIcon message="分析口径" description="Tech Debt 只有被单独登记为长期工作项时才计入台账；普通修订、分析和短期整改仍然是原 Request 下的 Task，不会被重复计入。" />
+        </div>}
+      ]} />
+    </div>;
+  }
   function renderDashboard() {
     if (!bootstrap) return <Card loading />;
     return <div className="page-stack">
@@ -238,6 +325,17 @@ export default function App() {
           {title:"提交人",dataIndex:"submitter_name"},
           {title:"",render:(_:unknown,a:Artifact)=><Tooltip title="查看内容"><Button type="link" onClick={()=>Modal.info({title:a.title,content:<Paragraph style={{whiteSpace:"pre-wrap"}}>{a.content}</Paragraph>,width:720})}>查看</Button></Tooltip>}
         ]} /></Card><Card size="small" className="nested-card" title="附件" extra={permissions.includes("contribute")?<Upload showUploadList={false} customRequest={async options=>{try{await api.uploadAttachment(item.id,options.file as File);options.onSuccess?.({});message.success("附件已上传");await refreshDetail();}catch(error){options.onError?.(error as Error);message.error(error instanceof Error?error.message:"附件上传失败");}}}><Button size="small" icon={<UploadOutlined />}>上传文件</Button></Upload>:null}><List dataSource={detail.attachments} locale={{emptyText:"暂无附件"}} renderItem={file=><List.Item><List.Item.Meta avatar={<Avatar icon={<FileProtectOutlined />} />} title={file.original_name} description={file.content_type+" · "+Math.ceil(file.size_bytes/1024)+" KB · "+dateText(file.created_at)} /></List.Item>} /></Card></>},
+        {key:"external",label:"上下文引用",children:<Card size="small" title="Request 外部系统上下文引用" extra={permissions.includes("contribute")?<Button size="small" icon={<LinkOutlined />} onClick={()=>void openExternalLinkDialog()}>添加关联</Button>:null}>
+          <Alert type="info" showIcon message="外部上下文引用（多对多）" description="一个 Request 可以关联多条外部资源；同一个 Jira Story、GitHub Repository 或 LeanIX Fact Sheet 也可以被多个 Request 共同引用。这里仅保存定位信息，不缓存源系统内容。" className="modal-alert" />
+          <Table size="middle" rowKey="id" dataSource={detail.externalLinks} pagination={false} locale={{emptyText:"尚未关联 Jira、Confluence、GitHub 或 LeanIX 资源"}} columns={[
+            {title:"系统",dataIndex:"provider",render:(v:string)=><Tag color={v==="jira"?"blue":v==="confluence"?"cyan":v==="github"?"default":"purple"}>{v.toUpperCase()}</Tag>},
+            {title:"资源类型",dataIndex:"resource_type",render:(v:string)=><Text>{v}</Text>},
+            {title:"资源",dataIndex:"title",render:(v:string,row:WorkItemDetail["externalLinks"][number])=><div><Text strong>{row.external_key || row.external_id}</Text><div>{row.url?<a href={row.url} target="_blank" rel="noreferrer">{v}</a>:v}</div></div>},
+            {title:"关联语义",dataIndex:"relation_type",render:(v:string)=><Tag>{v.replaceAll("_"," ")}</Tag>},
+            {title:"Confluence Template",dataIndex:"confluence_template_name",render:(v:string|null)=>v || "—"},
+            {title:"",render:(_:unknown,row:WorkItemDetail["externalLinks"][number])=>permissions.includes("manage")?<Button type="link" danger icon={<DeleteOutlined />} onClick={()=>Modal.confirm({title:"移除此关联？",content:"不会删除 Jira / Confluence / GitHub / LeanIX 中的原始对象。",onOk:()=>removeExternalLink(row.id)})}>移除</Button>:null}
+          ]} />
+        </Card>},
         {key:"reviews",label:"Review 意见",children:<Card size="small" title="独立专业意见" extra={permissions.includes("review")?<Button size="small" icon={<PlusOutlined />} onClick={()=>{reviewForm.setFieldsValue({artifactId:detail.artifacts[0]?.id,outcome:"comment",discipline:actorPerson?.title || "General"});setReviewOpen(true);}}>提交 Review</Button>:null}><List dataSource={detail.reviews} locale={{emptyText:"尚无评审意见"}} renderItem={(r:Review)=><List.Item><List.Item.Meta avatar={<Avatar icon={<AuditOutlined />} />} title={<Space wrap><Text strong>{r.reviewer_name}</Text><Tag>{r.discipline}</Tag><Tag color={r.outcome==="approve"?"success":r.outcome==="request_changes"?"warning":"default"}>{r.outcome}</Tag></Space>} description={<><Text>{r.summary}</Text><div className="small muted">{r.artifact_code || r.artifact_title} · v{r.artifact_version} · {dateText(r.created_at)}</div></>} /></List.Item>} /></Card>},
         {key:"tasks",label:"Tasks",children:<Card size="small" title="工作与后续行动" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>{taskForm.setFieldsValue({assigneeId:actor});setTaskOpen(true);}}>创建 Task</Button>:null}><Table rowKey="id" dataSource={detail.tasks} pagination={false} columns={[
           {title:"Task",dataIndex:"title"},{title:"类型",dataIndex:"kind"},{title:"责任人",dataIndex:"assignee_name",render:(v:string|null)=>v || "未分配"},
@@ -264,6 +362,7 @@ export default function App() {
         {page==="my-work" && renderMyWork()}
         {page==="reviews" && renderReviews()}
         {page==="debts" && renderDebts()}
+        {page==="analytics" && renderAnalytics()}
       </Content>
     </Layout>
     <Drawer open={drawerOpen} onClose={()=>setDrawerOpen(false)} placement="right" width="min(1180px, 96vw)" title={null} destroyOnClose={false} styles={{body:{padding:0}}}>{renderDetailContent()}</Drawer>
@@ -307,24 +406,65 @@ export default function App() {
 
     <Modal title="记录正式决定" open={decisionOpen} onCancel={()=>setDecisionOpen(false)} onOk={()=>void submitForm(decisionForm,async()=>{
       const value=decisionForm.getFieldsValue();
-      if(value.targetDate)value.technicalDebt={...value.technicalDebt,dueDate:value.targetDate.format("YYYY-MM-DD")};
+      if(value.followUpDueDate)value.followUpDueDate=value.followUpDueDate.format("YYYY-MM-DD");
+      if(value.technicalDebt?.dueDate)value.technicalDebt.dueDate=value.technicalDebt.dueDate.format("YYYY-MM-DD");
+      if(!value.createTechnicalDebt)delete value.technicalDebt;
+      delete value.createTechnicalDebt;
       return api.createDecision(selected!.id,value);
     },"正式决定已记录",()=>setDecisionOpen(false))} confirmLoading={busy} width={720}>
       <Alert type="warning" showIcon message="正式决定由当前 Human 身份提交；Agent 分析或草案不能代替 Decision Authority。" className="modal-alert" />
-      <Form form={decisionForm} layout="vertical" initialValues={{subjectType:"work_item",outcome:"more_analysis"}}>
+      <Form form={decisionForm} layout="vertical" initialValues={{subjectType:"work_item",outcome:"more_analysis",createTechnicalDebt:false}}>
         <Form.Item name="subjectType" label="决策对象"><Select options={[{value:"work_item",label:"整个业务事项"},{value:"artifact",label:"某个 ADR / Artifact"}]} /></Form.Item>
         <Form.Item noStyle shouldUpdate>{({getFieldValue})=>getFieldValue("subjectType")==="artifact"?<Form.Item name="subjectId" label="选择 Artifact"><Select options={(detail?.artifacts || []).map(a=>({value:a.id,label:(a.code || a.type)+" · "+a.title}))} /></Form.Item>:null}</Form.Item>
         <Form.Item name="outcome" label="决定" rules={[{required:true}]}><Select options={[{value:"accepted",label:"接受"},{value:"accepted_with_conditions",label:"附条件接受"},{value:"more_analysis",label:"需要更多分析"},{value:"rejected",label:"拒绝"}]} /></Form.Item>
         <Form.Item name="rationale" label="决定依据" rules={[{required:true}]}><TextArea rows={3} /></Form.Item>
         <Form.Item name="conditions" label="条件 / 限制"><TextArea rows={2} /></Form.Item>
         <Form.Item noStyle shouldUpdate>{({getFieldValue})=>getFieldValue("outcome")==="more_analysis"?<><Form.Item name="followUpTitle" label="后续分析工作"><Input placeholder="明确要补充的分析" /></Form.Item><Form.Item name="followUpOwnerId" label="责任人"><Select allowClear options={(bootstrap?.people || []).map(p=>({value:p.id,label:p.display_name}))} /></Form.Item><Form.Item name="followUpDueDate" label="截止日期"><DatePicker style={{width:"100%"}} /></Form.Item></>:null}</Form.Item>
-        <Form.Item noStyle shouldUpdate>{({getFieldValue})=>getFieldValue("outcome")==="accepted_with_conditions"?<><Divider orientation="left">可选：记录长期 Tech Debt</Divider>
-          <Form.Item name={["technicalDebt","title"]} label="技术债务标题"><Input placeholder="例如：移除过渡适配器" /></Form.Item>
+        <Form.Item noStyle shouldUpdate>{({getFieldValue})=>getFieldValue("outcome")==="accepted_with_conditions"?<>
+          <Divider orientation="left">后续义务（按需创建）</Divider>
+          <Form.Item name="createTechnicalDebt" valuePropName="checked"><Checkbox>需要单独跟踪长期 Technical Debt</Checkbox></Form.Item>
+          {getFieldValue("createTechnicalDebt")?<>
+          <Form.Item name={["technicalDebt","title"]} label="技术债务标题" rules={[{required:true,message:"请填写技术债务标题"}]}><Input placeholder="例如：移除过渡适配器" /></Form.Item>
           <Form.Item name={["technicalDebt","description"]} label="来源与原因"><TextArea rows={2} /></Form.Item>
           <Row gutter={12}><Col span={12}><Form.Item name={["technicalDebt","ownerId"]} label="责任人"><Select options={(bootstrap?.people || []).map(p=>({value:p.id,label:p.display_name}))} /></Form.Item></Col><Col span={12}><Form.Item name={["technicalDebt","severity"]} label="严重程度"><Select options={[{value:"low",label:"低"},{value:"medium",label:"中"},{value:"high",label:"高"}]} /></Form.Item></Col></Row>
           <Form.Item name={["technicalDebt","targetState"]} label="目标状态"><Input /></Form.Item>
           <Form.Item name={["technicalDebt","remediationPlan"]} label="偿还计划"><TextArea rows={2} /></Form.Item>
           <Row gutter={12}><Col span={12}><Form.Item name={["technicalDebt","priority"]} label="优先级"><Select options={[{value:"low",label:"低"},{value:"normal",label:"普通"},{value:"high",label:"高"}]} /></Form.Item></Col><Col span={12}><Form.Item name={["technicalDebt","dueDate"]} label="目标偿还日期"><DatePicker style={{width:"100%"}} /></Form.Item></Col></Row>
+          </>:null}
+        </>:null}</Form.Item>
+      </Form>
+    </Modal>
+
+    <Modal title="登记外部上下文引用" open={externalLinkOpen} onCancel={()=>setExternalLinkOpen(false)} onOk={()=>void submitForm(externalLinkForm,async()=>{
+      const value=externalLinkForm.getFieldsValue();
+      return api.addExternalLink(selected!.id,value);
+    },"外部上下文引用已登记",()=>setExternalLinkOpen(false))} confirmLoading={busy} width={720}>
+      <Alert type="info" showIcon message="这里只保存外部资源引用，不访问外部系统。" description="Workbench 不直接连接或同步 Jira、Confluence、GitHub、LeanIX。将来由网站 Agent 根据这些引用，通过其自身配置的 MCP/API 工具读取外部知识；实际内容和访问权限仍以源系统为准。" className="modal-alert" />
+      <Form form={externalLinkForm} layout="vertical">
+        <Row gutter={12}>
+          <Col span={12}><Form.Item name="provider" label="外部系统" rules={[{required:true}]}><Select options={[{value:"jira",label:"Jira"},{value:"confluence",label:"Confluence"},{value:"github",label:"GitHub"},{value:"leanix",label:"LeanIX"}]} onChange={value=>externalLinkForm.setFieldsValue({resourceType:value==="jira"?"Story":value==="confluence"?"Page":value==="github"?"Repository":"Application",externalId:undefined,externalKey:undefined,title:undefined,url:undefined,templateKey:undefined,templateName:undefined})} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="resourceType" label="资源类型" dependencies={["provider"]} rules={[{required:true}]}><Select options={(externalLinkForm.getFieldValue("provider")==="jira"?["Story","Epic","Task","Bug"]:externalLinkForm.getFieldValue("provider")==="confluence"?["Page"]:externalLinkForm.getFieldValue("provider")==="github"?["Repository","PullRequest","Issue","Commit"]:["Application","Interface","ITComponent","DataObject","BusinessCapability","Provider","Project"]).map(value=>({value,label:value}))} /></Form.Item></Col>
+        </Row>
+        <Row gutter={12}><Col span={12}><Form.Item name="externalId" label="外部资源 ID" rules={[{required:true}]}><Input placeholder="Jira issue ID / Confluence Page ID / LeanIX Fact Sheet ID" /></Form.Item></Col><Col span={12}><Form.Item name="externalKey" label="业务 Key / Identifier"><Input placeholder="DATA-412 / APP-CRM-001 / owner/repository" /></Form.Item></Col></Row>
+        <Form.Item name="title" label="资源名称" rules={[{required:true}]}><Input /></Form.Item>
+        <Form.Item name="url" label="资源 URL"><Input placeholder="https://..." /></Form.Item>
+        <Form.Item name="relationType" label="与 Request 的关系" rules={[{required:true}]}><Select options={[
+          {value:"related_to",label:"相关"},
+          {value:"implements",label:"实现 / 交付"},
+          {value:"decision_record",label:"决策记录"},
+          {value:"review_evidence",label:"评审材料"},
+          {value:"solution_design",label:"方案设计"},
+          {value:"implementation_repository",label:"实现代码库"},
+          {value:"shared_component",label:"共享组件"},
+          {value:"impacted_application",label:"受影响 Application"},
+          {value:"impacted_interface",label:"受影响 Interface"},
+          {value:"dependency",label:"依赖"}
+        ]} /></Form.Item>
+        <Form.Item noStyle shouldUpdate>{({getFieldValue})=>getFieldValue("provider")==="confluence" && getFieldValue("resourceType")==="Page"?<>
+          <Divider orientation="left">Confluence Page Template Reference</Divider>
+          <Form.Item name="templateKey" label="Template Key / ID" rules={[{required:true,message:"请填写该 Page 使用的 Template 标识"}]}><Input placeholder="例如 architecture-decision-record" /></Form.Item>
+          <Form.Item name="templateName" label="Template 名称"><Input placeholder="例如 Architecture Decision Record" /></Form.Item>
+          <Text type="secondary" className="small">这里只记录 Template 引用。网站 Agent 需要读取模板定义时，通过其配置的 Confluence MCP/API 工具获取；Workbench 后端不实现 Confluence Connector。</Text>
         </>:null}</Form.Item>
       </Form>
     </Modal>

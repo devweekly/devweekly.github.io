@@ -13,7 +13,10 @@ export function seed() {
     ];
     for (const p of people) run("INSERT INTO people(id,display_name,title,email,avatar_color,created_at) VALUES(?,?,?,?,?,?)", ...p, created);
   }
-  if (all("SELECT id FROM work_items LIMIT 1").length > 0) return;
+  if (all("SELECT id FROM work_items LIMIT 1").length > 0) {
+    seedExternalReferences();
+    return;
+  }
   const created = now();
   const wi = "wi-arch-001";
   run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,target_date,context_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -64,4 +67,53 @@ export function seed() {
   run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",id("part"),debt,"u-dev","debt_owner","Debt Owner",JSON.stringify(["read","contribute","comment","manage"]),created);
   run("INSERT INTO debt_details(work_item_id,severity,priority,target_state,remediation_plan,status,due_date) VALUES(?,?,?,?,?,?,?)",debt,"medium","high","所有消费者切换至事件驱动接口，不再依赖批处理适配器。","每次迁移一个消费者；保留双轨指标；连续两个发布窗口无调用后移除适配器。","open","2027-03-31");
   run("INSERT INTO work_item_relations(id,source_work_item_id,target_work_item_id,relation_type,created_at) VALUES(?,?,?,?,?)",id("rel"),wi,debt,"generated_technical_debt",created);
+  seedExternalReferences();
+}
+
+function seedExternalReferences() {
+  const created = now();
+  const resources = [
+    ["ref-jira-story-1","jira","Story","100412","DATA-412","Expose customer profile read API","https://jira.example.test/browse/DATA-412"],
+    ["ref-jira-story-2","jira","Story","100418","DATA-418","Define tenant-scoped customer data policy","https://jira.example.test/browse/DATA-418"],
+    ["ref-jira-story-3","jira","Story","100521","PAY-521","Introduce idempotent reconciliation retries","https://jira.example.test/browse/PAY-521"],
+    ["ref-conf-adr","confluence","Page","785001","ADR-002","ADR-002 · Customer Data Protection","https://confluence.example.test/wiki/spaces/ARCH/pages/785001"],
+    ["ref-conf-review","confluence","Page","785010","ARC-014-REVIEW","Customer Data Platform · Architecture Review","https://confluence.example.test/wiki/spaces/ARCH/pages/785010"],
+    ["ref-conf-pay","confluence","Page","785120","PAY-021-DESIGN","Payment Reconciliation Design Notes","https://confluence.example.test/wiki/spaces/PAY/pages/785120"],
+    ["ref-github-repo","github","Repository","repo-771","customer-data-platform","example/customer-data-platform","https://github.com/example/customer-data-platform"],
+    ["ref-github-pay","github","Repository","repo-818","payment-reconciliation","example/payment-reconciliation","https://github.com/example/payment-reconciliation"],
+    ["ref-leanix-app","leanix","Application","lx-app-201","APP-CRM-001","Customer Master Platform","https://leanix.example.test/factsheet/lx-app-201"],
+    ["ref-leanix-int-1","leanix","Interface","lx-int-331","INT-CRM-LEDGER","Customer Platform → Ledger Interface","https://leanix.example.test/factsheet/lx-int-331"],
+    ["ref-leanix-int-2","leanix","Interface","lx-int-417","INT-PAY-LEDGER","Payment Reconciliation → Ledger Interface","https://leanix.example.test/factsheet/lx-int-417"],
+    ["ref-leanix-app-2","leanix","Application","lx-app-244","APP-PAY-014","Payment Reconciliation Service","https://leanix.example.test/factsheet/lx-app-244"]
+  ];  for (const r of resources) {
+    run("INSERT OR IGNORE INTO external_resource_refs(id,provider,resource_type,external_id,external_key,title,url,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+      r[0],r[1],r[2],r[3],r[4],r[5],r[6],created,created);
+  }
+  const link = (workItemId:string, resourceId:string, relationType:string, templateKey?:string, templateName?:string) => {
+    const resource = one<{id:string}>("SELECT id FROM external_resource_refs WHERE id=?",resourceId);
+    if (!resource) return;
+    run("INSERT OR IGNORE INTO work_item_external_links(id,work_item_id,resource_id,relation_type,confluence_template_key,confluence_template_name,linked_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
+      id("extlink"),workItemId,resource.id,relationType,templateKey || null,templateName || null,"u-sa",created);
+  };
+  const requests = all<{id:string;code:string}>("SELECT id,code FROM work_items WHERE type <> 'technical_debt'");
+  const arch = requests.find(r=>r.code==="ARC-2026-014")?.id;
+  const payment = requests.find(r=>r.code==="CHG-2026-021")?.id;
+  if (arch) {
+    link(arch,"ref-jira-story-1","implements");
+    link(arch,"ref-jira-story-2","implements");
+    link(arch,"ref-conf-adr","decision_record","architecture-decision-record","Architecture Decision Record");
+    link(arch,"ref-conf-review","review_evidence","architecture-review","Architecture Review Record");
+    link(arch,"ref-github-repo","implementation_repository");
+    link(arch,"ref-leanix-app","impacted_application");
+    link(arch,"ref-leanix-int-1","impacted_interface");
+  }
+  if (payment) {
+    link(payment,"ref-jira-story-3","implements");
+    link(payment,"ref-conf-pay","solution_design","solution-design","Solution Design");
+    link(payment,"ref-github-pay","implementation_repository");
+    link(payment,"ref-github-repo","shared_component");
+    link(payment,"ref-leanix-app-2","impacted_application");
+    link(payment,"ref-leanix-int-1","dependency");
+    link(payment,"ref-leanix-int-2","impacted_interface");
+  }
 }

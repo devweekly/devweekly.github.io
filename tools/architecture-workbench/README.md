@@ -9,13 +9,13 @@
 - React 19、Vite、TypeScript。
 - Ant Design 6 作为通用企业 UI，Ant Design X 提供 Agent/上下文辅助区域。
 - Express 5 提供 REST API。
-- Node 内置 node:sqlite 作为第一阶段存储，要求 Node.js 22.13 或更高版本。
+- Node 内置 node:sqlite 作为第一阶段存储，要求 Node.js 24.0 或更高版本。
 - 非结构化文件通过 ObjectStore 接口存储，默认写入本地目录；配置 S3 后使用 AWS SDK。
-- AI Runtime 暂不启用。界面提供 Context Capsule 复制能力；将来外部 Agent 可通过 Remote MCP 或 REST 接入，不需要网站管理 Agent Runtime。
+- AI Runtime 暂不启用。界面提供 Context Capsule 复制能力。Jira、Confluence、GitHub、LeanIX 只登记为外部上下文引用；Workbench 不实现这些系统的 Connector、同步或缓存。将来如启用网站内置 Agent，由 Agent 自己使用配置好的 MCP/API 工具按需读取。
 
 ## 启动
 
-需要 Node.js >=22.13 和 pnpm 或 npm。
+需要 Node.js >=24.0 和 pnpm 或 npm。
 
     cd tools/architecture-workbench
     cp .env.example .env
@@ -36,15 +36,18 @@
 4. 创建 Task，记录责任人和目标日期。
 5. 在事项内管理 Participation，显式授予 read、contribute、comment、review、decide 和 manage；manage 不自动继承 decide 或 review。
 6. 由具备 decide 权限的 Human 记录接受、附条件接受、要求更多分析或拒绝的正式 Decision。
-7. Decision 要求更多分析时创建后续 Task；附条件接受时可以同时建立独立 Technical Debt Work Item。
+7. Decision 要求更多分析时创建后续 Task；附条件接受时可以选择是否建立独立 Technical Debt Work Item，不需要把每个 Request 都转成 Tech Debt。
 8. 技术债务保留来源事项和来源 Decision 关系，单独维护 Owner、优先级、严重程度、偿还目标、计划、状态和期限。
 9. 更新 Task 状态，管理讨论与活动记录。
 10. 上传普通文件和证据附件；本地默认存储，可切换到 AWS S3。
-11. 将授权后的 Context Capsule 复制给用户自己的 Copilot、Claude 或其他 Agent。
+11. 为 Request 关联多条 Jira Story、Confluence Page、GitHub Repository、LeanIX Application / Interface 等外部上下文引用；同一资源可供多个 Request 复用。
+12. 为 Confluence Page 记录 Template Key/Name，留给未来 Agent 通过自身 MCP/API 工具解析真实模板。
+13. Dashboard 分为 Request 分析和 Tech Debt 分析，展示状态、优先级、Aging、逾期、来源关系和外部引用覆盖。
+14. 将授权后的 Context Capsule 复制给用户自己的 Copilot、Claude 或其他 Agent；其中只包含外部资源引用和关系，不内嵌或缓存外部系统正文。
 
 ## 领域模型边界
 
-Work Item 是业务事项的持久化根对象。架构评审只是一个 Work Item Type；Technical Debt 也是一个关联 Work Item Type。ADR 是 Artifact 类型，不是平台核心表。Review 指向 Review Cycle、Artifact 和被审查版本。Decision 指向明确的 Work Item 或 Artifact 对象，并记录决策人、结果、理由和条件。
+Work Item 是业务事项的持久化根对象。架构评审只是一个 Work Item Type；Technical Debt 也是一个关联 Work Item Type，但仅在确实需要独立治理时创建。ADR 是 Artifact 类型，不是平台核心表。Review 指向 Review Cycle、Artifact 和被审查版本。Decision 指向明确的 Work Item 或 Artifact 对象，并记录决策人、结果、理由和条件。一个 Request 可以关联多条外部资源，同一个外部资源也可以被多个 Request 引用；关联通过独立的多对多关系表达。
 
 Task 表示执行工作，不等于 Review 或 Decision。外部 Agent 的 Session 不作为业务状态来源。一个 Human 可以在同一 Work Item 下拥有多个 Participation，服务端合并其显式权限；manage 不会自动获得 review 或 decide。评审人不能对自己提交的 Artifact 进行独立 Review；新 Artifact Version 不会修改已创建 Review Cycle 的材料基线。
 
@@ -58,13 +61,13 @@ SQLite 仅作为本地原型存储。数据访问集中在 server/db.ts 和 Expr
 
 ## AI 与 Agent 接入
 
-当前阶段不接入 LangChain、DeepAgents 或 LangSmith。这个原型的首要验证对象是业务状态、授权、评审和决策，不是 Agent 编排。Ant Design X 用于可选的 Agent 辅助体验，页面提供 Context Capsule 导出。
+当前阶段不接入 LangChain、DeepAgents 或 LangSmith。这个原型的首要验证对象是业务状态、授权、评审和决策，不是 Agent 编排。Ant Design X 只提供可选的 Agent 辅助体验，页面提供 Context Capsule 导出。
 
-后续接入时建议：
-- LangChain / DeepAgents 只负责被委托的分析和任务执行，不成为 Work Item 状态的权威来源。
-- LangSmith 只记录模型执行与追踪；敏感内容、业务决策和审计事实仍由本业务系统保存并按企业策略脱敏。
-- Agent Client 使用 Remote MCP + OAuth 或 REST API 访问平台，网站不要求 Agent 预注册或安装指定 Runtime。
-- Agent 可以生成 Artifact 和 Decision Draft；正式 Review Outcome、Decision、风险接受和关闭事项必须经过 Human 权限检查。
+**外部业务系统不由 Workbench 后端集成。** Workbench 只保存 Jira Story、Confluence Page、GitHub Repository、LeanIX Application、Interface 等资源的 ID/Key、URL、类型、关联语义，以及 Confluence Template 的引用标识。不会调用外部系统 API，不同步状态，不复制外部正文，也不保存这些系统的凭据。
+
+未来如果启用网站内置 AI Agent，Agent Runtime 才是 MCP/API 工具的调用方：它读取 Work Item 的引用信息，使用自身配置和授权的工具按需查询外部内容，再将分析、证据和草案提交回 Workbench。外部权限仍由各源系统及 Agent 使用的身份/授权决定。Agent 返回的信息要保留来源和获取时间；它不能据此自动创建正式 Review Outcome 或 Decision。
+
+LangChain / DeepAgents 可以作为未来 Agent Runtime 的实现选择，LangSmith 用于 Agent 执行追踪；它们都不是外部系统 Connector，更不能成为业务状态的权威来源。
 
 ## 目录
 
@@ -77,7 +80,7 @@ SQLite 仅作为本地原型存储。数据访问集中在 server/db.ts 和 Expr
 ## 当前限制
 
 - 演示登录通过 Header 选择身份，不可用于生产。
-- 暂无 OIDC、OAuth Delegation Grant、Remote MCP Server、完整组织目录和策略引擎。
+- 暂无 OIDC、OAuth Delegation Grant、Remote MCP Server、网站内置 Agent Runtime、完整组织目录和策略引擎；也没有 Jira/Confluence/GitHub/LeanIX Connector。
 - 演示身份通过请求 Header 提供，不能暴露到公网或用于任何真实审批。
 - 暂无数据库迁移框架和 PostgreSQL Adapter；当前 SQLite 查询仍由 Express Server 直接调用 SQLite helper，迁移到 PostgreSQL 时需要引入异步 Repository / Unit of Work 实现，不能只替换连接字符串。
 - 当前已实现本地/S3 上传和元数据记录，尚未实现经过 Work Item 授权的下载/预签名 URL，也没有病毒扫描。

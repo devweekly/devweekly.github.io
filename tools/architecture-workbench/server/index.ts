@@ -46,6 +46,69 @@ app.get("/api/bootstrap",(req,res)=>{
   };
   res.json({actorId:actor,people,workItems,debts,counts});
 });
+app.get("/api/analytics",(req,res)=>{
+  const actor=actorId(req);
+  const requests=all<{id:string;code:string;title:string;type:string;status:string;priority:string;created_at:string;target_date:string|null}>(
+    "SELECT w.id,w.code,w.title,w.type,w.status,w.priority,w.created_at,w.target_date FROM work_items w WHERE w.type <> 'technical_debt' AND EXISTS (SELECT 1 FROM participations p WHERE p.work_item_id=w.id AND p.person_id=?)",actor);
+  const visibleRequestIds=requests.map(r=>r.id);
+  const debts=all<{id:string;code:string;title:string;status:string;priority:string;severity:string;created_at:string;target_date:string|null;owner_name:string}>(
+    "SELECT w.id,w.code,w.title,w.status,w.priority,d.severity,w.created_at,COALESCE(d.due_date,w.target_date) AS target_date,p.display_name AS owner_name FROM work_items w JOIN debt_details d ON d.work_item_id=w.id JOIN people p ON p.id=w.owner_id WHERE EXISTS (SELECT 1 FROM participations dp WHERE dp.work_item_id=w.id AND dp.person_id=?) OR EXISTS (SELECT 1 FROM work_item_relations rel JOIN participations op ON op.work_item_id=rel.source_work_item_id WHERE rel.target_work_item_id=w.id AND op.person_id=?)",actor,actor);
+  const links=visibleRequestIds.length
+    ? all<{provider:string;work_item_id:string}>("SELECT r.provider,l.work_item_id FROM work_item_external_links l JOIN external_resource_refs r ON r.id=l.resource_id WHERE l.work_item_id IN ("+visibleRequestIds.map(()=>"?").join(",")+")",...visibleRequestIds)
+    : [];
+  const group=(rows:Array<{[key:string]:unknown}>,field:string)=>{
+    const counts:Record<string,number>={};
+    for(const row of rows){const key=String(row[field] ?? "unknown");counts[key]=(counts[key] || 0)+1;}
+    return Object.entries(counts).map(([key,count])=>({key,count})).sort((a,b)=>b.count-a.count);
+  };
+  const ageDays=(createdAt:string)=>Math.max(0,Math.floor((Date.now()-new Date(createdAt).getTime())/86400000));
+  const aging=(rows:Array<{created_at:string}>)=>{
+    const buckets=[{key:"0-7",label:"0–7 天",count:0},{key:"8-30",label:"8–30 天",count:0},{key:"31-90",label:"31–90 天",count:0},{key:"90+",label:"90 天以上",count:0}];
+    for(const row of rows){const days=ageDays(row.created_at);const index=days<=7?0:days<=30?1:days<=90?2:3;buckets[index].count++;}
+    return buckets;
+  };
+  const today=new Date().toISOString().slice(0,10);
+  const soon=new Date(Date.now()+30*86400000).toISOString().slice(0,10);
+  const requestLinkedIds=new Set(links.map(link=>link.work_item_id));
+  const providerCoverage=["jira","confluence","github","leanix"].map(provider=>({
+    key:provider,count:links.filter(link=>link.provider===provider).length,
+    requestCount:new Set(links.filter(link=>link.provider===provider).map(link=>link.work_item_id)).size
+  }));
+  const origins=debts.length && visibleRequestIds.length
+    ? all<{code:string;title:string;debt_count:number}>(
+      "SELECT source.code,source.title,COUNT(*) AS debt_count FROM work_item_relations rel JOIN work_items source ON source.id=rel.source_work_item_id JOIN debt_details debt ON debt.work_item_id=rel.target_work_item_id WHERE source.id IN ("+
+      visibleRequestIds.map(()=>"?").join(",")+") GROUP BY source.id ORDER BY debt_count DESC",...visibleRequestIds)
+    : [];
+  res.json({
+    generatedAt:now(),
+    requests:{
+      total:requests.length,
+      active:requests.filter(r=>!["accepted","rejected","closed"].includes(r.status)).length,
+      inReview:requests.filter(r=>r.status==="in_review").length,
+      overdue:requests.filter(r=>r.target_date && r.target_date<today && !["accepted","rejected","closed"].includes(r.status)).length,
+      linked:requestLinkedIds.size,
+      withoutExternalLinks:requests.length-requestLinkedIds.size,
+      byStatus:group(requests as unknown as Array<{[key:string]:unknown}>,"status"),
+      byType:group(requests as unknown as Array<{[key:string]:unknown}>,"type"),
+      byPriority:group(requests as unknown as Array<{[key:string]:unknown}>,"priority"),
+      aging:aging(requests),
+      externalSystems:providerCoverage,
+      externalReferenceCount:links.length
+    },
+    technicalDebt:{
+      total:debts.length,
+      active:debts.filter(d=>!["resolved","cancelled"].includes(d.status)).length,
+      overdue:debts.filter(d=>d.target_date && d.target_date<today && !["resolved","cancelled"].includes(d.status)).length,
+      dueNext30Days:debts.filter(d=>d.target_date && d.target_date>=today && d.target_date<=soon && !["resolved","cancelled"].includes(d.status)).length,
+      byStatus:group(debts as unknown as Array<{[key:string]:unknown}>,"status"),
+      bySeverity:group(debts as unknown as Array<{[key:string]:unknown}>,"severity"),
+      byPriority:group(debts as unknown as Array<{[key:string]:unknown}>,"priority"),
+      aging:aging(debts),
+      byOriginRequest:origins
+    }
+  });
+});
+
 app.get("/api/work-items",(req,res)=>res.json(all("SELECT w.*,p.display_name AS owner_name,(SELECT COUNT(*) FROM artifacts a WHERE a.work_item_id=w.id) AS artifact_count,(SELECT COUNT(*) FROM tasks t WHERE t.work_item_id=w.id AND t.status NOT IN ('done','cancelled')) AS open_task_count FROM work_items w JOIN people p ON p.id=w.owner_id WHERE w.type <> 'technical_debt' AND EXISTS (SELECT 1 FROM participations mine WHERE mine.work_item_id=w.id AND mine.person_id=?) ORDER BY w.updated_at DESC",actorId(req))));
 
 app.post("/api/work-items",(req,res)=>{
@@ -91,7 +154,8 @@ app.get("/api/work-items/:id",(req,res)=>{
   const comments=all("SELECT c.*,p.display_name AS author_name,p.avatar_color FROM comments c JOIN people p ON p.id=c.author_id WHERE c.work_item_id=? ORDER BY c.created_at DESC",workItemId);
   const activity=all("SELECT e.*,p.display_name AS actor_name FROM activity_events e JOIN people p ON p.id=e.actor_id WHERE e.work_item_id=? ORDER BY e.created_at DESC LIMIT 30",workItemId);
   const attachments=all("SELECT id,original_name,content_type,size_bytes,uploaded_by,created_at FROM attachments WHERE work_item_id=? ORDER BY created_at DESC",workItemId);
-  res.json({workItem,participants,artifacts,cycles,reviews,tasks,decisions,comments,activity,attachments,permissions:permissions(workItemId,actor)});
+  const externalLinks=all("SELECT l.id,l.relation_type,l.confluence_template_key,l.confluence_template_name,l.created_at,r.provider,r.resource_type,r.external_id,r.external_key,r.title,r.url FROM work_item_external_links l JOIN external_resource_refs r ON r.id=l.resource_id WHERE l.work_item_id=? ORDER BY r.provider,r.resource_type,r.title",workItemId);
+  res.json({workItem,participants,artifacts,cycles,reviews,tasks,decisions,comments,activity,attachments,externalLinks,permissions:permissions(workItemId,actor)});
 });
 
 app.post("/api/work-items/:id/artifacts",(req,res)=>{
@@ -242,7 +306,56 @@ app.get("/api/work-items/:id/context-capsule",(req,res)=>{
   const participants=all("SELECT p.display_name,pt.role_label FROM participations pt JOIN people p ON p.id=pt.person_id WHERE pt.work_item_id=?",workItemId);
   const artifacts=all("SELECT id,type,code,title,version,status,summary,content_hash FROM artifacts WHERE work_item_id=? ORDER BY created_at DESC",workItemId);
   const reviews=all("SELECT r.discipline,r.outcome,r.summary,a.code,a.title FROM reviews r JOIN review_cycles c ON c.id=r.cycle_id JOIN artifacts a ON a.id=r.artifact_id WHERE c.work_item_id=?",workItemId);
-  res.json({workItem,participants,artifacts,reviews,generatedAt:now(),note:"Context projection for the current participant. Include full artifact content only through separately authorized reads."});
+  const externalResources=all("SELECT r.provider,r.resource_type,r.external_id,r.external_key,r.title,r.url,l.relation_type,l.confluence_template_key,l.confluence_template_name FROM work_item_external_links l JOIN external_resource_refs r ON r.id=l.resource_id WHERE l.work_item_id=?",workItemId);
+  res.json({workItem,participants,artifacts,reviews,externalResources,generatedAt:now(),note:"These are external resource references, not synchronized data. This application does not call Jira, Confluence, GitHub or LeanIX. An optional Workbench Agent may resolve the references through its own configured MCP/API tools, subject to those systems' access controls."});
+});
+
+app.post("/api/work-items/:id/external-links",(req,res)=>{
+  const workItemId=String(req.params.id); const actor=actorId(req);
+  if (!requirePermission(res,workItemId,actor,"contribute")) return;
+  const body=req.body || {};
+  const providers=["jira","confluence","github","leanix"];
+  if (!providers.includes(body.provider)) return res.status(400).json({error:"Unsupported external provider"});
+  const resourceTypes:Record<string,string[]> = {
+    jira:["Story","Epic","Task","Bug"],
+    confluence:["Page"],
+    github:["Repository","PullRequest","Issue","Commit"],
+    leanix:["Application","Interface","ITComponent","DataObject","BusinessCapability","Provider","Project"]
+  };
+  if (!resourceTypes[body.provider].includes(body.resourceType)) return res.status(400).json({error:"Unsupported resource type for "+body.provider});
+  if (!body.resourceType || !body.externalId || !body.title) return res.status(400).json({error:"resourceType, externalId and title are required"});
+  const relationTypes=["related_to","implements","decision_record","review_evidence","solution_design","implementation_repository","shared_component","impacted_application","impacted_interface","dependency"];
+  if (body.relationType && !relationTypes.includes(body.relationType)) return res.status(400).json({error:"Unsupported relationship type"});
+  const template = body.provider==="confluence" && body.resourceType==="Page"
+    ? {template_key:String(body.templateKey || ""),name:String(body.templateName || "")}
+    : undefined;
+  if (body.provider==="confluence" && body.resourceType==="Page" && !template?.template_key) {
+    return res.status(400).json({error:"Confluence template key is required. The Agent will resolve the actual template through its configured MCP/API tool."});
+  }
+  const created=now();
+  run("INSERT OR IGNORE INTO external_resource_refs(id,provider,resource_type,external_id,external_key,title,url,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+    id("resource"),body.provider,body.resourceType,String(body.externalId),String(body.externalKey || ""),String(body.title),String(body.url || ""),created,created);
+  const resource=one<{id:string}>("SELECT id FROM external_resource_refs WHERE provider=? AND resource_type=? AND external_id=?",body.provider,body.resourceType,String(body.externalId));
+  if (!resource) return res.status(500).json({error:"Could not persist external resource reference"});
+  run("UPDATE external_resource_refs SET external_key=CASE WHEN ?<>'' THEN ? ELSE external_key END,title=?,url=CASE WHEN ?<>'' THEN ? ELSE url END,updated_at=? WHERE id=?",
+    String(body.externalKey || ""),String(body.externalKey || ""),String(body.title),String(body.url || ""),String(body.url || ""),created,resource.id);
+  run("INSERT OR IGNORE INTO work_item_external_links(id,work_item_id,resource_id,relation_type,confluence_template_key,confluence_template_name,linked_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
+    id("extlink"),workItemId,resource.id,body.relationType || "related_to",template?.template_key || null,template?.name || null,actor,created);
+  const link=one<{id:string}>("SELECT id FROM work_item_external_links WHERE work_item_id=? AND resource_id=? AND relation_type=?",workItemId,resource.id,body.relationType || "related_to");
+  run("UPDATE work_items SET context_version=context_version+1,updated_at=? WHERE id=?",created,workItemId);
+  logActivity(workItemId,actor,"linked","external_resource",resource.id,"Recorded external context reference: "+body.provider+" "+body.resourceType+": "+body.title,{relationType:body.relationType || "related_to",templateKey:template?.template_key || null,source:"user_supplied_reference"});
+  res.status(201).json({id:link?.id,resourceId:resource.id});
+});
+
+app.delete("/api/work-items/:id/external-links/:linkId",(req,res)=>{
+  const workItemId=String(req.params.id); const actor=actorId(req); const linkId=String(req.params.linkId);
+  if (!requirePermission(res,workItemId,actor,"manage")) return;
+  const link=one<{resource_id:string;title:string}>("SELECT r.id AS resource_id,r.title FROM work_item_external_links l JOIN external_resource_refs r ON r.id=l.resource_id WHERE l.id=? AND l.work_item_id=?",linkId,workItemId);
+  if (!link) return res.status(404).json({error:"External resource link not found"});
+  run("DELETE FROM work_item_external_links WHERE id=?",linkId);
+  run("UPDATE work_items SET context_version=context_version+1,updated_at=? WHERE id=?",now(),workItemId);
+  logActivity(workItemId,actor,"unlinked","external_resource",link.resource_id,"Unlinked external resource: "+link.title);
+  res.json({ok:true});
 });
 
 app.post("/api/work-items/:id/attachments",upload.single("file"),async(req,res)=>{
