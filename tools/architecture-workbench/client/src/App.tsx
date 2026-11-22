@@ -20,7 +20,7 @@ const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
 const statusLabels: Record<string,string> = {
-  draft:"待受理", analysis:"处理中", in_review:"待确认", changes_requested:"待修改",
+  draft:"待受理", analysis:"处理中", in_review:"评审与确认中", changes_requested:"待修改",
   accepted:"已接受", rejected:"已拒绝", closed:"已完成", open:"待处理",
   in_progress:"处理中", deferred:"已延期", resolved:"已解决", cancelled:"已取消",
   accepted_with_conditions:"附条件接受", more_analysis:"需要更多分析",
@@ -501,24 +501,18 @@ export default function App() {
     const activeTask=detail.tasks.find(task=>task.status==="in_progress")
       || detail.tasks.find(task=>task.status==="blocked")
       || detail.tasks.find(task=>task.status==="open");
-    const actionLabels:Record<string,string>={
-      start_analysis:"受理事项并开始分析",
-      submit_for_review:"整理材料并提交评审",
-      close:"完成后续工作并关闭事项"
-    };
-    const workflowAction=detail.workflow.availableActions.map(action=>actionLabels[action] || action).join("；");
     const phaseAction:Record<string,string>={
-      draft:"确认目标、范围和负责人，然后开始分析。",
-      analysis:"完成当前任务，更新材料；准备好后提交评审。",
-      changes_requested:"处理评审意见，提交新的材料版本后重新送审。",
-      in_review:"等待独立评审意见；具备决策权限的人再记录正式决定。",
-      accepted:"落实决定中的后续义务，然后关闭事项。",
+      draft:"确认目标和范围，由事项负责人受理后开始分析。",
+      analysis:"完成当前任务并更新材料；具备评审条件后提交。",
+      changes_requested:"逐项处理评审意见，形成新材料版本后重新提交。",
+      in_review:"等待独立评审完成，由授权人员记录正式决定。",
+      accepted:"落实决定中的后续义务，再关闭事项。",
       rejected:"确认拒绝决定的后续处理，再关闭事项。",
-      closed:"事项已完成，历史记录和材料版本仍可查阅。"
+      closed:"事项已完成，材料版本、评审和决定记录仍可查阅。"
     };
     const nextAction=activeTask
-      ? (activeTask.status==="blocked" ? "解除阻塞："+activeTask.title : activeTask.title)
-      : (workflowAction || phaseAction[item.status] || "确认下一步工作。");
+      ? (activeTask.status==="blocked" ? "解除阻塞："+activeTask.title+"（"+(activeTask.assignee_name || "待分配执行人")+"）" : "完成当前任务："+activeTask.title+"（"+(activeTask.assignee_name || "待分配执行人")+"）")
+      : (phaseAction[item.status] || "确认下一步工作。");
     const latestArtifacts=detail.artifacts.filter((artifact,index,all)=>all.findIndex(candidate=>(candidate.code || candidate.id)===(artifact.code || artifact.id))===index);
     const manifestCount=(manifest:string)=>{
       try { const parsed=JSON.parse(manifest); return Array.isArray(parsed)?parsed.length:0; }
