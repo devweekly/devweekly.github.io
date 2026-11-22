@@ -1471,7 +1471,131 @@ Agent 可以帮助 Reviewer 整理意见，但不能因为它使用了“Securit
 
 因此，推荐架构仍然是 Work Item-centric Collaboration Architecture，但要把它从“有 Work Item、Task、Review、Decision 这些对象”提升为“有版本基线、有多方独立意见、有策略约束的正式决策，以及可追踪的后续义务”。这些才是这个真实流程验证出来的通用需求。
 
-## 30. 结论
+## 30. 从传统业务网站到 Work Item 协作平台：网站设计会发生什么变化
+
+前面的讨论不仅影响后端对象和 Agent 接口，也会改变网站本身的产品设计。但这不意味着要把网站改造成一个 Agent 平台，或者把所有交互改成 Chat。更准确的定位是：**网站从以页面、表单和预设流程为中心的业务应用，转变为以 Business Work Item 为中心的协作与治理界面；它仍然首先服务 Human，同时允许外部 Agent 通过共同协议参与。**
+
+这个变化不是某个具体业务场景的特化。架构评审、风险调查、变更管理、数据申请、合规审查和项目决策都可以使用同一套产品结构。不同业务域提供自己的 Work Item Type、Artifact Type、Policy 和流程配置，网站不需要为每种业务重新设计一套协作机制。
+
+### 30.1 从功能页面和表单，转向持续存在的业务事项
+
+传统业务网站往往按功能组织：用户进入某个模块，填写表单，上传文件，提交审批，再到另一个页面查看状态。页面和流程节点通常是主要的交互边界，用户需要理解系统预先设计好的操作路径。
+
+Work Item-centric 网站则把“正在处理的业务事项”作为主要入口。用户打开一个 Work Item，就能看到它的目标、状态、参与者、待办工作、材料版本、专业意见、讨论、决定和后续行动。不同人可以从不同入口进入同一事项，完成各自被授权的工作；事项本身不会因为某个人离线、换工具或结束一次 Agent Session 而中断。
+
+这并不意味着所有信息都堆在一个无限滚动页面里。Work Item 是统一的业务上下文，页面仍可按任务和信息类型组织为 Overview、Tasks、Artifacts、Reviews、Discussions、Decisions 和 Activity 等视图。关键区别在于，这些视图围绕同一个事项及其关系组织，而不是各自维护一份孤立状态。
+
+### 30.2 网站不能再假设工作只发生在浏览器里
+
+传统 Web 应用通常把浏览器视为主要甚至唯一的操作入口。新平台需要承认，参与者可能在网站、IDE、命令行、企业 Copilot、Claude 或其他 Agent Client 中工作。
+
+因此，网站必须完整支持纯人工路径，同时提供可选的外部 Agent 接入：
+
+| 使用方式 | 工作主要发生在哪里 | 平台需要提供什么 |
+| --- | --- | --- |
+| Human-only | 网站 | 完整的事项查看、任务处理、讨论、材料提交和决策界面 |
+| Human + 轻度 Agent | 网站与用户选择的 Chat Client | 可复制的 Context Capsule、结构化提交入口和来源记录 |
+| Human + 深度 Agent | IDE、CLI 或 Agent Client | Remote MCP、OAuth 委托授权、受限的上下文和业务操作 |
+| 多人使用不同工具 | 网站及各自的客户端 | 同一套 Work Item 状态、产物版本、权限和审计记录 |
+
+网站不负责替用户选择模型，也不要求用户把 Agent 注册到网站、安装指定 Runtime 或同步 Agent 内部 Memory。用户可以完全不用 Agent，也可以在不同事项中使用不同客户端。无论工作从哪里开始，正式业务状态都必须回到平台的受控服务中。
+
+Copy / Paste 也不是临时的降级方案。它是对不支持 MCP、暂时不愿连接外部工具，或需要人工控制信息流的用户保留的正常工作方式。Agent 接入能力不能成为完成业务的前置条件。
+
+### 30.3 从单一 Web Backend，转向多入口共享同一业务核心
+
+多客户端不应意味着多套业务逻辑。网站 UI、REST/OpenAPI 客户端和 Remote MCP Server 应调用同一组 Application Service，使用同一套授权、版本检查、状态约束和审计规则。
+
+```mermaid
+flowchart TB
+    subgraph Clients["用户与外部客户端"]
+        Web["Web UI"]
+        Copy["Human + Copy / Paste"]
+        Copilot["Copilot / IDE"]
+        Claude["Claude / CLI"]
+        Other["其他兼容客户端"]
+    end
+
+    subgraph Adapters["接入适配层"]
+        API["REST / OpenAPI"]
+        MCP["Remote MCP"]
+    end
+
+    subgraph Application["统一应用与业务核心"]
+        Work["Work Item / Collaboration Services"]
+        Policy["Identity / Authorization / Policy"]
+        Artifact["Artifact / Review / Decision"]
+        Workflow["Business Workflow / Task"]
+        Audit["Activity / Audit"]
+    end
+
+    DB[("Business Data")]
+
+    Web --> API
+    Copy --> API
+    Copilot --> MCP
+    Claude --> MCP
+    Other --> MCP
+    MCP --> Work
+    API --> Work
+    Work --> Policy
+    Work --> Artifact
+    Work --> Workflow
+    Work --> Audit
+    Work --> DB
+```
+
+这里的 REST/OpenAPI 是稳定、可复用的业务 API；MCP 是适合 Agent Client 使用的协议适配器。MCP Server 不应另行实现一套业务规则，也不应把 Prompt 或 Tool Description 当作权限边界。两个入口最终都必须进入相同的应用服务，并由服务端检查当前 Principal、Delegation Grant、Participation、资源范围、事项状态和版本。
+
+未来出现新的 Agent Protocol 或企业集成方式时，可以增加新的 Adapter，而不需要改变 Work Item 的领域模型。协议负责连接，Application Service 负责业务语义，Policy 负责授权，Workflow 负责确定性的生命周期。
+
+### 30.4 权限从页面角色，转向事项上下文中的动作授权
+
+传统网站常见的做法是先给用户分配全局角色，再按角色显示菜单、页面和按钮。这种方式对于简单系统有用，但不足以表达一个人在不同事项中承担不同职责、只在特定阶段拥有特定操作权限的情况。
+
+新平台的授权需要综合判断：谁在执行、以什么身份执行、是否参与当前 Work Item、承担什么职责、访问哪个资源、当前处于什么状态、请求执行什么动作，以及是否存在有效的委托授权。
+
+Human 的组织身份和事项 Participation 不应混为一谈；Agent Execution Identity 也不能因为代表某个人发起请求，就继承这个人的全部权限。Delegation Grant 应限制资源范围、动作、有效期和撤销状态。服务端每次请求都重新执行授权检查，而不是在连接建立时一次性授予长期访问权。
+
+UI 可以根据授权结果隐藏或禁用操作，但这只是交互反馈。真正的权限控制必须发生在服务端。正式提交、评审结论、批准、风险接受和事项关闭等动作，还需要检查相应的职责分离和 Decision Policy。
+
+### 30.5 UI 的中心是工作空间，不是聊天窗口
+
+Chat 可以是某些用户的高效工作入口，但它不适合作为所有业务协作的唯一界面。聊天记录难以直接表达版本基线、责任分配、待办状态、正式意见和决策授权；而且不使用 Agent 的用户不应该被迫进入 Chat-first 的产品。
+
+网站可以围绕 Work Item 提供几个稳定的工作视图：
+
+- **My Work**：当前用户负责或参与的事项、待处理 Task、待回复问题、待提交评审和待作出的决定。
+- **Work Item Workspace**：事项目标、状态、参与者、材料、任务、意见、讨论、决定和活动历史。
+- **Task Workspace**：某项具体工作所需的上下文、输入版本、执行要求、提交结果和交接记录。
+- **Agent Connections**：用户查看和撤销外部客户端的 Delegation Grant，了解连接范围和最近访问记录。
+
+这些是通用信息架构，不意味着每个 Work Item 都必须显示所有模块。系统应根据事项类型、当前阶段、用户权限和实际存在的数据组织视图。某个事项没有 Review，就不需要显示空的 Review 流程；某个用户没有 Agent，也不需要看到 Agent 配置成为主流程的一部分。
+
+### 30.6 平台负责共同业务上下文和责任，不控制每个人如何工作
+
+多客户端协作的目标不是把所有人的工作方式统一起来。有人习惯在网站中阅读和编辑，有人使用 IDE，有人通过 Agent 分析材料，也有人只参加关键讨论并作出决定。平台不应该试图接管这些个人工作环境。
+
+平台真正需要保证的是：所有参与者面对的是同一份经过授权的业务上下文；正式 Artifact 有可追溯的版本；Task 有明确的责任和状态；Review 能关联到被审查的对象和版本；Decision 有明确的决策主体、授权依据和证据；后续义务不会因为一次会话或会议结束而消失。
+
+因此，平台记录业务上可验证的事实，而不是声称掌握每个外部 Agent 的全部内部过程。通过 MCP 提交时，可以记录 OAuth Client、Delegation Grant 和请求来源；通过 Copy / Paste 提交时，只记录平台实际知道的提交人和用户声明的来源，不应伪造 Agent 执行证明。
+
+### 30.7 这不是增加一个 Agent 子系统，而是重新划定网站的职责
+
+新平台不需要在第一阶段内置模型管理、Agent Runtime、Agent Memory、Agent 群聊编排或远程执行主机。那些能力属于用户选择的 Agent Client 或独立的执行平台，只有出现明确业务需求时才考虑集成。
+
+网站自身需要建设的是：
+
+1. 以 Work Item 为中心的领域模型和持久化业务状态。
+2. 完整的 Human Web UI，以及适合不同角色的工作视图。
+3. 稳定的 REST/OpenAPI 业务接口和可选的 Remote MCP 接入。
+4. 统一的身份、委托授权、事项级权限和审计机制。
+5. Artifact 版本、Task、Review、Decision 和后续义务的治理能力。
+6. 确定性的业务生命周期和可配置策略，而不是把正式流程交给 Agent 自由决定。
+
+这也是与传统网站最大的区别：**网站不再试图规定所有人必须通过哪些页面、使用什么工具来完成工作；它维护共同的业务上下文、协作关系、正式产物、责任和决定，并允许不同客户端在同一治理边界内参与。** 它仍然是 Human-first 的业务网站，只是从单一浏览器应用演进为 Human 与外部 Agent 都能使用的业务协作平台。
+
+## 31. 结论
 
 
 这次场景验证没有推翻 Work Item-centric Collaboration Architecture，也不应该导致平台增加一套架构评审专用模型。它暴露的是通用模型需要补齐的能力：一组材料的版本基线、多方独立 Review 的组织方式、带授权和适用范围的 Decision，以及可追踪的后续义务。
