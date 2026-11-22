@@ -42,7 +42,15 @@ export function seed() {
     return;
   }
   const created = now();
+  const workflowPrincipal=one<{id:string}>("SELECT id FROM people WHERE id='u-workflow'");
+  if (!workflowPrincipal) run("INSERT INTO people(id,display_name,title,email,avatar_color,department,location,bio,expertise_json,timezone,is_admin,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,0,?)",
+    "u-workflow","Workflow Automation","System Workflow Principal","workflow@example.test","#667788","Architecture Platform","Local","Records timer-driven workflow transitions and deadline events.",JSON.stringify(["Deadline processing","Workflow automation"]),"Asia/Tokyo",now());
   const wi = "wi-arch-001";
+  run("UPDATE work_items SET requestor_id=COALESCE(requestor_id,owner_id) WHERE id=?",wi);
+  run("UPDATE work_items SET request_package_json=? WHERE id=? AND request_package_json='{}'",
+    JSON.stringify({goal:"Modernize the customer data platform",scope:"Customer master data and transaction access",constraints:"Legacy batch compatibility and data isolation",initialProposal:"Introduce a unified data access layer in phases",decisionQuestions:"Confirm API boundary, isolation model and migration sequence",submissionMessage:"feat(request): submit customer data platform modernization package"}),wi);
+  run("UPDATE submissions SET submission_message=?,package_json=? WHERE id='sub-101' AND submission_message=''",
+    "feat(request): submit customer data platform modernization package",JSON.stringify({goal:"Modernize the customer data platform",scope:"Customer master data and transaction access",constraints:"Legacy batch compatibility and data isolation",initialProposal:"Introduce a unified data access layer in phases",decisionQuestions:"Confirm API boundary, isolation model and migration sequence"}));
   run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,target_date,context_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
     wi,"ARC-2026-014","architecture_review","客户数据平台现代化方案","统一客户主数据与交易数据访问层。当前方案需要评审 API 边界、数据隔离、遗留批处理兼容和分阶段迁移策略。","discussion_review","high","u-sa","2026-12-08",4,created,created);
   const participants = [
