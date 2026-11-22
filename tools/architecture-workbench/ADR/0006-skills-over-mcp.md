@@ -24,7 +24,7 @@ The MCP endpoint exposes only static Skill content. It does not currently expose
 - The MCP Server publishes Skill files and manifests; it does not execute or activate a Skill.
 - The Agent Host is responsible for discovery, integrity verification, any required approval, loading/activation, context management and selecting the Agent that uses a Skill.
 - A Skill describes a working method. It does not grant `read`, `contribute`, `review`, `decide` or `manage` permissions and cannot bypass Workbench authorization.
-- Human Review Outcome, formal Decision, risk acceptance and closure remain subject to the existing Human-first Workflow Engine rules.
+- Agents cannot submit formal review outcomes, record decisions, accept risks or close Work Items. Those actions remain restricted to authorized people and are enforced by the existing workflow engine.
 - The catalog must not contain credentials, user-specific information or private business context. The endpoint is localhost-only by default; remote deployments must configure an explicit Host allowlist. This prototype does not yet provide OAuth authentication for MCP.
 - Changes to Skills are deployed as code and become active after application restart. Runtime editing and tenant-specific catalogs are deferred until identity, ownership, versioning and approval rules exist.
 
