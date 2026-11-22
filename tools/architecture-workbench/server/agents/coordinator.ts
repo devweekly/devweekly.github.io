@@ -418,7 +418,7 @@ export function handoffAgentRun(input:{runId:string;actorId:string;claimToken:st
   const current=requireClaimedRun(input.runId,input.actorId,input.claimToken);
   if (!input.reason.trim()) throw new Error("A hand-off reason is required.");
   const timestamp=now();
-  const updated=run("UPDATE agent_runs SET status='waiting_for_human',handoff_reason=?,claim_token=NULL,heartbeat_at=NULL,lease_expires_at=NULL,updated_at=? WHERE id=? AND status='running' AND claimed_by=? AND claim_token=? AND lease_expires_at>?",
+  const updated=run("UPDATE agent_runs SET status='waiting_for_human',handoff_reason=?,claim_token=NULL,heartbeat_at=NULL,lease_expires_at=NULL,attempt_count=0,updated_at=? WHERE id=? AND status='running' AND claimed_by=? AND claim_token=? AND lease_expires_at>?",
     input.reason.trim(),timestamp,input.runId,input.actorId,input.claimToken,timestamp);
   if (Number(updated.changes)!==1) throw new Error("The Agent Run lease expired before hand-off could be committed.");
   appendEvent(input.runId,"agent",input.actorId,"human_handoff",{
