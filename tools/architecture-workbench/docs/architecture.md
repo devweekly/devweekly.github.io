@@ -66,3 +66,14 @@ The `x-demo-user-id` header is a local prototype identity selector, not authenti
 The Workbench persists reference metadata only: provider, resource type, external ID/key, URL, relationship semantics and (for a Confluence Page) Template key/name. A reference is not evidence that the remote resource was successfully retrieved or remains current.
 
 A future Agent may resolve these references through MCP or API tools configured for that Agent Runtime. Tool credentials and source authorization belong to the Agent/tool connection, not to this Express application. The Agent should capture the source identifier, retrieval timestamp and relevant excerpt/citation in its analysis Artifact. Failure to read a reference must be visible as missing context, not silently replaced with invented facts.
+
+
+## Skills over MCP
+
+The Express application mounts a separate, read-only MCP endpoint at `/mcp`. It uses the official TypeScript SDK v2 `createMcpHandler`, the Express adapter's Host/Origin checks, and the SDK Skills Extension loader. The versioned `skills/` directory is the source of truth; the loader validates Agent Skills frontmatter and publishes `skills/list`, `skills/get`, file reads and the optional directory-read capability with content digests.
+
+The server factory is stateless per MCP HTTP request and attaches the same validated catalog to each server instance. The application loads the catalog once during startup, so a deployed version serves a consistent catalog. A failed or invalid catalog prevents startup.
+
+The MCP boundary currently exposes role/workflow instructions only. It does not expose business tools, REST data projections, external-system connectors or an Agent Runtime. A Skill does not grant permissions and reading a Skill is not activation. The Host is responsible for verifying, approving and loading it. Human Review and Decision authorization remains in the Workbench application services and Workflow Engine.
+
+For a remote deployment, configure `MCP_ALLOWED_HOSTS` with the exact hostnames accepted by the MCP endpoint. The current prototype does not implement OAuth for MCP; only non-sensitive, repository-managed Skill content belongs in this catalog.

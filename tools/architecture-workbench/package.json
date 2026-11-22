@@ -11,20 +11,24 @@
     "dev": "concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "tsx watch server/index.ts",
     "dev:web": "vite --host 0.0.0.0",
-    "build": "tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.client.json && vite build",
+    "build": "tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.client.json && npm run check:skills && vite build",
     "start": "cross-env NODE_ENV=production tsx server/index.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.client.json"
+    "typecheck": "tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.client.json && npm run check:skills",
+    "check:skills": "tsx server/mcp/check-skills.ts"
   },
   "dependencies": {
     "@ant-design/icons": "^6.0.0",
     "@ant-design/x": "^2.10.0",
     "@aws-sdk/client-s3": "^3.1000.0",
+    "@modelcontextprotocol/express": "^2.4.0",
+    "@modelcontextprotocol/node": "^2.4.0",
+    "@modelcontextprotocol/server": "^2.4.0",
     "antd": "^6.6.4",
+    "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "multer": "^2.0.2",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "dotenv": "^17.2.3"
+    "react-dom": "^19.2.4"
   },
   "devDependencies": {
     "@types/express": "^5.0.3",

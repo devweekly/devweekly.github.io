@@ -43,3 +43,23 @@ The Context Capsule returns external resource IDs/keys/URLs and relationship typ
 The API returns a `workflow` projection in Work Item detail: current status, Steps metadata, available actions and the latest transition history. Clients may request only `start_analysis`, `submit_for_review` or `close` through the transitions endpoint. Review outcomes and formal Decision outcomes trigger their corresponding transitions through their own commands.
 
 Every successful transition updates `work_items.status`, appends `workflow_transitions`, and records an activity event. The transition rules and permission checks are server-side; the UI cannot force a target status.
+
+
+## MCP Skills Endpoint
+
+MCP endpoint: `http://localhost:4000/mcp` (development). It uses the official MCP TypeScript SDK v2 Streamable HTTP handler and the Skills Extension `io.modelcontextprotocol/skills` (SEP-2640).
+
+The server publishes the repository-managed `tools/architecture-workbench/skills/` catalog:
+
+| MCP method | Purpose |
+| --- | --- |
+| `skills/list` | Discover the available Skills; supports protocol pagination |
+| `skills/get` | Resolve one Skill by its `skill://…/SKILL.md` URI and obtain its manifest |
+| `resources/read` | Read `SKILL.md` or a supporting file; the SDK verifies content against the published digest |
+| `resources/directory/read` | Read a Skill directory listing when the negotiated extension capability advertises directory reads |
+
+Each Skill directory contains a `SKILL.md` with Agent Skills YAML frontmatter. Skill files are loaded and validated at server startup; invalid catalogs fail startup rather than silently publishing a partial set. Updating catalog files requires an application restart.
+
+This endpoint publishes instructions only. It does not execute or automatically activate a Skill, expose business data, or provide Work Item / Task / Review / Decision tools. The MCP Host is responsible for Skill discovery, approval, integrity verification and activation. Business operations continue to use the existing REST API and server-side permission checks.
+
+The endpoint is localhost-only by default. Set `MCP_ALLOWED_HOSTS` to a comma-separated hostname allowlist when serving it through a remote host. Host validation is not user authentication; do not add private Skills or expose business tools until an appropriate authentication and authorization layer is in place.

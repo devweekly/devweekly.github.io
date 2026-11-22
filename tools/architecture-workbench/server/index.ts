@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { all, db, id, now, one, run } from "./db.js";
 import { createObjectStore } from "./object-store.js";
 import { seed } from "./seed.js";
+import { mountSkillsMcpEndpoint } from "./mcp/skills-server.js";
 import {
   canManageParticipants,
   getWorkItemPermissions,
@@ -516,6 +517,8 @@ app.post("/api/work-items/:id/attachments",upload.single("file"),async(req,res)=
   }
 });
 
+const publishedSkillCount = await mountSkillsMcpEndpoint(app);
+
 if (process.env.NODE_ENV==="production" && existsSync(resolve("dist/index.html"))) {
   app.use(express.static(resolve("dist")));
   app.get(/^(?!\/api).*/,(_req,res)=>res.sendFile(resolve("dist/index.html")));
@@ -526,6 +529,7 @@ app.use((error:unknown,_req:express.Request,res:express.Response,_next:express.N
 app.listen(port,()=>{
   console.log("Architecture Workbench API listening on http://localhost:"+port);
   console.log("SQLite database: "+(process.env.DATABASE_PATH || "./data/architecture-workbench.sqlite"));
+  console.log("MCP Skills endpoint: http://localhost:"+port+"/mcp ("+publishedSkillCount+" skills)");
 });
 process.on("SIGINT",()=>{db.close();process.exit(0);});
 process.on("SIGTERM",()=>{db.close();process.exit(0);});
