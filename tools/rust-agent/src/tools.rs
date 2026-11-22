@@ -1,7 +1,8 @@
 use std::{
     fs,
-    io::Read,
+    io::{Read, Write},
     path::{Component, Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use ignore::WalkBuilder;
@@ -23,6 +24,8 @@ const MAX_SEARCH_FILE_BYTES: u64 = 1024 * 1024;
 const MAX_SEARCH_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_MATCH_LINE_BYTES: usize = 4 * 1024;
 const MAX_TOOL_OUTPUT_BYTES: usize = 256 * 1024;
+const MAX_WRITE_FILE_BYTES: usize = 1024 * 1024;
+static NEXT_TEMP_FILE_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone)]
 pub struct ToolExecutor {
@@ -161,7 +164,34 @@ impl ToolExecutor {
             }
         }
 
-        fs::write(&target, content)?;
+        if content.len() > MAX_WRITE_FILE_BYTES {
+            return Err(AgentError::InvalidAction(format!(
+                "write_file is limited to {MAX_WRITE_FILE_BYTES} bytes"
+            )));
+        }
+        let temporary = parent_path.join(format!(
+            ".rust-agent-write-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_FILE_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let result = (|| -> Result<(), AgentError> {
+            let mut file = options.open(&temporary)?;
+            file.write_all(content.as_bytes())?;
+            file.sync_all()?;
+            fs::rename(&temporary, &target)?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        result?;
         Ok(ToolResult {
             ok: true,
             output: format!("Wrote {} bytes to {}", content.len(), target.strip_prefix(&self.workspace).unwrap_or(&target).display()),
@@ -443,6 +473,26 @@ mod tests {
         assert!(executor.execute(&action).is_err());
         assert!(!root.join("must-not-exist.txt").exists());
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_file_replaces_a_hard_link_without_modifying_the_external_inode() {
+        use std::os::unix::fs::hard_link;
+        let root = workspace();
+        let outside = root.with_extension("outside");
+        fs::write(&outside, "original external content").unwrap();
+        hard_link(&outside, root.join("inside.txt")).unwrap();
+        let executor = ToolExecutor::new(root.clone());
+        let action = ToolAction {
+            name: "write_file".into(),
+            arguments: json!({"path":"inside.txt","content":"workspace replacement"}),
+        };
+        assert!(executor.execute_approved(&action).is_ok());
+        assert_eq!(fs::read_to_string(&outside).unwrap(), "original external content");
+        assert_eq!(fs::read_to_string(root.join("inside.txt")).unwrap(), "workspace replacement");
+        fs::remove_dir_all(&root).unwrap();
+        fs::remove_file(outside).unwrap();
     }
 
     #[test]
