@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
-import { all, id, now, one, run } from "../db.js";
+import { all, db, id, now, one, run } from "../db.js";
 import { getWorkItemPermissions, isGlobalAdmin, getWorkflowProjection } from "../workflow/engine.js";
 import {
   agentProfiles,
