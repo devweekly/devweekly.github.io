@@ -121,6 +121,10 @@ test("Request lifecycle freezes submissions, pauses review for clarification and
   assert.equal(status("workflow-one")?.status,"requestor_revision");
   assert.equal(status("workflow-one")?.decision_outcome,"needs_work");
 
+  run("INSERT INTO external_resource_refs(id,provider,resource_type,external_id,external_key,title,url,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+    "ref-workflow-two","github","PullRequest","external-2","PR-202","Review evidence added after first submission","https://github.com/example/repo/pull/202",now(),now());
+  run("INSERT INTO work_item_external_links(id,work_item_id,resource_id,relation_type,linked_by,created_at) VALUES(?,?,?,?,?,?)",
+    "link-workflow-two","workflow-one","ref-workflow-two","evidence","requestor",now());
   run("UPDATE work_items SET request_package_json=? WHERE id=?",
     JSON.stringify({goal:"Updated outcome",submissionMessage:"fix(request): clarify trust boundary"}),"workflow-one");
   const second=transitionWorkItem("workflow-one","requestor","submit_request","Revised submission",{
