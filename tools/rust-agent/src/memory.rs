@@ -565,6 +565,34 @@ impl MemoryStore {
         Ok(true)
     }
 
+    /// Fence a background-task checkpoint against lease takeover.
+    /// The IMMEDIATE transaction is held while the caller persists its checkpoint,
+    /// so another process cannot acquire the expired lease between verification and write.
+    pub fn with_background_task_lease<T>(
+        &self,
+        task_id: &str,
+        owner_id: &str,
+        operation: impl FnOnce() -> Result<T, AgentError>,
+    ) -> Result<T, AgentError> {
+        let mut connection = self.conn()?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let now = to_i64(now_ms())?;
+        let owns_lease: bool = transaction.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM background_task_leases
+                WHERE task_id=?1 AND owner_id=?2 AND lease_until_ms>?3
+            )",
+            params![task_id,owner_id,now],
+            |row| row.get(0),
+        )?;
+        if !owns_lease {
+            return Err(AgentError::Cancelled);
+        }
+        let result = operation()?;
+        transaction.commit()?;
+        Ok(result)
+    }
+
     pub fn renew_background_task_lease(
         &self,
         task_id: &str,
@@ -3010,6 +3038,31 @@ mod tests {
         };
         assert!(store.apply_dreaming(deletion).is_err());
         assert!(store.get_page("child-page").is_ok());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn background_task_checkpoint_is_fenced_by_the_current_lease_owner() {
+        let root = workspace();
+        let first = MemoryStore::new(&root).unwrap();
+        let second = MemoryStore::open(&first.database_path().to_path_buf()).unwrap();
+        assert!(first.acquire_background_task_lease("task-fence", "owner-a", 120_000, 1).unwrap());
+
+        let mut checkpoint = 0;
+        first.with_background_task_lease("task-fence", "owner-a", || {
+            checkpoint = 1;
+            Ok(())
+        }).unwrap();
+        assert_eq!(checkpoint, 1);
+
+        first.release_background_task_lease("task-fence", "owner-a").unwrap();
+        assert!(second.acquire_background_task_lease("task-fence", "owner-b", 120_000, 1).unwrap());
+        let stale_write = first.with_background_task_lease("task-fence", "owner-a", || {
+            checkpoint = 2;
+            Ok(())
+        });
+        assert!(matches!(stale_write, Err(AgentError::Cancelled)));
+        assert_eq!(checkpoint, 1);
         let _ = fs::remove_dir_all(root);
     }
 
