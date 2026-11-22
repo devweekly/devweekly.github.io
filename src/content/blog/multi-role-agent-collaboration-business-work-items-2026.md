@@ -63,7 +63,7 @@ A2A（Agent2Agent）是跨 Agent 系统的互操作协议。Agent 可以通过 A
 
 **Task 表示一次可执行的工作。** Task 可以分配给人，也可以分配给 Agent；可以由流程自动创建，也可以由参与者主动发起。它有自己的状态、输入、输出、截止时间、依赖、执行者和重试规则。一个 Work Item 可以有多个 Task，例如需求澄清、架构分析、安全评审、数据影响分析和最终决策。
 
-**Artifact 与 Decision 是两种不同的业务结果。** Artifact 是分析文档、架构图、风险清单、测试结果或证据包，必须有版本和来源；Decision 是对某个问题作出的正式决定，例如接受、拒绝、附条件接受或退回修改。Agent 可以提出 Decision Proposal，但不能仅凭生成一段文本就改变正式业务状态。
+**Artifact、Decision Draft 与 Decision 是三种不同的对象。** Artifact 是分析文档、架构图、风险清单、测试结果或证据包，必须有版本和来源。Agent 可以生成分析结论、选项比较、风险评估和 Decision Draft（决策草案），但不能确认草案，也不能作出、批准或提交正式 Decision。只有具备相应权限的 Human 才能确认、修改或拒绝决策草案，并亲自确认正式决定。系统可以在 Human 确认后执行状态转换、通知和归档，但自动化执行不等于 Agent 拥有决定权。
 
 这四层不要压成一张“Agent Session”记录。Session 是运行时概念，Work Item 是业务概念；前者可以结束、重建或切换模型，后者必须长期存在。
 
@@ -89,7 +89,7 @@ A2A（Agent2Agent）是跨 Agent 系统的互操作协议。Agent 可以通过 A
 
 角色不应直接决定全部权限。Requester 在“待补充”阶段可以修改需求材料，但在正式决策后不能悄悄覆盖历史版本；Reviewer 可以提出阻断性意见，但是否能批准最终方案由流程规则决定。权限判断应结合 Principal、Role、Work Item、当前状态、资源分类、动作和策略版本。
 
-Agent 也应遵循同一模型。不要创建一个全局的“Architect Agent”账号，然后让它天然拥有所有架构事项的修改权。应为每次 Agent Participation 绑定委托来源、允许的 Task 类型、资源范围、有效期和可执行动作。Agent 的身份说明它是谁，Participation 说明它为何参与这个事项，Capability 才说明它能做什么。
+Agent 也应遵循同一模型。不要创建一个全局的“Architect Agent”账号，然后让它天然拥有所有架构事项的修改权。应为每次 Agent Participation 绑定委托来源、允许的 Task 类型、资源范围、有效期和可执行动作。Agent 的身份说明它是谁，Participation 说明它为何参与这个事项，Capability 才说明它能做什么。无论 Agent 的角色名称是 Analyst、Reviewer Assistant 还是 Approver Assistant，都不因此获得 Human 的业务决定权：Agent 可以分析、质疑、推荐、准备草案和提醒风险，不能代表 Human 确认草案、确认评审结论、批准或拒绝事项。
 
 ## 5. 同一个事项可以有多个 Agent，但不需要一个永久的 Agent 群聊
 
@@ -215,7 +215,7 @@ A2A 的 contextId 可以在一个远端 Agent 的多个相关任务之间保持�
 
 **执行任务的授权**：Principal 是否可以认领或执行这个 Task，Agent 是否被允许读取本次 Context View、调用指定工具和生成指定类型的 Artifact。授权应限定到事项、资源、动作和有效期。
 
-**提交业务动作的授权**：谁可以把 Artifact 标记为正式提交，谁可以要求重做，谁可以批准或拒绝，谁可以关闭事项。Agent 可以提交建议或草稿，但正式决策必须由授权主体完成，除非业务规则明确允许自动化决定。
+**提交业务动作的授权**：谁可以把 Artifact 标记为正式提交，谁可以要求重做，谁可以批准或拒绝，谁可以关闭事项。Agent 可以提交分析产物、建议和决策草案，但不能确认草案、确认正式评审结论、批准或拒绝，也不能关闭事项。所有具有业务后果的确认和决定都必须由具备权限的 Human 明确执行。系统可在 Human 操作后自动完成确定性的状态更新、任务派发和通知。
 
 尤其要防止权限随交接扩大。父 Agent 委托子 Agent 时，只能传递完成任务所需的最小权限；子 Agent 不能自行扩大数据范围或获取新的业务权限。A2A 的认证机制只解决远端调用的身份与传输安全，不能替代本地对 Work Item 的资源级授权。
 
@@ -249,7 +249,7 @@ Camunda User Task 可以配置 assignee、candidateUsers 和 candidateGroups，�
 
 第一阶段先实现一个真正可用的 Work Item 工作台，不急于构建 Agent 市场或复杂的 Agent 群体自治。选择架构分析作为第一个业务类型，提供事项创建、角色参与、任务分配、Artifact 版本、Review、Decision、评论和审计。Agent 先作为一种 Task Assignee 接入，能力范围与普通用户一样受到事项级授权。
 
-第二阶段增加自动协作。系统根据事项类型、阶段和缺失信息创建 Task；Agent 可以建议新增 Specialist Participation、请求 Requester 补充信息、创建 Reviewer Task 或生成分析产物。任务是否分配给人还是 Agent，由策略、能力和风险决定。对于需要独立判断的 Review，应使用独立执行上下文。
+第二阶段增加自动协作。系统根据事项类型、阶段和缺失信息创建 Task；Agent 可以建议新增 Specialist Participation、请求 Requester 补充信息、建议创建 Reviewer Task 或生成分析产物；涉及角色任命、任务正式分配和业务状态变化的动作，仍由授权 Human 或确定性业务规则确认执行。任务是否分配给人还是 Agent，由策略、能力和风险决定。对于需要独立判断的 Review，应使用独立执行上下文。
 
 第三阶段再增加跨 Agent 服务。先统一本地 Task Contract、Artifact Contract 和授权模型，再为远端 Agent 增加 A2A Adapter。这样即使某个 Agent 使用 LangGraph、另一个使用自研 Runtime、第三个由供应商提供，也不会改变业务事项模型。
 
@@ -276,3 +276,211 @@ A2A 是这套架构中的一个通信边界：当独立 Agent 服务需要互相
 真正需要共享的是经过授权、结构化、版本化的 Work Item Context，而不是所有 Agent 的内部记忆。真正需要治理的是谁能对哪个事项、哪个版本、执行什么动作，而不是 Agent 之间能不能互相发送消息。
 
 **建议采用 Work Item-centric Collaboration Architecture：以业务事项为中心，以 Participation 管理动态角色，以 Task 管理人与 Agent 的工作，以 Artifact / Decision 固化结果，以 Business Workflow 管理正式状态，以 A2A 连接跨边界 Agent。** 这样既能容纳同一项目内的多 Agent，也能支持不同用户在不同事项中承担不同职责，而且不会把业务责任、项目上下文和 Agent 执行状态混成一团。
+
+
+## 15. 关键原则：Agent 可以分析和起草，不能替 Human 作决定
+
+这是整个协作系统必须贯彻的业务控制边界，而不是某个 Agent Prompt 的行为约定。
+
+Agent 的职责是帮助 Human 更好地理解问题和准备行动。它可以读取授权范围内的资料，检索知识，识别矛盾和缺失信息，比较方案，分析影响与风险，提出推荐，生成报告、评审意见和决策草案。它也可以指出当前事项可能需要谁参与、下一步有哪些可选动作，以及每种动作的后果。
+
+但 Agent 不能把自己的分析结果升级为组织决定。以下动作必须由有权限的 Human 明确确认：
+
+- 确认、接受或修改 Agent 生成的 Decision Draft。
+- 作出正式的批准、拒绝、附条件批准、豁免或风险接受决定。
+- 确认正式 Review Outcome，尤其是通过、阻断或关闭评审。
+- 确认业务范围、关键约束、风险接受和例外处理。
+- 确认事项完成或关闭，以及任何具有同等业务效果的动作。
+
+因此，数据模型必须区分至少三个层次：
+
+| 对象 | 含义 | 谁可以创建或修改 | 是否产生正式业务效力 |
+| --- | --- | --- | --- |
+| Analysis / Recommendation | 分析、事实整理、方案比较、风险和建议 | Human、Agent | 否 |
+| Decision Draft | 面向 Human 的结构化决策草案，包含选项、推荐、理由、风险和待确认条件 | Human、Agent | 否 |
+| Decision | Human 明确确认的正式决定，包含决定人、权限依据、时间、理由和适用范围 | 授权 Human | 是 |
+
+Review 也采用相同原则。Agent 可以生成 Review Findings 或 Review Recommendation，例如“发现两个阻断问题，建议退回修改”；但如果流程要求正式 Reviewer 确认评审结论，那么必须由被授权的 Human Reviewer 执行确认。Agent 辅助 Reviewer 不等于 Agent 成为 Reviewer of Record。
+
+系统界面应清楚区分“Agent 建议”“待 Human 确认”和“已由某人正式确认”。不能使用一个模糊的“完成”按钮，让 Agent 提交结果后看起来像事项已经批准。Human 确认时应看到被确认的草案版本、关键依据、未解决风险和确认后果；确认动作记录操作者身份、角色、对象版本和时间。若草案在确认前发生变化，原确认界面应失效并要求重新审阅。
+
+在技术实现上，不要只依赖 Prompt 说“你不能决定”。权限层应直接拒绝 Agent Principal 对 Decision、Approval、正式 Review Outcome 和 Work Item Closure 执行写入。Agent Gateway 可以提供 `prepare_decision_draft`、`submit_recommendation`、`request_human_confirmation` 等工具，但不向 Agent 暴露 `approve_work_item`、`confirm_decision`、`reject_request` 或 `close_case` 这类正式决定工具。即使 Agent 通过其他 API 尝试调用，也必须在服务端按 Principal 类型和授权策略拒绝。
+
+Human 确认后，系统可以自动执行后续确定性动作，例如更新状态、创建下一个 Task、通知参与者或归档版本。这是工作流引擎执行已确认的业务规则，不是 Agent 自主作出决定。任何“自动化”都不能绕过 Human 确认这一业务边界。
+
+## 16. 多入口协作：网站是业务协作中心，不是所有人的 Agent Host
+
+参与者使用的工作环境不应该被平台统一。有人完全不用 Agent；有人日常使用 VS Code 中的 GitHub Copilot Chat；有人使用 Copilot CLI 或 SDK；有人使用 Claude Code 或其他本地 Agent Runtime；也有人直接使用网站内置 Agent。平台要统一的是业务事项、任务、上下文、产物和责任，而不是每个人的模型、IDE、插件或本地工作区。
+
+建议将网站定位为 **Business Collaboration Hub**。它负责 Work Item、Participation、Task、业务上下文、产物版本、评审、Human 决策和审计。外部 Agent Runtime 负责用户选择的执行环境。网站内置 Agent 是可选入口，适合搜索、整理和分析；它不应成为所有用户参与事项的前置条件。
+
+这意味着“使用 Agent”不应该是创建或处理事项的必要步骤。没有安装 MCP、没有 Skill、没有 SDK、没有脚本，用户仍然可以完整参与工作。平台提供的集成能力应逐级增强，而不是一次性要求用户改变工作习惯。
+
+### 16.1 Agent 接入的四个层级
+
+| 层级 | 使用方式 | 网站提供什么 | 用户需要做什么 | 适用场景 |
+| --- | --- | --- | --- | --- |
+| Level 0：Copy / Paste | 用户把事项上下文复制到自己的 Agent，再把结果提交回网站 | 简短任务说明、Context Capsule、复制入口、结果提交入口 | 复制一段指令，使用自己熟悉的 Agent，粘贴结果 | 临时使用、轻量分析、没有集成能力的 Agent |
+| Level 1：MCP / Remote API | 外部 Agent 通过工具读取事项并提交工作结果 | 有范围限制的 MCP Server 或 API、授权和审计 | 完成一次授权或使用已有企业身份集成 | Agent 能调用远程工具，但不需要本地文件执行 |
+| Level 2：Local SDK / CLI Connector | 本地 Connector 把网站 Task 与用户本地 Agent Runtime 连接 | Task API、短期委托授权、回调和活动记录接口 | 连接本地 Copilot SDK/CLI、Claude Code 或其他 Runtime | 需要本地文件、IDE、脚本和工具的深度工作 |
+| Level 3：Skill / Agent 配置 | 加载团队或个人的专用 Skill、模板和规则 | 可选 Skill、模板、知识源和配置分发 | 主动安装或启用 | 重复性强、专业要求高的团队工作 |
+
+Level 0 必须被认真设计，而不是当作临时补丁。用户在事项页面点击“交给我的 Agent 辅助”，网站生成一段可以直接复制的任务说明，明确工作目标、必要背景、约束、预期产物和提交方式。用户不必理解 MCP、OAuth、SDK 或 Agent Skill。
+
+Level 1 适合 Agent 已具备 MCP 或 HTTP 工具调用能力的情况。工具应围绕业务意图设计，例如读取当前任务、准备上下文、列出可访问产物、提交分析结果、请求人工补充，而不是简单暴露一个可以任意修改事项的通用接口。
+
+Level 2 解决网站无法直接访问用户本地工作区的问题。Connector 在用户本机运行，使用用户选择的 Runtime 和本地文件工具；网站只提供任务上下文、授权范围和结果提交接口。网站不需要托管或接管用户的 Copilot / Claude Code Session。
+
+Level 3 是可选的专业化能力，不应成为参与流程的门槛。某个团队可以安装架构分析 Skill、ADR 模板或安全审查规则；另一个团队可以只使用普通 Copilot Chat 的一两句话提示。系统不能假设每个用户都愿意维护完整的 Agent 配置。
+
+### 16.2 Context Capsule：把必要业务上下文交给外部 Agent
+
+网站需要提供一个可复制、可下载或通过授权 API 获取的 Context Capsule。它不是完整的 Work Item 导出，也不是把全部聊天历史塞进 Prompt，而是针对当前参与者、Task 和权限生成的最小工作上下文。
+
+建议包含：
+
+| 字段 | 内容 |
+| --- | --- |
+| Work Item Reference | 事项 ID、标题、事项类型和可访问链接 |
+| Task Reference | Task ID、当前目标、状态和截止时间 |
+| Participant Context | 当前 Human 的事项角色，以及 Agent 被委托执行的辅助工作 |
+| Objective | 需要分析或完成的问题 |
+| Business Context | 与本次任务有关的业务事实和背景 |
+| Constraints | 已确认约束、不可违反的边界和明确排除项 |
+| Inputs | 授权访问的 Artifact、附件、证据和版本引用 |
+| Expected Output | 需要提交的分析、风险、建议或 Decision Draft 格式 |
+| Submission Instructions | 如何把结果提交回网站，以及提交到哪个 Task |
+| Context Version | 上下文快照或版本标识，便于追溯结果所依据的输入 |
+
+Capsule 应明确区分已确认事实、待验证假设、历史建议和正式决定。Agent 不应把“某人曾在评论中提出的猜测”当成业务事实。敏感资料默认只提供引用和受控访问链接，不应因为用户复制了一段 Prompt 就把受限内容泄露到外部模型。链接本身也不能代替授权；外部 Agent 访问资源时仍需独立验证身份和权限。
+
+对于 Level 0，平台无法可靠观测用户在 Copilot 或 Claude Code 中做了什么，也不应伪装成能够完整追踪。网站只记录 Context Capsule 的生成、用户提交的 Artifact 和相关 Human 操作。对于 MCP 和 Connector，平台可以记录经由授权工具发生的活动，但仍不需要采集 Agent 的内部思维过程。
+
+## 17. Work Session：区分业务任务与实际工作过程
+
+Task 是业务工作单元，Work Session 是某个参与者围绕该 Task 实际开展的一段工作。二者不能混为一谈。
+
+例如，Bob 接手一个架构分析 Task，上午在 VS Code 中使用 Copilot Chat，下午切换 Claude Code，第二天又手动修改报告，最后提交 Artifact v1。这是同一个 Task 下的多个 Work Session，而不是三个不同的业务任务。
+
+建议 Work Session 至少记录：
+
+- Session ID、Task ID、Work Item ID。
+- Participant / Principal，以及执行方式：Human、Local Agent、Website Agent、External Agent 或 Hybrid。
+- 使用的 Runtime / Tool（若可观测）、开始和结束时间。
+- 本次 Session 的目标、输入 Context Version 和访问范围。
+- 产生的 Activity、草稿或 Artifact 引用。
+- Session 状态，例如 Active、Paused、Waiting、Completed、Abandoned。
+
+Work Session 不是所有场景的强制对象。纯人工参与可以只记录业务活动；当需要追踪连续工作、等待恢复、跨 Runtime 接力或 Agent 执行时，再创建 Session。不能因为没有 Session 记录就认为 Task 没有发生，也不能把 Session Completed 等同于 Task Completed。
+
+Task 可以有多个 Session，Session 可以由 Human、Agent 或二者共同参与。Task 的责任人仍然是 Human 或被指定的业务责任主体；Agent Session 只是被授权的执行过程。即使 Agent 生成了完整报告，Task 是否完成、是否提交、是否进入评审，仍由业务规则和有权限的 Human 操作决定。
+
+## 18. 端到端场景：同一事项，多种工作方式
+
+### 场景 A：纯 Human 协作
+
+Requester 在网站创建事项，Architect 接手 Task，上传分析报告，Reviewer 在网站查看并提交评审意见，Architect 修改后提交新版本。Business Owner 或 Approver 查看材料并作出正式决定。所有步骤都在网站完成，不需要 Agent、MCP 或 Skill。
+
+### 场景 B：临时使用 Copilot Chat
+
+用户打开 Task，复制网站生成的 Context Capsule，将一两句话和必要上下文粘贴到自己日常使用的 Copilot Chat。Copilot 帮助整理分析、比较方案或起草报告。用户检查结果后，将内容作为 Artifact 提交到网站。
+
+网站不需要知道用户的 Copilot Session ID，也不需要为此创建专用 Agent、安装 Skill 或运行脚本。Agent 的分析内容仍是工作草稿，用户提交也不意味着正式批准；后续评审和 Human 决策按业务流程进行。
+
+### 场景 C：深度连接本地 Copilot 或 Claude Code
+
+用户在网站选择连接本地 Agent，完成一次明确授权。本地 Connector 获取当前 Task 的最小上下文，启动或连接用户选择的 Runtime。Runtime 可以访问用户授权的本地文件和工具，生成分析产物，再由 Connector 提交回网站。
+
+网站记录授权关系、Session 元数据、提交的 Artifact 和可观测的工具活动，但不需要接管本地 Agent 的会话管理。用户可以中断、切换 Runtime 或手工继续；业务 Task 不会因为某个本地 Session 结束而丢失。
+
+### 场景 D：网站内置 Agent 辅助
+
+用户在网站内选择“辅助分析”。Website Agent 根据授权范围检索知识库、整理材料、分析缺失信息并形成建议。若缺少业务信息，它可以提出问题并将 Task 标记为等待 Human 输入；Requester 补充后，Agent 可以继续分析。
+
+Agent 可以提交分析草稿或建议，但不能自行确认评审结果、批准事项或关闭 Work Item。需要正式结论时，系统把草案交给对应 Human 确认。
+
+### 场景 E：多人使用不同 Agent 并行工作
+
+同一个 Work Item 中，Bob 使用 Copilot 分析应用架构，Carol 使用 Claude Code 检查本地配置和代码，David 使用网站 Agent 检索企业标准。三人各自拥有 Task 和 Work Session，结果作为不同 Artifact 汇集到同一个 Work Item。
+
+Alice 作为 Reviewer 获得被授权的材料，独立审查这些产物。Agent 可以协助 Alice 整理差异和风险，但正式 Review Outcome 由 Alice 确认。最终业务决定由有权限的 Business Owner 或 Approver 作出。
+
+### 场景 F：临时 Agent 咨询，不启动完整流程
+
+参与者可能只是想针对事项中的一个问题向 Agent 咨询，例如“这个方案是否存在数据驻留风险”。这类咨询可以记录为关联当前 Work Item 的 Collaboration Message 或轻量 Work Session，不必自动创建完整审批流程。只有当分析结果需要正式交付、评审或产生后续工作时，才提升为独立 Task 或 Artifact。
+
+这些场景应共享同一套业务模型。差异在于工作入口和执行方式，不应为每一种 Agent Runtime 建立一套独立的事项、状态和产物系统。
+
+## 19. 记录模型：业务事实、工作过程、产物和讨论分开保存
+
+不要把所有交互压成 Chat History。建议明确区分四类记录：
+
+| 记录类型 | 记录什么 | 例子 | 权威性 |
+| --- | --- | --- | --- |
+| Business Activity | 事项和流程中的正式业务动作 | 接手任务、邀请 Reviewer、Human 确认决策、关闭事项 | 业务审计依据 |
+| Work Activity | 人或 Agent 实际执行的工作 | 检索资料、运行分析、修改草稿、生成风险清单 | 执行过程记录，不代表业务决定 |
+| Artifact | 可引用、可版本化的工作产物 | 分析报告、架构图、Review Findings、Decision Draft | 依据类型和确认状态决定 |
+| Collaboration Message | 围绕问题的讨论、提问和回复 | Requester 补充、Agent 提问、Human 评论 | 讨论上下文，不自动成为正式事实 |
+
+Work Activity 可以记录“Copilot 辅助生成了架构分析草稿”，但不能记录成“架构方案已批准”。Decision Draft 可以保存 Agent 推荐的选项和理由，但只有 Human 确认后才创建正式 Decision。业务审计日志不应依赖 Agent 自己声称“我已批准”；它必须来自服务端验证过的 Human Principal 和授权操作。
+
+## 20. 身份、SSO 与 Agent 委托授权
+
+网站有 SSO，并不意味着用户本机的 Copilot、Claude Code 或其他 Agent 自动获得网站权限。用户登录浏览器，也不代表本地 Agent 可以读取浏览器 Cookie。不要把浏览器会话凭证复制给 Agent，也不要让 Agent 通过共享用户密码模拟 Human。
+
+深度连接应使用明确的委托授权流程，例如 OAuth Authorization Code + PKCE，或符合企业身份平台要求的 Device Authorization。Token 应短期有效、范围最小、可撤销，并绑定用户、Agent Client、Work Item / Task、允许动作和资源范围。不同 Agent Session 不应自动继承用户的全部权限。
+
+身份模型应分开记录：
+
+- **Human Principal**：真实登录并发起委托的用户。
+- **Agent Execution Identity**：实际执行工具调用的 Agent 或 Connector 身份。
+- **Delegation Grant**：Human 授予该 Agent 的有限权限，包含范围、有效期和撤销状态。
+- **Business Participation**：Human 或 Agent 在 Work Item 中的业务参与关系。
+
+审计链应能表达“Bob 委托本地 Connector 启动 Copilot Session 123，Session 生成 Artifact v2，Bob 检查并提交”。不能把 Agent 的执行行为记在 Bob 名下而隐藏 Agent 身份，也不能因为 Agent 是 Bob 启动的就认为它可以执行 Bob 有权执行的所有动作。Human 委托给 Agent 的权限只能是其本人权限的受限子集，并且仍受 Agent Principal 的动作限制；正式决定权不能通过委托转移给 Agent。
+
+## 21. API 与工具边界
+
+API 应围绕 Work Item 和 Task 提供明确的业务操作，而不是开放一个可以任意修改对象的万能接口。一个初始 REST API 可以包括：
+
+| API | 用途 |
+| --- | --- |
+| `GET /work-items/{id}` | 读取有权访问的事项 |
+| `GET /work-items/{id}/context` | 获取当前授权范围内的上下文视图 |
+| `GET /work-items/{id}/tasks` | 列出事项任务 |
+| `POST /tasks/{id}/sessions` | 创建 Work Session |
+| `POST /tasks/{id}/activities` | 记录可审计的工作活动 |
+| `POST /tasks/{id}/artifacts` | 提交分析产物或草案 |
+| `POST /tasks/{id}/comments` | 添加讨论消息 |
+| `POST /tasks/{id}/request-input` | 请求 Human 补充信息 |
+| `POST /tasks/{id}/handoff` | 发起任务交接请求 |
+| `POST /tasks/{id}/complete` | 提交任务完成请求，由业务规则判断是否可完成 |
+
+MCP Tool 不需要与 REST API 一一对应。面向 Agent 的工具应表达工作意图，例如 `get_my_work`、`prepare_work_context`、`submit_analysis`、`submit_review_findings`、`prepare_decision_draft`、`request_human_confirmation`。不要暴露一个不受约束的 `update_work_item`，更不能给 Agent 提供正式批准、确认决定或关闭事项的工具。
+
+`POST /tasks/{id}/complete` 对 Agent 应解释为“提交工作结果或完成请求”，不是直接把业务事项推进到已批准或已关闭。服务端需要区分 Task Execution Status、Artifact Submission Status 和 Business Workflow Status。Agent 可以完成自己的分析执行，但 Task 是否被业务接受、Review 是否通过、Decision 是否生效，都由相应 Human 或确定性业务规则处理。
+
+## 22. 调整后的落地顺序与验收重点
+
+实施时建议先把 Human 主导的业务闭环做正确，再逐步增加 Agent 接入能力：
+
+1. **业务骨架**：Work Item、Participation、Task、Artifact、Review、Decision、Human 确认、审计。先确保纯 Human 流程完整可用。
+2. **低门槛 Agent 使用**：Context Capsule、Copy / Paste、草稿提交和结果归集。无需连接任何 Runtime。
+3. **网站内置 Agent**：提供搜索、整理、分析、请求补充和草稿生成能力；所有正式确认保留给 Human。
+4. **MCP / Remote API**：提供最小权限、可审计的事项读取和结果提交工具。
+5. **Local Connector**：支持 Copilot SDK/CLI、Claude Code 等不同本地 Runtime，保持 Runtime-independent。
+6. **团队 Skill 与跨组织 A2A**：在确实需要复用专业工作方法或委托外部 Agent 服务时再增加。
+
+验收不能只检查 Agent 能否完成任务，还必须检查业务权力边界：
+
+- 没有 Agent 的用户可以独立完成事项全流程。
+- 用户只复制一段 Context Capsule 就能使用自己的 Agent，不需要先安装 Skill 或连接 SDK。
+- 同一 Task 可以切换多个 Runtime 或回到人工处理，Task 和 Artifact 历史不丢失。
+- 多人使用不同 Agent 并行工作，产物能回到同一个 Work Item 并保留来源。
+- Agent 可以提交分析、建议、Review Findings 和 Decision Draft，但不能确认它们为正式结果。
+- Agent Principal 调用批准、拒绝、确认决定、确认正式 Review 或关闭事项的接口时，服务端必须拒绝。
+- 只有具备相应权限的 Human 能确认 Decision Draft，并产生正式 Decision。
+- Human 确认后，工作流可以自动推进后续确定性步骤，但审计记录必须保留真实 Human 决定者。
+- Agent 的建议、工作活动和聊天内容不会被误记为业务事实或组织决定。
+- SSO 登录不会自动授予本地 Agent 权限；委托范围可查看、可撤销、可过期。
+- 对 Level 0 Copy / Paste，系统不声称可以追踪 Agent 内部执行；对集成方式，只记录实际经过平台的活动。
