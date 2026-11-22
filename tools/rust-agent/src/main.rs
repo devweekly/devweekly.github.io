@@ -204,7 +204,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Rust Agent ready. Workspace: {}", runtime.workspace().display());
     println!("Session: {}", runtime.session_id());
-    println!("Commands: /help, /attach <workspace-relative-path>, /new, /session, /resume <id>, /fork, /model <id>, /models, /agents, /agent <id>, /mode <default|plan>, /context, /compact, /usage, /dream, /dream-status, /prune-transcripts <days>, /prune-tasks <days>, /forget-memory <id>, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
+    println!("Commands: /help, /attach <workspace-relative-path>, /new, /session, /resume <id>, /fork, /model <id>, /models, /agents, /agent <id>, /mode <default|plan>, /context, /compact, /usage, /dream, /dream-status, /prune-transcripts <days>, /prune-sessions <days>, /prune-tasks <days>, /forget-memory <id>, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
 
     loop {
         print!("you> ");
@@ -242,6 +242,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!(" /dream               Consolidate pending memory now");
             println!(" /dream-status        Show pending transcripts, lease, retries and recent runs");
             println!(" /prune-transcripts <days>  Prune unreferenced transcript rows older than N days");
+            println!(" /prune-sessions <days>     Remove old Session files, preserving active task parents");
             println!(" /forget-memory <id>        Forget a memory and its dependent evidence");
             println!(" /prune-tasks <days>        Remove old completed, failed and cancelled tasks");
             println!(" /tasks               List background tasks");
@@ -358,6 +359,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     Err(error) => eprintln!("Transcript retention failed: {error}"),
                 },
                 Err(_) => eprintln!("Usage: /prune-transcripts <days>"),
+            }
+            continue;
+        }
+        if let Some(value) = input.strip_prefix("/prune-sessions ") {
+            match value.trim().parse::<u64>() {
+                Ok(days) => match runtime.prune_sessions_before_days(days) {
+                    Ok(deleted) => println!("Pruned {deleted} old Session files; current/latest Sessions and background-task parents were preserved."),
+                    Err(error) => eprintln!("Session retention failed: {error}"),
+                },
+                Err(_) => eprintln!("Usage: /prune-sessions <days>"),
             }
             continue;
         }
