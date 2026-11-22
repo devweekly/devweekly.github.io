@@ -1,4 +1,4 @@
-import { all, id, now, run } from "./db.js";
+import { all, id, now, one, run } from "./db.js";
 
 export function seed() {
   if (all("SELECT id FROM people LIMIT 1").length === 0) {
