@@ -780,7 +780,7 @@ export default function App() {
       </Content>
     </Layout>
     <Modal title="新建事项" open={newItemOpen} onCancel={()=>setNewItemOpen(false)} onOk={()=>void submitForm(newItemForm,async()=>{const v=newItemForm.getFieldsValue();if(v.targetDate)v.targetDate=v.targetDate.format("YYYY-MM-DD");return api.createWorkItem(v);},"事项已创建",()=>setNewItemOpen(false))} confirmLoading={busy} width={720}>
-      <Form form={newItemForm} layout="vertical" initialValues={{type:"architecture_review",priority:"normal",submissionMessage:"初始申请材料"}}>
+      <Form form={newItemForm} layout="vertical" initialValues={{type:"architecture_review",priority:"normal",submissionMessage:"提交事项评审申请"}}>
         <Form.Item name="title" label="事项名称" rules={[{required:true}]}><Input placeholder="例如：客户身份平台架构评估" /></Form.Item>
         <Form.Item name="type" label="事项类型"><Select options={[{value:"architecture_review",label:"架构评审"},{value:"solution_assessment",label:"方案评估"},{value:"change_assessment",label:"变更评估"},{value:"risk_assessment",label:"风险评估"},{value:"other",label:"其他"}]} /></Form.Item>
         <Form.Item name="description" label="问题背景与业务目标" rules={[{required:true}]}><TextArea rows={3} /></Form.Item>
@@ -862,7 +862,7 @@ export default function App() {
 
     <Modal title="发起多角色分析" open={agentPlanOpen} onCancel={()=>setAgentPlanOpen(false)} onOk={()=>void submitForm(agentPlanForm,async()=>{
       const value=agentPlanForm.getFieldsValue();
-      if(!String(value.name || "").trim() || !String(value.objective || "").trim() || !Array.isArray(value.agentKeys) || value.agentKeys.length===0) throw new Error("计划名称、共同目标和至少一个角色均为必填项。");
+      if(!String(value.name || "").trim() || !String(value.objective || "").trim() || !Array.isArray(value.agentKeys) || value.agentKeys.length===0) throw new Error("计划名称、分析目标和至少一个角色为必填项。");
       const nodes=(value.agentKeys as string[]).map(agentKey=>({
         key:agentKey,
         agentKey,
@@ -904,7 +904,7 @@ export default function App() {
       <Alert type="warning" showIcon message="只有指定的会议主席或管理员可以记录正式结论。评审截止、普通评论和阻断性异议都不会自动批准或拒绝事项。" className="modal-alert" />
       <Form form={decisionForm} layout="vertical" initialValues={{outcome:"approved",createTechnicalDebt:false}}>
         <Form.Item name="meetingAt" label="会议时间"><DatePicker showTime style={{width:"100%"}} /></Form.Item>
-        <Form.Item name="outcome" label="正式结论" rules={[{required:true}]}><Select options={[{value:"approved",label:"Approved · 批准"},{value:"needs_work",label:"Need Work · 要求修改"},{value:"rejected",label:"Rejected · 拒绝"}]} /></Form.Item>
+        <Form.Item name="outcome" label="正式结论" rules={[{required:true}]}><Select options={[{value:"approved",label:"批准"},{value:"needs_work",label:"要求修改"},{value:"rejected",label:"拒绝"}]} /></Form.Item>
         <Form.Item name="rationale" label="决定依据" rules={[{required:true}]}><TextArea rows={3} /></Form.Item>
         <Form.Item name="conditions" label="批准条件 / 后续约束"><TextArea rows={2} /></Form.Item>
         <Form.Item name="minutes" label="会议纪要"><TextArea rows={4} /></Form.Item>
@@ -937,7 +937,7 @@ export default function App() {
       delete value.existingResourceId;
       return api.addExternalLink(selected!.id,value);
     },"外部资源已添加",()=>setExternalLinkOpen(false))} confirmLoading={busy} width={760}>
-      <Alert type="info" showIcon message="这里只保存外部资源链接，不会读取外部系统内容。" description="这里仅保存 Jira、Confluence、GitHub 和 LeanIX 中资源的链接与标识，不会连接这些系统或读取其中的内容。已添加的资源可关联到多个事项；新资源请填写对应的 ID、Key 和链接。Agent 如需读取原文，仍需使用自己获准访问源系统的工具。" className="modal-alert" />
+      <Alert type="info" showIcon message="只保存外部资源链接和标识。" description="Workbench 不会连接或同步 Jira、Confluence、GitHub 和 LeanIX。已添加的资源可以关联到多个事项；新资源请填写对应的 ID、Key 和链接。Agent 如需读取原文，仍需使用自己获准访问源系统的工具。" className="modal-alert" />
       <Form form={externalLinkForm} layout="vertical">
         <Form.Item name="existingResourceId" label="选用已登记的外部资源（可选）">
           <Select allowClear showSearch optionFilterProp="label" placeholder="按系统、Key 或名称搜索当前身份可见的引用" options={externalReferences.map(r=>({value:r.id,label:r.provider.toUpperCase()+" · "+(r.external_key || r.external_id)+" · "+r.title}))} />
@@ -995,7 +995,7 @@ export default function App() {
           <Col span={12}><Form.Item name="displayName" label="姓名" rules={[{required:true}]}><Input /></Form.Item></Col>
           <Col span={12}><Form.Item name="title" label="职位 / 专业角色" rules={[{required:true}]}><Input /></Form.Item></Col>
         </Row>
-        <Form.Item name="email" label="Email" rules={[{required:true,type:"email"}]}><Input /></Form.Item>
+        <Form.Item name="email" label="邮箱" rules={[{required:true,type:"email"}]}><Input /></Form.Item>
         <Row gutter={12}>
           <Col span={12}><Form.Item name="department" label="部门"><Input /></Form.Item></Col>
           <Col span={12}><Form.Item name="location" label="地点"><Input /></Form.Item></Col>
