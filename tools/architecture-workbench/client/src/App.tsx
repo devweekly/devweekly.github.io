@@ -660,8 +660,8 @@ export default function App() {
         }
       </Card>
 
-      {detail.relatedDebts.length>0 && <Card size="small" title={"关联技术债务 · "+detail.relatedDebts.length} className="workspace-section">
-        <List size="small" dataSource={detail.relatedDebts} renderItem={debt=><List.Item actions={[<Button key="open" type="link" onClick={()=>void openRelatedDebt(debt.id)}>查看</Button>]}>
+      <Card size="small" title={"关联技术债务 · "+detail.relatedDebts.length} className="workspace-section">
+        {detail.relatedDebts.length===0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无关联技术债务" /> : <List size="small" dataSource={detail.relatedDebts} renderItem={debt=><List.Item actions={[<Button key="open" type="link" onClick={()=>void openRelatedDebt(debt.id)}>查看</Button>]}>
           <List.Item.Meta
             title={<Space wrap><Text strong>{debt.code} · {debt.title}</Text><Tag color={debt.severity==="high"?"error":debt.severity==="medium"?"warning":"default"}>{debt.severity==="high"?"高严重度":debt.severity==="medium"?"中严重度":"低严重度"}</Tag><Tag color={debt.debt_status==="resolved"?"success":debt.debt_status==="in_progress"?"processing":"default"}>{debt.debt_status==="resolved"?"已解决":debt.debt_status==="in_progress"?"处理中":debt.debt_status==="deferred"?"已延期":"待处理"}</Tag></Space>}
             description={<Space wrap><Text type="secondary" className="small">负责人：{debt.owner_name}</Text>{debt.target_date?<Text type="secondary" className="small">目标：{dateText(debt.target_date)}</Text>:null}<Text type="secondary" className="small">优先级：{debt.priority}</Text></Space>}
