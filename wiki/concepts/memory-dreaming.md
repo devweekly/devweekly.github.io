@@ -64,6 +64,10 @@ However, the same paper reports a harmful pruning run: on a LoCoMo conversation 
 
 A failed outcome is not proof that the retrieved memory was wrong. Test causal relevance before pruning, preserve source-level recovery, and evaluate historical recall after deletion.
 
+# Relationship to recursive self-improvement
+
+Dreaming is a maintenance and learning mechanism, not RSI by definition. A dreaming process can consolidate evidence, correct memory, and improve what the agent retrieves in later sessions. That is retained memory improvement. The stronger RSI claim requires evidence that the memory improver—its proposal strategy, evaluator, consolidation procedure, or update policy—also becomes more effective over successive rounds under controlled evaluation. Preserve an external acceptance standard so a dreaming agent cannot declare its own harmful memory changes successful. See [Recursive Self-Improvement](recursive-self-improvement.md).
+
 # Evaluation
 
 Evaluate dreaming by downstream task quality, not by the number of notes rewritten or how short the profile becomes. Useful measures include correctness of updates, stale-memory suppression, source traceability, reuse of a learned procedure, fewer repeated failures, preference-selection quality, memory size, write cost, and retrieval latency.
