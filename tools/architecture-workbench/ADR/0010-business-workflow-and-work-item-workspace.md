@@ -19,19 +19,11 @@ This decision follows the Shared Business Work Item model described in [From A2A
 
 ## Decision
 
-### 1. Keep one business lifecycle
+### 1. Use the Request lifecycle defined by ADR-0011
 
-The Work Item remains the business source of truth. Keep the existing small, deterministic lifecycle; do not introduce a second workflow engine or create a new top-level state for every waiting condition.
+The five-stage lifecycle described in the original version of this ADR is superseded by [ADR-0011](0011-request-submission-review-and-human-decision.md). The Work Item remains the business source of truth, but the business stages are Request Package, Discussion and Review, Decision Meeting, and Pending Close / Complete.
 
-| Business stage | Existing states | User-facing intent |
-| --- | --- | --- |
-| Intake | `draft` | Confirm the purpose, scope and accountable owner |
-| Work | `analysis`, `changes_requested` | Complete tasks, develop materials and address findings |
-| Review and confirmation | `in_review` | Obtain independent opinions against a fixed submission |
-| Decision | `accepted`, `rejected` | An authorized Human records the formal outcome |
-| Complete | `closed` | Preserve the outcome, obligations and history |
-
-A request for changes returns the item to work without erasing the prior review. Resubmission creates a new Submission and Review Cycle. Waiting for an external answer, an assignee, an Agent Host or a Human is represented by the relevant Task or execution state, not by adding another business stage.
+ADR-0011 is authoritative for statuses, timer behavior, clarification handling, formal decision outcomes and closure authority. The remaining decisions in this ADR continue to apply: workflow layers stay separate, Task accountability remains distinct from Agent execution, each Submission has an immutable manifest, formal decisions remain Human-authorized, and the Work Item Workspace remains business-first.
 
 ### 2. Separate the three workflow layers
 
