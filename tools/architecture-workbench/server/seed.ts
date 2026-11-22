@@ -42,6 +42,8 @@ export function seed() {
     "u-workflow","Workflow Automation","System Workflow Principal","workflow@example.test","#667788","Architecture Platform","Local","Records timer-driven workflow transitions and deadline events.",JSON.stringify(["Deadline processing","Workflow automation"]),"Asia/Tokyo",now());
   const existingSeed=one<{id:string}>("SELECT id FROM work_items WHERE id='wi-arch-001'");
   if (existingSeed) {
+    run("UPDATE participations SET role_key='chairman',role_label='Chairman',permissions_json=? WHERE work_item_id=? AND person_id='u-chair' AND role_key='decision_authority'",
+      JSON.stringify(["read","decide"]),existingSeed.id);
     run("UPDATE work_items SET request_package_json=CASE WHEN request_package_json='{}' THEN ? ELSE request_package_json END WHERE id=?",
       JSON.stringify({goal:"Modernize the customer data platform",scope:"Customer master data and transaction access",constraints:"Legacy batch compatibility and data isolation",initialProposal:"Introduce a unified data access layer in phases",decisionQuestions:"Confirm API boundary, isolation model and migration sequence",submissionMessage:"feat(request): submit customer data platform modernization package"}),existingSeed.id);
     run("UPDATE submissions SET purpose='request',submission_message=CASE WHEN submission_message='' THEN ? ELSE submission_message END,package_json=CASE WHEN package_json='{}' THEN ? ELSE package_json END,submitted_by=COALESCE(submitted_by,created_by) WHERE work_item_id=? AND sequence=1",
