@@ -32,6 +32,7 @@ function request(id:string) {
     ["requestor","requestor","Requestor",["read","contribute","comment","manage"]],
     ["reviewer","reviewer","Reviewer",["read","comment","review"]],
     ["chairman","chairman","Chairman",["read","review","decide"]],
+    ["delegate","decision_authority","Legacy Decision Authority",["read","decide"]],
     ["admin","admin","Workbench Admin",["read","manage"]]
   ] as const;
   for(const [personId,role,label,permissions] of participants) {
@@ -48,6 +49,7 @@ test("Request lifecycle freezes submissions, pauses review for clarification and
   person("requestor");
   person("reviewer");
   person("chairman");
+  person("delegate");
   person("admin",1);
   person("u-workflow");
   request("workflow-one");
@@ -65,6 +67,15 @@ test("Request lifecycle freezes submissions, pauses review for clarification and
   assert.equal(firstSubmission?.submitted_by,"requestor");
   assert.equal(firstSubmission?.submission_message,"feat(request): initial platform review package");
   assert.deepEqual(JSON.parse(firstSubmission?.manifest_json || "[]"),[]);
+  const reviewerSnapshot=one<{reviewer_snapshot_json:string}>("SELECT reviewer_snapshot_json FROM review_cycles WHERE work_item_id=?","workflow-one");
+  const reviewerIds=(JSON.parse(reviewerSnapshot?.reviewer_snapshot_json || "[]") as {person_id:string}[]).map(entry=>entry.person_id);
+  assert.deepEqual(reviewerIds,["reviewer"]);
+  const chairmanClarification=createClarification("workflow-one","chairman",{
+    artifactId:null,question:"A Chairman is not automatically a Reviewer.",responseDueAt:new Date(Date.now()+60_000).toISOString()
+  });
+  assert.equal(chairmanClarification.ok,false);
+  const delegateDecision=recordFormalDecision("workflow-one","delegate",{outcome:"needs_work",rationale:"A delegated decide permission is not Chairman assignment."});
+  assert.equal(delegateDecision.ok,false);
 
   const clarification=createClarification("workflow-one","reviewer",{
     artifactId:null,
@@ -126,6 +137,12 @@ test("Request lifecycle freezes submissions, pauses review for clarification and
   assert.equal(approved.ok,true);
   assert.equal(status("workflow-one")?.status,"approved_pending_close");
   assert.equal(status("workflow-one")?.decision_outcome,"approved");
+  const decisionLink=one<{meeting_id:string;meeting_count:number}>(
+    "SELECT d.meeting_id,(SELECT COUNT(*) FROM decision_meetings m WHERE m.id=d.meeting_id AND m.cycle_id=d.subject_id OR m.id=d.meeting_id) AS meeting_count FROM decisions d WHERE d.id=?",
+    approved.ok?approved.id:""
+  );
+  assert.ok(decisionLink?.meeting_id);
+  assert.equal(decisionLink?.meeting_count,1);
 
   const reviewerClose=transitionWorkItem("workflow-one","reviewer","close");
   assert.equal(reviewerClose.ok,false);
