@@ -245,39 +245,6 @@ Camunda User Task 可以配置 assignee、candidateUsers 和 candidateGroups，�
 - [Microsoft Azure Architecture Center：AI Agent Orchestration Patterns](https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/ai-agent-design-patterns/)
 - [Google：A2A 与 MCP 的分工](https://docs.cloud.google.com/agent-registry/a2a-protocol)
 
-## 13. 推荐的落地路径
-
-第一阶段先实现一个真正可用的 Work Item 工作台，不急于构建 Agent 市场或复杂的 Agent 群体自治。选择架构分析作为第一个业务类型，提供事项创建、角色参与、任务分配、Artifact 版本、Review、Decision、评论和审计。Agent 先作为一种 Task Assignee 接入，能力范围与普通用户一样受到事项级授权。
-
-第二阶段增加自动协作。系统根据事项类型、阶段和缺失信息创建 Task；Agent 可以建议新增 Specialist Participation、请求 Requester 补充信息、建议创建 Reviewer Task 或生成分析产物；涉及角色任命、任务正式分配和业务状态变化的动作，仍由授权 Human 或确定性业务规则确认执行。任务是否分配给人还是 Agent，由策略、能力和风险决定。对于需要独立判断的 Review，应使用独立执行上下文。
-
-第三阶段再增加跨 Agent 服务。先统一本地 Task Contract、Artifact Contract 和授权模型，再为远端 Agent 增加 A2A Adapter。这样即使某个 Agent 使用 LangGraph、另一个使用自研 Runtime、第三个由供应商提供，也不会改变业务事项模型。
-
-第四阶段才考虑更复杂的 Case Management、跨部门工作队列、动态参与者推荐、SLA 优化和组织级 Agent Registry。只有当真实业务场景出现跨事项协同、复杂临时活动或跨组织委托时，才增加对应抽象。
-
-建议用以下场景作为端到端验收，而不是只测试 Agent 能否互相发消息：
-
-- 同一用户在不同 Work Item 中可以承担不同角色。
-- Requester 可以补充需求，但不能修改已归档的评审记录。
-- 两个 Agent 可以并行分析同一事项，各自提交独立 Artifact。
-- Reviewer 只能审查被指定的 Artifact Version，版本变化后旧 Review 不自动生效。
-- Agent 可以请求人工输入并持久等待，用户数天后回复仍能恢复原 Task。
-- 两个参与者同时认领同一任务时，只允许一个成功。
-- Agent 委托子 Agent 时，权限范围不会扩大。
-- A2A 远端 Task 完成后，结果先进入本地 Artifact 流程，不直接改变业务决定。
-- 事项关闭后仍可完整追溯参与者、任务、上下文版本、评审和决策。
-
-## 14. 结论
-
-这类系统最合适的设计单位不是 Agent，也不是一个共享聊天会话，而是长期存在的业务事项。参与者通过 Participation 加入事项，角色决定其责任，Task 承载具体工作，Artifact 保存交付物，Review 和 Decision 表达正式判断，Workflow Runtime 管理业务生命周期。
-
-A2A 是这套架构中的一个通信边界：当独立 Agent 服务需要互相委托工作时使用它；当多个 Agent 只是同一个业务事项中的协作执行者时，不需要把所有内部调用都协议化。
-
-真正需要共享的是经过授权、结构化、版本化的 Work Item Context，而不是所有 Agent 的内部记忆。真正需要治理的是谁能对哪个事项、哪个版本、执行什么动作，而不是 Agent 之间能不能互相发送消息。
-
-**建议采用 Work Item-centric Collaboration Architecture：以业务事项为中心，以 Participation 管理动态角色，以 Task 管理人与 Agent 的工作，以 Artifact / Decision 固化结果，以 Business Workflow 管理正式状态，以 A2A 连接跨边界 Agent。** 这样既能容纳同一项目内的多 Agent，也能支持不同用户在不同事项中承担不同职责，而且不会把业务责任、项目上下文和 Agent 执行状态混成一团。
-
-
 ## 15. 关键原则：Agent 可以分析和起草，不能替 Human 作决定
 
 这是整个协作系统必须贯彻的业务控制边界，而不是某个 Agent Prompt 的行为约定。
@@ -484,3 +451,14 @@ MCP Tool 不需要与 REST API 一一对应。面向 Agent 的工具应表达工
 - Agent 的建议、工作活动和聊天内容不会被误记为业务事实或组织决定。
 - SSO 登录不会自动授予本地 Agent 权限；委托范围可查看、可撤销、可过期。
 - 对 Level 0 Copy / Paste，系统不声称可以追踪 Agent 内部执行；对集成方式，只记录实际经过平台的活动。
+
+## 23. 结论
+
+这类系统最合适的设计单位不是 Agent，也不是一个共享聊天会话，而是长期存在的业务事项。参与者通过 Participation 加入事项，角色决定其责任，Task 承载具体工作，Artifact 保存交付物，Review 和 Decision 表达正式判断，Workflow Runtime 管理业务生命周期。
+
+A2A 是这套架构中的一个通信边界：当独立 Agent 服务需要互相委托工作时使用它；当多个 Agent 只是同一个业务事项中的协作执行者时，不需要把所有内部调用都协议化。
+
+真正需要共享的是经过授权、结构化、版本化的 Work Item Context，而不是所有 Agent 的内部记忆。真正需要治理的是谁能对哪个事项、哪个版本、执行什么动作，而不是 Agent 之间能不能互相发送消息。
+
+**建议采用 Work Item-centric Collaboration Architecture：以业务事项为中心，以 Participation 管理动态角色，以 Task 管理人与 Agent 的工作，以 Artifact / Decision 固化结果，以 Business Workflow 管理正式状态，以 A2A 连接跨边界 Agent。** 这样既能容纳同一项目内的多 Agent，也能支持不同用户在不同事项中承担不同职责，而且不会把业务责任、项目上下文和 Agent 执行状态混成一团。
+
