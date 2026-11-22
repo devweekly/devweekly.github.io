@@ -1654,7 +1654,11 @@ impl AgentRuntime {
                 if current.status.is_terminal() {
                     return Ok(current);
                 }
-                if current.status == BackgroundTaskStatus::Queued {
+                if matches!(
+                    current.status,
+                    BackgroundTaskStatus::Queued | BackgroundTaskStatus::Running | BackgroundTaskStatus::Cancelling
+                ) && !self.memory_store.has_active_background_task_lease(task_id)?
+                {
                     let _ = self.resume_background_tasks()?;
                 }
                 tokio::select! {
