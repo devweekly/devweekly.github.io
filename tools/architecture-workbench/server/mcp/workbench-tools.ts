@@ -242,7 +242,7 @@ export function registerWorkbenchTools(server:McpServer,skillUriForName:(skillNa
     description:"Search only the Work Items visible to the current principal. Returns summary fields, not hidden records.",
     inputSchema:z.object({
       query:z.string().optional().describe("Optional code, title or description search"),
-      status:z.enum(["draft","analysis","in_review","changes_requested","accepted","rejected","closed"]).optional(),
+      status:z.enum(["draft","requestor_revision","discussion_review","waiting_requestor","decision_meeting","approved_pending_close","rejected_pending_close","closed"]).optional(),
       limit:z.number().int().min(1).max(50).optional()
     })
   },async (input,ctx)=>safe(()=>searchWorkItems(input,actorId(ctx)))());
