@@ -92,7 +92,7 @@ function getWorkItem(workItemId:string,actor:string) {
     workItemId
   );
   const tasks=all(
-    "SELECT t.id,t.title,t.kind,t.status,t.assignee_id,p.display_name AS assignee_name,t.due_date,t.relates_to,t.created_at,t.updated_at FROM tasks t LEFT JOIN people p ON p.id=t.assignee_id WHERE t.work_item_id=? ORDER BY t.created_at DESC",
+    "SELECT t.id,t.title,t.kind,t.status,t.owner_id,owner.display_name AS owner_name,t.assignee_id,assignee.display_name AS assignee_name,t.due_date,t.relates_to,t.created_at,t.updated_at FROM tasks t LEFT JOIN people owner ON owner.id=t.owner_id LEFT JOIN people assignee ON assignee.id=t.assignee_id WHERE t.work_item_id=? ORDER BY t.created_at DESC",
     workItemId
   );
   const artifacts=all(
@@ -133,7 +133,7 @@ function getContextCapsule(workItemId:string,actor:string) {
     workItemId
   );
   const tasks=all(
-    "SELECT id,title,kind,status,assignee_id,due_date,relates_to,created_at,updated_at FROM tasks WHERE work_item_id=? ORDER BY created_at DESC LIMIT 50",
+    "SELECT t.id,t.title,t.kind,t.status,t.owner_id,owner.display_name AS owner_name,t.assignee_id,assignee.display_name AS assignee_name,t.due_date,t.relates_to,t.created_at,t.updated_at FROM tasks t LEFT JOIN people owner ON owner.id=t.owner_id LEFT JOIN people assignee ON assignee.id=t.assignee_id WHERE t.work_item_id=? ORDER BY t.created_at DESC LIMIT 50",
     workItemId
   );
   const reviews=all(
@@ -163,37 +163,53 @@ function getArtifact(artifactId:string,actor:string) {
   return artifact;
 }
 
-function createTask(input:{workItemId:string;title:string;kind?:string;assigneeId?:string;dueDate?:string;relatesTo?:string},actor:string) {
+function createTask(input:{workItemId:string;title:string;kind?:string;ownerId?:string;assigneeId?:string;dueDate?:string;relatesTo?:string},actor:string) {
   requirePermission(input.workItemId,actor,"contribute");
+  const workItem=one<{owner_id:string}>("SELECT owner_id FROM work_items WHERE id=?",input.workItemId);
+  if (!workItem) throw new Error("Work Item not found.");
+  const ownerId=input.ownerId || workItem.owner_id;
+  if (!one("SELECT id FROM participations WHERE work_item_id=? AND person_id=?",input.workItemId,ownerId)) {
+    throw new Error("Task owner must be a participant of this Work Item.");
+  }
   if (input.assigneeId && !one("SELECT id FROM participations WHERE work_item_id=? AND person_id=?",input.workItemId,input.assigneeId)) {
     throw new Error("Task assignee must be a participant of this Work Item.");
   }
   const taskId=id("task");
   const timestamp=now();
-  run("INSERT INTO tasks(id,work_item_id,title,kind,status,assignee_id,due_date,relates_to,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-    taskId,input.workItemId,input.title.trim(),input.kind || "analysis","open",input.assigneeId || null,input.dueDate || null,input.relatesTo || null,timestamp,timestamp);
-  appendActivity(input.workItemId,actor,"created","task",taskId,"Created Task: "+input.title);
-  return {id:taskId,status:"open"};
+  run("INSERT INTO tasks(id,work_item_id,title,kind,status,owner_id,assignee_id,due_date,relates_to,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+    taskId,input.workItemId,input.title.trim(),input.kind || "analysis","open",ownerId,input.assigneeId || null,input.dueDate || null,input.relatesTo || null,timestamp,timestamp);
+  appendActivity(input.workItemId,actor,"created","task",taskId,"Created Task: "+input.title,{ownerId,assigneeId:input.assigneeId});
+  return {id:taskId,status:"open",ownerId,assigneeId:input.assigneeId || null};
 }
 
-function updateTask(input:{taskId:string;status?:string;assigneeId?:string|null;dueDate?:string|null},actor:string) {
-  const task=one<{id:string;work_item_id:string;assignee_id:string|null}>("SELECT id,work_item_id,assignee_id FROM tasks WHERE id=?",input.taskId);
+function updateTask(input:{taskId:string;status?:string;ownerId?:string;assigneeId?:string|null;dueDate?:string|null},actor:string) {
+  const task=one<{id:string;work_item_id:string;owner_id:string|null;assignee_id:string|null}>(
+    "SELECT id,work_item_id,owner_id,assignee_id FROM tasks WHERE id=?",input.taskId
+  );
   if (!task) throw new Error("Task not found.");
   const grants=getWorkItemPermissions(task.work_item_id,actor);
   const canManage=grants.includes("contribute");
   const isAssignee=task.assignee_id===actor;
-  if (!canManage && !isAssignee) throw new Error("Only the Task assignee or a Work Item contributor can update this Task.");
-  if (!canManage && (input.assigneeId!==undefined || input.dueDate!==undefined)) throw new Error("Assignees may update Task status only.");
+  const isTaskOwner=task.owner_id===actor;
+  if (!canManage && !isAssignee && !isTaskOwner) {
+    throw new Error("Only the Task Owner, Assignee or a Work Item contributor can update this Task.");
+  }
+  if (!canManage && (input.ownerId!==undefined || input.assigneeId!==undefined || input.dueDate!==undefined)) {
+    throw new Error("Task ownership, assignment and due date changes require Work Item contributor permission.");
+  }
   const statuses=["open","in_progress","blocked","done","cancelled"];
   if (input.status && !statuses.includes(input.status)) throw new Error("Unsupported Task status.");
+  if (input.ownerId && !one("SELECT id FROM participations WHERE work_item_id=? AND person_id=?",task.work_item_id,input.ownerId)) {
+    throw new Error("Task owner must be a participant of this Work Item.");
+  }
   if (input.assigneeId && !one("SELECT id FROM participations WHERE work_item_id=? AND person_id=?",task.work_item_id,input.assigneeId)) {
     throw new Error("Task assignee must be a participant of this Work Item.");
   }
   const timestamp=now();
-  run("UPDATE tasks SET status=COALESCE(?,status),assignee_id=CASE WHEN ?=1 THEN ? ELSE assignee_id END,due_date=CASE WHEN ?=1 THEN ? ELSE due_date END,updated_at=? WHERE id=?",
-    input.status || null,input.assigneeId!==undefined?1:0,input.assigneeId ?? null,input.dueDate!==undefined?1:0,input.dueDate ?? null,timestamp,input.taskId);
-  appendActivity(task.work_item_id,actor,"updated","task",input.taskId,"Updated Task",{status:input.status,assigneeId:input.assigneeId,dueDate:input.dueDate});
-  return one("SELECT id,title,status,assignee_id,due_date,updated_at FROM tasks WHERE id=?",input.taskId);
+  run("UPDATE tasks SET status=COALESCE(?,status),owner_id=CASE WHEN ?=1 THEN ? ELSE owner_id END,assignee_id=CASE WHEN ?=1 THEN ? ELSE assignee_id END,due_date=CASE WHEN ?=1 THEN ? ELSE due_date END,updated_at=? WHERE id=?",
+    input.status || null,input.ownerId!==undefined?1:0,input.ownerId ?? null,input.assigneeId!==undefined?1:0,input.assigneeId ?? null,input.dueDate!==undefined?1:0,input.dueDate ?? null,timestamp,input.taskId);
+  appendActivity(task.work_item_id,actor,"updated","task",input.taskId,"Updated Task",{status:input.status,ownerId:input.ownerId,assigneeId:input.assigneeId,dueDate:input.dueDate});
+  return one("SELECT t.id,t.title,t.status,t.owner_id,owner.display_name AS owner_name,t.assignee_id,assignee.display_name AS assignee_name,t.due_date,t.updated_at FROM tasks t LEFT JOIN people owner ON owner.id=t.owner_id LEFT JOIN people assignee ON assignee.id=t.assignee_id WHERE t.id=?",input.taskId);
 }
 
 function createArtifactDraft(input:{workItemId:string;title:string;type:string;content:string;code?:string;summary?:string},actor:string) {
@@ -256,22 +272,23 @@ export function registerWorkbenchTools(server:McpServer,skillUriForName:(skillNa
   })());
 
   server.registerTool("workbench_list_my_tasks",{
-    description:"List active and completed Tasks assigned to the current principal, limited to Work Items they can read.",
+    description:"List active and completed Tasks owned by or assigned to the current principal, including separate accountability and execution identities.",
     inputSchema:z.object({includeCompleted:z.boolean().optional().default(false)})
   },async ({includeCompleted},ctx)=>safe(()=>{
     const actor=actorId(ctx);
     return all(
-      "SELECT t.id,t.work_item_id,t.title,t.kind,t.status,t.assignee_id,t.due_date,t.relates_to,t.updated_at,w.code AS work_item_code,w.title AS work_item_title,w.status AS work_item_status FROM tasks t JOIN work_items w ON w.id=t.work_item_id WHERE t.assignee_id=? AND (?=1 OR t.status NOT IN ('done','cancelled')) AND (?=1 OR EXISTS (SELECT 1 FROM participations access WHERE access.work_item_id=w.id AND access.person_id=?)) ORDER BY t.due_date,t.updated_at DESC",
-      actor,includeCompleted?1:0,isGlobalAdmin(actor)?1:0,actor
+      "SELECT t.id,t.work_item_id,t.title,t.kind,t.status,t.owner_id,owner.display_name AS owner_name,t.assignee_id,assignee.display_name AS assignee_name,t.due_date,t.relates_to,t.updated_at,w.code AS work_item_code,w.title AS work_item_title,w.status AS work_item_status FROM tasks t JOIN work_items w ON w.id=t.work_item_id LEFT JOIN people owner ON owner.id=t.owner_id LEFT JOIN people assignee ON assignee.id=t.assignee_id WHERE (t.assignee_id=? OR t.owner_id=?) AND (?=1 OR t.status NOT IN ('done','cancelled')) AND (?=1 OR EXISTS (SELECT 1 FROM participations access WHERE access.work_item_id=w.id AND access.person_id=?)) ORDER BY t.due_date,t.updated_at DESC",
+      actor,actor,includeCompleted?1:0,isGlobalAdmin(actor)?1:0,actor
     );
   })());
 
   server.registerTool("workbench_create_task",{
-    description:"Create an executable Task under a Work Item. The actor needs contribute permission and any human assignee must already be a participant.",
+    description:"Create a Task under a Work Item. Task Owner is accountable for the result; Assignee is the current execution allocation. Both must be Work Item participants. Owner defaults to the Work Item Owner.",
     inputSchema:z.object({
       workItemId:z.string().min(1),
       title:z.string().min(1).max(300),
       kind:z.enum(["analysis","design","implementation","review_follow_up","decision_follow_up","other"]).optional(),
+      ownerId:z.string().optional(),
       assigneeId:z.string().optional(),
       dueDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       relatesTo:z.string().optional()
@@ -279,10 +296,11 @@ export function registerWorkbenchTools(server:McpServer,skillUriForName:(skillNa
   },async (input,ctx)=>safe(()=>createTask(input,actorId(ctx)))());
 
   server.registerTool("workbench_update_task",{
-    description:"Update a Task. Assignees may update status; Work Item contributors may also reassign or change due date.",
+    description:"Update Task progress. The Task Owner or Assignee may update status; Work Item contributors may change Task Owner, Assignee or due date.",
     inputSchema:z.object({
       taskId:z.string().min(1),
       status:z.enum(["open","in_progress","blocked","done","cancelled"]).optional(),
+      ownerId:z.string().optional(),
       assigneeId:z.string().nullable().optional(),
       dueDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional()
     })
