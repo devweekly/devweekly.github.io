@@ -20,18 +20,21 @@ const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
 const statusLabels: Record<string,string> = {
-  draft:"待受理", analysis:"处理中", in_review:"评审与确认中", changes_requested:"待修改",
-  accepted:"已接受", rejected:"已拒绝", closed:"已完成", open:"待处理",
-  in_progress:"处理中", deferred:"已延期", resolved:"已解决", cancelled:"已取消",
-  accepted_with_conditions:"附条件接受", more_analysis:"需要更多分析",
-  queued:"待领取", running:"执行中", waiting_for_human:"等待人工输入", completed:"已完成", failed:"执行失败", blocked:"受阻"
+  draft:"Request 草稿", requestor_revision:"待 Requestor 修订", discussion_review:"讨论与评审中",
+  waiting_requestor:"等待 Requestor 澄清", decision_meeting:"等待决定会议",
+  approved_pending_close:"已批准 · 待关闭", rejected_pending_close:"已拒绝 · 待关闭",
+  closed:"已关闭", open:"待处理", in_progress:"处理中", deferred:"已延期", resolved:"已解决",
+  cancelled:"已取消", approved:"批准", needs_work:"需要修改", rejected:"拒绝",
+  queued:"待领取", running:"执行中", waiting_for_human:"等待人工输入", completed:"已完成",
+  failed:"执行失败", blocked:"受阻"
 };
 const statusColors: Record<string,string> = {
-  draft:"default", analysis:"processing", in_review:"processing", changes_requested:"warning",
-  accepted:"success", rejected:"error", closed:"default", open:"warning", in_progress:"processing",
-  deferred:"purple", resolved:"success", cancelled:"default", accepted_with_conditions:"success",
-  queued:"default", running:"processing", waiting_for_human:"warning", completed:"success", failed:"error",
-  more_analysis:"warning"
+  draft:"default", requestor_revision:"warning", discussion_review:"processing",
+  waiting_requestor:"warning", decision_meeting:"processing", approved_pending_close:"success",
+  rejected_pending_close:"error", closed:"default", open:"warning", in_progress:"processing",
+  deferred:"purple", resolved:"success", cancelled:"default", approved:"success",
+  needs_work:"warning", rejected:"error", queued:"default", running:"processing",
+  waiting_for_human:"warning", completed:"success", failed:"error", blocked:"error"
 };
 const roleColors: Record<string,string> = {
   solution_architect:"blue", enterprise_architect:"purple", security_architect:"red",
@@ -53,6 +56,8 @@ export default function App() {
   const [newItemOpen,setNewItemOpen] = useState(false);
   const [artifactOpen,setArtifactOpen] = useState(false);
   const [reviewOpen,setReviewOpen] = useState(false);
+  const [clarificationOpen,setClarificationOpen] = useState(false);
+  const [packageOpen,setPackageOpen] = useState(false);
   const [taskOpen,setTaskOpen] = useState(false);
   const [editingTaskId,setEditingTaskId] = useState<string|null>(null);
   const [decisionOpen,setDecisionOpen] = useState(false);
@@ -73,6 +78,8 @@ export default function App() {
   const [newItemForm] = Form.useForm();
   const [artifactForm] = Form.useForm();
   const [reviewForm] = Form.useForm();
+  const [clarificationForm] = Form.useForm();
+  const [packageForm] = Form.useForm();
   const [taskForm] = Form.useForm();
   const [decisionForm] = Form.useForm();
   const [debtForm] = Form.useForm();
@@ -250,10 +257,10 @@ export default function App() {
     setAgentResumeOpen(true);
   }
 
-  async function transitionWorkflow(action:string) {
+  async function transitionWorkflow(action:string,extra:Record<string,unknown>={}) {
     if (!selected) return;
     try {
-      await api.transitionWorkItem(selected.id,action);
+      await api.transitionWorkItem(selected.id,action,extra);
       message.success("Request 流程已更新");
       await reload();
       await refreshDetail();
@@ -510,7 +517,7 @@ export default function App() {
   }
 
   function renderReviews() {
-    const reviewItems=(bootstrap?.workItems || []).filter(item=>item.status==="in_review");
+    const reviewItems=(bootstrap?.workItems || []).filter(item=>["discussion_review","waiting_requestor"].includes(item.status));
     return <div className="page-stack">
       <div className="page-heading"><div><Text type="secondary">REVIEW QUEUE</Text><Title level={2}>架构与 ADR 评审</Title><Paragraph type="secondary">评审意见绑定明确的 Artifact 版本；专业人员可以独立提交意见。</Paragraph></div></div>
       <Card className="panel-card"><List dataSource={reviewItems} renderItem={item=><List.Item actions={[<Button type="link" onClick={()=>void openWorkItem(item)}>打开评审</Button>]}><List.Item.Meta avatar={<Avatar icon={<AuditOutlined />} />} title={item.title} description={item.code+" · "+item.owner_name} /></List.Item>} locale={{emptyText:<Empty description="当前没有待评审事项" />}} /></Card>
@@ -529,18 +536,23 @@ export default function App() {
       || detail.tasks.find(task=>task.status==="blocked")
       || detail.tasks.find(task=>task.status==="open");
     const phaseAction:Record<string,string>={
-      draft:"确认目标和范围，由事项负责人受理后开始分析。",
-      analysis:"完成当前任务并更新材料；具备评审条件后提交。",
-      changes_requested:"逐项处理评审意见，形成新材料版本后重新提交。",
-      in_review:"等待独立评审完成，由授权人员记录正式决定。",
-      accepted:"落实决定中的后续义务，再关闭事项。",
-      rejected:"确认拒绝决定的后续处理，再关闭事项。",
-      closed:"事项已完成，材料版本、评审和决定记录仍可查阅。"
+      draft:"Requestor 完善 Request Package，并确认提交说明后提交。",
+      requestor_revision:"根据决定会议结论修订 Request Package，形成新版本后重新提交。",
+      discussion_review:"讨论期持续到截止时间；普通评论不阻断流程，阻断性异议会提前进入决定会议。",
+      waiting_requestor:"等待 Requestor 在指定期限内回答澄清问题；答复后恢复剩余评审时间。",
+      decision_meeting:"由指定 Chairman 主持决定会议，记录批准、要求修改或拒绝的正式结论。",
+      approved_pending_close:"决定已批准，等待 Chairman 或 Admin 人工关闭。",
+      rejected_pending_close:"决定已拒绝，等待 Chairman 或 Admin 人工关闭。",
+      closed:"事项已关闭，Submission、评审、会议纪要和决定记录仍可查阅。"
     };
-    const taskIsNext= ["analysis","changes_requested","accepted","rejected"].includes(item.status) && Boolean(activeTask);
-    const nextAction=taskIsNext && activeTask
-      ? (activeTask.status==="blocked" ? "解除阻塞："+activeTask.title+"（任务负责人："+(activeTask.owner_name || item.owner_name)+"；执行人："+(activeTask.assignee_name || "待分配")+"）" : "完成当前任务："+activeTask.title+"（任务负责人："+(activeTask.owner_name || item.owner_name)+"；执行人："+(activeTask.assignee_name || "待分配")+"）")
-      : (phaseAction[item.status] || "确认下一步工作。");
+    const taskIsNext= ["requestor_revision","approved_pending_close","rejected_pending_close"].includes(item.status) && Boolean(activeTask);
+    const nextAction=detail.workflow.activeClarification
+      ? "Requestor 回答澄清问题（截止 "+dateText(detail.workflow.activeClarification.response_due_at)+"）。"
+      : taskIsNext && activeTask
+        ? (activeTask.status==="blocked" ? "解除阻塞："+activeTask.title+"（任务负责人："+(activeTask.owner_name || item.owner_name)+"；执行人："+(activeTask.assignee_name || "待分配")+"）" : "完成当前任务："+activeTask.title+"（任务负责人："+(activeTask.owner_name || item.owner_name)+"；执行人："+(activeTask.assignee_name || "待分配")+"）")
+        : (phaseAction[item.status] || "确认下一步工作。");
+    const requestPackage=(()=>{try{return JSON.parse(item.request_package_json || "{}") as Record<string,unknown>;}catch{return {};}})();
+    const canSubmitRequest=item.requestor_id===actor || actorPerson?.is_admin===1;
     const latestArtifacts=detail.artifacts.filter((artifact,index,all)=>all.findIndex(candidate=>(candidate.code || candidate.id)===(artifact.code || artifact.id))===index);
     const manifestEntries=(manifest:string):{id:string;version:number;code?:string|null;type?:string;title?:string;content_hash?:string}[]=>{
       try { const parsed=JSON.parse(manifest); return Array.isArray(parsed)?parsed:[]; }
@@ -573,8 +585,9 @@ export default function App() {
         </div>
         <Space wrap>
           {permissions.includes("contribute") && <Button icon={<PlusOutlined />} onClick={()=>setArtifactOpen(true)}>添加材料</Button>}
-          {detail.workflow.availableActions.includes("submit_for_review") && <Button type="primary" onClick={()=>void transitionWorkflow("submit_for_review")}>提交评审</Button>}
-          {detail.workflow.availableActions.some(action=>["accept","reject","more_analysis"].includes(action)) && <Button type="primary" onClick={()=>setDecisionOpen(true)}>记录正式决定</Button>}
+          {canSubmitRequest && ["draft","requestor_revision"].includes(item.status) && <Button onClick={()=>{packageForm.setFieldsValue({...requestPackage});setPackageOpen(true);}}>编辑 Request Package</Button>}
+          {detail.workflow.availableActions.includes("submit_request") && <Button type="primary" onClick={()=>void transitionWorkflow("submit_request",{submissionMessage:String(requestPackage.submissionMessage || "Request Package: "+item.title),package:requestPackage})}>提交 Request</Button>}
+          {detail.workflow.availableActions.includes("record_decision") && <Button type="primary" onClick={()=>{decisionForm.resetFields();decisionForm.setFieldsValue({outcome:"approved"});setDecisionOpen(true);}}>记录决定会议结论</Button>}
         </Space>
       </div>
 
@@ -582,17 +595,19 @@ export default function App() {
         <Row gutter={[20,12]}>
           <Col xs={12} md={5}><Text type="secondary" className="workflow-label">当前阶段</Text><div><Text strong>{statusLabels[item.status] || item.status}</Text></div></Col>
           <Col xs={12} md={5}><Text type="secondary" className="workflow-label">事项负责人</Text><div><Text strong>{item.owner_name}</Text></div></Col>
-          <Col xs={24} md={14}><Text type="secondary" className="workflow-label">下一步</Text><div><Text strong>{nextAction}</Text></div></Col>
+          <Col xs={12} md={5}><Text type="secondary" className="workflow-label">{detail.workflow.reviewDeadlineAt ? "评审截止" : "决定责任人"}</Text><div><Text strong>{detail.workflow.reviewDeadlineAt ? dayjs(detail.workflow.reviewDeadlineAt).format("YYYY-MM-DD HH:mm") : (detail.participants.find(p=>p.person_id===detail.workflow.chairmanId)?.display_name || "待指定")}</Text></div></Col>
+          <Col xs={24} md={9}><Text type="secondary" className="workflow-label">下一步</Text><div><Text strong>{nextAction}</Text></div></Col>
         </Row>
       </Card>
 
       <Card className="workflow-card" size="small" title="事项进展">
         <Steps current={detail.workflow.currentStep} status={detail.workflow.visualStatus} items={detail.workflow.steps} />
         <Space wrap className="workflow-actions">
-          {detail.workflow.availableActions.includes("start_analysis") && <Button type="primary" onClick={()=>void transitionWorkflow("start_analysis")}>开始处理</Button>}
-
-          {detail.workflow.availableActions.includes("close") && <Button onClick={()=>void transitionWorkflow("close")}>关闭事项</Button>}
+          {detail.workflow.availableActions.includes("close") && <Button type="primary" onClick={()=>void transitionWorkflow("close")}>确认关闭 Request</Button>}
         </Space>
+        {detail.workflow.activeClarification && <Alert type="warning" showIcon message="等待 Requestor 澄清" description={<>{detail.workflow.activeClarification.question}<div className="small muted">答复截止：{dayjs(detail.workflow.activeClarification.response_due_at).format("YYYY-MM-DD HH:mm")}</div></>} action={canSubmitRequest?<Button size="small" onClick={()=>{clarificationForm.resetFields();setClarificationOpen(true);}}>回答澄清</Button>:null} />}
+        {detail.workflow.status==="decision_meeting" && <Alert type="info" showIcon message="已进入决定会议" description={"指定 Chairman："+(detail.participants.find(p=>p.person_id===detail.workflow.chairmanId)?.display_name || "尚未指定")+"。评审到期或阻断性异议不会自动导致批准或拒绝。"}/>}
+        {detail.workflow.status==="approved_pending_close" || detail.workflow.status==="rejected_pending_close" ? <Alert type="warning" showIcon message="决定已记录，等待人工关闭" description="只有指定 Chairman 或 Workbench Admin 可以完成关闭。"/> : null}
         {detail.workflow.history.length>0 && <details className="workspace-disclosure">
           <summary>查看流程变化记录（{detail.workflow.history.length}）</summary>
           <Timeline items={detail.workflow.history.map(entry=>({children:<><Text strong>{entry.actor_name}</Text><div>{statusLabels[entry.from_status] || entry.from_status} → {statusLabels[entry.to_status] || entry.to_status}</div><Text type="secondary" className="small">{dateText(entry.created_at)} · {entry.reason || entry.action}</Text></>}))} />
@@ -667,7 +682,7 @@ export default function App() {
 
           <Card size="small" title={"评审记录 · "+detail.reviews.length}>
             <Text type="secondary" className="small">{currentCycle ? currentCycle.name+" · 固定材料基线" : "尚未启动评审"}</Text>
-            {permissions.includes("review") && currentCycle?.status==="active" ? <Button size="small" icon={<PlusOutlined />} disabled={reviewableArtifacts.length===0} onClick={()=>{reviewForm.setFieldsValue({artifactId:reviewableArtifacts[0]?.id,outcome:"comment",discipline:actorPerson?.title || "General"});setReviewOpen(true);}}>提交评审意见</Button>:null}
+            {permissions.includes("review") && currentCycle?.status==="active" && item.status==="discussion_review" ? <Button size="small" icon={<PlusOutlined />} disabled={reviewableArtifacts.length===0} onClick={()=>{reviewForm.resetFields();reviewForm.setFieldsValue({artifactId:reviewableArtifacts[0]?.id,outcome:"comment",discipline:actorPerson?.title || "General"});setReviewOpen(true);}}>提交评审意见</Button>:null}
             <List size="small" dataSource={detail.reviews} locale={{emptyText:"尚无评审意见"}} renderItem={(review:Review)=><List.Item><List.Item.Meta title={<Space wrap><Text strong>{review.reviewer_name}</Text><Tag>{review.discipline}</Tag><Tag color={review.outcome==="approve"?"success":review.outcome==="request_changes"?"warning":"default"}>{review.outcome}</Tag></Space>} description={<>{review.summary}<div className="small muted">{review.artifact_code || review.artifact_title} · v{review.artifact_version} · {dateText(review.created_at)}</div></>} /></List.Item>} />
           </Card>
 
@@ -728,13 +743,35 @@ export default function App() {
         {page==="people" && renderPeople()}
       </Content>
     </Layout>
-    <Modal title="新建业务事项" open={newItemOpen} onCancel={()=>setNewItemOpen(false)} onOk={()=>void submitForm(newItemForm,async()=>{const v=newItemForm.getFieldsValue();if(v.targetDate)v.targetDate=v.targetDate.format("YYYY-MM-DD");return api.createWorkItem(v);},"业务事项已创建",()=>setNewItemOpen(false))} confirmLoading={busy}>
-      <Form form={newItemForm} layout="vertical" initialValues={{type:"architecture_review",priority:"normal"}}>
-        <Form.Item name="title" label="事项名称" rules={[{required:true}]}><Input placeholder="例如：客户身份平台架构评估" /></Form.Item>
-        <Form.Item name="type" label="事项类型"><Select options={[{value:"architecture_review",label:"架构评审"},{value:"solution_assessment",label:"Solution 评估"},{value:"change_assessment",label:"变更评估"},{value:"risk_assessment",label:"风险评估"},{value:"other",label:"其他"}]} /></Form.Item>
-        <Form.Item name="description" label="目标与背景"><TextArea rows={4} /></Form.Item>
-        <Form.Item name="priority" label="优先级"><Select options={[{value:"low",label:"低"},{value:"normal",label:"普通"},{value:"high",label:"高"}]} /></Form.Item>
-        <Form.Item name="targetDate" label="目标日期"><DatePicker style={{width:"100%"}} /></Form.Item>
+    <Modal title="新建 Request" open={newItemOpen} onCancel={()=>setNewItemOpen(false)} onOk={()=>void submitForm(newItemForm,async()=>{const v=newItemForm.getFieldsValue();if(v.targetDate)v.targetDate=v.targetDate.format("YYYY-MM-DD");return api.createWorkItem(v);},"Request 已创建",()=>setNewItemOpen(false))} confirmLoading={busy} width={720}>
+      <Form form={newItemForm} layout="vertical" initialValues={{type:"architecture_review",priority:"normal",submissionMessage:"Initial Request Package"}}>
+        <Form.Item name="title" label="Request 名称" rules={[{required:true}]}><Input placeholder="例如：客户身份平台架构评估" /></Form.Item>
+        <Form.Item name="type" label="Request 类型"><Select options={[{value:"architecture_review",label:"架构评审"},{value:"solution_assessment",label:"Solution 评估"},{value:"change_assessment",label:"变更评估"},{value:"risk_assessment",label:"风险评估"},{value:"other",label:"其他"}]} /></Form.Item>
+        <Form.Item name="description" label="问题背景与业务目标" rules={[{required:true}]}><TextArea rows={3} /></Form.Item>
+        <Row gutter={12}>
+          <Col span={12}><Form.Item name="goal" label="预期结果"><TextArea rows={2} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="scope" label="范围"><TextArea rows={2} /></Form.Item></Col>
+        </Row>
+        <Form.Item name="constraints" label="约束与主要风险"><TextArea rows={2} /></Form.Item>
+        <Form.Item name="initialProposal" label="初步方案（可选）"><TextArea rows={3} /></Form.Item>
+        <Form.Item name="decisionQuestions" label="需要委员会决定的问题"><TextArea rows={2} /></Form.Item>
+        <Form.Item name="chairmanId" label="指定 Chairman"><Select allowClear showSearch optionFilterProp="label" options={(bootstrap?.people || []).filter(p=>p.is_admin!==1).map(p=>({value:p.id,label:p.display_name+" · "+p.title}))} /></Form.Item>
+        <Row gutter={12}>
+          <Col span={12}><Form.Item name="priority" label="优先级"><Select options={[{value:"low",label:"低"},{value:"normal",label:"普通"},{value:"high",label:"高"}]} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="targetDate" label="业务目标日期"><DatePicker style={{width:"100%"}} /></Form.Item></Col>
+        </Row>
+        <Form.Item name="submissionMessage" label="提交说明（类似 Git Commit Message）" rules={[{required:true}]}><Input placeholder="说明本次提交解决什么问题，以及最重要的变化" /></Form.Item>
+      </Form>
+    </Modal>
+
+    <Modal title="编辑 Request Package" open={packageOpen} onCancel={()=>setPackageOpen(false)} onOk={()=>void submitForm(packageForm,async()=>api.updateRequestPackage(selected!.id,packageForm.getFieldsValue()),"Request Package 已保存",()=>setPackageOpen(false))} confirmLoading={busy} width={720}>
+      <Form form={packageForm} layout="vertical">
+        <Form.Item name="goal" label="预期结果"><TextArea rows={2}/></Form.Item>
+        <Form.Item name="scope" label="范围"><TextArea rows={2}/></Form.Item>
+        <Form.Item name="constraints" label="约束与主要风险"><TextArea rows={2}/></Form.Item>
+        <Form.Item name="initialProposal" label="初步方案（可选）"><TextArea rows={3}/></Form.Item>
+        <Form.Item name="decisionQuestions" label="需要委员会决定的问题"><TextArea rows={2}/></Form.Item>
+        <Form.Item name="submissionMessage" label="提交说明（类似 Git Commit Message）" rules={[{required:true}]}><Input/></Form.Item>
       </Form>
     </Modal>
 
@@ -747,12 +784,23 @@ export default function App() {
       </Form>
     </Modal>
 
-    <Modal title="提交独立 Review" open={reviewOpen} onCancel={()=>setReviewOpen(false)} onOk={()=>void submitForm(reviewForm,async()=>api.createReview(selected!.id,reviewForm.getFieldsValue()),"Review 已提交",()=>setReviewOpen(false))} confirmLoading={busy}>
+    <Modal title="提交评审意见" open={reviewOpen} onCancel={()=>setReviewOpen(false)} onOk={()=>void submitForm(reviewForm,async()=>{
+      const value=reviewForm.getFieldsValue();
+      if(value.responseDueAt) value.responseDueAt=value.responseDueAt.toISOString();
+      return api.createReview(selected!.id,value);
+    },"评审意见已提交",()=>setReviewOpen(false))} confirmLoading={busy}>
       <Form form={reviewForm} layout="vertical">
         <Form.Item name="artifactId" label="评审对象" rules={[{required:true}]}><Select options={(detail?.cycles[0] ? (JSON.parse(detail.cycles[0].baseline_json) as {id:string;version:number}[]).map(entry=>detail.artifacts.find(a=>a.id===entry.id && a.version===entry.version)).filter(Boolean).map(a=>({value:(a as Artifact).id,label:((a as Artifact).code || (a as Artifact).type)+" · "+(a as Artifact).title+" v"+(a as Artifact).version})) : [])} /></Form.Item>
         <Form.Item name="discipline" label="专业领域" rules={[{required:true}]}><Input /></Form.Item>
-        <Form.Item name="outcome" label="意见类型"><Select options={[{value:"approve",label:"认可"},{value:"comment",label:"建议 / 评论"},{value:"request_changes",label:"要求修改"},{value:"block",label:"阻断"}]} /></Form.Item>
-        <Form.Item name="summary" label="评审意见" rules={[{required:true}]}><TextArea rows={4} /></Form.Item>
+        <Form.Item name="outcome" label="操作类型" rules={[{required:true}]}><Select options={[{value:"comment",label:"评论（不改变流程）"},{value:"clarification_requested",label:"请求 Requestor 澄清（暂停评审计时）"},{value:"objection",label:"提出阻断性异议（提前进入决定会议）"}]} /></Form.Item>
+        <Form.Item name="summary" label="意见 / 澄清问题" rules={[{required:true}]}><TextArea rows={4} /></Form.Item>
+        <Form.Item noStyle shouldUpdate>{({getFieldValue})=>getFieldValue("outcome")==="clarification_requested" ? <Form.Item name="responseDueAt" label="Requestor 答复截止时间" rules={[{required:true,message:"请设置答复截止时间"}]}><DatePicker showTime style={{width:"100%"}} /></Form.Item> : null}</Form.Item>
+      </Form>
+    </Modal>
+
+    <Modal title="回答 Requestor 澄清" open={clarificationOpen} onCancel={()=>setClarificationOpen(false)} onOk={()=>void submitForm(clarificationForm,async()=>api.answerClarification(selected!.id,detail!.workflow.activeClarification!.id,String(clarificationForm.getFieldValue("answer") || "")),"澄清答复已提交",()=>setClarificationOpen(false))} confirmLoading={busy}>
+      <Form form={clarificationForm} layout="vertical">
+        <Form.Item name="answer" label="答复" rules={[{required:true}]}><TextArea rows={5} maxLength={8000} showCount /></Form.Item>
       </Form>
     </Modal>
 
@@ -808,32 +856,36 @@ export default function App() {
       <Form form={agentResumeForm} layout="vertical"><Form.Item name="additionalContext" label="补充说明 / 对 Agent 问题的回答"><TextArea rows={5} maxLength={8000} showCount placeholder="提供 Agent 需要的业务事实、约束、澄清或下一步要求。" /></Form.Item></Form>
     </Modal>
 
-    <Modal title="记录正式决定" open={decisionOpen} onCancel={()=>setDecisionOpen(false)} onOk={()=>void submitForm(decisionForm,async()=>{
+    <Modal title="记录决定会议结论" open={decisionOpen} onCancel={()=>setDecisionOpen(false)} onOk={()=>void submitForm(decisionForm,async()=>{
       const value=decisionForm.getFieldsValue();
-      if(value.followUpDueDate)value.followUpDueDate=value.followUpDueDate.format("YYYY-MM-DD");
-      if(value.technicalDebt?.dueDate)value.technicalDebt.dueDate=value.technicalDebt.dueDate.format("YYYY-MM-DD");
-      if(!value.createTechnicalDebt)delete value.technicalDebt;
+      if(value.meetingAt) value.meetingAt=value.meetingAt.toISOString();
+      if(!value.createTechnicalDebt) delete value.technicalDebt;
       delete value.createTechnicalDebt;
       return api.createDecision(selected!.id,value);
-    },"正式决定已记录",()=>setDecisionOpen(false))} confirmLoading={busy} width={720}>
-      <Alert type="warning" showIcon message="正式决定由当前 Human 身份提交；Agent 分析或草案不能代替 Decision Authority。" className="modal-alert" />
-      <Form form={decisionForm} layout="vertical" initialValues={{subjectType:"work_item",outcome:"more_analysis",createTechnicalDebt:false}}>
-        <Form.Item name="subjectType" label="决策对象"><Select options={[{value:"work_item",label:"整个业务事项"},{value:"artifact",label:"某个 ADR / Artifact"}]} /></Form.Item>
-        <Form.Item noStyle shouldUpdate>{({getFieldValue})=>getFieldValue("subjectType")==="artifact"?<Form.Item name="subjectId" label="选择 Artifact"><Select options={(detail?.artifacts || []).map(a=>({value:a.id,label:(a.code || a.type)+" · "+a.title}))} /></Form.Item>:null}</Form.Item>
-        <Form.Item name="outcome" label="决定" rules={[{required:true}]}><Select options={[{value:"accepted",label:"接受"},{value:"accepted_with_conditions",label:"附条件接受"},{value:"more_analysis",label:"需要更多分析"},{value:"rejected",label:"拒绝"}]} /></Form.Item>
+    },"决定会议结论已记录",()=>setDecisionOpen(false))} confirmLoading={busy} width={720}>
+      <Alert type="warning" showIcon message="正式结论只允许指定 Chairman 或 Workbench Admin 记录；到期、评论和阻断性异议都不会自动批准或拒绝。" className="modal-alert" />
+      <Form form={decisionForm} layout="vertical" initialValues={{outcome:"approved",createTechnicalDebt:false}}>
+        <Form.Item name="meetingAt" label="会议时间"><DatePicker showTime style={{width:"100%"}} /></Form.Item>
+        <Form.Item name="outcome" label="正式结论" rules={[{required:true}]}><Select options={[{value:"approved",label:"Approved · 批准"},{value:"needs_work",label:"Need Work · 要求修改"},{value:"rejected",label:"Rejected · 拒绝"}]} /></Form.Item>
         <Form.Item name="rationale" label="决定依据" rules={[{required:true}]}><TextArea rows={3} /></Form.Item>
-        <Form.Item name="conditions" label="条件 / 限制"><TextArea rows={2} /></Form.Item>
-        <Form.Item noStyle shouldUpdate>{({getFieldValue})=>getFieldValue("outcome")==="more_analysis"?<><Form.Item name="followUpTitle" label="后续分析工作"><Input placeholder="明确要补充的分析" /></Form.Item><Form.Item name="followUpOwnerId" label="责任人"><Select allowClear options={(bootstrap?.people || []).map(p=>({value:p.id,label:p.display_name}))} /></Form.Item><Form.Item name="followUpDueDate" label="截止日期"><DatePicker style={{width:"100%"}} /></Form.Item></>:null}</Form.Item>
-        <Form.Item noStyle shouldUpdate>{({getFieldValue})=>getFieldValue("outcome")==="accepted_with_conditions"?<>
-          <Divider titlePlacement="start">后续义务（按需创建）</Divider>
-          <Form.Item name="createTechnicalDebt" valuePropName="checked"><Checkbox>需要单独跟踪长期 Technical Debt</Checkbox></Form.Item>
+        <Form.Item name="conditions" label="批准条件 / 后续约束"><TextArea rows={2} /></Form.Item>
+        <Form.Item name="minutes" label="会议纪要"><TextArea rows={4} /></Form.Item>
+        <Form.Item noStyle shouldUpdate>{({getFieldValue})=>getFieldValue("outcome")==="approved"?<>
+          <Divider titlePlacement="start">后续技术债务（可选）</Divider>
+          <Form.Item name="createTechnicalDebt" valuePropName="checked"><Checkbox>从批准条件中登记需要长期跟踪的 Technical Debt</Checkbox></Form.Item>
           {getFieldValue("createTechnicalDebt")?<>
-          <Form.Item name={["technicalDebt","title"]} label="技术债务标题" rules={[{required:true,message:"请填写技术债务标题"}]}><Input placeholder="例如：移除过渡适配器" /></Form.Item>
-          <Form.Item name={["technicalDebt","description"]} label="来源与原因"><TextArea rows={2} /></Form.Item>
-          <Row gutter={12}><Col span={12}><Form.Item name={["technicalDebt","ownerId"]} label="责任人"><Select options={(bootstrap?.people || []).map(p=>({value:p.id,label:p.display_name}))} /></Form.Item></Col><Col span={12}><Form.Item name={["technicalDebt","severity"]} label="严重程度"><Select options={[{value:"low",label:"低"},{value:"medium",label:"中"},{value:"high",label:"高"}]} /></Form.Item></Col></Row>
-          <Form.Item name={["technicalDebt","targetState"]} label="目标状态"><Input /></Form.Item>
-          <Form.Item name={["technicalDebt","remediationPlan"]} label="偿还计划"><TextArea rows={2} /></Form.Item>
-          <Row gutter={12}><Col span={12}><Form.Item name={["technicalDebt","priority"]} label="优先级"><Select options={[{value:"low",label:"低"},{value:"normal",label:"普通"},{value:"high",label:"高"}]} /></Form.Item></Col><Col span={12}><Form.Item name={["technicalDebt","dueDate"]} label="目标偿还日期"><DatePicker style={{width:"100%"}} /></Form.Item></Col></Row>
+            <Form.Item name={["technicalDebt","title"]} label="技术债务标题" rules={[{required:true}]}><Input/></Form.Item>
+            <Form.Item name={["technicalDebt","description"]} label="来源与原因"><TextArea rows={2}/></Form.Item>
+            <Row gutter={12}>
+              <Col span={12}><Form.Item name={["technicalDebt","ownerId"]} label="责任人"><Select options={(bootstrap?.people || []).map(p=>({value:p.id,label:p.display_name}))}/></Form.Item></Col>
+              <Col span={12}><Form.Item name={["technicalDebt","severity"]} label="严重程度"><Select options={[{value:"low",label:"低"},{value:"medium",label:"中"},{value:"high",label:"高"}]}/></Form.Item></Col>
+            </Row>
+            <Form.Item name={["technicalDebt","targetState"]} label="目标状态"><Input/></Form.Item>
+            <Form.Item name={["technicalDebt","remediationPlan"]} label="偿还计划"><TextArea rows={2}/></Form.Item>
+            <Row gutter={12}>
+              <Col span={12}><Form.Item name={["technicalDebt","priority"]} label="优先级"><Select options={[{value:"low",label:"低"},{value:"normal",label:"普通"},{value:"high",label:"高"}]}/></Form.Item></Col>
+              <Col span={12}><Form.Item name={["technicalDebt","dueDate"]} label="目标偿还日期"><DatePicker style={{width:"100%"}}/></Form.Item></Col>
+            </Row>
           </>:null}
         </>:null}</Form.Item>
       </Form>
