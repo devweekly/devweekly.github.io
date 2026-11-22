@@ -281,8 +281,9 @@ for (const item of all<{id:string;requestor_id:string|null}>("SELECT id,requesto
   );
   if (chairman) run("UPDATE work_items SET chairman_id=? WHERE id=? AND chairman_id IS NULL",chairman.person_id,item.id);
 }
-run("UPDATE participations SET role_key='chairman',role_label='Chairman',permissions_json='[\\"read\\",\\"decide\\"]' WHERE role_key='decision_authority' AND EXISTS (SELECT 1 FROM work_items w WHERE w.id=participations.work_item_id AND w.chairman_id=participations.person_id)");
-run("UPDATE participations SET role_label='Chairman',permissions_json='[\\"read\\",\\"decide\\"]' WHERE role_key='chairman' AND EXISTS (SELECT 1 FROM work_items w WHERE w.id=participations.work_item_id AND w.chairman_id=participations.person_id)");
+const chairmanPermissions=JSON.stringify(["read","decide"]);
+run("UPDATE participations SET role_key='chairman',role_label='Chairman',permissions_json=? WHERE role_key='decision_authority' AND EXISTS (SELECT 1 FROM work_items w WHERE w.id=participations.work_item_id AND w.chairman_id=participations.person_id)",chairmanPermissions);
+run("UPDATE participations SET role_label='Chairman',permissions_json=? WHERE role_key='chairman' AND EXISTS (SELECT 1 FROM work_items w WHERE w.id=participations.work_item_id AND w.chairman_id=participations.person_id)",chairmanPermissions);
 
 run("UPDATE work_items SET status='discussion_review' WHERE status='in_review'");
 run("UPDATE work_items SET status='requestor_revision' WHERE status IN ('analysis','changes_requested')");
