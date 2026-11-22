@@ -2945,8 +2945,8 @@ async fn run_dreaming_batch(
 
     match result {
         Ok(report) => Ok(Some(report)),
-        Err(AgentError::Cancelled) if activity_guard.is_some() => {
-            if let Err(error) = memory_store.abort_dreaming_run(run_id, "Dreaming yielded to user activity or shutdown") {
+        Err(AgentError::Cancelled) => {
+            if let Err(error) = memory_store.abort_dreaming_run(run_id, "Dreaming was cancelled or invalidated by newer user activity") {
                 warn!(%error, run_id, "failed to persist Dreaming interruption");
             }
             Ok(None)
