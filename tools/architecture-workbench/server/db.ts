@@ -236,6 +236,7 @@ if (clarificationColumns.find(column=>column.name==="artifact_id")?.notnull===1)
 }
 
 
+run("UPDATE work_items SET requestor_id=owner_id WHERE requestor_id IS NULL");
 run("UPDATE submissions SET submitted_by=created_by WHERE submitted_by IS NULL");
 run("UPDATE work_items SET chairman_id=(SELECT p.person_id FROM participations p WHERE p.work_item_id=work_items.id AND p.role_key IN ('chairman','decision_authority') AND p.permissions_json LIKE '%\"decide\"%' ORDER BY CASE p.role_key WHEN 'chairman' THEN 0 ELSE 1 END LIMIT 1) WHERE chairman_id IS NULL");
 run("UPDATE work_items SET status='discussion_review' WHERE status='in_review'");
