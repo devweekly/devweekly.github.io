@@ -98,13 +98,7 @@ app.get("/api/bootstrap",(req,res)=>{
   const people = all("SELECT id,display_name,title,email,avatar_color,department,location,bio,expertise_json,timezone,is_admin FROM people ORDER BY display_name");
   const workItems = all("SELECT w.*,p.display_name AS owner_name,(SELECT COUNT(*) FROM artifacts a WHERE a.work_item_id=w.id) AS artifact_count,(SELECT COUNT(*) FROM tasks t WHERE t.work_item_id=w.id AND t.status NOT IN ('done','cancelled')) AS open_task_count FROM work_items w JOIN people p ON p.id=w.owner_id WHERE w.type <> 'technical_debt' AND (?=1 OR EXISTS (SELECT 1 FROM participations mine WHERE mine.work_item_id=w.id AND mine.person_id=?)) ORDER BY w.updated_at DESC",isGlobalAdmin(actor)?1:0,actor);
   const debts = all("SELECT w.id,w.code,w.title,w.status,w.owner_id,w.target_date,w.priority,p.display_name AS owner_name,d.severity,d.target_state,d.remediation_plan,d.status AS debt_status,d.source_decision_id FROM work_items w JOIN debt_details d ON d.work_item_id=w.id JOIN people p ON p.id=w.owner_id WHERE (?=1 OR EXISTS (SELECT 1 FROM participations mine WHERE mine.work_item_id=w.id AND mine.person_id=?) OR EXISTS (SELECT 1 FROM work_item_relations rel JOIN participations origin_part ON origin_part.work_item_id=rel.source_work_item_id WHERE rel.target_work_item_id=w.id AND origin_part.person_id=?)) ORDER BY CASE d.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,w.target_date",isGlobalAdmin(actor)?1:0,actor,actor);
-  const counts = {
-    openWorkItems: one<{n:number}>("SELECT COUNT(*) AS n FROM work_items WHERE type <> 'technical_debt' AND status<>'closed'")?.n || 0,
-    awaitingReview: one<{n:number}>("SELECT COUNT(*) AS n FROM work_items WHERE type <> 'technical_debt' AND status IN ('discussion_review','waiting_requestor')")?.n || 0,
-    activeDebts: one<{n:number}>("SELECT COUNT(*) AS n FROM debt_details WHERE status IN ('open','in_progress')")?.n || 0,
-    myTasks: one<{n:number}>("SELECT COUNT(*) AS n FROM tasks WHERE (assignee_id=? OR owner_id=?) AND status NOT IN ('done','cancelled')",actor,actor)?.n || 0
-  };
-  res.json({actorId:actor,people,workItems,debts,counts});
+  res.json({actorId:actor,people,workItems,debts});
 });
 
 app.get("/api/my/tasks",(req,res)=>{
@@ -218,18 +212,15 @@ app.get("/api/work-items",(req,res)=>{
 
 app.post("/api/work-items",(req,res)=>{
   const actor=actorId(req); const body=req.body || {};
-  if (!body.title || !body.type || !String(body.description || "").trim()) return res.status(400).json({error:"title, type and problem background are required"});
+  if (!body.title || !body.type || !String(body.description || "").trim()) return res.status(400).json({error:"请填写事项名称、事项类型和问题背景。"});
   const chairmanId=body.chairmanId ? String(body.chairmanId) : null;
-  if (!chairmanId) return res.status(400).json({error:"A Chairman must be assigned before creating a Request."});
-  if (chairmanId===actor) return res.status(400).json({error:"The Requestor cannot also be the assigned Chairman."});
-  if (!one("SELECT id FROM people WHERE id=?",chairmanId)) return res.status(400).json({error:"Unknown Chairman"});
-  if (!String(body.goal || "").trim() || !String(body.scope || "").trim() || !String(body.decisionQuestions || "").trim() || !String(body.submissionMessage || "").trim()) {
-    return res.status(400).json({error:"Request Package requires a goal, scope, committee decision questions and a submission message."});
-  }
+  if (!chairmanId) return res.status(400).json({error:"请选择会议主席。"});
+  if (chairmanId===actor) return res.status(400).json({error:"申请人不能同时担任会议主席。"});
+  if (!one("SELECT id FROM people WHERE id=?",chairmanId)) return res.status(400).json({error:"找不到指定的会议主席。"});
   const requestPackage={
-    goal:String(body.goal || ""),scope:String(body.scope || ""),constraints:String(body.constraints || ""),
+    goal:String(body.goal || body.description || ""),scope:String(body.scope || ""),constraints:String(body.constraints || ""),
     initialProposal:String(body.initialProposal || ""),decisionQuestions:String(body.decisionQuestions || ""),
-    submissionMessage:String(body.submissionMessage || "Initial Request Package")
+    submissionMessage:String(body.submissionMessage || "")
   };
   const workItemId=id("wi");
   const code="WI-"+new Date().getFullYear()+"-"+Math.floor(Date.now()/1000).toString().slice(-6);
@@ -237,9 +228,9 @@ app.post("/api/work-items",(req,res)=>{
   run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,requestor_id,chairman_id,request_package_json,target_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     workItemId,code,body.type,String(body.title),String(body.description || ""),"draft",body.priority || "normal",actor,actor,chairmanId,JSON.stringify(requestPackage),body.targetDate || null,timestamp,timestamp);
   run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",
-    id("part"),workItemId,actor,"owner","Work Item Owner",JSON.stringify(["read","contribute","comment","review","manage"]),timestamp);
+    id("part"),workItemId,actor,"owner","事项负责人",JSON.stringify(["read","contribute","comment","review","manage"]),timestamp);
   if (chairmanId) run("INSERT OR IGNORE INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",
-    id("part"),workItemId,chairmanId,"chairman","Chairman",JSON.stringify(["read","decide"]),timestamp);
+    id("part"),workItemId,chairmanId,"chairman","会议主席",JSON.stringify(["read","decide"]),timestamp);
   logActivity(workItemId,actor,"created","work_item",workItemId,"Created Request "+code);
   res.status(201).json({id:workItemId,code});
 });
