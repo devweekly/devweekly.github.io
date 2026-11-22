@@ -327,6 +327,11 @@ export default function App() {
     if (!analyticsData) return <Card loading />;
     const r=analyticsData.requests;
     const d=analyticsData.technicalDebt;
+    const visibleItems=bootstrap?.workItems || [];
+    const isOverdue=(item:WorkItem)=>Boolean(item.target_date && dayjs(item.target_date).isBefore(dayjs(),"day") && !["closed","rejected"].includes(item.status));
+    const attentionItems=visibleItems.filter(item=>isOverdue(item) || item.status==="in_review")
+      .sort((a,b)=>Number(isOverdue(b))-Number(isOverdue(a)) || String(a.target_date || "9999-12-31").localeCompare(String(b.target_date || "9999-12-31")));
+    const debtItems=bootstrap?.debts || [];
     return <div className="page-stack">
       <div className="page-heading"><div><Text type="secondary">PORTFOLIO INTELLIGENCE</Text><Title level={2}>Portfolio 分析</Title><Paragraph type="secondary">分别观察 Request 组合、评审负载、外部上下文引用覆盖，以及 Tech Debt 的存量、风险和偿还情况。</Paragraph></div><Text type="secondary" className="small">更新于 {dateText(analyticsData.generatedAt)}</Text></div>
       <Tabs activeKey={analyticsTab} onChange={key=>{setAnalyticsTab(key);writeRoute("analytics",null,key);}} items={[
@@ -339,11 +344,16 @@ export default function App() {
             <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="已有关联的 Request" value={r.linked} /></Card></Col>
             <Col xs={12} lg={4}><Card className="metric-card"><Statistic title="外部引用数" value={r.externalReferenceCount} /></Card></Col>
           </Row>
-          <Row gutter={[16,16]}>
-            <Col xs={24} lg={8}>{breakdownCard("按状态分布",r.byStatus)}</Col>
-            <Col xs={24} lg={8}>{breakdownCard("按 Request 类型",r.byType)}</Col>
-            <Col xs={24} lg={8}>{breakdownCard("按优先级",r.byPriority)}</Col>
-          </Row>
+          <Card title={"需要跟进的事项 · "+attentionItems.length} className="panel-card" extra={<Button type="link" onClick={()=>navigatePage("work-items")}>全部事项</Button>}>
+            <Paragraph type="secondary">列出当前身份可访问的逾期事项和等待评审事项。点击事项可直接进入工作区查看负责人、任务和材料。</Paragraph>
+            <Table size="small" rowKey="id" dataSource={attentionItems} pagination={{pageSize:6,hideOnSinglePage:true}} locale={{emptyText:"当前没有逾期或等待评审的事项"}} columns={[
+              {title:"事项",dataIndex:"title",render:(value:string,item:WorkItem)=><Button type="link" className="table-link" onClick={()=>void openWorkItem(item)}>{item.code} · {value}</Button>},
+              {title:"阶段",dataIndex:"status",render:(value:string)=><Tag color={statusColors[value]}>{statusLabels[value] || value}</Tag>},
+              {title:"负责人",dataIndex:"owner_name"},
+              {title:"目标日期",dataIndex:"target_date",render:dateText},
+              {title:"当前关注",render:(_:unknown,item:WorkItem)=>isOverdue(item)?"已超过目标日期":"等待独立评审与确认"}
+            ]} />
+          </Card>
           <Row gutter={[16,16]}>
             <Col xs={24} lg={12}>{breakdownCard("Request Aging",r.aging)}</Col>
             <Col xs={24} lg={12}>
@@ -371,6 +381,16 @@ export default function App() {
             <Col xs={24} lg={8}>{breakdownCard("按严重程度",d.bySeverity)}</Col>
             <Col xs={24} lg={8}>{breakdownCard("按优先级",d.byPriority)}</Col>
           </Row>
+          <Card title={"当前技术债务 · "+debtItems.filter(item=>["open","in_progress"].includes(item.debt_status)).length} className="panel-card" extra={<Button type="link" onClick={()=>navigatePage("debts")}>打开债务台账</Button>}>
+            <Paragraph type="secondary">优先展示尚未偿还的技术债务，便于从组合分析进入实际治理对象。</Paragraph>
+            <Table size="small" rowKey="id" dataSource={debtItems.filter(item=>["open","in_progress"].includes(item.debt_status)).slice(0,8)} pagination={false} locale={{emptyText:"当前没有待偿还的技术债务"}} columns={[
+              {title:"技术债务",dataIndex:"title",render:(value:string,row:DebtItem)=><div><Text strong>{row.code}</Text><div>{value}</div></div>},
+              {title:"严重程度",dataIndex:"severity",render:(value:string)=><Tag color={value==="critical"?"red":value==="high"?"orange":"default"}>{value}</Tag>},
+              {title:"状态",dataIndex:"debt_status",render:(value:string)=><Tag>{statusLabels[value] || value}</Tag>},
+              {title:"负责人",dataIndex:"owner_name"},
+              {title:"目标日期",dataIndex:"target_date",render:dateText}
+            ]} />
+          </Card>
           <Row gutter={[16,16]}>
             <Col xs={24} lg={12}>{breakdownCard("Tech Debt Aging",d.aging)}</Col>
             <Col xs={24} lg={12}><Card title="来源 Request" className="panel-card">
