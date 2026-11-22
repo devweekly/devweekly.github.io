@@ -1155,7 +1155,9 @@ impl AgentRuntime {
         let sources = self.memory_store.forget_with_sources(id)?;
         self.store.redact_transcript_sources(&sources, Some(&self.session.session_id))?;
         if !sources.is_empty() {
-            self.messages.retain(|message| !sources.iter().any(|source| source.content == message.content));
+            self.messages.retain(|message| !sources.iter().any(|source|
+                source.session_id == self.session.session_id && source.content == message.content
+            ));
             self.persist()?;
         }
         Ok(())
@@ -2883,9 +2885,21 @@ async fn run_dreaming_batch(
             ChatMessage { role: "system".into(), content: DREAMING_PROMPT.into() },
             ChatMessage { role: "user".into(), content: payload.to_string() },
         ];
+        let context_manager = ContextManager::default();
+        let (request_messages, estimated_tokens, omitted_messages) =
+            context_manager.fit_messages(&messages);
+        if omitted_messages > 0 {
+            warn!(
+                omitted_messages,
+                estimated_request_tokens = estimated_tokens,
+                "Dreaming request was trimmed to the configured model context budget"
+            );
+        }
+        let max_output_tokens = (context_manager.reserved_output_tokens() > 0)
+            .then_some(context_manager.reserved_output_tokens());
         let completion = tokio::time::timeout(
             options.model_timeout,
-            provider.complete_with_usage(&messages),
+            provider.complete_with_usage_and_limit(&request_messages, max_output_tokens),
         )
         .await
         .map_err(|_| AgentError::InvalidAction("Dreaming model request timed out".into()))??;
