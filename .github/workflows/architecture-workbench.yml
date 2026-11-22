@@ -21,6 +21,6 @@ jobs:
       - name: Install dependencies
         working-directory: tools/architecture-workbench
         run: npm install --no-audit --no-fund
-      - name: Typecheck and build
+      - name: Workflow lifecycle tests, typecheck and build
         working-directory: tools/architecture-workbench
         run: npm run build
