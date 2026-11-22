@@ -561,6 +561,12 @@ impl BackgroundTaskStore {
         Ok(self.directory.join(format!("{task_id}.json")))
     }
 
+    fn lock_store(&self) -> Result<fs::File, AgentError> {
+        // A single stable lock file avoids one permanent .lock file per task and
+        // serializes aggregate quota checks across different task IDs/processes.
+        lock_state_file(&self.directory.join(".task-store"))
+    }
+
     fn load(&self, task_id: &str) -> Result<BackgroundTaskRecord, AgentError> {
         ensure_real_directory(&self.directory)?;
         let path = self.path_for(task_id)?;
@@ -587,7 +593,7 @@ impl BackgroundTaskStore {
             fs::set_permissions(&self.directory, fs::Permissions::from_mode(0o700))?;
         }
         let path = self.path_for(&record.task_id)?;
-        let lock = lock_state_file(&path)?;
+        let lock = self.lock_store()?;
         ensure_regular_file_or_missing(&path)?;
         match fs::read(&path) {
             Ok(bytes) => {
@@ -634,7 +640,7 @@ impl BackgroundTaskStore {
     fn remove(&self, task_id: &str) -> Result<(), AgentError> {
         ensure_real_directory(&self.directory)?;
         let path = self.path_for(task_id)?;
-        let lock = lock_state_file(&path)?;
+        let lock = self.lock_store()?;
         ensure_regular_file_or_missing(&path)?;
         let result = match fs::remove_file(path) {
             Ok(()) => Ok(()),
@@ -647,6 +653,7 @@ impl BackgroundTaskStore {
 
     fn list(&self) -> Result<Vec<BackgroundTaskRecord>, AgentError> {
         ensure_real_directory(&self.directory)?;
+        let lock = self.lock_store()?;
         let mut records = Vec::new();
         for entry in fs::read_dir(&self.directory)? {
             let entry = entry?;
@@ -681,14 +688,17 @@ impl BackgroundTaskStore {
         records.sort_by(|left, right| {
             left.created_at_ms.cmp(&right.created_at_ms).then(left.task_id.cmp(&right.task_id))
         });
+        lock.unlock()?;
         Ok(records)
     }
 
     fn prune_before(&self, cutoff_ms: u128, max_delete: usize) -> Result<usize, AgentError> {
         if max_delete == 0 { return Ok(0); }
         ensure_real_directory(&self.directory)?;
-        let mut candidates = Vec::new();
-        for entry in fs::read_dir(&self.directory)? {
+        let candidates = {
+            let _lock = self.lock_store()?;
+            let mut candidates = Vec::new();
+            for entry in fs::read_dir(&self.directory)? {
             let entry = entry?;
             if !entry.file_type()?.is_file()
                 || entry.path().extension().and_then(|value| value.to_str()) != Some("json")
@@ -702,8 +712,10 @@ impl BackgroundTaskStore {
             if record.status.is_terminal() && record.updated_at_ms < cutoff_ms {
                 candidates.push(record);
             }
-        }
-        candidates.sort_by(|left, right| left.updated_at_ms.cmp(&right.updated_at_ms));
+            }
+            candidates.sort_by(|left, right| left.updated_at_ms.cmp(&right.updated_at_ms));
+            candidates
+        };
         let mut removed = 0usize;
         for record in candidates.into_iter().take(max_delete) {
             self.remove(&record.task_id)?;
