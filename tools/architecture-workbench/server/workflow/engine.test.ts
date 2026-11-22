@@ -153,6 +153,32 @@ test("persisted review timer advances a Request after its deadline",()=>{
   }
 });
 
+test("unanswered clarification deadline moves the Request to the Decision Meeting",()=>{
+  person("requestor");
+  person("reviewer");
+  person("chairman");
+  person("u-workflow");
+  request("workflow-clarification-timeout");
+  assert.equal(transitionWorkItem("workflow-clarification-timeout","requestor","submit_request","Initial package").ok,true);
+  const clarification=createClarification("workflow-clarification-timeout","reviewer",{
+    artifactId:null,
+    question:"Confirm the operational support model.",
+    responseDueAt:new Date(Date.now()+60_000).toISOString()
+  });
+  assert.equal(clarification.ok,true);
+  const expired=new Date(Date.now()-1000).toISOString();
+  run("UPDATE clarification_requests SET response_due_at=? WHERE id=?",expired,clarification.ok?clarification.id:"");
+  run("UPDATE workflow_timers SET due_at=? WHERE work_item_id=? AND timer_type='clarification_deadline'",expired,"workflow-clarification-timeout");
+  const scheduler=startWorkflowTimerService();
+  try {
+    assert.equal(status("workflow-clarification-timeout")?.status,"decision_meeting");
+    const clarificationStatus=one<{status:string}>("SELECT status FROM clarification_requests WHERE id=?",clarification.ok?clarification.id:"");
+    assert.equal(clarificationStatus?.status,"unanswered");
+  } finally {
+    scheduler.stop();
+  }
+});
+
 test.after(()=>{
   db.close();
   rmSync(testDirectory,{recursive:true,force:true});
