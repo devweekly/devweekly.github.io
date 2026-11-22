@@ -20,7 +20,7 @@ const {
 const {startWorkflowTimerService}=await import("./timer-service.js");
 
 function person(id:string,isAdmin=0) {
-  run("INSERT INTO people(id,display_name,title,email,avatar_color,department,location,bio,expertise_json,timezone,is_admin,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+  run("INSERT OR IGNORE INTO people(id,display_name,title,email,avatar_color,department,location,bio,expertise_json,timezone,is_admin,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
     id,id,"Architect",id+"@example.test","#777","Architecture","Tokyo","","[]","Asia/Tokyo",isAdmin,now());
 }
 
