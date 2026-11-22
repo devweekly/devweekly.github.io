@@ -2,13 +2,20 @@
 author: W
 featured: false
 draft: false
-description: 面向多人、多角色和多种 Agent Runtime 的 Human-led 业务事项协作架构，明确 Agent 分析与草拟、Human 确认和决策的权责边界。
+description: 面向多人、多角色和多种 Agent Runtime 的 Human-led 业务事项协作架构，比较 MCP、A2A、ACP、CMMN、BPMN、Flowable、Camunda、Temporal 与 Cumora，并明确 Human 决策权边界。
 pubDatetime: 2026-11-22T03:00:00Z
 title: 从 A2A 到共享业务事项：多角色 Agent 协作架构怎么设计
 tags:
   - ai
   - agent
   - a2a
+  - mcp
+  - acp
+  - cmmn
+  - dmn
+  - flowable
+  - temporal
+  - cumora
   - collaboration
   - workflow
   - architecture
@@ -452,7 +459,720 @@ MCP Tool 不需要与 REST API 一一对应。面向 Agent 的工具应表达工
 - SSO 登录不会自动授予本地 Agent 权限；委托范围可查看、可撤销、可过期。
 - 对 Level 0 Copy / Paste，系统不声称可以追踪 Agent 内部执行；对集成方式，只记录实际经过平台的活动。
 
-## 21. 结论
+
+## 22. 协议边界：REST/OpenAPI、MCP、A2A 和 ACP 不是同一层
+
+讨论“网站如何连接 Agent”时，容易把所有协议都当成 Agent Protocol。实际上，它们解决的是不同的连接关系。设计时应先确定哪一方是 Client、哪一方是 Server、谁持有业务状态，再决定使用哪种协议。
+
+| 协议 | 主要通信关系 | 提供的能力 | 不负责什么 |
+| --- | --- | --- | --- |
+| REST / HTTP API | 应用、网站、CLI、Connector 与业务服务 | 业务资源、命令、状态查询、标准 HTTP 认证 | Agent 内部执行和多 Agent 编排 |
+| OpenAPI | API 提供方与客户端生成工具 | 描述 HTTP 路径、Schema、认证和操作契约 | 运行时授权决策和业务流程 |
+| MCP | Agent Host / Client 与工具、资源 Server | Tools、Resources、Prompts、Elicitation、能力协商和 HTTP 授权 | Work Item 生命周期、组织角色、正式审批 |
+| A2A | 独立 Agent Client 与 Remote Agent | Agent Card、Message、Task、Artifact、异步进度和跨 Agent 委托 | 企业 Case、参与者管理和业务决策权 |
+| ACP（Agent Client Protocol） | 编辑器、桌面客户端或 Connector 与本地 Coding Agent Runtime | 本地 Session、Prompt、流式更新、取消和运行时能力协商 | 企业业务事项、跨部门角色和审批 |
+| CloudEvents / AsyncAPI | 业务服务与事件消费者 | 事件 Envelope、消息 Channel 和异步接口描述 | 业务事件是否合法、谁能触发事件 |
+
+### 22.1 REST/OpenAPI 应该是业务服务的稳定接口
+
+业务系统首先应定义自己的领域 API。Web UI、移动端、CLI、Local Connector、MCP Server、Webhook 和第三方服务都通过这一层访问 Work Item 服务。
+
+例如：
+
+- `GET /work-items/{id}`：读取事项。
+- `GET /work-items/{id}/context`：读取当前授权的上下文视图。
+- `GET /tasks/{id}`：读取任务。
+- `POST /tasks/{id}/artifacts`：提交分析产物。
+- `POST /tasks/{id}/recommendations`：提交建议。
+- `POST /decision-drafts/{id}/confirm`：Human 确认决策草案。
+- `POST /decisions/{id}/record`：记录授权 Human 已作出的正式决定。
+
+OpenAPI 可以描述这些接口并生成 TypeScript、Python、Java 或其他客户端，但 Schema 中的 `confirm` 并不代表 Agent 可以调用。谁能调用仍由服务端根据 Principal 类型、Participation、角色、作用域、事项状态和策略校验。
+
+不要因为某个 Agent 支持 MCP，就把 MCP Server 当成唯一后端。否则所有客户端、业务集成和自动化系统都必须围绕模型工具协议工作，业务接口会被 Agent Host 的实现细节绑住。
+
+### 22.2 MCP 适合包装 Agent 需要的业务操作
+
+MCP 定义 JSON-RPC 基础协议、版本与能力协商、HTTP 授权机制，以及 Server 提供的 Tools、Resources、Prompts；Client 侧还可以支持 Elicitation、Sampling 和 Roots。不同能力是按需协商的，不代表每个 MCP Client 都支持全部特性。参见 [MCP Specification](https://modelcontextprotocol.io/specification/2026-07-28) 和 [MCP Server Tools](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2026-07-28/server/tools.mdx)。
+
+对业务网站而言，MCP 可以提供：
+
+- Resources：当前用户可访问的 Work Item、Task、Artifact、流程定义和相关知识。
+- Tools：查询待办、读取任务上下文、提交分析、提交 Review Findings、请求补充信息、创建 Decision Draft。
+- Prompts：架构分析、风险检查、方案比较等任务模板。
+- Elicitation：请求用户补充结构化输入，或者引导用户到受信任的网页完成敏感授权。
+
+MCP 的 Tools 是面向模型调用设计的，但协议本身不规定必须采用哪种 Human 交互 UI。规范建议宿主能够拒绝工具调用、显示工具执行状态，并在需要时请求用户确认。Elicitation 可以请求 Human 输入，但它本身不是正式业务审批引擎。
+
+因此，不应把“Agent 发起了一次 MCP Tool Call，用户点击了客户端确认”直接记成业务 Decision。MCP Client 的工具授权与 Work Item 的正式业务决定是两个不同的记录和权限层。
+
+建议 MCP Tool 使用业务意图命名，例如：
+
+```text
+get_my_work
+prepare_work_context
+list_accessible_artifacts
+submit_analysis
+submit_review_findings
+prepare_decision_draft
+request_human_confirmation
+```
+
+不向 Agent 提供 `approve_work_item`、`confirm_decision`、`reject_request` 或 `close_case`。即便外部 MCP Server 暴露了类似工具，本系统也不能信任客户端是否展示了确认对话框；服务端必须自己检查调用身份。
+
+### 22.3 A2A 负责跨独立 Agent 服务委托
+
+A2A 1.0 定义 Agent Card、Message、Task、Artifact、Context ID、异步状态和 Push Notification。它适合调用其他组织或团队提供的独立 Agent 服务。例如安全情报 Agent、外部合规分析 Agent、供应商架构评估 Agent。
+
+A2A 的 Task 是远端 Agent 管理的有状态工作单元；Context ID 把相关 Task 和 Message 组织成一个交互上下文。它不是本地 Work Item ID，也不是用户参与关系。A2A 的 Task History 也不保证包含所有瞬时消息，规范明确不应把普通 Message 当作关键业务信息的可靠持久化机制。正式业务信息仍需落入本地 Artifact 和 Activity 账本。
+
+建议建立以下关联，而不是让 A2A ID 取代业务 ID：
+
+| 本地对象 | 作用 |
+| --- | --- |
+| Work Item ID | 本地业务事项的稳定身份 |
+| Collaboration Task ID | 本地任务、责任、权限和 SLA |
+| Work Session ID | 人或 Agent 实际执行的一段工作 |
+| A2A Task ID | 远端 Agent 的协议任务 |
+| A2A Context ID | 远端 Agent 的交互上下文 |
+| Artifact Reference | 远端产物进入本地 Artifact 版本体系后的引用 |
+| Correlation ID | 贯穿委托、回调和事件链路的追踪标识 |
+
+参考：[A2A 1.0 Specification](https://a2a-protocol.org/v1.0.0/specification/)、[A2A Key Concepts](https://a2a-protocol.org/latest/topics/key-concepts/)。
+
+### 22.4 ACP 是本地 Agent Runtime 接口，不是业务系统协议
+
+这里的 ACP 指 [Agent Client Protocol](https://agentclientprotocol.com/)，它主要标准化编辑器或客户端与 Coding Agent Runtime 的通信。协议使用 JSON-RPC 2.0，围绕初始化、Session 创建或恢复、Prompt、Session Update 和 Cancel 等操作展开。
+
+ACP 很适合需要嵌入本地 Coding Agent 的 IDE、桌面客户端或 Local Connector。它能减少不同 Runtime 各自定义 Session 生命周期、Prompt 传输和流式事件格式带来的适配工作。
+
+它不管理企业用户、Work Item、Reviewer、Approver，也不负责持久化业务决策。不要把 ACP Session 当作 Work Session 的唯一实现，更不能把它的 Session ID 当成业务 Task ID。
+
+还需要留意 ACP 缩写的歧义：Agent Client Protocol 与早期 IBM/BeeAI 语境中的 Agent Communication Protocol 不是同一个概念。讨论当前 Coding Agent 集成时应写全称，避免把它与 A2A 混淆。
+
+### 22.5 Events 是状态变化通知，不是第二套业务数据库
+
+业务事件可采用 CloudEvents Envelope，并通过 AsyncAPI 描述异步消息接口。事件例如：
+
+- WorkItemCreated
+- ParticipationChanged
+- TaskAssigned
+- ArtifactSubmitted
+- ReviewRequested
+- DecisionDraftPrepared
+- HumanDecisionConfirmed
+- WorkItemClosed
+
+事件消费者可以负责通知、搜索索引、Agent 唤醒和外部同步。事件发布建议使用 Transactional Outbox，避免数据库状态已提交而事件丢失。
+
+事件本身不能绕开命令入口。Agent 不能通过发布一个 `DecisionConfirmed` 事件来伪造 Human 决定；事件必须来自服务端验证过的业务命令，并保留 Actor、Principal Type、Role、Resource Version 和 Policy Version。
+
+## 23. BPMN、CMMN、DMN：三种业务建模标准各自解决什么问题
+
+当前设计里最值得进一步引入的不是某个 Agent Framework，而是 OMG 的 BPMN、CMMN 和 DMN。它们不是 Agent 标准，但能描述业务活动、动态工作和确定性业务规则。
+
+### 23.1 BPMN：流程顺序明确时使用
+
+BPMN 适合步骤、条件和责任相对确定的工作，例如：
+
+`Request submitted → Analysis → Review → Human approval → Implementation`
+
+它能描述 User Task、Service Task、Gateway、Boundary Event、Timer 和 Subprocess。对于强制审批、合规流程、明确的 SLA 和升级路径，BPMN 很合适。
+
+但如果每个事项都需要先判断是否要增加 Specialist、是否要补充材料、是否要做额外风险调查，强行把每一种可能性都固化成 BPMN 节点，模型会逐渐膨胀。
+
+### 23.2 CMMN：动态事项和知识工作更接近当前场景
+
+CMMN（Case Management Model and Notation）是 OMG 的 Adaptive Case Management 标准。它围绕 Case、Case File、Plan Model、Plan Item、Stage、Milestone 和 Sentry 建模。Case 的工作可以根据新信息和当前状态，以不固定顺序推进。
+
+这与架构分析、风险调查、数据评估、合规审查等知识工作非常相似：
+
+- 一开始只知道需要架构分析。
+- 分析中发现安全问题后，增加 Security Review。
+- 数据团队发现数据驻留风险后，再加入 Data Specialist。
+- 新的业务信息到达后，重新激活某些活动。
+- 事项完成某个里程碑后，部分动作不再允许。
+
+CMMN 的核心价值不是“Agent 可以决定下一步”，而是**Case 状态定义当前哪些活动可用，哪些活动必须等待 Human 或业务规则触发**。OMG 对 CMMN 的定位明确强调动态工作与知识工作，并让 Human 保持在驾驶席上。
+
+参见 [OMG CMMN](https://www.omg.org/cmmn/)、[Flowable CMMN 1.1 Concepts](https://www.flowable.com/open-source/docs/cmmn/ch06-cmmn)。
+
+### 23.3 DMN：确定性规则与 LLM 建议分开
+
+DMN（Decision Model and Notation）是业务规则与决策逻辑的建模标准，能和 BPMN/CMMN 一起使用。
+
+例如：
+
+- 事项类型是架构评估，必须有 Architect Owner。
+- 风险等级为 Critical，必须有 Security Review。
+- Artifact 进入正式评审之前必须完成指定证据检查。
+- Production 风险接受必须由指定权限等级的 Human 批准。
+
+这些是可解释、可测试、可重复的规则，应由 DMN 或普通确定性代码实现。LLM 可以分析材料并建议风险等级，但它不能通过生成一段 JSON 就修改组织规则或授予自己权限。
+
+不要将 DMN 的 Decision Table 与本设计中的正式业务 Decision 混为一谈：前者是可执行的规则模型；后者是由授权 Human 对具体事项作出的决定记录。
+
+OMG 的 [DMN 规范](https://www.omg.org/spec/DMN) 当前正式版本为 1.6，1.7 仍为 Beta。DMN 设计上就是与 BPMN 和 CMMN 配套的业务决策与规则模型。
+
+### 23.4 Work Item 是否应直接等于 CMMN Case？
+
+不应该强行等同。
+
+Work Item 是本系统的业务领域对象；CMMN Case 是工作流引擎中的执行与建模对象。两者可以一对一映射，也可以按业务类型拆成多个 Case。
+
+建议 Work Item 服务继续拥有业务 ID、参与关系、上下文版本、Artifact、Review 和 Decision。若使用 CMMN，Case Instance ID 作为执行关联 ID 保存。这样即使将来更换工作流引擎，业务对象仍然稳定。
+
+CMMN 对动态 Case 特别有价值，但不代表所有事项都必须启动 Case Engine。简单的咨询、一次性任务和无需正式流程的事项，不应该被流程模型强行复杂化。
+
+## 24. 工作流与 Agent 执行项目比较
+
+以下比较区分**业务事项管理、流程编排和 Agent 执行**。它们并不是同一类产品。
+
+### 24.1 Flowable：与动态 Case / Work Item 语义最接近
+
+项目：[flowable/flowable-engine](https://github.com/flowable/flowable-engine)
+
+Flowable 的核心开源引擎提供 BPMN、CMMN 和 DMN，使用 Java，可以嵌入应用或通过服务/API 集成，许可证为 Apache 2.0。它的 CMMN Engine 和 Human Task 模型值得作为 Work Item 生命周期的重点参考。
+
+Flowable 近期的 Agentic Case Platform 把 Agent 作为 Case 中的参与者，使用 CMMN Plan Item 表达 Agent 可以选择的活动。Case 进展会动态改变可执行的 Plan Item。其企业产品也提供 Agent 类型、Guardrail、Evaluator、External Agent、A2A Agent 和 Work MCP Server 等能力。
+
+尤其值得关注的是 Flowable Work MCP Server：它允许 Agent 读取并操作 Flowable Work 中的 Process / Case / Task，MCP Tool 的权限和 Tenant Scope 与 Work REST API 保持一致。这是“同一个业务授权模型同时供 Web UI 和 MCP 使用”的商业实现例子。
+
+但有一个重要的产品边界：**Flowable BPMN/CMMN/DMN 核心引擎是 Apache 2.0；Flowable Agentic Case Platform、Work MCP Server 等能力属于企业产品文档范围，不能假定它们都包含在开源 Engine 中。** 需要按实际产品版和授权核对。
+
+适合借鉴：
+
+- CMMN Case / Plan Item / Sentry。
+- 动态参与者和人类任务。
+- 案件状态控制允许的工作项。
+- BPMN、CMMN 与 DMN 的协作。
+- MCP Tool 和 REST API 共用权限模型。
+- Guardrail / Evaluator 作为单独治理组件。
+
+不应直接复制的地方是：Flowable Agentic Platform 支持可配置的 Agent 自主程度，某些场景允许 AI 自动完成决定；当前业务要求不允许这种自动业务决定。需要把 Human Decision Gate 设成固定规则，而不是一个可被流程模型随意放宽的可选 Autonomy Level。
+
+参考：[Flowable Open Source](https://www.flowable.com/open-source)、[Agentic Case Platform](https://www.flowable.com/product/agentic-case-platform)、[AI Capabilities Overview](https://documentation.flowable.com/latest/ai/ai-introduction)、[Work MCP Server](https://documentation.flowable.com/latest/ai/ai-work-mcp-server)。
+
+### 24.2 Camunda：确定性 BPMN 与 Agent 运行结合得较好
+
+项目：[camunda/camunda](https://github.com/camunda/camunda)
+
+Camunda Agentic Orchestration 把确定性 BPMN 流程、Agent Task、工具调用和 Human Task 放在同一流程模型中。Agent 可以根据上下文选择工具，但 Camunda 控制流程边界、重试、Incident 和 Human Task。
+
+值得研究的能力：
+
+- AI Agent Task 和 Agent Subprocess。
+- Agent 工具调用前后的 User Task / Approval Gate。
+- 连接 LangGraph、CrewAI 等外部 Agent Runtime。
+- Agent Instance API：外部 Runtime 向 Camunda 报告 Agent 执行状态、Tool Call、Conversation 和用量。
+- Operate 对 Agent 执行过程的观测。
+
+其中 External Agent 的设计尤其重要：Camunda 负责编排何时调用外部 Agent；外部 Runtime 仍然拥有真正的执行状态。Camunda 的 Agent Instance 是观测和解释对象，不应误认为它是外部 Runtime 的真实执行状态来源。
+
+Camunda 8.10 增强了 Agent 的实时可见性和 Agent Instance API，对外部 LangGraph / CrewAI Agent 也可以使用同样的追踪能力。
+
+必须考虑许可：Camunda 8.6 及以上版本的核心组件源代码使用 Camunda License v1，编译产品在生产环境需要 Enterprise Edition；不能再简单按照“Camunda 全部是 Apache 开源”进行评估。Connector SDK、REST Connector 等部分组件仍使用 Apache 2.0。
+
+适合：明确的业务流程、严格审批、复杂 BPMN、需要统一流程运行时和 Agent 执行观测的环境。
+
+不适合：仅为了一个动态 Work Item 引入完整流程设计平台，或者希望长期完全依赖 Apache 2.0 开源运行时的场景。
+
+参考：[Agentic Orchestration](https://docs.camunda.io/docs/components/agentic-orchestration/agentic-orchestration-overview/)、[Connect External Agent](https://docs.camunda.io/docs/components/agentic-orchestration/connect-external-agent/)、[Agent Instance API](https://docs.camunda.io/docs/components/agentic-orchestration/agent-definitions-and-instances/)、[Camunda Licensing](https://docs.camunda.io/docs/reference/licenses/)。
+
+### 24.3 Temporal：长期运行、等待和可靠恢复能力突出
+
+项目：[temporalio/temporal](https://github.com/temporalio/temporal)
+
+Temporal 是 Durable Execution 平台，不是 Case Management 产品。它把 Workflow 执行状态持久化，支持长时间等待、失败恢复、重试、超时、Timer 和 Signal。Temporal Server 使用 MIT License，可自托管。
+
+如果选择代码驱动的业务流程，而不是 BPMN/CMMN 图形建模，Temporal 是很有竞争力的候选。尤其适合 Agent 运行可能持续数小时或数天、需要等待 Human 输入、外部事件和工具执行结果的场景。
+
+但需要自己定义 Work Item、参与关系、权限、Artifact、Decision 和业务生命周期；Temporal Workflow 不会自动变成完整的业务事项平台。
+
+### 24.4 Temporal Agent Kit：最值得研究的 Agent Execution 实现之一
+
+项目：[temporal-community/temporal-agent-kit](https://github.com/temporal-community/temporal-agent-kit)，许可证 MIT，但 README 明确标注 Experimental，API 仍可能变化。
+
+Agent Kit 的核心思路是：**一个 Agent 是一个 Temporal Workflow**。它在 Temporal 的持久化执行基础上，提供类型化消息、Handler、Tools、Streaming、Agent Composition、Human Approval 和可观测事件流。
+
+可直接借鉴的设计：
+
+**Typed Agent Interface。** Agent 用具名 Handler 声明可接收的操作，并用 Schema 定义输入输出。Agent 不是一个只能接收自然语言的黑盒，而是可以被应用和其他 Agent 以结构化方式调用。
+
+**Durable Human Approval。** 某个工具调用需要批准时，Workflow 暂停并等待 Human。人几分钟、几天后回应都可以继续，不需要保持一个 HTTP 请求或进程一直运行。
+
+**Safe-by-default ToolApprovalPolicy。** 当前实现要求 Agent 明确配置默认 Approval Policy。使用 `always_require_human_approval()` 时，所有工具调用都进入 Human Gate；只有静态安全声明或显式的工具 allow-list 才能绕过。未配置规则的工具不会自动放行。
+
+**Auto Mode 的 fail-safe。** 如果启用了动态评估器，它可以对工具调用做三值判断：APPROVE、DENY、ESCALATE。评估器异常、返回非法数据或不确定时，都会升级到 Human Gate；Human 如果先作出决定，正在运行的评估器会被取消。每次评估都有开始和结束/异常/取消事件，便于审计。
+
+**Callback Tools。** Agent 可以请求在客户端执行一个工具，例如访问用户本机的文件或私有网络资源；Workflow 暂停，Client 执行后把结构化结果返回。它把本地工具执行与云端 Agent Worker 分开，是 Local Connector 设计的一个有价值模式。
+
+**Typed Event Stream。** Agent 的消息、工具调用、审批请求、工具执行结果、Subagent Handoff 和 Token Usage 通过统一事件流暴露，Client 可以按 Offset 恢复。
+
+需要明确边界：Agent Kit 的 Tool Approval 是对“是否允许调用某个 Tool”的执行权限控制，不等于正式业务 Decision。它的 Auto Mode 可能自动放行某些工具调用，但不能借此让 Agent 自动确认架构方案或业务审批。对当前平台，Decision Draft 的确认必须使用独立 Human-only 业务接口，不能复用 Agent Kit 的工具审批策略。
+
+还有一个实现层面的限制：当前 Agent Kit 的 API/UI Server 主要由 Python Package 提供，TypeScript 负责 Agent Worker；它不是纯 TypeScript 的统一服务端框架。Agent Kit 仍是 Experimental，需要固定版本并评估升级成本。
+
+参考：[Agent Kit README](https://github.com/temporal-community/temporal-agent-kit)、[Capabilities](https://github.com/temporal-community/temporal-agent-kit/blob/main/docs/guides/capabilities.md)、[Approvals](https://github.com/temporal-community/temporal-agent-kit/blob/main/docs/guides/approvals.md)、[Agent Kit API](https://github.com/temporal-community/temporal-agent-kit/blob/main/docs/api/README.md)、[Approval Tests](https://github.com/temporal-community/temporal-agent-kit/blob/main/typescript/packages/worker/test/agent-workflow/approvals.test.ts)。
+
+### 24.5 LangGraph 和 n8n 的位置
+
+LangGraph 适合 Agent 内部图执行、Checkpoint、Interrupt/Resume 和多 Agent 编排；它不提供完整的多人 Work Item 管理、组织身份和业务审批模型。
+
+n8n 擅长自动化工作流以及在 Tool Call 周围插入 Human Review。它很适合做局部自动化和审批拦截，但不应直接被当作企业 Case Management 的完整替代品。
+
+选择时应按层比较，而不是简单地把这些框架排成一个“最好用”的榜单。
+
+## 25. 商业产品：已有平台如何让外部 Agent 使用业务系统
+
+### 25.1 Atlassian Rovo MCP：最接近“用户自己的 Agent 直接连接工作网站”的实例
+
+Atlassian 提供官方 Remote MCP Server，支持 Jira、Confluence、Jira Service Management、Bitbucket、Compass 等产品。它可以连接 ChatGPT、Claude、VS Code/GitHub Copilot、Cursor 等 MCP Client。
+
+它的模式是：
+
+1. Agent Client 连接 Atlassian 托管的 MCP Server。
+2. 用户通过 OAuth 2.1 完成授权。
+3. MCP Server 按 Atlassian 用户已有权限读取和修改 Jira / Confluence 数据。
+4. 管理员控制 Read、Write、Search、Delete、Manage 等工具组。
+5. MCP Server 先暴露常用工具，其他工具按需发现，避免一开始把所有工具塞给模型。
+
+这正是 Level 1 MCP 接入的成熟商业案例。它说明网站不必为每一种 Agent Runtime 单独开发插件：只需要维护稳定的业务 API 和统一 MCP Adapter。
+
+但 Atlassian 的默认模式主要是“Agent 借用当前用户授权访问 Jira”。如果将这种模式用于多个 Agent、不同 Work Item 和不同业务角色，仍要额外实现 Task 范围授权和 Human 决策身份。用户能在 Jira 执行某个操作，不代表其 Agent 可以在所有 Work Item 中执行该操作。
+
+参考：[Atlassian MCP Server](https://atlassian.github.io/atlassian-mcp-server/)、[Atlassian MCP Security](https://support.atlassian.com/security-and-access-policies/docs/understand-atlassian-mcp-server/)、[Rovo MCP Developer Guide](https://developer.atlassian.com/cloud/rovo-mcp/guides/getting-started/)。
+
+### 25.2 ServiceNow：Agent 辅助现有审批记录
+
+ServiceNow 的 Approval Assistance AI Agent 可以读取当前用户待处理的 Approval Records、获取最新详情、生成基于知识库的评估 Checklist，并支持审批与拒绝操作。
+
+这是“Agent 进入已有业务记录和审批任务”的典型企业实现。设计上值得借鉴它围绕现有审批记录提供检索、摘要和证据，而不是另建一套 Agent Chat 记录。
+
+但正式审批动作必须明确是用户指示下的 Human 操作，还是平台授予 Agent 的操作权限。当前设计只允许前者。
+
+参考：[ServiceNow Approval Assistance AI Agent](https://www.servicenow.com/docs/r/intelligent-experiences/plat-approval-assistance-ai-agent.html)。
+
+### 25.3 Salesforce Agentforce：把审批人工作台放进对话界面
+
+Salesforce 的 Approval Agent 可以查询审批工作项、汇总资料、生成评论建议，并在审核人员作出决定后同步底层 Approval Record。用户可以从 Salesforce 或 Slack 中操作审批。
+
+这个案例值得借鉴的是：Agent 可以把背景、证据、历史和待处理事项汇总到一个对话入口，但正式决策仍然应与具体 Reviewer / Approver 的身份关联，而不是把 Agent 记录成审批人。
+
+参考：[Salesforce Agentforce for Advanced Approval](https://help.salesforce.com/s/articleView?id=ind.rev_agent_approval_agent.htm&language=en_US&type=5)。
+
+### 25.4 Microsoft Copilot Studio：AI Approval 不符合当前默认治理约束
+
+Copilot Studio 的 Multistage Approvals 提供 Manual Approval Stage 和 AI Approval Stage。AI Stage 可以依据文档和规则直接产生 Approve / Reject，随后可以进入 Human Review，也可以按条件自动通过或跳过后续阶段。这些能力当前仍有 Preview 标记。
+
+Microsoft 自己也提示，财务、法律、人事和合规等敏感审批应确保 Human Approval Stage 被执行，让 Human 保持最终控制。
+
+这证明商业产品正在尝试把 AI 变成审批流程参与者，但对当前系统不能照搬 AI Approval Stage。即便将来增加自动化，也只能用于非业务决定的可逆工具动作或确定性规则，不得代替授权 Human 确认正式 Decision。
+
+参考：[Copilot Studio Multistage and AI Approvals](https://learn.microsoft.com/en-us/microsoft-copilot-studio/flows-advanced-approvals)、[Human-in-the-loop Workflow Steps](https://learn.microsoft.com/en-us/training/modules/add-human-loop-workflows-copilot-studio/)。
+
+## 26. Cumora 源码解读：最值得参考的是 Runtime 解耦、授权代理和并发控制
+
+项目：[yetone/cumora](https://github.com/yetone/cumora)
+
+Cumora 是一个以 Team Chat 为主要产品入口的跨平台协作应用，让 Agent 与 Human 出现在同一个成员列表、私聊、群聊、Kanban Board 和 Calendar 中。它不是通用 Work Item / Case Management 平台，但已经实现了多种 Agent Runtime 接入、多 Agent 并发协作和一个证据驱动的 Shipping 工作流。
+
+它对当前架构最有价值的地方，不是照搬它的聊天界面，而是学习它如何将**业务协作服务、Agent 执行 Runtime、本地机器和模型进程隔离**。
+
+### 26.1 它有两条 Agent 执行路径，不是单纯的 ACP Client
+
+Cumora 有两个执行模式：
+
+| 执行模式 | Agent Brain 在哪里 | Agent Tool 执行在哪里 | 主要作用 |
+| --- | --- | --- | --- |
+| Cumora Cloud | Cumora 管理的 Kubernetes Pod / OpenAI Responses API | 每个 Agent 独立 Pod | 平台托管 Agent Runtime |
+| BYOA | 用户自己的 Mac / VPS / 本地 Provider Account | 本机 Daemon 和本地 Runtime | 用户自己管理模型和 Agent Runtime |
+
+Cloud Agent 由服务端为每个 Agent 管理 Pod，运行 Responses API 的多轮 Tool Calling Loop。BYOA 则通过 `npx cumora agent computer --pair` 把用户的机器登记为 Computer，由常驻 Daemon 驱动本地 Agent CLI。
+
+两条路径最终都通过 Cumora 自己的 `cumora` CLI Command Contract 与业务服务交互，并使用同一个 LLM Call Ledger。换句话说，Cumora 抽象的是“Agent 可以执行哪些业务命令”，而不是要求所有 Runtime 使用同一个模型 SDK。
+
+这一点非常值得借鉴：**业务工具协议稳定，Runtime Adapter 可以因 Agent 产品而不同。**
+
+参考：[Cumora README](https://github.com/yetone/cumora)、[BYOA Design](https://github.com/yetone/cumora/blob/main/docs/BYOA.md)。
+
+### 26.2 Engine Adapter：协议兼容不等于把所有 Runtime 伪装成同一种 Runtime
+
+Cumora 的 `server/src/agents/computer/engine.ts` 定义了不同 Engine 的启动和交互适配。
+
+其 Runtime 接入方式包括：
+
+| Runtime | Cumora 适配方式 |
+| --- | --- |
+| Claude Code | 原生 CLI / stream-json |
+| Codex | CLI exec 或 App Server 等路径 |
+| Pi | RPC |
+| ZCode | `zcode-acp-server` ACP Bridge |
+| OMP | `omp acp` |
+| Grok Build | ACP 兼容路径 |
+| Cursor、OpenCode、Gemini CLI、Qwen Code、Antigravity 等 | 各自 CLI Adapter 或兼容模式 |
+
+这说明 ACP 在 Cumora 中是部分 Runtime 的 Client/Runtime 协议，不是 Cumora 的业务协作协议。ACP Adapter 只负责 Runtime Session、Prompt 和事件；上层业务操作仍走 Cumora 自己的 CLI Contract。
+
+可以借鉴这种 Adapter 架构，但应增加统一的 Capability Manifest。例如某个 Runtime 是否支持持久 Session、Streaming、Cancel、MCP、Callback Tool、Workspace Access、Sandbox、Approval Request。不要假设所有 CLI 都有相同的能力和安全边界。
+
+### 26.3 Computer、Agent、Runtime Session 三者分离
+
+Cumora 把 Computer 作为一个独立注册对象：
+
+- Computer 表示 Cloud、Local 或 VPS 等执行主机。
+- Agent 是工作空间中的参与者。
+- Engine 表示该 Agent 当前使用的 Runtime 类型。
+- Session ID 是 Runtime 自己的运行时身份。
+- Agent 的 Memory / Skill / Workspace 存放在各自 Agent Home 下。
+
+一个 Daemon 可以承载多个 Agent，每个 Agent 拥有独立 Home、Memory、Skill、Session 和工作目录。Computer 负责主机在线状态、Engine 列表、Pairing 和运行负载。
+
+这非常适合迁移到当前平台：
+
+- Work Item Participation 不应与 Computer 绑定。
+- Agent Execution Identity 不应与 Human Principal 混淆。
+- Runtime Session 不应成为业务 Task。
+- 用户切换 Mac、VPS、云端 Runtime 时，不应该改变 Work Item 和 Task 的身份。
+- 同一业务 Task 可以由多个 Session 接续，但这些 Session 必须属于同一个授权边界。
+
+建议在当前模型增加 `Execution Endpoint` 或 `Runtime Connection` 概念，对应 Cumora Computer；不要把它直接命名为 Agent Participant。
+
+### 26.4 BYOA Daemon 的安全设计值得深入借鉴
+
+Cumora 的 BYOA 设计特别强调：**模型进程不应该拿到平台凭证。**
+
+它的主要流程是：
+
+1. 用户使用 Workspace Pairing Code 注册 Computer。
+2. 服务端保存 Device Token Hash，不以明文长期存储。
+3. Daemon 持有设备身份，并为分配给该 Computer 的 Agent 获取短期 Runtime JWT。
+4. Runtime JWT 绑定 Agent ID、Company ID、Computer ID、Assignment ID 和 Scope。
+5. Daemon 在内存中保存 JWT，定时刷新。
+6. Agent CLI 子进程不接收 Server URL、Bearer Token 或 HTTP Client。
+7. Agent 产生的业务命令通过固定 MCP Bridge / File IPC 交给 Daemon。
+8. Daemon 校验请求、补充身份、再调用 `/runtime/cli`。
+9. 服务端每次执行都重新核对当前 Assignment，避免 Agent 已被迁移或 Computer 已被撤销后继续使用旧 Token。
+10. 移除 Computer 会撤销设备凭证及其派生 Runtime 权限。
+
+相关源码：
+
+- [Computer Daemon](https://github.com/yetone/cumora/blob/main/server/src/agents/computer/daemon.ts)
+- [Runtime JWT](https://github.com/yetone/cumora/blob/main/server/src/agents/runtime/jwt.ts)
+- [Runtime Authorization](https://github.com/yetone/cumora/blob/main/server/src/agents/runtime/authorization.ts)
+- [Computer Registry](https://github.com/yetone/cumora/blob/main/server/src/agents/computer/registry.ts)
+- [Engine Adapters](https://github.com/yetone/cumora/blob/main/server/src/agents/computer/engine.ts)
+
+其中值得直接吸收的设计是：
+
+- 本地 Device 身份与用户登录会话分离。
+- Agent Runtime Token 短期有效、带 Scope、绑定 Assignment。
+- 服务端不能相信请求体中的 `agentId`、`companyId` 或 `computerId`；必须从已验证的 Token 获取。
+- 每个请求应检查当前 Assignment 是否仍有效，而不是只验证 JWT 签名。
+- Agent 子进程不获得运行时凭证，凭证保留在受信任的本地 Connector。
+- 本地工作目录和 Daemon 私有 IPC 区域分离，避免模型可以覆盖自己的权限代理。
+
+Cumora 也明确把不具备已验证 Sandbox 能力的 Runtime 放进显式兼容模式，而不是默认给予主机权限。它目前将 Claude Code 和 Codex 作为安全模式的主要适配器，其他 Runtime 需要显式开启不安全兼容开关。这种 Capability-based fail-closed 策略值得借鉴，但需要结合你自己的 Rust/本机工具安全设计重新评估，不能仅复制某个 CLI 的启动参数。
+
+### 26.5 Local State 与 Shared Business State 分开
+
+Cumora 的 BYOA 设计将数据拆成两类：
+
+- Agent Local Home：Agent Memory、Notes、Skills、临时文件和 Runtime Session，保留在用户机器上。
+- Server Shared State：团队共享文档、Board、Calendar、Conversation 和其他正式协作内容，由服务端保存。
+
+这避免将 Agent 内部记忆强行同步到服务器，也避免所有外部 Agent 都需要共享同一文件系统。
+
+对于当前系统，建议进一步明确三种数据：
+
+1. **Private Runtime State**：模型上下文、局部缓存、Agent 内部记忆。
+2. **Task Working State**：用户或 Agent 在当前 Task 中使用的临时材料、草稿和工作区。
+3. **Business Artifact**：提交到 Work Item、可版本化、可评审和可追溯的产物。
+
+只有第三类进入正式业务上下文。第二类可以通过明确的 Artifact Submission 晋升为正式产物。第一类原则上不作为业务证据，也不要求全部上传。
+
+这是避免企业系统把 Agent 的内部记忆误当成业务知识库的重要边界。
+
+### 26.6 固定 MCP Bridge + CLI Contract：不要把模型进程变成 API 客户端
+
+Cumora 的本地模型进程通过固定 MCP Bridge 发起业务命令，Bridge 将受限的 argv 请求交给 Daemon 的 File IPC Broker。Daemon 在可信边界内验证后，使用自己的 Token 请求服务端。
+
+这个设计的价值在于：模型只能调用定义好的业务命令，不能随意获取 Daemon Token 或者自行构造带身份信息的 HTTP 请求。
+
+可以借鉴其思路，但不必复制 File IPC：
+
+- Connector 可以是本地 HTTPS Loopback API、Unix Domain Socket 或 Named Pipe。
+- IPC 请求必须限制长度、操作集合和并发。
+- Daemon 需要对请求来源、Session、Work Item、Task 和授权 Grant 进行校验。
+- Agent 不允许通过任意 argv 绕过业务权限边界。
+- 服务端仍要重新验证授权，不能相信 Connector 已经做过检查。
+
+### 26.7 多 Agent 协调：Cumora 的并发处理比 Prompt 规则更值得借鉴
+
+Cumora 的 `docs/COORDINATION.md` 是项目中最值得研究的文档之一。它记录了多个独立 Agent Session 同时参与同一个 Group Conversation 时发生的竞态问题。
+
+它将冲突分成两类：
+
+- 模型层面的误判，例如多个 Agent 都觉得自己应该回答。
+- 基础设施层面的竞态，例如两个 Agent 同时读取同一版本，然后写入互相覆盖。
+
+后者不能靠 Prompt 修复。Cumora 使用多层服务端机制：
+
+- 对话消息的 Seen Cursor / Sequence Freshness Gate：Agent 基于过期消息作答时，服务端拦截并要求它先读取更新内容。
+- 原子 Claim：同一项工作只能被一个 Agent 成功取得。
+- 数据库事务内的重复内容检测。
+- Wake Debounce 和 Coalescing：将短时间重复通知合并，避免同一 Agent 不必要地多次启动。
+- Per-Computer 并发限制和启动节奏控制。
+- Rate Limit Cooldown：遇到模型限流时暂缓，不丢失 Inbox。
+- 小模型 Triage：先判断消息是否真的需要较贵的主 Agent 运行。
+- HOLD 机制：发现内容过期或有冲突时先拦截，让 Agent 读取新消息后再决定是否发送。
+- SSE 唤醒 + Inbox 持久化 + 定时 Polling：防止网络断开导致唤醒事件丢失。
+
+这些机制非常适合移植到多人多 Agent 协作：
+
+**Freshness Gate** 可以从 Conversation Sequence 扩展到 Artifact Version 和 Context Version。如果 Agent 基于 Artifact v3 生成建议，而 Human 已经提交 v4，服务端应检测版本冲突，要求 Agent 重新读取或将产物标记为 Stale，而不是静默提交。
+
+**Atomic Claim / Lease** 可以用于 Task 认领、Reviewer 独占任务和临时 Agent Session 调度。Claim 需要有 TTL、Heartbeat、Owner 和释放机制，避免执行节点崩溃后任务永远被占用。
+
+**HOLD / Re-evaluate** 可以成为提交边界：Agent 产生的结果如果基于过期输入、上下文不一致或权限变化，应进入待重新确认状态，而不是直接成为新的正式 Artifact。
+
+**Bounded Fan-out** 可以限制一个 Work Item 同时启动的 Agent 数量、每个 Computer 的并发和总模型预算，防止 Agent 之间因互相唤醒形成放大效应。
+
+参考：[Cumora Coordination Design](https://github.com/yetone/cumora/blob/main/docs/COORDINATION.md)。
+
+### 26.8 Cumora Shipping：证据驱动的业务阶段门槛值得借鉴，但 Agent 权限不能照搬
+
+Cumora 的 Shipping 模块不是通用 Workflow Engine，而是一个专门针对产品交付和发布的垂直业务工作流。它的生命周期是：
+
+`Draft → Contract → Building → Verifying → Ready → Releasing → Watching → Learned`
+
+同时还有 Paused 和 Archived。
+
+它有几个非常有价值的做法：
+
+**Contract 先于执行。** 在进入 Building 前，要求定义 Problem、Desired Outcome 和 Contract Summary，避免工作开始后才发现目标不清楚。
+
+**Invariant 与 Evidence Square 分离。** Invariant 表达必须保持的行为或约束；Verification Square 表达如何验证这些约束。每个必要 Invariant 都需要一个或多个必要的证据检查项。
+
+**Builder / Verifier 分离。** 执行工作的人不能验证自己的工作。证据检查项有单独负责人，并记录验证结果和证据。
+
+**阶段门槛在服务端强制。** 从 Building 进入 Verifying 前，必须保证所有必需 Invariant 都有相应验证项和负责人；进入 Ready 前，所有必须的 Verification Square 必须通过，并包含用户路径、Trace 和 Release Note 等证据。
+
+**Release Gate。** 生产发布要求有成功的 Staging / Canary、Release Notes、Rollback Plan、Measurable Baseline 和 Approval。成功发布后仍然需要 Smoke Evidence 和生产 Readback。
+
+**Readback 和回归闭环。** 默认生产回读时间为 24 小时；失败的 Verification 或生产 Readback 会创建 Friction Report 和 Regression Asset，使失败信息进入后续工作。
+
+**事件与数据库约束。** 重要变化写入 append-only Shipping Events；多项约束不仅在 UI 检查，也在服务端事务和数据库层强制。
+
+这些做法可以直接迁移到架构分析、数据治理和合规评审：
+
+- Requirement / Invariant：需要满足的业务或技术约束。
+- Evidence Requirement：证明约束成立的材料。
+- Verification Task：由独立 Reviewer 或 Specialist 执行。
+- Verification Result Draft：Agent 可以整理证据和推荐结果。
+- Human Verification Confirmation：只有授权 Human 能确认正式验证结论。
+- Decision Gate：只有授权 Human 能批准或拒绝。
+
+但必须说明一个重要的代码级区别：Cumora 当前 Agent CLI 的 `ship square` 命令允许非 Builder Agent 将 Verification Square 标记为 `passed`、`failed` 或 `waived`，并提交相应证据或理由；它只阻止 Builder 验证自己的工作。源码位于 [server/src/agents/cli.ts](https://github.com/yetone/cumora/blob/main/server/src/agents/cli.ts#L1455-L1599)。而 Human Shipping API 中，生产 Release 的 `approve` 和 `rollback` 需要更高的 Company Role，见 [shipping-router.ts](https://github.com/yetone/cumora/blob/main/server/src/api/shipping-router.ts#L633-L715)。
+
+这是一种 Builder / Verifier 独立性机制，但**不是“所有正式 Review Outcome 只能由 Human 确认”的严格模型**。当前业务不应照搬这一 Agent 权限。正确改造应是：
+
+- Agent 可以提交 Evidence、Verification Findings 和 Verification Result Draft。
+- Agent 可以建议通过、失败或豁免，并解释依据。
+- Agent 不得把 Verification Square 从 Pending / Running 变成正式 Passed、Failed 或 Waived。
+- 只有授权 Human Reviewer 才能确认正式验证状态。
+- Production Approval、Decision 和 Work Item Closure 始终只允许 Human。
+- 工作流在 Human 确认后自动执行状态推进、通知和后续任务创建。
+
+Cumora Shipping 最值得借鉴的是它的 Contract → Invariant → Evidence → Gate → Readback → Regression 闭环，而不是它当前 Agent 可完成部分验证项的权限设计。
+
+参考：[Cumora Shipping Design](https://github.com/yetone/cumora/blob/main/docs/SHIPPING.md)、[Shipping Router](https://github.com/yetone/cumora/blob/main/server/src/api/shipping-router.ts)。
+
+### 26.9 Cumora 最值得借鉴和不应该照搬的部分
+
+| Cumora 设计 | 建议 | 原因 |
+| --- | --- | --- |
+| Cloud + BYOA 双 Runtime | 大力借鉴 | 用户可以选择自己的 Runtime，平台只统一业务契约 |
+| Computer 与 Agent 分离 | 大力借鉴 | 执行主机、Agent 身份和业务参与角色各自独立 |
+| 短期 Runtime JWT / Assignment Binding | 大力借鉴 | 设备撤销、Agent 迁移和 Token 过期都能在服务端校验 |
+| Agent 子进程不持有 Server Token | 大力借鉴 | 保护本地身份和凭证边界 |
+| 每个 Agent 独立 Home / Memory / Session | 借鉴 | 降低多 Agent 本地状态互相污染 |
+| Native Runtime Adapter + 少量 ACP Bridge | 大力借鉴 | 不强迫所有 Runtime 伪装成同一个协议 |
+| Fixed MCP Bridge + CLI Domain Commands | 大力借鉴思路 | 模型只接触受限业务操作，不直接得到服务凭证 |
+| Seen Cursor、Atomic Claim、HOLD | 大力借鉴 | 服务端解决并发和过期写入，不能靠 Prompt |
+| Durable Inbox + SSE + Polling | 借鉴 | 连接中断时工作不会丢失 |
+| Shipping 的 Invariant / Evidence / Gate | 大力借鉴 | 结果必须有证据，状态必须满足门槛 |
+| Agent 在 Conversation 中作为成员 | 选择性借鉴 | 适合讨论，但不能代替 Participation / Role / Task 模型 |
+| Group Chat 是业务中心 | 不建议照搬 | 缺少 Work Item 的版本、正式产物、独立评审和决策边界 |
+| Agent 可直接通过 CLI 完成 Verification Square | 不照搬 | 与 Human-only 正式确认要求冲突 |
+| 自定义 CLI Protocol 是唯一公共接口 | 不照搬 | 其他客户端和企业集成仍需要稳定 REST/OpenAPI 契约 |
+
+Cumora 的一个局限是：它的主要协作模型围绕 Workspace、Participants、Conversations、Messages、Board 和 Shipping 等产品对象，并没有把通用 Work Item、Participation Scope、Context Version、Decision Draft 和 Human Decision 定义为一个跨业务域的标准模型。其 API 文档也说明接口契约主要维护在 TypeScript 源码和自有契约文件中，并不是一个全面以 OpenAPI 发布的通用业务协议。
+
+因此，建议把 Cumora 视为**Agent Runtime 接入与多 Agent 协调的参考实现**，而不是完整业务事项平台的替代品。
+
+## 27. 研究进展：真正需要关注的是授权边界，而不只是 Agent 协作拓扑
+
+现有研究已从“多个 Agent 怎么协作”逐渐转向“Agent 在真实业务环境中怎样被授权、监督和验证”。
+
+### 27.1 Enterprise Agent Governance
+
+Chawla 与 Thakkar 的 [Agentic AI in Enterprise Systems: A Systematic Review of Human-in-the-Loop, Governance, and Autonomous Workflow Control](https://research.google/pubs/agentic-ai-in-enterprise-systems-a-systematic-review-of-human-in-the-loop-governance-and-autonomous-workflow-control-2/) 研究企业 Agent 系统的 Human-in-the-loop、Human-on-the-loop、自治流程控制和安全治理。其结论之一是：Human 监督对企业部署非常关键，但现有系统实现并不一致，尤其在信任、记忆、安全和跨 Agent 治理方面仍有缺口。
+
+这支持一个设计原则：Human 决策权不能由 Agent Prompt 或单个 Runtime 的默认设置保证，需要独立的业务授权层。
+
+### 27.2 Human-Agent Collaboration 的长期问题并未因 LLM 而消失
+
+2026 年的 [Human–AI Collaboration Across Decision Support, Autonomous Systems, and LLM Agents: A Systematic Review and Collaboration Convergence Framework](https://doi.org/10.3390/su18115313) 综合 152 篇研究，跨越决策支持系统、自治系统和 LLM Agent。研究指出，信任校准、依赖行为、认知参与、技能保持、问责和透明性等问题，在不同 AI 技术代际反复出现。
+
+对网站设计的启示是：不能只展示 Agent 的最终回答。用户需要看到来源、输入版本、未解决问题和建议依据，同时保留 Human 的独立判断空间。Reviewer 应能基于原始材料进行独立判断，而不是只能接受 Agent 整理后的结论。
+
+### 27.3 Agent Workflow 研究需要把协调拓扑与治理机制分开
+
+[Agentic Workflows in Large Language Models: A Comprehensive Review](https://link.springer.com/article/10.1007/s10791-026-10743-4) 是 2026 年发表的系统性综述，覆盖 126 篇 2023 年至 2026 年 6 月的同行评审文章。它将 Single-agent、Collaborative Multi-agent 和 Hierarchical 协调拓扑，与 Role Specialization、Tool Augmentation、Hybrid Memory 和 Human-in-the-loop Governance 分成不同维度。
+
+这非常符合当前架构的建模方式：
+
+- Supervisor、Group Chat、Handoff 是执行协调拓扑。
+- Analyst、Reviewer、Specialist 是功能角色。
+- MCP、A2A、ACP 是集成和通信能力。
+- Work Item、Participation、Decision 是业务治理模型。
+
+它们不应该被压成一个 Agent Profile 或一个 Workflow JSON。
+
+### 27.4 审批需要同时验证“拒绝确实阻止”和“批准确实完成”
+
+2026 年 11 月 14 日发布的预印本 [Auditable Authorization for LLM Agents: Empirical Evidence Across Model, Harness, and Workflow Layers](https://arxiv.org/abs/2611.19237) 研究了 Human Approval 在 Model、Harness 和 Workflow 三个执行边界中的实际效果。
+
+它的重要观点是：Human Approval 只有在拒绝后动作确实停止、批准后授权动作确实完成时，才是有效控制。只验证 UI 出现了“Approve / Reject”按钮是不够的。模型可能正确生成了审批请求，但 Harness 丢失批准结果；也可能 Workflow 在 Reject 后仍然执行了副作用。
+
+这篇预印本的结果应当作为研究证据而非定论，但它提出了非常实用的验收标准：
+
+- Reject 后底层业务副作用必须不存在。
+- Approve 后指定动作必须可追踪地完成，不能丢失授权。
+- Human Decision ID 必须与实际执行的副作用绑定。
+- 决策、工具调度、恢复和最终业务状态之间必须可关联。
+- 并发审批不能发生分支丢失、重复执行或错误恢复。
+
+### 27.5 企业 Agent 上线应评估 Human-AI 联合系统
+
+[READY or Not: Reliable Enterprise Agent Deployment](https://arxiv.org/abs/2609.02095) 提出根据具体工作流成功标准、Agent 可靠性、人类监督策略和运行成本共同评估企业 Agent。它提醒我们，单独看 Agent Benchmark 成绩并不能证明该 Agent 适合进入业务流程。
+
+对当前平台而言，PoC 不应该只问“Agent 能不能完成分析”，而应测量整个 Human + Agent + Workflow 的端到端质量、错误恢复、审批延迟、人工负担和运行成本。
+
+## 28. 推荐架构与选型：先固定业务契约，再选择执行引擎
+
+经过协议、Workflow、产品和 Cumora 的比较，可以得出一个比“选择一个 Agent Framework”更稳定的设计。
+
+### 28.1 平台的业务核心必须自己掌握
+
+建议将业务平台拆成以下层次：
+
+| 层 | 应拥有的事实 | 建议技术 |
+| --- | --- | --- |
+| Work Item Core | Work Item、Participation、Task、Artifact、Review、Decision Draft、Decision、业务活动 | 自建领域服务 + PostgreSQL |
+| Identity / Policy | Human Principal、Agent Principal、Delegation Grant、Role、Scope、策略版本 | 企业 SSO / OAuth 2.1 + 服务端 Policy |
+| Integration | REST/OpenAPI、MCP、A2A Adapter、ACP/CLI Connector、Webhook | 公开稳定业务契约 + 协议适配器 |
+| Workflow | Case / Process State、Human Task、等待、SLA、升级和状态约束 | Flowable CMMN/BPMN 或 Temporal |
+| Agent Execution | 模型调用、工具执行、Session、Checkpoint、Memory、Runtime Trace | 用户本地 Runtime、网站 Agent 或 Temporal Agent Runtime |
+| Realtime / Events | Outbox、通知、唤醒、重连、事件关联 | PostgreSQL Outbox + Redis / Message Broker / SSE |
+
+这里要明确：Workflow Engine 可以持有流程执行状态，但业务 Decision 是 Work Item Service 中的正式记录。工作流引擎在 Human 确认后执行状态推进；不能让 Agent 通过引擎变量或外部事件直接把业务 Decision 变成已批准。
+
+### 28.2 Flowable、Camunda、Temporal 怎么选
+
+| 选择 | 最适合的前提 | 当前场景的优势 | 主要代价 |
+| --- | --- | --- | --- |
+| Flowable CMMN/BPMN/DMN | 动态 Case、业务人员参与、事项活动顺序不固定 | CMMN 与 Work Item 语义最接近，开源核心可嵌入 | Java 服务、建模和产品能力需自行集成；企业 Agent 功能另行评估 |
+| Camunda 8 | 业务流程确定、审批节点较多、需要 BPMN 建模和可观测 Agent Execution | Agentic Orchestration、Human Task、外部 Agent 可观测 | Camunda 8.6+ 生产自托管许可成本，需要评估产品授权 |
+| Temporal | 开发团队偏代码驱动、需要长期运行和可靠等待 | Durable Execution、Signal、Retry、TS/Python/Java/Go SDK、MIT Server | 没有原生 CMMN/Case 建模，需要自建业务工作台和 Case Model |
+| 自建轻量 State Machine | 流程很简单、初期事项类型有限 | 实现最少、领域模型完全自己控制 | 长期等待、重试、并发和故障恢复容易逐渐变成自研 Workflow Engine |
+
+**推荐的研究优先级：**
+
+1. Flowable CMMN：验证它的 Case / Plan Item 能否自然表达 Work Item 的动态活动。
+2. Temporal：验证长期 Agent Session、Human Wait、Local Callback、Task Resume 和并发恢复。
+3. Camunda：验证 BPMN + External Agent + Agent Instance API 的整合能力及生产授权成本。
+
+不要同时部署 Flowable 和 Temporal 作为两个可以自由推进业务状态的引擎。若后续确实需要一个引擎管业务 Case、另一个引擎管长期 Agent Execution，必须把边界固定：前者控制业务活动，后者只执行被委托的 Agent Task；跨引擎通过带幂等键和版本的命令/事件交互。
+
+### 28.3 对外接入：先 Web API，再 MCP；本地 Runtime 由 Connector 连接
+
+建议的接口顺序：
+
+- REST/OpenAPI 是业务 API 的稳定基础。
+- MCP Server 将安全的读取和工作提交动作包装给 Agent。
+- ACP 只在某些本地 Coding Agent Runtime 支持时使用。
+- 对不支持 ACP 的 Runtime 使用原生 CLI / SDK Adapter。
+- A2A 只用于独立 Remote Agent 服务的委托。
+- Copy/Paste 是最基础的兼容方式，不要求任何 Runtime 具备集成协议。
+
+对 Cumora 的借鉴是：Runtime Adapter 不要泄漏到业务核心。Agent 是通过 Claude CLI、Codex App Server、ACP 还是 MCP 访问工具，不应该改变 Work Item 的业务语义。
+
+### 28.4 Human Decision Gate：从 API 到数据库都必须是强制边界
+
+业务决策相关的接口需要独立身份约束：
+
+| 操作 | Agent | Human |
+| --- | --- | --- |
+| 读取授权的 Work Item Context | 允许 | 允许 |
+| 生成 Analysis / Recommendation | 允许 | 允许 |
+| 提交 Review Findings Draft | 允许 | 允许 |
+| 生成 Decision Draft | 允许 | 允许 |
+| 确认 Decision Draft | 禁止 | 有权限时允许 |
+| 正式确认 Review Outcome | 禁止 | 被指定 Reviewer 时允许 |
+| 正式批准 / 拒绝 / 风险接受 | 禁止 | 被授权 Approver 时允许 |
+| 关闭 Work Item | 禁止 | 被授权 Human 时允许 |
+
+技术实现上，不只是把正式 Decision 工具从 MCP 列表中隐藏。服务端要按 Principal Type 拒绝 Agent 请求；数据库层限制 Decision 的创建来源；Workflow Engine 的 Command Handler 必须验证当前 Human Decision Record，而不是接受一个可由 Agent 写入的状态变量。
+
+Human Confirmation 还要绑定 Decision Draft Version、输入 Artifact Versions、Reviewer/Approver Role、Policy Version 和有效期。草案发生变化后，之前的确认不能自动沿用。
+
+另一个重要区别：Agent 可以拥有执行 Task 的权限，但这不代表它可以决定 Task 的验收结果。Task 完成可以有两步：
+
+1. Agent / Human 提交 Work Result（Execution Completed）。
+2. 授权 Human 接受产物或确认工作结果（Business Accepted）。
+
+不要把 `Task.status = completed` 同时用来表达 Agent 执行完成、Reviewer 通过和事项正式完成。
+
+### 28.5 建议用同一组场景做 PoC，而不是看产品演示
+
+至少用下面这些场景比较 Flowable、Temporal Agent Kit、Camunda 和自建方案：
+
+| 测试场景 | 验收要求 |
+| --- | --- |
+| 动态增加 Security / Data Specialist | Work Item 仍保持同一身份，能动态创建 Task 和 Participation |
+| 同一个 Task 切换 Copilot / Claude Code | 多个 Work Session 关联同一个 Task，Artifact 连续版本化 |
+| Agent 等待 Human 补充数天 | 服务重启或断线不丢失等待状态 |
+| 两个 Agent 并发处理同一事项 | 过期 Context / Artifact 写入必须被拦截 |
+| 多人同时认领 Reviewer Task | 只有一个 Claim 成功 |
+| Agent 提交 Decision Draft | 只能创建草案，不能产生正式 Decision |
+| Agent 尝试将 Review 标记为 Passed | 服务端拒绝 |
+| Human 拒绝 Decision Draft | 任何关联业务副作用都不能发生 |
+| Human 批准 Decision Draft | 正式 Decision 与 Human 身份、草案版本和依据绑定 |
+| 撤销一个本地 Computer | 该设备及其 Agent Runtime Token 立即失效 |
+| MCP Client 不支持 Elicitation | 仍可以由网站 UI 完成人工交互 |
+| 外部 A2A Agent 长时间离线 | 本地 Work Item 和 Task 状态仍可靠，远端进度可恢复 |
+
+审批测试尤其要验证两件事：拒绝之后实际副作用确实不存在；批准之后授权动作可以被完整追踪且不会丢失。
+
+### 28.6 最终建议
+
+目前最合理的方向不是把 Cumora、Flowable 或 Temporal 整个项目直接作为基础，而是组合它们最成熟的设计：
+
+- **Work Item 和业务权限模型**：由本平台自己定义并持有。
+- **动态事项建模**：优先研究 CMMN，Flowable 是第一个 PoC 候选。
+- **Agent 长期执行与可靠恢复**：研究 Temporal / Agent Kit。
+- **多 Runtime 本地接入**：借鉴 Cumora Computer / Daemon / Engine Adapter。
+- **Agent 工具访问**：REST/OpenAPI 为基础，MCP 为适配，A2A 为远端 Agent 委托，ACP 只用于支持它的本地 Runtime。
+- **并发和提交保护**：借鉴 Cumora Freshness Gate、Atomic Claim、HOLD 和 Outbox。
+- **证据驱动的工作验收**：借鉴 Cumora Shipping 的 Invariant、Evidence Square、Stage Gate、Readback 和 Regression。
+- **正式业务确认**：永远由授权 Human 完成，Agent 只能生成分析、建议和 Decision Draft。
+
+这套组合既能支持完全不用 Agent 的用户，也能容纳 Copilot、Claude Code、网站 Agent 和多个外部 Agent，不会把业务平台变成某个 Agent Runtime 的专用前端。
+
+
+## 29. 结论
 
 这类系统最合适的设计单位不是 Agent，也不是一个共享聊天会话，而是长期存在的业务事项。参与者通过 Participation 加入事项，角色决定其责任，Task 承载具体工作，Artifact 保存交付物，Review 和 Decision 表达正式判断，Workflow Runtime 管理业务生命周期。
 
