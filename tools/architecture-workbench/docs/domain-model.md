@@ -21,9 +21,13 @@ The prototype deliberately separates business facts from interaction and executi
 | Workflow Transition | workflow_transitions | Append-only history of Request lifecycle transitions, actions, actor and reason |
 | Activity | activity_events | Append-oriented business activity record |
 | Agent Profile | server/agents/coordinator.ts registry | Role-oriented execution capability mapped to one Skill; not a Person or model provider |
-| Agent Run | agent_runs | Durable request to execute a profile against a Work Item, with status and optional Task/Artifact links |
+| Agent Plan | agent_plans | Multi-role collaboration request with an overall status and final synthesis Artifact |
+| Agent Run | agent_runs | One role-specific Plan node or standalone execution against a Work Item, with status and optional Task/Artifact links |
+| Agent Run Dependency | agent_run_dependencies | Directed edge that prevents a downstream node from being claimed until its prerequisites complete |
 | Agent Run Event | agent_run_events | Append-only execution, failure, completion and Human hand-off history |
-| Agent Runtime Adapter | server/agents/runtime.ts | Provider-neutral pull contract implemented by an external MCP Host |
+| Agent Runtime Adapter | server/agents/runtime.ts | Provider-neutral capability contract |
+| Agent Host | server/agents/host.ts + host-cli.ts | Pull worker that verifies Skills, reads Workbench context, calls an AgentExecutor and writes results through MCP |
+| Agent Executor | deployment-provided module | Provider-specific model invocation for one or more Agent Profiles |
 | Work Session | external Host-owned | Model context and runtime session are not business state |
 
 ## Decision outcomes
@@ -88,3 +92,19 @@ The initial execution model is pull-based. Workbench does not launch model proce
 Human intervention is explicit. An Agent can pause its Run with questions and recommended actions; it cannot decide for the Human or move the Request Workflow. A Work Item Requestor or Admin may resume a Run after supplying missing context. Completion only produces a draft Artifact; it does not submit an official Review or Decision.
 
 The remote MCP service identity is a non-admin Person principal (seeded as `u-agent` in the prototype). It receives no global permissions by default. A Requestor/Admin must add it to each Work Item and grant only the permissions needed for that assignment. Local demo identity headers are not production authentication.
+
+## Multi-role Agent Plans
+
+A Plan is a durable collaboration request, separate from the Work Item business workflow. It owns a set of Agent Run nodes and dependency edges. A Plan does not represent an approval stage and cannot change Request status.
+
+The caller provides one to eight specialist nodes. Each node has a unique key, one Agent Profile and optional prerequisites. The server validates the dependency graph as a directed acyclic graph and creates an additional synthesis node mapped to the Decision Analyst profile. That node depends on all requested specialists, so it becomes available only after every specialist Artifact has been persisted.
+
+The Host claims only nodes whose prerequisites are complete. Independent branches may run in parallel. A failed node blocks its descendants; the Plan remains failed once no remaining branch is running or ready. A Human hand-off pauses the affected Run and moves the Plan to waiting_for_human; the Request Workflow itself is unchanged.
+
+The synthesis node receives the completed specialist Artifact bodies together with their profile and node identity. It must identify areas of agreement, differences, unresolved assumptions and residual risks. Its output is a draft decision brief and remains subject to Human review. The system does not automatically flatten disagreement or turn an Agent recommendation into a formal Decision.
+
+## Agent Host and Executor contract
+
+The Host is a separate pull process. It connects to Workbench through Streamable HTTP MCP, discovers the assigned Skill, verifies its digest, reads the Context Capsule and calls a deployment-provided AgentExecutor. The Executor is responsible for provider-specific model calls, prompt construction and any source-system MCP/API tools.
+
+The Host owns protocol mechanics: polling, profile-specific concurrency, dependency-aware claiming, context retrieval, failure recording and result submission. It does not own business permissions; every tool call is re-authorized by Workbench. The Host does not assume a specific Agent SDK or model provider.

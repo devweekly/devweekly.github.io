@@ -7,7 +7,7 @@ import { all, db, id, now, one, run } from "./db.js";
 import { createObjectStore } from "./object-store.js";
 import { seed } from "./seed.js";
 import { mountSkillsMcpEndpoint } from "./mcp/skills-server.js";
-import { agentProfiles, listAgentRuns, requestAgentRun, resumeAgentRun, type AgentKey } from "./agents/coordinator.js";
+import { agentProfiles, listAgentPlans, listAgentRuns, requestAgentPlan, requestAgentRun, resumeAgentRun, type AgentKey } from "./agents/coordinator.js";
 import { agentRuntimeAdapter } from "./agents/runtime.js";
 import {
   canManageParticipants,
@@ -261,8 +261,9 @@ app.get("/api/work-items/:id",(req,res)=>{
   const activity=all("SELECT e.*,p.display_name AS actor_name FROM activity_events e JOIN people p ON p.id=e.actor_id WHERE e.work_item_id=? ORDER BY e.created_at DESC LIMIT 30",workItemId);
   const attachments=all("SELECT id,original_name,content_type,size_bytes,uploaded_by,created_at FROM attachments WHERE work_item_id=? ORDER BY created_at DESC",workItemId);
   const externalLinks=all("SELECT l.id,l.relation_type,l.confluence_template_key,l.confluence_template_name,l.created_at,r.provider,r.resource_type,r.external_id,r.external_key,r.title,r.url FROM work_item_external_links l JOIN external_resource_refs r ON r.id=l.resource_id WHERE l.work_item_id=? ORDER BY r.provider,r.resource_type,r.title",workItemId);
-  const agentRuns=all("SELECT r.id,r.work_item_id,r.task_id,r.agent_key,r.skill_name,r.objective,r.requested_by,r.claimed_by,r.status,r.handoff_reason,r.result_artifact_id,r.error_message,r.created_at,r.updated_at,r.started_at,r.finished_at,requestor.display_name AS requested_by_name,claimer.display_name AS claimed_by_name FROM agent_runs r JOIN people requestor ON requestor.id=r.requested_by LEFT JOIN people claimer ON claimer.id=r.claimed_by WHERE r.work_item_id=? ORDER BY r.created_at DESC",workItemId);
-  res.json({workItem,participants,artifacts,cycles,reviews,tasks,decisions,comments,activity,attachments,externalLinks,agentRuns,permissions:permissions(workItemId,actor),canManageParticipants:canManageParticipants(workItemId,actor),workflow:getWorkflowProjection(workItemId,actor)});
+  const agentRuns=all("SELECT r.id,r.work_item_id,r.task_id,r.plan_id,r.node_key,r.agent_key,r.skill_name,r.objective,r.requested_by,r.claimed_by,r.status,r.handoff_reason,r.result_artifact_id,r.error_message,r.created_at,r.updated_at,r.started_at,r.finished_at,requestor.display_name AS requested_by_name,claimer.display_name AS claimed_by_name FROM agent_runs r JOIN people requestor ON requestor.id=r.requested_by LEFT JOIN people claimer ON claimer.id=r.claimed_by WHERE r.work_item_id=? ORDER BY r.created_at DESC",workItemId);
+  const agentPlans=listAgentPlans(workItemId,actor);
+  res.json({workItem,participants,artifacts,cycles,reviews,tasks,decisions,comments,activity,attachments,externalLinks,agentRuns,agentPlans,permissions:permissions(workItemId,actor),canManageParticipants:canManageParticipants(workItemId,actor),workflow:getWorkflowProjection(workItemId,actor)});
 });
 
 app.post("/api/work-items/:id/artifacts",(req,res)=>{
@@ -523,6 +524,27 @@ app.post("/api/work-items/:id/agent-runs",(req,res)=>{
     res.status(201).json(queued);
   } catch (error) {
     res.status(409).json({error:error instanceof Error ? error.message : "Could not queue Agent Run"});
+  }
+});
+
+
+app.get("/api/work-items/:id/agent-plans",(req,res)=>{
+  const workItemId=String(req.params.id); const actor=actorId(req);
+  if (!requirePermission(res,workItemId,actor,"read")) return;
+  res.json(listAgentPlans(workItemId,actor));
+});
+
+app.post("/api/work-items/:id/agent-plans",(req,res)=>{
+  const workItemId=String(req.params.id); const actor=actorId(req); const body=req.body || {};
+  if (!requirePermission(res,workItemId,actor,"contribute")) return;
+  try {
+    const plan=requestAgentPlan({
+      workItemId,actorId:actor,name:String(body.name || ""),objective:String(body.objective || ""),
+      taskId:body.taskId ? String(body.taskId) : undefined,nodes:body.nodes
+    });
+    res.status(201).json(plan);
+  } catch (error) {
+    res.status(409).json({error:error instanceof Error ? error.message : "Could not create Agent Plan"});
   }
 });
 

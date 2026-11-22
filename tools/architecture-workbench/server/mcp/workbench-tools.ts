@@ -7,12 +7,15 @@ import {
   agentProfiles,
   claimAgentRun,
   claimNextAgentRun,
+  getAgentPlanContext,
+  listAgentPlans,
   completeAgentRun,
   failAgentRun,
   getAgentRunEvents,
   handoffAgentRun,
   listAgentRuns,
   requestAgentRun,
+  requestAgentPlan,
   resumeAgentRun,
   type AgentKey
 } from "../agents/coordinator.js";
@@ -323,6 +326,33 @@ export function registerWorkbenchTools(server:McpServer,skillUriForName:(skillNa
     };
   })());
 
+
+  server.registerTool("agent_request_plan",{
+    description:"Create a multi-role Agent Plan. Specialist nodes may run in parallel or depend on earlier nodes. Workbench adds a final decision-analyst synthesis node that waits for every specialist node to complete.",
+    inputSchema:z.object({
+      workItemId:z.string().min(1),
+      name:z.string().min(1).max(200),
+      objective:z.string().min(1).max(4000),
+      taskId:z.string().optional(),
+      nodes:z.array(z.object({
+        key:z.string().min(2).max(48),
+        agentKey:z.enum(["business-analyst","solution-architect","data-architect","security-reviewer","architecture-reviewer","decision-analyst","request-coordinator"]),
+        objective:z.string().max(4000).optional(),
+        dependsOn:z.array(z.string().min(2).max(48)).max(8).optional()
+      })).min(1).max(8)
+    })
+  },async (input,ctx)=>safe(()=>requestAgentPlan({...input,actorId:actorId(ctx)}))());
+
+  server.registerTool("agent_list_plans",{
+    description:"List multi-role Agent Plans and their execution nodes for a Work Item. Includes node dependencies, status and result Artifact references.",
+    inputSchema:z.object({workItemId:z.string().min(1)})
+  },async ({workItemId},ctx)=>safe(()=>listAgentPlans(workItemId,actorId(ctx)))());
+
+  server.registerTool("agent_get_plan_context",{
+    description:"Read completed specialist outputs for a claimed synthesis node. Only the Host that claimed the plan's decision-analyst synthesis node can access the aggregate context.",
+    inputSchema:z.object({runId:z.string().min(1),claimToken:z.string().min(32)})
+  },async ({runId,claimToken},ctx)=>safe(()=>getAgentPlanContext({runId,claimToken,actorId:actorId(ctx)}))());
+
   server.registerTool("agent_claim_next_run",{
     description:"Poll and atomically claim the oldest queued run for an Agent profile that this Host is authorized to execute. Returns null when no eligible run is available. After a Human resume, read agent_get_run_events to retrieve the supplied context.",
     inputSchema:z.object({agentKey:z.enum(["business-analyst","solution-architect","data-architect","security-reviewer","architecture-reviewer","decision-analyst","request-coordinator"])}),
@@ -345,6 +375,7 @@ export function registerWorkbenchTools(server:McpServer,skillUriForName:(skillNa
     description:"Complete a claimed Agent run by saving its output as a draft Artifact. This never submits a formal Review or Decision.",
     inputSchema:z.object({
       runId:z.string().min(1),
+      claimToken:z.string().min(32),
       artifactTitle:z.string().min(1).max(300),
       artifactType:z.enum(["analysis","architecture","adr","data_architecture","security_review","review_report","decision_brief","diagram","other"]),
       artifactCode:z.string().max(80).optional(),
@@ -357,6 +388,7 @@ export function registerWorkbenchTools(server:McpServer,skillUriForName:(skillNa
     description:"Pause a claimed Agent run and record why Human input is required, including questions and suggested next actions. Does not change the Request workflow.",
     inputSchema:z.object({
       runId:z.string().min(1),
+      claimToken:z.string().min(32),
       reason:z.string().min(1).max(4000),
       questions:z.array(z.string().max(1000)).max(20).default([]),
       recommendedActions:z.array(z.string().max(1000)).max(20).default([])
@@ -365,7 +397,7 @@ export function registerWorkbenchTools(server:McpServer,skillUriForName:(skillNa
 
   server.registerTool("agent_fail_run",{
     description:"Mark a claimed Agent run as failed and persist its error summary.",
-    inputSchema:z.object({runId:z.string().min(1),errorMessage:z.string().max(4000)})
+    inputSchema:z.object({runId:z.string().min(1),claimToken:z.string().min(32),errorMessage:z.string().max(4000)})
   },async (input,ctx)=>safe(()=>failAgentRun({...input,actorId:actorId(ctx)}))());
 
   server.registerTool("agent_resume_run",{

@@ -4,6 +4,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { SkillsClient } from "@modelcontextprotocol/client/ext/skills";
+import { McpAgentHost } from "../agents/host.js";
 
 const databasePath=resolve("data/architecture-workbench.mcp-smoke.sqlite");
 mkdirSync(resolve("data"),{recursive:true});
@@ -88,8 +89,9 @@ try {
     "workbench_search_work_items","workbench_get_work_item","workbench_get_artifact","workbench_get_context_capsule",
     "workbench_get_workflow_state","workbench_list_my_tasks","workbench_create_task",
     "workbench_update_task","workbench_create_artifact_draft","workbench_add_comment",
-    "agent_list_profiles","agent_request_run","agent_claim_run","agent_claim_next_run","agent_complete_run",
-    "agent_request_human_handoff","agent_fail_run","agent_resume_run","agent_list_runs","agent_get_run_events"
+    "agent_list_profiles","agent_request_run","agent_request_plan","agent_list_plans","agent_get_plan_context",
+    "agent_claim_run","agent_claim_next_run","agent_complete_run","agent_request_human_handoff","agent_fail_run",
+    "agent_resume_run","agent_list_runs","agent_get_run_events"
   ];
   for (const name of requiredTools) assert(toolNames.includes(name),"Missing MCP Tool: "+name);
   assert(!toolNames.some(name=>name.includes("record_decision")||name.includes("submit_review")),"Agents must not receive formal Decision or Review tools.");
@@ -142,9 +144,14 @@ try {
   assert(claimed.id===runId,"Claim-next selected a different run.");
   assert(claimed.status==="running" && claimed.claimed_by==="u-sa","Agent run claim failed.");
 
+  const rejectedStolenClaim=await localClient.callTool({
+    name:"agent_complete_run",
+    arguments:{runId,claimToken:"0".repeat(64),artifactTitle:"Unauthorized Draft",artifactType:"analysis",content:"This must not be written."}
+  });
+  assert(rejectedStolenClaim.isError===true,"A worker without the current claim token could complete another Host run.");
   const completed=parseToolResult(await localClient.callTool({
     name:"agent_complete_run",
-    arguments:{runId,artifactTitle:"Business Analysis Draft",artifactType:"analysis",artifactCode:"BUS-ANALYSIS",summary:"Draft result",content:"Objective, stakeholders, requirements and acceptance criteria."}
+    arguments:{runId,claimToken:claimed.claim_token,artifactTitle:"Business Analysis Draft",artifactType:"analysis",artifactCode:"BUS-ANALYSIS",summary:"Draft result",content:"Objective, stakeholders, requirements and acceptance criteria."}
   }));
   assert(completed.run.status==="completed" && completed.artifact.status==="draft","Agent completion did not persist a draft Artifact.");
 
@@ -158,10 +165,10 @@ try {
     arguments:{workItemId:workItem.id,agentKey:"security-reviewer",objective:"Review the current security boundaries."}
   }));
   const handoffRunId=handoffRequest.run.id;
-  await localClient.callTool({name:"agent_claim_run",arguments:{runId:handoffRunId,agentKey:"security-reviewer"}});
+  const handoffClaim=parseToolResult(await localClient.callTool({name:"agent_claim_run",arguments:{runId:handoffRunId,agentKey:"security-reviewer"}}));
   const waiting=parseToolResult(await localClient.callTool({
     name:"agent_request_human_handoff",
-    arguments:{runId:handoffRunId,reason:"The data classification is not documented.",questions:["Which customer fields are restricted?"],recommendedActions:["Ask the data owner to confirm classification."]}
+    arguments:{runId:handoffRunId,claimToken:handoffClaim.claim_token,reason:"The data classification is not documented.",questions:["Which customer fields are restricted?"],recommendedActions:["Ask the data owner to confirm classification."]}
   }));
   assert(waiting.status==="waiting_for_human","Human hand-off did not pause the Agent run.");
 
@@ -169,9 +176,9 @@ try {
     name:"agent_resume_run",arguments:{runId:handoffRunId,additionalContext:"Data owner confirmed the classification in the Request discussion."}
   }));
   assert(resumed.status==="queued","Human resume did not requeue the Agent run.");
-  await localClient.callTool({name:"agent_claim_run",arguments:{runId:handoffRunId,agentKey:"security-reviewer"}});
+  const failedClaim=parseToolResult(await localClient.callTool({name:"agent_claim_run",arguments:{runId:handoffRunId,agentKey:"security-reviewer"}}));
   const failed=parseToolResult(await localClient.callTool({
-    name:"agent_fail_run",arguments:{runId:handoffRunId,errorMessage:"Smoke-test simulated failure."}
+    name:"agent_fail_run",arguments:{runId:handoffRunId,claimToken:failedClaim.claim_token,errorMessage:"Smoke-test simulated failure."}
   }));
   assert(failed.status==="failed","Agent failure state was not persisted.");
 
@@ -179,6 +186,68 @@ try {
     name:"agent_get_run_events",arguments:{runId:handoffRunId}
   }));
   assert(events.length>=5,"Agent run event history is incomplete.");
+
+
+  const plan=parseToolResult(await localClient.callTool({
+    name:"agent_request_plan",
+    arguments:{
+      workItemId:workItem.id,
+      name:"DAG smoke-test plan",
+      objective:"Run parallel business and data analysis, then produce a solution architecture and consolidated brief.",
+      nodes:[
+        {key:"business-analysis",agentKey:"business-analyst",objective:"Clarify outcomes and acceptance criteria."},
+        {key:"data-architecture",agentKey:"data-architect",objective:"Review data ownership and data flows."},
+        {key:"solution-architecture",agentKey:"solution-architect",objective:"Develop the solution after the business analysis.",dependsOn:["business-analysis"]}
+      ]
+    }
+  }));
+  assert(plan.nodes.length===4,"The plan should contain three specialist nodes and one synthesis node.");
+  const solutionNode=plan.nodes.find((node:any)=>node.node_key==="solution-architecture");
+  assert(solutionNode.dependsOn.includes("business-analysis"),"Plan dependency edge was not persisted.");
+  const blockedClaim=parseToolResult(await localClient.callTool({
+    name:"agent_claim_next_run",arguments:{agentKey:"solution-architect"}
+  }));
+  assert(blockedClaim===null,"A dependent Agent node was claimable before its prerequisite completed.");
+
+  const businessClaim=parseToolResult(await localClient.callTool({
+    name:"agent_claim_next_run",arguments:{agentKey:"business-analyst"}
+  }));
+  const dataClaim=parseToolResult(await localClient.callTool({
+    name:"agent_claim_next_run",arguments:{agentKey:"data-architect"}
+  }));
+  assert(businessClaim.run.node_key==="business-analysis" && dataClaim.run.node_key==="data-architecture","Independent specialist nodes were not independently claimable.");
+  await localClient.callTool({
+    name:"agent_complete_run",
+    arguments:{runId:businessClaim.run.id,claimToken:businessClaim.run.claim_token,artifactTitle:"Business Analysis Node",artifactType:"analysis",content:"Business outcomes, stakeholder needs and acceptance criteria."}
+  });
+  await localClient.callTool({
+    name:"agent_complete_run",
+    arguments:{runId:dataClaim.run.id,claimToken:dataClaim.run.claim_token,artifactTitle:"Data Architecture Node",artifactType:"data_architecture",content:"Data ownership, data domains and interface contracts."}
+  });
+  const solutionClaim=parseToolResult(await localClient.callTool({
+    name:"agent_claim_next_run",arguments:{agentKey:"solution-architect"}
+  }));
+  assert(solutionClaim.run.node_key==="solution-architecture","A dependent node did not become ready after its prerequisite completed.");
+  await localClient.callTool({
+    name:"agent_complete_run",
+    arguments:{runId:solutionClaim.run.id,claimToken:solutionClaim.run.claim_token,artifactTitle:"Solution Architecture Node",artifactType:"architecture",content:"Target solution boundaries and integration options."}
+  });
+  const synthesisClaim=parseToolResult(await localClient.callTool({
+    name:"agent_claim_next_run",arguments:{agentKey:"decision-analyst"}
+  }));
+  assert(synthesisClaim.run.node_key==="synthesis","The final synthesis node did not wait for all specialist nodes.");
+  const aggregated=parseToolResult(await localClient.callTool({
+    name:"agent_get_plan_context",arguments:{runId:synthesisClaim.run.id,claimToken:synthesisClaim.run.claim_token}
+  }));
+  assert(aggregated.outputs.length===3,"The synthesis context did not include every completed specialist output.");
+  await localClient.callTool({
+    name:"agent_complete_run",
+    arguments:{runId:synthesisClaim.run.id,claimToken:synthesisClaim.run.claim_token,artifactTitle:"Consolidated Decision Brief",artifactType:"decision_brief",content:"Consolidated findings, trade-offs, disagreements and recommendations."}
+  });
+  const plans=parseToolResult(await localClient.callTool({
+    name:"agent_list_plans",arguments:{workItemId:workItem.id}
+  }));
+  assert(plans.some((entry:any)=>entry.id===plan.id && entry.status==="completed" && entry.result_artifact_id),"The Agent Plan did not complete with a synthesis Artifact.");
 
   const readOnlyClient=await connect(localServer.url,{"x-demo-user-id":"u-sec"});
   try {
@@ -217,7 +286,41 @@ try {
   const remoteAuthor=all<{submitted_by:string}>("SELECT submitted_by FROM artifacts WHERE id=?",remoteDraft.id)[0]?.submitted_by;
   assert(remoteAuthor==="u-agent","Remote MCP accepted the caller-supplied demo identity instead of the configured service principal.");
 
-  console.log("Workbench MCP smoke test passed: 7 Skills; 20 Tools; permission enforcement; draft Artifact and Task writes; queued/running/completed/failed/human-handoff Agent lifecycle; remote bearer authentication and fixed service identity.");
+
+  const hostPlan=parseToolResult(await remoteClient.callTool({
+    name:"agent_request_plan",
+    arguments:{
+      workItemId:workItem.id,
+      name:"Agent Host adapter smoke test",
+      objective:"Execute a specialist and synthesize its result through the provider-neutral Agent Host.",
+      nodes:[{key:"host-business-analysis",agentKey:"business-analyst",objective:"Produce a short test analysis."}]
+    }
+  }));
+  const host=new McpAgentHost(remoteClient,{
+    "business-analyst":{
+      execute:async context=>({
+        kind:"completed",
+        artifact:{title:"Host Business Analysis",type:"analysis",content:"Host executor read Skill "+context.skill.frontmatter.name+" and context for "+context.run.work_item_id+"."}
+      })
+    },
+    "decision-analyst":{
+      execute:async context=>{
+        const outputs=(context.planContext?.outputs || []) as unknown[];
+        assert(outputs.length===1,"Host synthesis did not receive the specialist Artifact.");
+        return {
+          kind:"completed",
+          artifact:{title:"Host Synthesis",type:"decision_brief",content:"Synthesis consumed "+outputs.length+" specialist output."}
+        };
+      }
+    }
+  });
+  assert(await host.runOnce("business-analyst")==="completed","Provider-neutral Agent Host failed to execute a specialist node.");
+  assert(await host.runOnce("decision-analyst")==="completed","Provider-neutral Agent Host failed to execute the synthesis node.");
+  const hostPlans=parseToolResult(await remoteClient.callTool({
+    name:"agent_list_plans",arguments:{workItemId:workItem.id}
+  }));
+  assert(hostPlans.some((entry:any)=>entry.id===hostPlan.id && entry.status==="completed"),"Agent Host did not complete the remote Agent Plan.");
+  console.log("Workbench MCP smoke test passed: 7 Skills; 23 Tools; permission enforcement; DAG dependencies and parallel claims; synthesis aggregation; provider-neutral MCP Agent Host; Human hand-off; remote bearer identity.");
 } finally {
   if (remoteClient) await remoteClient.close();
   if (remoteServer) await closeServer(remoteServer.httpServer);

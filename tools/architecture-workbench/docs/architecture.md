@@ -45,7 +45,7 @@ flowchart TB
 - Technical Debt is a separate Work Item with its own owner and lifecycle, linked to its origin Work Item and optional Decision.
 - `ObjectStore` hides local vs S3 upload mechanics. The database stores attachment metadata, object key and storage URI. Storage URI is not a security token.
 - No Jira, Confluence, GitHub or LeanIX Connector exists in the Workbench backend. The application stores only external resource references and their Work Item relationships. There is no source-system polling, synchronization, content cache or source credential storage.
-- If a native Agent is added later, it owns its MCP/API tool clients and uses the stored references to retrieve context on demand. The Agent Runtime is separate from business services and does not bypass Participation or Decision authorization. The same applies when a user hands a Context Capsule to an external Agent Client.
+- The external Agent Host owns its MCP/API tool clients and uses stored references to retrieve context on demand. It does not bypass Participation or Decision authorization. The same applies when a user hands a Context Capsule to another Agent Client.
 
 ## SQLite and PostgreSQL migration
 
@@ -74,9 +74,9 @@ The Express application mounts a separate, read-only MCP endpoint at `/mcp`. It 
 
 The server factory is stateless per MCP HTTP request and attaches the same validated catalog to each server instance. The application loads the catalog once during startup, so a deployed version serves a consistent catalog. A failed or invalid catalog prevents startup.
 
-The MCP boundary currently exposes role/workflow instructions only. It does not expose business tools, REST data projections, external-system connectors or an Agent Runtime. A Skill does not grant permissions and reading a Skill is not activation. The Host is responsible for verifying, approving and loading it. Human Review and Decision authorization remains in the Workbench application services and Workflow Engine.
+The MCP boundary exposes repository-managed Skills and a bounded set of Workbench business tools. A Skill does not grant permissions and reading a Skill is not activation. The Host is responsible for verifying, approving and loading it. Business tools re-check Participation at call time; formal Review and Decision authorization remains in the Workbench application services and Workflow Engine.
 
-For a remote deployment, configure `MCP_ALLOWED_HOSTS` with the exact hostnames accepted by the MCP endpoint. The current prototype does not implement OAuth for MCP; only non-sensitive, repository-managed Skill content belongs in this catalog.
+For a remote deployment, configure MCP_ALLOWED_HOSTS, a static bearer secret and a non-admin Service Principal. This is prototype service authentication, not user-level OAuth delegation. The service identity must be explicitly added to each Work Item with least-privilege Participation permissions.
 
 
 ## Business MCP Tools and Agent Coordinator
@@ -95,15 +95,15 @@ sequenceDiagram
 
     H->>C: Request Agent Run(profile, objective)
     C->>C: Persist queued run + event
-    A->>M: agent_claim_run(runId, profile)
-    M->>C: Claim if queued and authorized
-    C-->>A: Run + Skill URI
+    A->>M: agent_claim_next_run(profile)
+    M->>C: Claim if ready, authorized and dependency-complete
+    C-->>A: Run + Skill URI + one-time claim token
     A->>M: skills/get + resources/read
     A->>M: workbench_get_context_capsule
     M->>W: Check read permission and return context
     A->>A: Execute model using its own provider
     alt Work can be completed
-        A->>M: agent_complete_run(draft Artifact)
+        A->>M: agent_complete_run(draft Artifact, claim token)
         M->>W: Check contribute permission + save draft
         M->>C: Complete run and append event
     else Human input is required
@@ -118,3 +118,24 @@ sequenceDiagram
 The MCP business surface does not include official Review submission, formal Decision creation, risk acceptance or Request closure. Those remain separate Human-authorized operations handled by the existing application APIs and Workflow Engine.
 
 Remote MCP is protected with a configured Host allowlist and static bearer token mapped to one non-admin service principal. This is a prototype service-authentication adapter, not user-level OAuth delegation. The service principal must be explicitly added to each Work Item with least-privilege Participation permissions.
+
+## Multi-role Agent Plan and Host execution
+
+The Coordinator persists the DAG and evaluates readiness before claiming a node. Only completed prerequisites unlock downstream Runs. Independent nodes may be claimed by different Host workers at the same time. A final Decision Analyst node is generated automatically and waits for all specialist nodes; it receives their Draft Artifact content through a scoped aggregation tool.
+
+```mermaid
+flowchart TD
+    P[Agent Plan] --> BA[Business Analyst]
+    P --> DA[Data Architect]
+    P --> SEC[Security Reviewer]
+    BA --> SA[Solution Architect]
+    SA --> SYN[Decision Analyst · Synthesis]
+    DA --> SYN
+    SEC --> SYN
+    SYN --> OUT[Draft Decision Brief]
+    OUT --> HUMAN[Human Review / Decision]
+```
+
+The reference Host is a separate process started with npm run agent-host. It polls each configured Agent Profile, verifies the assigned Skill, reads Workbench context, and calls the deployment's AgentExecutor plugin. The plugin makes the model/provider call and returns either a draft result or a Human hand-off. Workbench records the outcome and enforces permissions.
+
+The Host can be replicated horizontally. Competing workers may poll the same role queue; the server's conditional claim prevents the same queued Run from being claimed twice. This prototype does not yet implement expiring leases or automatic recovery for a Host that crashes after claiming a Run; operators must inspect and recover stale running records before production use.

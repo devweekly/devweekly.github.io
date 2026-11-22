@@ -22,16 +22,27 @@ export interface AgentProfile {
 }
 export type AgentRunStatus = "queued"|"running"|"waiting_for_human"|"completed"|"failed"|"cancelled";
 export interface AgentRun {
-  id:string; work_item_id:string; task_id:string|null; agent_key:string; skill_name:string; objective:string;
+  id:string; work_item_id:string; task_id:string|null; plan_id:string|null; node_key:string; agent_key:string; skill_name:string; objective:string;
   requested_by:string; claimed_by:string|null; status:AgentRunStatus; handoff_reason:string;
   result_artifact_id:string|null; error_message:string; created_at:string; updated_at:string;
   started_at:string|null; finished_at:string|null; requested_by_name:string; claimed_by_name:string|null;
+}
+export interface AgentPlanNode {
+  id:string; node_key:string; agent_key:string; skill_name:string; objective:string; status:string;
+  claimed_by:string|null; claimed_by_name:string|null; result_artifact_id:string|null;
+  handoff_reason:string; error_message:string; created_at:string; updated_at:string;
+  started_at:string|null; finished_at:string|null; dependsOn:string[];
+}
+export interface AgentPlan {
+  id:string; work_item_id:string; name:string; objective:string; status:string; created_by:string;
+  created_by_name:string; result_artifact_id:string|null; created_at:string; updated_at:string;
+  nodes:AgentPlanNode[];
 }
 export interface WorkItemDetail {
   workItem:WorkItem; participants:Participation[]; artifacts:Artifact[];
   cycles:{id:string;name:string;status:string;due_date:string;baseline_json:string}[];
   reviews:Review[]; tasks:WorkTask[]; decisions:Decision[]; comments:Comment[];
-  activity:Activity[]; attachments:Attachment[]; externalLinks:ExternalResourceLink[]; agentRuns:AgentRun[];
+  activity:Activity[]; attachments:Attachment[]; externalLinks:ExternalResourceLink[]; agentRuns:AgentRun[]; agentPlans:AgentPlan[];
   permissions:string[]; canManageParticipants:boolean; workflow:WorkflowProjection;
 }
 export interface Bootstrap { actorId:string; people:Person[]; workItems:WorkItem[]; debts:DebtItem[]; counts:{openWorkItems:number;awaitingReview:number;activeDebts:number;myTasks:number}; }

@@ -14,7 +14,7 @@ import {
 import { Welcome } from "@ant-design/x";
 import dayjs from "dayjs";
 import { api, setActor } from "./api";
-import type { Activity, AgentProfile, AgentRun, Artifact, Bootstrap, Comment, DebtItem, ExternalResourceRef, MyTask, Person, Participation, Review, WorkItem, WorkItemDetail, WorkTask, WorkbenchAnalytics } from "./types";
+import type { Activity, AgentPlan, AgentProfile, AgentRun, Artifact, Bootstrap, Comment, DebtItem, ExternalResourceRef, MyTask, Person, Participation, Review, WorkItem, WorkItemDetail, WorkTask, WorkbenchAnalytics } from "./types";
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
@@ -61,6 +61,7 @@ export default function App() {
   const [myTasks,setMyTasks] = useState<MyTask[]>([]);
   const [agentProfiles,setAgentProfiles] = useState<AgentProfile[]>([]);
   const [agentRunOpen,setAgentRunOpen] = useState(false);
+  const [agentPlanOpen,setAgentPlanOpen] = useState(false);
   const [agentResumeOpen,setAgentResumeOpen] = useState(false);
   const [agentResumeRunId,setAgentResumeRunId] = useState<string|null>(null);
   const [editingParticipationId,setEditingParticipationId] = useState<string|null>(null);
@@ -76,6 +77,7 @@ export default function App() {
   const [profileForm] = Form.useForm();
   const [externalLinkForm] = Form.useForm();
   const [agentForm] = Form.useForm();
+  const [agentPlanForm] = Form.useForm();
   const [agentResumeForm] = Form.useForm();
   const [activeTab,setActiveTab] = useState("overview");
   const [commentText,setCommentText] = useState("");
@@ -169,6 +171,15 @@ export default function App() {
     agentForm.resetFields();
     agentForm.setFieldsValue({agentKey:"solution-architect",objective:"根据当前 Request 分析目标、约束、关键方案和待澄清问题。"});
     setAgentRunOpen(true);
+  }
+  function openAgentPlanDialog() {
+    agentPlanForm.resetFields();
+    agentPlanForm.setFieldsValue({
+      name:"多角色架构评估",
+      agentKeys:["business-analyst","solution-architect","data-architect","security-reviewer"],
+      objective:"围绕当前 Request 的业务目标、现状约束和外部依赖开展独立分析。每个角色从自己的专业角度给出证据、假设、风险和建议，最后由 Decision Analyst 汇总分歧与决策选项。"
+    });
+    setAgentPlanOpen(true);
   }
   function openAgentResumeDialog(run:AgentRun) {
     setAgentResumeRunId(run.id);
@@ -507,12 +518,28 @@ export default function App() {
           {title:"状态",dataIndex:"status",render:(v:string,t:WorkTask)=><Select size="small" value={v} disabled={!permissions.includes("contribute") && t.assignee_id!==actor} style={{width:112}} onChange={value=>void updateTask(t.id,value)} options={[{value:"open",label:"待处理"},{value:"in_progress",label:"处理中"},{value:"blocked",label:"受阻"},{value:"done",label:"完成"},{value:"cancelled",label:"取消"}]} />},{title:"截止日期",dataIndex:"due_date",render:dateText}
         ]} /></Card>},
         {key:"agents",label:"Agent 协作",children:<div className="page-stack">
-          <Card size="small" title="角色 Agent 执行" extra={permissions.includes("contribute")?<Button type="primary" size="small" icon={<PlusOutlined />} onClick={openAgentRunDialog}>发起 Agent Run</Button>:<Tag>当前身份无执行权限</Tag>}>
-            <Alert type="info" showIcon message="外部 Agent Host 执行模型推理" description="Workbench 负责排队、授权、上下文和执行记录；已连接的 MCP Host 通过 agent_claim_next_run 领取任务，加载角色 Skill 后执行。没有可用 Host 时，Run 会保持在待领取状态。" className="modal-alert" />
+          <Card size="small" title="多角色协作计划" extra={permissions.includes("contribute")?<Button type="primary" size="small" icon={<PlusOutlined />} onClick={openAgentPlanDialog}>发起协作计划</Button>:<Tag>当前身份无执行权限</Tag>}>
+            <Alert type="info" showIcon message="并行分析、依赖执行、统一汇总" description="选择多个专业角色后，Workbench 创建 DAG 计划。无依赖的角色可并行执行；最终 Decision Analyst 汇总节点会等待所有专业节点完成。Agent 仍只提交草案，不会做正式业务决策。" className="modal-alert" />
+            <List itemLayout="vertical" dataSource={detail.agentPlans || []} locale={{emptyText:<Empty description="尚无多角色协作计划" />}} renderItem={(plan:AgentPlan)=><List.Item>
+              <Space direction="vertical" style={{width:"100%"}} size={8}>
+                <Space wrap><Text strong>{plan.name}</Text><Tag color={statusColors[plan.status] || "default"}>{statusLabels[plan.status] || plan.status}</Tag><Text type="secondary" className="small">创建人：{plan.created_by_name} · {dateText(plan.created_at)}</Text>
+                  {plan.result_artifact_id?<Button type="link" size="small" onClick={()=>{const result=detail.artifacts.find(a=>a.id===plan.result_artifact_id);if(result)Modal.info({title:result.title,width:760,content:<Paragraph style={{whiteSpace:"pre-wrap",maxHeight:"60vh",overflow:"auto"}}>{result.content}</Paragraph>});}}>查看汇总草案</Button>:null}
+                </Space>
+                <Text>{plan.objective}</Text>
+                <Steps size="small" current={plan.nodes.filter(node=>node.status==="completed").length} items={plan.nodes.map(node=>({
+                  title:node.node_key==="synthesis"?"综合汇总":(agentProfiles.find(profile=>profile.key===node.agent_key)?.name || node.agent_key),
+                  description:node.status==="queued" && node.dependsOn.length?("等待："+node.dependsOn.join("、")):(statusLabels[node.status] || node.status),
+                  status:node.status==="completed"?"finish":node.status==="failed" || node.status==="cancelled"?"error":node.status==="running"?"process":"wait"
+                }))} />
+              </Space>
+            </List.Item>} />
+          </Card>
+          <Card size="small" title="Agent Run 执行记录">
+            <Alert type="info" showIcon message="外部 Agent Host 执行模型推理" description="Workbench 负责排队、授权、上下文和执行记录；MCP Host 通过 agent_claim_next_run 领取已满足依赖的节点，加载角色 Skill 后执行。没有可用 Host 时，Run 会保持在待领取状态。" className="modal-alert" />
             <List itemLayout="vertical" dataSource={detail.agentRuns || []} locale={{emptyText:<Empty description="尚无 Agent 执行记录" />}} renderItem={(run:AgentRun)=><List.Item actions={[
               run.result_artifact_id?<Button key="artifact" type="link" onClick={()=>{const artifact=detail.artifacts.find(a=>a.id===run.result_artifact_id);if(artifact)Modal.info({title:artifact.title,width:760,content:<Paragraph style={{whiteSpace:"pre-wrap",maxHeight:"60vh",overflow:"auto"}}>{artifact.content}</Paragraph>});}}>查看草案</Button>:null,
               run.status==="waiting_for_human" && (run.requested_by===actor || item.requestor_id===actor || actorPerson?.is_admin===1)?<Button key="resume" type="link" onClick={()=>openAgentResumeDialog(run)}>补充上下文并继续</Button>:null
-            ]}><List.Item.Meta avatar={<Avatar icon={<ProjectOutlined />} />} title={<Space wrap><Text strong>{agentProfiles.find(profile=>profile.key===run.agent_key)?.name || run.agent_key}</Text><Tag color={statusColors[run.status] || "default"}>{statusLabels[run.status] || run.status}</Tag><Tag>{run.skill_name}</Tag></Space>} description={<Space direction="vertical" size={4}><Text>{run.objective}</Text><Text type="secondary" className="small">请求人：{run.requested_by_name} · 执行人：{run.claimed_by_name || "尚未领取"} · 创建：{dateText(run.created_at)}</Text>{run.handoff_reason?<Text type="warning">需要 Human 输入：{run.handoff_reason}</Text>:null}{run.error_message?<Text type="danger">失败原因：{run.error_message}</Text>:null}</Space>} /></List.Item>} />
+            ]}><List.Item.Meta avatar={<Avatar icon={<ProjectOutlined />} />} title={<Space wrap><Text strong>{agentProfiles.find(profile=>profile.key===run.agent_key)?.name || run.agent_key}</Text><Tag color={statusColors[run.status] || "default"}>{statusLabels[run.status] || run.status}</Tag><Tag>{run.skill_name}</Tag>{run.plan_id?<Tag color="cyan">{detail.agentPlans.find(plan=>plan.id===run.plan_id)?.name || run.node_key}</Tag>:null}</Space>} description={<Space direction="vertical" size={4}><Text>{run.objective}</Text><Text type="secondary" className="small">请求人：{run.requested_by_name} · 执行人：{run.claimed_by_name || "尚未领取"} · 创建：{dateText(run.created_at)}</Text>{run.handoff_reason?<Text type="warning">需要 Human 输入：{run.handoff_reason}</Text>:null}{run.error_message?<Text type="danger">失败原因：{run.error_message}</Text>:null}</Space>} /></List.Item>} />
           </Card>
         </div>},
         {key:"decisions",label:"Decisions",children:<Card size="small" title="正式决策记录" extra={permissions.includes("decide")?<Button type="primary" size="small" onClick={()=>setDecisionOpen(true)}>记录决定</Button>:<Tag color="gold">当前身份无决策权限</Tag>}><List dataSource={detail.decisions} locale={{emptyText:"尚无正式决定"}} renderItem={d=><List.Item><List.Item.Meta avatar={<Avatar icon={<CheckCircleOutlined />} />} title={<Space><Tag color={statusColors[d.outcome]}>{statusLabels[d.outcome] || d.outcome}</Tag><Text strong>{d.decision_maker_name}</Text></Space>} description={<><Paragraph>{d.rationale}</Paragraph>{d.conditions && <Text type="secondary">条件：{d.conditions}</Text>}<div className="small muted">{dateText(d.created_at)}</div></>} /></List.Item>} /></Card>},
@@ -576,6 +603,25 @@ export default function App() {
         <Form.Item name="kind" label="工作类型"><Select options={[{value:"analysis",label:"分析"},{value:"revision",label:"材料修改"},{value:"follow_up",label:"后续整改"},{value:"decision_prep",label:"决策准备"}]} /></Form.Item>
         <Form.Item name="assigneeId" label="责任人"><Select allowClear options={(detail?.participants || []).map(p=>({value:p.person_id,label:p.display_name+" · "+p.role_label}))} /></Form.Item>
         <Form.Item name="dueDate" label="截止日期"><DatePicker style={{width:"100%"}} /></Form.Item>
+      </Form>
+    </Modal>
+
+    <Modal title="发起多角色协作计划" open={agentPlanOpen} onCancel={()=>setAgentPlanOpen(false)} onOk={()=>void submitForm(agentPlanForm,async()=>{
+      const value=agentPlanForm.getFieldsValue();
+      if(!String(value.name || "").trim() || !String(value.objective || "").trim() || !Array.isArray(value.agentKeys) || value.agentKeys.length===0) throw new Error("计划名称、共同目标和至少一个角色均为必填项。");
+      const nodes=(value.agentKeys as string[]).map(agentKey=>({
+        key:agentKey,
+        agentKey,
+        objective:value.objective
+      }));
+      return api.requestAgentPlan(selected!.id,{name:value.name,objective:value.objective,taskId:value.taskId,nodes});
+    },"多角色协作计划已创建",()=>setAgentPlanOpen(false))} confirmLoading={busy} width={760}>
+      <Alert type="info" showIcon message="系统自动增加最终汇总节点" description="所选专家节点默认并行执行；所有专家节点完成后，Decision Analyst 会领取最终汇总节点，比较观点、保留分歧并形成决策简报草案。" className="modal-alert" />
+      <Form form={agentPlanForm} layout="vertical">
+        <Form.Item name="name" label="计划名称" rules={[{required:true}]}><Input maxLength={200} /></Form.Item>
+        <Form.Item name="agentKeys" label="参与角色" rules={[{required:true,message:"至少选择一个角色"}]}><Select mode="multiple" options={agentProfiles.filter(profile=>profile.key!=="decision-analyst").map(profile=>({value:profile.key,label:profile.name+" · "+profile.description}))} /></Form.Item>
+        <Form.Item name="taskId" label="关联 Task（可选）"><Select allowClear options={detail?.tasks.filter(task=>!["done","cancelled"].includes(task.status)).map(task=>({value:task.id,label:task.title})) || []} /></Form.Item>
+        <Form.Item name="objective" label="共同目标与分析约束" rules={[{required:true}]}><TextArea rows={5} maxLength={4000} showCount /></Form.Item>
       </Form>
     </Modal>
 

@@ -1,4 +1,4 @@
-import type { AgentProfile, AgentRun, Bootstrap, ExternalResourceRef, MyTask, WorkflowProjection, WorkbenchAnalytics, WorkItemDetail } from "./types";
+import type { AgentPlan, AgentProfile, AgentRun, Bootstrap, ExternalResourceRef, MyTask, WorkflowProjection, WorkbenchAnalytics, WorkItemDetail } from "./types";
 let currentActor = "u-sa";
 export function setActor(actor:string) { currentActor=actor; }
 async function request<T>(path:string,init:RequestInit={}):Promise<T> {
@@ -14,6 +14,7 @@ export const api = {
   externalResourceRefs:()=>request<ExternalResourceRef[]>("/api/external-resource-refs"),
   agentProfiles:()=>request<{profiles:AgentProfile[];runtime:{mode:string;capabilities:string[];providerOwnedByHost:boolean}}>("/api/agent-profiles"),
   requestAgentRun:(id:string,body:{agentKey:string;objective:string;taskId?:string})=>request<{run:AgentRun;profile:AgentProfile}>("/api/work-items/"+id+"/agent-runs",{method:"POST",body:JSON.stringify(body)}),
+  requestAgentPlan:(id:string,body:{name:string;objective:string;taskId?:string;nodes:{key:string;agentKey:string;objective?:string;dependsOn?:string[]}[]})=>request<AgentPlan>("/api/work-items/"+id+"/agent-plans",{method:"POST",body:JSON.stringify(body)}),
   resumeAgentRun:(id:string,additionalContext:string)=>request<AgentRun>("/api/agent-runs/"+id+"/resume",{method:"POST",body:JSON.stringify({additionalContext})}),
   detail:(id:string)=>request<WorkItemDetail>("/api/work-items/"+id),
   createWorkItem:(body:unknown)=>request<{id:string;code:string}>("/api/work-items",{method:"POST",body:JSON.stringify(body)}),
