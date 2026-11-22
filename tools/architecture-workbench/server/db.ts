@@ -113,6 +113,8 @@ for (const submission of all<{id:string;manifest_json:string}>("SELECT id,manife
     if (!entry || typeof entry!=="object") return entry;
     const row=entry as {id?:string;version?:number;content_hash?:string;code?:string|null;type?:string;title?:string};
     if (!row.id || !row.version) return entry;
+    if (row.content_hash && /^[0-9a-f]{64}$/.test(row.content_hash) &&
+        "code" in row && "type" in row && "title" in row) return entry;
     const artifact=one<{code:string|null;type:string;title:string;content_hash:string}>(
       "SELECT code,type,title,content_hash FROM artifacts WHERE id=? AND version=?",row.id,row.version
     );
