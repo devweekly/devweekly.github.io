@@ -175,26 +175,20 @@ Work Item 的 Context 不应等同于聊天记录。建议分为以下几类：
 
 | 对象 | 关键字段 | 说明 |
 | --- | --- | --- |
-| WorkItem | id, type, status, owner_org, context_version | 长期业务事项 |
-| Participation | work_item_id, principal_id, role, scope, valid_until | 人或 Agent 在事项中的角色 |
+| WorkItem | id, type, status, owner_org, context_version | 长期业务事项；类型由业务域扩展 |
+| Participation | work_item_id, principal_id, role, scope, valid_until | Human 或正式服务主体在事项中的参与关系 |
 | Task | id, work_item_id, kind, assignee, status, due_at | 一次可执行工作 |
-| TaskRelation | from_task_id, to_task_id, relation_type | depends_on、reviews、revises、delegates_to |
-| Artifact | id, work_item_id, type, version, created_by, content_hash | 有版本的正式产物或工作产物 |
-| ArtifactRelation | artifact_id, source_id, relation_type | 产物与输入、证据、评审的关联 |
-| Review Submission | work_item_id, proposer, package_version, artifact_refs, submitted_at | 固定一轮评审需要审查的提案材料集合 |
-| Review Round | submission_id, chair, decision_authority, state, quorum_policy | 一轮针对特定提案版本的评审过程 |
-| Reviewer Assessment | round_id, reviewer, role, disposition, findings | 每位专业 Reviewer 的独立正式意见 |
-| Review Session | round_id, meeting_time, attendees, agenda, minutes | 一次评审会议及其材料快照 |
-| Review Question / Response | session_id, author, respondent, topic_ref, status | 会议中的提问、答复和待澄清问题 |
-| ADR Record | artifact_id, adr_key, status, supersedes_id, decision_scope | 具有独立决策生命周期的 ADR |
-| Decision Record | round_id, authority, outcome, rationale, policy_version | 正式决策及其授权依据 |
-| Decision Item | decision_id, adr_ref, outcome, rationale, condition_refs | 对提案中的每一项 ADR 分别作出决定 |
-| Technical Debt Item | source_decision, source_adr, owner, remediation, target_date | 跟踪已接受方案形成的长期技术负担 |
-| Architecture Exception | standard_ref, scope, controls, owner, expires_at | 管理对企业标准或架构原则的限时偏离 |
-| Risk Acceptance | risk_ref, risk_owner, accepted_scope, expires_at, controls | 记录由授权风险负责人作出的风险接受 |
-| Decision | work_item_id, decision_type, actor, rationale, policy_version | 正式业务决定 |
-| Thread / Message | work_item_id, topic_id, author, visibility | 讨论记录 |
-| AuditEvent | actor, action, target, before, after, correlation_id | 不可随意覆盖的审计记录 |
+| TaskRelation | from_task_id, to_task_id, relation_type | depends_on、reviews、revises、delegates_to 等关系 |
+| Artifact | id, work_item_id, type, version, created_by, content_hash | 有版本的正式产物、证据或工作草稿 |
+| ArtifactRelation | artifact_id, source_id, relation_type | 产物与输入、证据、决策对象的关联 |
+| Submission / Manifest | work_item_id, submitted_by, item_versions, context_version | 可选；固定一次正式提交所包含的 Artifact Version 集合 |
+| Review Request / Cycle | work_item_id, target_ref, baseline_ref, scope, policy_ref, state | 可选；组织一组针对明确范围和材料基线的独立 Review |
+| Review | request_id, reviewer, target_ref, outcome, findings, evidence_refs | 某个 Reviewer 对明确对象和版本的独立意见 |
+| Decision Policy | applicability, authority_rule, required_inputs, quorum, constraints, outcomes, version | 可复用、可版本化的评审和决策规则 |
+| Decision | subject_ref, scope, outcome, actor, authority_ref, rationale, evidence_refs, policy_version | 指向明确决策对象和授权依据的正式决定 |
+| Thread / Message | work_item_id, topic_ref, author, visibility | 围绕事项、Task、Artifact 或 Review 的讨论 |
+| Activity / AuditEvent | actor, action, target, before, after, correlation_id | 区分普通工作活动与正式业务审计 |
+| WorkSession | task_id, principal, execution_mode, context_version, outputs | 人或 Agent 围绕 Task 开展的一段工作过程 |
 
 一个重要的建模选择是：Task 与 Work Item 是多对一关系，而不是一对一。Task Relation 也不只是父子关系；评审、修订、补充和依赖都是不同的关系类型。这样才能表达同一个事项中的并行专家分析、多个 Reviewer 和反复修订，而不必把所有工作压成一条线性对话。
 
@@ -1100,9 +1094,9 @@ Chawla 与 Thakkar 的 [Agentic AI in Enterprise Systems: A Systematic Review of
 
 **推荐的研究优先级：**
 
-1. Flowable CMMN：验证它的 Case / Plan Item 能否自然表达 Work Item 的动态活动。
-2. Temporal：验证长期 Agent Session、Human Wait、Local Callback、Task Resume 和并发恢复。
-3. Camunda：验证 BPMN + External Agent + Agent Instance API 的整合能力及生产授权成本。
+1. 先用若干不同类型的真实 Work Item 验证业务模型：包括阶段明确的审批流程、参与者动态加入的协作事项，以及存在长期等待和多次交接的工作。不要只用一个架构评审场景来决定流程引擎。
+2. 如果主要是明确阶段、网关和人工任务，评估 BPMN 或轻量状态机；如果事项需要按需添加活动、专家和里程碑，再验证 CMMN / Case Management 是否带来实际收益。
+3. 如果主要难点是长时间运行、可靠等待、重试和外部信号，再验证 Temporal。流程引擎的选择应由多个业务场景的共性决定，不应反过来让业务模型迁就某一个引擎。
 
 不要同时部署 Flowable 和 Temporal 作为两个可以自由推进业务状态的引擎。若后续确实需要一个引擎管业务 Case、另一个引擎管长期 Agent Execution，必须把边界固定：前者控制业务活动，后者只执行被委托的 Agent Task；跨引擎通过带幂等键和版本的命令/事件交互。
 
@@ -1388,216 +1382,105 @@ MCP 应是最优先的集成方式，但不能成为唯一入口。至少保留�
 10. Copilot、Claude 和其他客户端的差异只存在于连接与交互适配层，不影响业务对象、权限规则和审计模型。
 
 
-## 29. 实际场景验证：企业架构评审中的多人、多 Persona 与不同 Agent 使用习惯
+## 29. 场景验证：大型业务部门的多人架构评审
 
-前面建立的是通用的 Work Item 协作模型。现在用一个更接近大型金融或企业 IT 部门日常工作的场景验证它：某个业务部门准备建设或改造一项 Solution，由 Solution Architect 提交架构方案和若干 ADR，Enterprise Architect、Security Architect、Solution SME、Development Manager 等人员参加评审。会议中由 Solution Architect 介绍总体设计，其他参与者提问和质疑，Solution SME 补充业务流程、领域规则和更细的实现约束。评审结束后，有权的负责人决定接受方案、要求进一步分析，或者拒绝当前方案。
+这一节不是为架构评审设计一套专用系统，而是用一个真实业务流程检验前面提出的通用协作模型是否成立。场景本身只是一个测试样本：一个大型业务部门要评审一项 Solution，参与者包括 Solution Architect、Enterprise Architect、Security Architect、Solution SME 和 Development Manager。Solution Architect 提交方案及若干 ADR，在会议中介绍总体设计；其他人从各自职责出发提问和提出意见；SME 补充业务规则、场景和细节；最后由具备组织授权的人决定接受、要求补充分析，或者拒绝。
 
-这里还有一个现实情况：有些决定并不是最佳目标架构，而是在交付时间、预算、遗留系统和组织约束下选择的 workaround。组织可能同意先采用它，但必须留下 Technical Debt，明确未来如何处理。与此同时，参与者的 AI 使用习惯差异很大：有人完全不用 Agent，有人只用它整理材料，还有人会让 Copilot、Claude 或其他 Agent 深度参与研究和方案分析。
+某些方案可能不是目标状态下的最佳设计，而是在预算、时间、遗留系统或交付约束下采用的 workaround。它可能被允许先行实施，但需要保留未来的改进责任。参与者的 Agent 使用习惯也不同：有人完全不用，有人只用来整理材料，还有人会使用 Copilot、Claude 等 Agent 深度分析。
 
-这个场景不是简单地给 Work Item 增加几个角色。它要求系统同时支持多人参与、专业分工、会议讨论、多个 ADR 的独立结论、正式决策权、技术债务追踪，以及可选的外部 Agent。它也是检验前面设计是否真正 Human-first 的一个很好的案例。
+检验重点不是“系统是否有 Solution Architect、Security Architect 这些固定角色”，而是通用模型能否表达：多人以不同职责参与同一事项；材料被版本化并作为评审依据；异步意见和会议讨论可以汇总；不同参与者可以提出不同结论；正式决策有清楚的授权人和依据；后续工作和长期负担不会因为会议结束而丢失；Agent 使用方式不改变业务责任。
 
-### 29.1 先明确这不是一次普通的文档审批
+### 29.1 将流程还原成通用协作活动
 
-Solution Architect 提交的不是一份孤立文档，而是一个有明确版本边界的架构提案包。里面可能有总体架构、部署和集成视图、数据流、安全设计、非功能需求、迁移方案，以及多个 ADR。每个 ADR 应该描述一个相对独立的架构决策问题，包括背景、约束、备选方案、选择理由和后果。
+这个流程可以分解为一组并不专属于架构评审的活动：
 
-这些材料进入评审后，至少有四种不同活动：
+1. **发起与提交**：责任人创建 Work Item，提交一个或多个 Artifact。若这些材料需要作为一个整体被正式审查，应提交一个固定版本的材料集合，而不是让 Reviewer 面对不断变化的文件夹。
+2. **确定参与者和责任**：根据事项范围、组织规则和风险，指定负责人、专业参与者、独立 Reviewer 和最终 Decision Authority。参与者可以来自不同团队，也可以在不同事项中承担不同角色。
+3. **独立分析和提问**：每个 Reviewer 或 Specialist 基于相同的材料基线开展工作，提交意见、证据、疑问和建议。SME 可以补充事实、解释约束，也可以只参与某个议题，不一定要承担完整评审责任。
+4. **共同讨论**：提案负责人介绍材料，其他人提问和提出异议，相关专家回应。讨论中的未决问题被明确记录，并在必要时转成后续 Task。
+5. **形成决定**：有权的人结合各方意见，针对一个或多个决策对象作出正式决定。不同决策对象可以有不同结果，不要求整包材料只有一个简单的 Approve / Reject。
+6. **执行和跟踪**：要求进一步分析时创建后续 Task；接受方案但附带条件时将条件转成有 Owner 的工作；需要长期偿还的技术负担则关联后续 Work Item 或登记到组织已有的治理系统。
 
-1. **专业审查**：各参与者从自己的职责范围检查架构，例如企业标准、安全控制、业务领域约束、开发交付和运维可行性。
-2. **集体讨论**：Solution Architect 介绍方案，参与者提出问题，SME 补充事实和业务细节，相关人员回应或提出异议。
-3. **正式决策**：由组织事先指定的 Decision Authority 或有权限的评审机构，决定方案或其中各项 ADR 的处理结果。
-4. **决策后的治理**：将批准条件转成有责任人和期限的 Task；将获准的标准例外和技术债务登记为长期可跟踪对象。
+这说明它既不是单一 Reviewer 对单一文档的审批，也不是一个会议记录系统。它是一个由 Work Item 统领、多个独立工作和意见汇合、最后产生一个或多个正式决定的协作过程。
 
-这四种活动不能都记录成 Comment，也不能全部塞进一个 Review 记录。Comment 适合讨论，Review 表达专业判断，Decision 表达组织授权的正式结论，Task 和 Technical Debt Item 则负责把结论落实到后续工作中。
+### 29.2 现有通用模型能够覆盖什么
 
-### 29.2 Persona 是职责分工，不是固定的审批层级
-
-建议把场景中的角色定义如下。表中的责任是默认职责，最终权限仍由组织的 Architecture Governance Charter、委托规则和当前事项的授权策略确定。
-
-| Persona | 在本场景中的责任 | 应提供的输入 | 不应默认获得的权力 |
-| --- | --- | --- | --- |
-| Solution Architect | 提案负责人，组织架构材料、解释方案、回答问题、更新 ADR | 架构提案包、ADR、设计依据、方案权衡、后续修订 | 不应因为是提案作者就自动批准自己的方案或充当独立 Reviewer |
-| Enterprise Architect | 检查与企业目标架构、参考架构、技术标准、复用策略和跨系统影响是否一致 | 企业架构符合性意见、标准偏离项、跨域影响、目标架构差距 | 不应仅凭职位名称就推定其是本事项的最终 Decision Authority |
-| Security Architect | 检查信任边界、身份和访问控制、数据保护、威胁、合规控制及安全例外 | 安全评估、风险和控制缺口、必要的安全整改条件 | 不应自动成为所有业务风险的接受人；安全否决或强制会签必须由组织策略明确授权 |
-| Solution SME | 解释领域流程、业务规则、系统行为、数据含义、实际限制和需求优先级 | 领域事实、业务场景、特殊约束、需求澄清和证据 | 不应因为掌握详细知识就自动拥有架构批准权 |
-| Development Manager | 检查研发团队是否能实施和维护该方案，包括容量、技能、交付节奏、成本、依赖和运行支持 | 工期与资源评估、技术可行性、交付风险、运维准备情况 | 不应默认替代架构或业务风险决策 |
-| Review Chair / Secretary | 组织议程、确认评审范围和参与者、维护会议记录与待办，必要时主持决策流程 | 议程、出席记录、问题清单、会议纪要、待办 | 记录会议的人不因此拥有决策权 |
-| Decision Authority | 在授权范围内作出正式决定；可能是 EA、架构委员会主席或被正式委托的委员会 | 各专业意见、未解决问题、决策选项和风险 | 只能在其授权范围内决定；不能把未解决的强制安全条件默认为已通过 |
-
-这里有一个必须由业务组织回答的问题：**谁有权拍板？** 用户列出的 Solution Architect、Enterprise Architect、Security Architect、Solution SME 和 Development Manager，能够覆盖主要专业视角，但不能仅凭这五个职位推断最终决策权属于谁。平台必须把 Decision Authority 显式记录在当前评审轮次上，不能默认由会议主持人、Enterprise Architect 或发起人决定。
-
-还要区分“参与评审”和“拥有否决权”。Security Architect 可以提交严重程度很高的安全发现；但只有当安全政策规定某类控制必须通过 Security concurrence，或者明确授予特定角色阻断权时，系统才应把它建模为正式 Gate。普通建议、专业反对意见和强制审批条件不能混为一谈。
-
-一个人也可能在不同事项中承担不同角色。Solution Architect 在事项 A 中是提案人，在事项 B 中可能是独立 Reviewer。权限应通过 Participation 和当前评审轮次确定，不应该写死在全局用户属性里。
-
-### 29.3 将评审拆成提交、预审、会议、决策和后续治理
-
-一个可落地的流程可以分成以下阶段。
-
-| 阶段 | 主要活动 | 系统记录与状态变化 |
+| 场景中的实际行为 | 现有通用模型 | 判断 |
 | --- | --- | --- |
-| 1. 提交提案 | Solution Architect 提交架构提案包和一组 ADR，说明评审范围、关键选择、相关标准、风险和待决问题 | 创建 Architecture Review Work Item；生成 Review Submission，固定本轮材料的版本和内容哈希 |
-| 2. 分流与准备 | Review Chair 或指定负责人判断是否需要正式评审、需要哪些专业参与者、是否达到安全或企业标准会签条件 | 创建 Review Round；确定 Decision Authority、必需 Reviewer、参会角色和评审规则 |
-| 3. 异步预审 | EA、Security Architect、SME、Development Manager 分别阅读同一版材料，提出问题、发现和意见 | 为每个参与者创建 Reviewer Assessment；问题可以关联 ADR、Artifact 或具体设计位置 |
-| 4. 会议讨论 | Solution Architect 介绍方案；参与者提问；SME 解释业务细节；提案人回应；尚未解决的问题转成行动项 | 保存会议、出席情况、提问与答复、会议纪要和未解决事项；不因会议结束自动产生批准 |
-| 5. 正式决策 | Decision Authority 根据专业意见和授权规则，对整个提案或各 ADR 作出决定 | 创建不可静默覆盖的 Decision Record 和 Decision Items，记录结论、理由、参与者、条件和依据 |
-| 6. 后续跟踪 | 执行批准条件、补充分析、处理架构例外和技术债务，必要时再次评审 | 创建有责任人和期限的 Task；创建或关联 Technical Debt、Architecture Exception、Risk Acceptance 等记录 |
+| 多个部门人员围绕同一方案协作 | Work Item + Participation | 可以。参与关系按事项建立，角色和范围不应该写死在用户账号上 |
+| Solution Architect 组织方案和 ADR | Task + Artifact + Artifact Version | 可以。ADR 是有类型、有版本的 Artifact，不需要成为平台内置的唯一文档类型 |
+| EA、安全、SME、开发经理分别参与 | Participation + Task | 可以。参与者可承担不同职责，有些人只需提供专业输入，不必人人成为 Reviewer |
+| 每个人独立分析并提交意见 | 独立 Task + Review / Artifact | 基本可以。Review 必须关联明确的审查对象和版本 |
+| 会上提问、答复、SME 补充 | Thread / Message + Activity + Artifact | 可以。会议是交互形式，不应默认成为业务核心对象 |
+| 要求补充分析或修改方案 | Task + TaskRelation + 新 Artifact Version | 可以。它是后续工作，不是把原来的 Review 结果覆盖掉 |
+| 接受、拒绝或附条件接受 | Decision | 概念上可以，但当前 Decision 字段过于简单，需要补足决策对象、授权依据和适用范围 |
+| 多个 ADR 分别得到不同结果 | 多个 Decision 关联不同 Artifact / Subject | 可以表达，但当前模型需要明确支持一个 Work Item 下的多个、范围不同的 Decision |
+| Workaround 形成长期技术负担 | Task / 关联 Work Item / Artifact | 基本可以。短期整改可用 Task；需要独立生命周期和持续跟踪的债务可作为关联 Work Item |
+| 有人不用 Agent，有人轻度或深度使用 | Human Participation + Work Session + Delegation Grant + Artifact Provenance | 可以。Agent 使用程度不应改变角色、权责或业务流程 |
 
-预审和会议不必对每个事项都采用相同强度。材料简单、影响范围小、没有标准偏离的事项可以异步完成；涉及跨业务域、安全边界、关键数据或难以逆转的架构选择时，才需要完整的多人会议。评审前应先确定本轮究竟要决定什么，避免会议变成没有明确结论的方案宣讲。
+因此，原来的核心判断没有被这个场景推翻。Work Item、Participation、Task、Artifact、Review、Decision、Thread 和 Workflow 仍是正确的抽象。需要修正的是：之前对这些抽象之间的关联和决策治理描述得还不够完整，不能把“概念上有 Review 和 Decision”误认为“已经能支持多人、有分歧、分项决策的评审”。
 
-会议中的提问也要有结构。至少要能记录提问人、问题、关联 ADR 或设计材料、答复人、答复内容、是否解决，以及是否需要进一步分析。没有在会上解决的问题可以转成 Task，并明确由谁补充材料、由谁验证。会议纪要可以由秘书整理，也可以由 Agent 辅助生成草稿；但正式的评审意见和决策仍需由授权人员确认。
+### 29.3 真正需要补齐的是通用协作能力，而不是架构评审专用对象
 
-需要特别区分三套状态：
+第一，**Review 需要从单条意见扩展为可组织的评审过程**。一个 Work Item 可以有多次评审请求；一次评审请求可以指定材料基线、评审范围、参与者或候选参与组、截止时间和评审规则；每个 Reviewer 再独立提交自己的 Review。这样既能支持多人并行评审，也能支持后续重新评审。这里需要的是通用的 Review Request / Review Cycle 能力，不是 Architecture Review Board、Security Review 或 Enterprise Review 这类硬编码对象。
 
-- **Work Item 状态**表示这项架构评审是否仍在处理、是否已形成正式决定、是否关闭。
-- **Review Round 状态**表示本轮预审、会议和决策过程进行到哪里。
-- **Review Submission 状态**表示提案材料的版本是否已提交、正在评审、被退回修订或被新版本取代。
+第二，**正式提交需要能够固定一组材料的版本**。单个 Artifact 的版本控制还不够：一项工作可能一次性提交报告、图、数据、ADR、代码或证据。可选增加通用的 Submission / Artifact Manifest，用来列明本次提交包含哪些 Artifact Version，以及提交人、时间和上下文版本。Reviewer 和 Decision 都引用这份材料基线。简单事项可以直接引用单个 Artifact，不必强制创建 Manifest。
 
-不要用一个 status 同时表示“会议已结束”“方案已批准”“所有条件已完成”和“技术债务已清零”。它们属于不同对象的生命周期。
+第三，**Decision 必须能指向明确的决策对象，并携带授权依据**。目前仅有 `work_item_id, decision_type, actor, rationale` 不够。通用 Decision 至少要表达：
+- 决策对象或范围：整个 Work Item、某个 Artifact、一个 Artifact 中的特定决策项，或其他被治理的资源。
+- 结果：接受、拒绝、延期、要求补充、附条件接受等；具体可选结果由适用的决策策略定义，不应写死为架构审批枚举。
+- 决策主体和授权依据：由谁作出、依据哪个 Participation / Role / Policy，以及是否满足必要的会签或职责分离要求。
+- 依据和后果：引用哪些版本、Review 和证据；附带哪些条件、后续 Task 或相关事项。
 
-### 29.4 对现有数据模型的必要扩展
+这样一个 Work Item 下可以有多个 Decision，每个 Decision 针对不同对象或范围。一个提案包中部分内容被接受、部分要求补充、部分被拒绝，就不需要发明一个特殊的“部分批准 ADR”对象。
 
-现有 Work Item、Participation、Task、Artifact、Review、Decision 的方向是正确的，但对企业架构评审而言，当前的 Review 模型过于简单。如果只保存 `artifact_version, reviewer, outcome, findings`，就表达不了一轮多人评审、会议讨论、多个 ADR 的不同结论和明确的决策授权。
+第四，**角色不能直接等同于决策权**。Participation 用来表达“谁以什么职责参与”，但谁有权最终决定、是否必须征求某些专业意见、是否需要多人会签、是否满足法定人数或职责分离，应由可版本化的通用 Decision / Review Policy 定义。Solution Architect、Enterprise Architect、Security Architect 等名称只是组织可以配置的 Role，不应该进入平台固定枚举。一个 SME 可以是信息提供者、Task Owner，也可能在另一个事项中成为 Decision Authority；这些取决于组织授权，而不是职位名称本身。
 
-建议在现有模型上增加以下对象，而不是把整套系统改造成通用会议管理平台。
+第五，**讨论、会议和正式记录需要保持边界**。当前 Thread / Message、Activity 和 Artifact 已经可以承载会议前后的提问、答复、会议纪要和行动项。第一阶段不需要新增一个架构评审会议实体。Work Session 表示某个参与者实际开展工作的一段过程，不等同于多人共同参加的会议。只有当产品未来需要管理预约、出席、议程、会议实例或录制文件时，才考虑增加通用的 Collaboration Event，或者与日历和会议系统集成。不要为了一个场景把会议管理塞进 Work Item Core。
 
-| 对象 | 核心字段或关联 | 责任边界 |
-| --- | --- | --- |
-| Review Submission | work_item_id, submission_no, proposer, package_version, artifact_refs, submitted_at | 将本轮要审查的 ADR、架构图、说明和证据固定为一个提案版本 |
-| Review Round | submission_id, chair, decision_authority, state, required_roles, quorum_policy | 表示针对某个提案版本发起的一轮评审 |
-| Reviewer Assessment | round_id, reviewer, role, disposition, findings, evidence_refs | 记录每位专业 Reviewer 的正式意见；不能用 Agent 的普通分析输出替代 |
-| Review Session | round_id, meeting_time, attendees, agenda, minutes, recording_ref | 保存一次或多次评审会议及其材料快照 |
-| Review Question / Response | session_id, author, respondent, topic_ref, question, answer, status | 让问答和待澄清事项可追踪，不把聊天记录当作唯一证据 |
-| ADR Record | artifact_id, adr_key, status, supersedes_id, decision_scope | 为 ADR 增加 Proposed、Accepted、Rejected、Superseded、Deprecated 等生命周期语义 |
-| Decision Record | round_id, authority, outcome, rationale, decided_at, policy_version | 记录谁依据什么授权作出了正式决定 |
-| Decision Item | decision_id, adr_ref, outcome, rationale, condition_refs | 将决定落实到每一项 ADR，允许同一提案中出现不同结果 |
-| Technical Debt Item | source_decision, source_adr, owner, impact, remediation, target_date, review_date | 跟踪已接受选择所产生的长期技术负担 |
-| Architecture Exception | standard_ref, scope, rationale, controls, owner, expires_at, review_date | 记录对企业标准或架构原则的限时偏离及补偿控制 |
-| Risk Acceptance | risk_ref, risk_owner, accepted_scope, rationale, expires_at, controls | 记录由有权风险负责人接受的风险，不由普通架构批准自动替代 |
+### 29.4 技术债务应该如何纳入通用模型
 
-这里的几个对象可以作为 Work Item 领域模型中的类型化扩展，不要求全部在第一版拆成独立微服务。初期用关系数据库中的表和统一应用服务就足够。
+技术债务不应被做成“架构评审的附属字段”，也不一定需要成为所有 Work Item 都有的一级对象。
 
-`Review Submission` 很重要：一轮评审应该针对一个确定的材料集合，而不是针对一个持续变化的文件夹。评审期间，如果 Solution Architect 修改了 ADR 或架构图，系统需要知道本轮 Reviewer 实际审查的是哪个版本。重大修改应该产生新的 Submission 或 Revision，并按影响范围要求重新审查；不能把旧版本上的 Review 自动变成新版本的通过记录。
+当 workaround 只产生一个短期、可执行的整改动作时，用带 Owner、期限和验收条件的 Task 即可。当它会持续数月或数年，需要单独排序、预算、风险跟踪、跨项目协调和多次复查时，应把它提升为独立的 Work Item，并通过通用关系链接到产生它的 Decision、Artifact 和源 Work Item。该 Work Item 可以具有 `technical-debt` 类型或相应的领域扩展。
 
-`Reviewer Assessment` 与 `Decision Record` 也必须分开。Security Architect 可以给出“存在阻断性安全问题”的意见，Enterprise Architect 可以认可目标方向但要求修改，Development Manager 可以指出当前团队无法在既定期限内交付。这些是不同专业视角。最终组织决定可能采纳其中部分意见，也可能在授权范围内接受某些风险。会议参与者的意见不能自动拼成一个批准结论。
+相同机制也能表达其他长期后续事项，例如风险处置、标准偏离、合规整改、迁移计划和运维改进。平台核心只需要支持可扩展的 Work Item Type、关系、责任人、生命周期和审计；某个组织是否需要额外字段、审批规则或专门报表，由领域配置决定。
 
-### 29.5 多个 ADR 不能被压成一个总的 Approve / Reject
+还要区分三个事实：Decision 记录为什么在当时选择 workaround；风险或标准偏离的批准记录谁授权继续承担当前约束；Technical Debt Work Item 跟踪未来如何偿还这项长期负担。它们可以互相关联，但不应由一个 `technicalDebt=true` 标记替代。
 
-一个提案包可能包含多个 ADR，例如：
+### 29.5 不同 Agent 使用习惯是正交维度，不能进入业务 Persona 模型
 
-- ADR-001：选择目标集成模式。
-- ADR-002：选择身份认证和授权方案。
-- ADR-003：选择数据存储和数据交换模式。
-- ADR-004：决定遗留系统迁移期间采用临时兼容方案。
+这个流程中的 Solution Architect、Enterprise Architect、Security Architect、SME 和 Development Manager 描述的是组织责任；不用 Agent、轻度使用 Agent、深度使用 Agent 描述的是个人工作方式。这两个维度不能混成一套 Persona。
 
-整个方案可以进入同一轮评审，但这些 ADR 不一定得到相同的结果。评审委员会可能接受 ADR-001 和 ADR-002，要求 ADR-003 做进一步分析，并拒绝 ADR-004 当前提出的做法。
+不用 Agent 的参与者仍然可以通过网站阅读、提问、提交意见和作出决定。轻度使用者可以把 Agent 当成文档整理和问题清单工具。深度使用者可以通过自己的 Copilot、Claude 或其他 Agent 读取授权上下文，分析材料并提交草稿。三种方式使用同一个 Work Item、Task、Artifact、Review 和 Decision 模型。
 
-因此，Decision Record 应该支持一个整体结论，同时包含多个 Decision Item。整体结论可以表示“部分接受”或“需进一步处理”，但每一项 ADR 必须有自己的结果、理由、条件和责任人。不能因为提案总体被接受，就把所有 ADR 自动标记为 Accepted。
+系统应同时记录业务责任和实际执行来源。Human 是业务 Participation 的责任主体；外部 Agent 通过 Delegation Grant 获得受限访问，具体执行由 Agent Execution Identity / Work Session 记录。通过 MCP 直接提交的结果可以保存 Client、Grant 和请求链路；复制粘贴的内容则只记录真实可知的提交人和来源说明，不能伪称平台验证过 Agent 的内部过程。
 
-ADR 的状态和评审轮次的状态也不是同一个概念。ADR 在被接受后，应该保留其原始决策内容；未来发现需要改变时，创建新的 ADR 并将旧 ADR 标记为 Superseded，而不是静默修改已接受的决策。对于一项被要求进一步分析的 ADR，应保留 Proposed 状态，等新版本再次提交并完成决定。
+Agent 可以帮助 Reviewer 整理意见，但不能因为它使用了“Security Reviewer”或“Enterprise Architect”这样的提示词，就自动取得组织会签资格。正式 Review 和 Decision 的权限来自平台中的 Participation 与 Policy，而不是 Agent 自我声明的 Persona。这一边界对所有业务类型都成立，不是架构评审的特例。
 
-### 29.6 Workaround、Architecture Exception 和 Technical Debt 必须分开管理
+### 29.6 对总体设计的结论
 
-这是这个实际场景中最值得单独建模的部分。
+这个流程证明原有架构的主干可以覆盖实际的多角色业务协作，但也揭示了四项通用能力需要明确化：
 
-假设最优方案是改造一个遗留核心系统，但当前预算和交付时间不允许。团队提出先通过一个兼容层解决集成问题，评审委员会同意短期采用。这个决定至少包含三件不同的事：
+1. **分组评审**：Review Request / Cycle 组织多个独立 Review，并绑定评审范围和材料基线。
+2. **正式提交基线**：可选 Submission / Artifact Manifest 固定一次提交包含的版本集合。
+3. **策略化决策**：Decision 绑定明确对象、范围、授权主体、策略版本、证据和后续条件；决策规则不硬编码为某个 Persona。
+4. **长期后续事项**：Task 处理短期行动；需要独立生命周期的技术债务、风险处置或其他长期事项，使用关联 Work Item 表达。
 
-1. **架构决定**：当前阶段选择兼容层，而不是立即改造核心系统。ADR 记录选择背景、替代方案、短期收益和长期后果。
-2. **架构例外**：如果兼容层偏离了组织已经发布的标准或目标架构，需要一项有范围、有到期时间和补偿控制的 Architecture Exception。
-3. **技术债务**：如果这项 workaround 会持续增加接口维护、故障排查、性能限制或未来迁移成本，应创建 Technical Debt Item，并指定责任人和退出方案。
+会议、ADR、技术债务、企业架构师和安全架构师都不应该成为 Work Item Core 的特殊分支。它们分别是协作事件、Artifact 类型、Work Item 类型或可配置 Role。平台核心只负责提供通用的协作、提交、审查、决策、关系、策略和审计能力。
 
-这三者不能相互替代。批准一个临时例外，不等于技术债务已经被偿还；记录一个 Technical Debt，也不代表组织已经授权偏离安全或企业标准；接受一项风险，更不应该因为架构委员会同意了方案就自动发生。
-
-Technical Debt Item 至少需要记录：来源 ADR 和 Decision、债务类型、形成原因、当前影响、未来维护或迁移成本、责任团队和 Owner、建议的偿还方式、目标日期、复查频率、关闭条件，以及相关交付任务。估算不必一开始就很精确，但必须能说明为什么这项负担值得保留和未来如何处理。
-
-Architecture Exception 则应有明确的标准条款或目标架构要求、适用系统和环境、偏离范围、业务理由、补偿控制、批准人、生效日期、到期时间、复查日期和撤销条件。到期时应重新评估：延长例外、完成整改，还是重新提交架构评审。不要把临时例外变成永久豁免。
-
-Risk Acceptance 是另一条边界。如果 workaround 带来尚未消除的安全或业务风险，需要由组织授权的 Risk Owner 接受该风险，并明确范围、控制和有效期。Security Architect 的评估意见不自动等于风险接受，架构 Decision Authority 也不一定就是风险接受人。
-
-如果一个方案只是实现上的权衡，并没有形成持续的维护成本、限制或风险，就不必为了形式创建 Technical Debt Item。是否登记债务，应看它是否形成了未来必须承担的负担；是否登记 Architecture Exception，则看它是否偏离了明确的组织标准或控制要求。
-
-### 29.7 Agent 使用程度不同，不应该改变业务流程
-
-这个场景还有一个很容易设计错的地方：把“角色”和“AI 使用习惯”混成一个 Persona。Solution Architect、Security Architect 是业务职责；不用 Agent、轻度使用 Agent、重度使用 Agent 是工作方式。两者是正交关系，同一个 Security Architect 可以完全不用 Agent，另一个 Security Architect 可以经常使用 Claude Code 或 Copilot。
-
-建议把使用方式分成三种实际水平，但不把它们做成强制流程阶段。
-
-| 使用方式 | 典型行为 | 平台需要支持什么 |
-| --- | --- | --- |
-| 不使用 Agent | 通过网站、文档、会议和人工沟通完成全部工作 | 所有提交、评审、会议、决策和债务跟踪都必须可以直接由 Human 完成 |
-| 轻度使用 Agent | 整理会议材料、总结 ADR、生成问题清单、改进文字表达 | Agent 产物可以作为草稿或工作笔记，Human 检查后再提交 |
-| 深度使用 Agent | 分析多个 ADR、比较架构选项、检查安全控制、检索企业标准、提出风险和技术债务建议 | 允许外部 Agent 在 Human 委托下读取授权上下文并提交分析草稿，但不能替代正式 Reviewer 或 Decision Authority |
-
-Solution Architect 可以用 Agent 生成 ADR 初稿、比较备选方案或检查架构一致性；Security Architect 可以让 Agent 辅助威胁建模、检查控制覆盖和寻找证据；Development Manager 可以让 Agent 分析交付依赖和资源约束；SME 可以完全不使用任何 Agent，直接解释业务事实。系统不应要求每个人都安装同一个 Skill，也不应因为某个人没有 Agent 就降低其参与评审的能力。
-
-这里必须保留一条责任边界：**Agent 可以帮助某个 Reviewer 形成判断，但正式的 Reviewer Assessment 应由被指定的 Human Reviewer 核对并提交。** Agent 生成的安全检查清单不能自动算作 Security Architect 的安全会签；Agent 生成的企业标准比对也不能自动算作 Enterprise Architect 的认可。否则同一个 Agent 可以同时扮演提案人、评审人和批准人，独立审查就失去意义。
-
-对于有外部 Agent 的人，仍然沿用前面定义的 Remote MCP + OAuth + Delegation Grant。Agent 通过 Human 授权读取该事项的上下文，提交分析产物或评审草稿。网站不要求预先注册 Copilot、Claude 或某个模型 Runtime，也不要求把 Agent 配置成一个组织成员。对于完全不用 Agent 的人，平台通过普通 Web UI 提供完全相同的业务操作。
-
-审计信息应尽可能区分 `SubmittedBy`、`AccountableHuman`、`GeneratedBy` 和 `DelegationGrant`。能够通过集成链路确认的 Agent 来源可以记录 Client、Grant、模型或 Runtime 元数据；用户在本地工具中生成内容后手工粘贴的情况，不必强迫平台采集无法可靠验证的信息。平台不应把客户端自报的模型名称当成安全身份，也不应将 Agent 的生成内容错误记为它没有实际审阅过的 Human 亲自撰写。
-
-### 29.8 对 Work Collaboration Contract 和 MCP 工具的影响
-
-前面定义的通用 Work Collaboration Contract 可以继续使用，但需要增加架构评审领域的操作。第一版可以提供如下能力：
-
-| 操作 | 典型调用者 | 用途与限制 |
-| --- | --- | --- |
-| `get_review_submission` | 参与者或授权 Agent | 读取本轮固定版本的提案包和权限投影 |
-| `list_review_rounds` | 参与者 | 查看评审轮次和当前阶段 |
-| `list_review_questions` | 参与者或授权 Agent | 查看其有权访问的问题与待澄清事项 |
-| `submit_review_question` | Reviewer / SME | 提出问题并关联 ADR 或 Artifact |
-| `submit_reviewer_assessment_draft` | 指定 Reviewer 的 Agent | 提交个人评审草稿，不自动成为正式会签 |
-| `submit_reviewer_assessment` | 被指定的 Human Reviewer | 提交经本人确认的正式专业意见 |
-| `submit_meeting_notes_draft` | 秘书或会议辅助 Agent | 提交会议纪要草稿 |
-| `record_meeting_notes` | 有权限的 Human | 确认正式会议纪要和行动项 |
-| `create_analysis_task` | 有权限的 Human 或受限 Agent | 将待补充分析转为有 Owner 的 Task |
-| `create_decision_draft` | Agent 或 Human | 整理候选结论、理由和各 ADR 的建议结果 |
-| `propose_technical_debt` | Agent 或 Human | 提交待确认的技术债务候选项 |
-| `record_decision` | Decision Authority | 创建正式 Decision Record，Agent 不应调用 |
-| `accept_risk` | 被授权的 Risk Owner | 在权限和政策允许范围内接受明确风险，不能由普通架构审批替代 |
-
-正式决策、风险接受和例外授权必须经过各自的服务端权限校验。不能只根据 MCP Tool 名称或 Agent 的 Prompt 判断权限，也不能因为某个用户是 Work Item 参与者就授予所有操作。每个写操作都要检查当前 Principal、Delegation Grant、Participation、角色、Review Round、目标 ADR 版本和当前状态。
-
-对于不同 MCP Client，工具能力可能存在差异，所以第一版仍然只依赖 Remote Streamable HTTP、Tools、JSON Schema 和 OAuth。正式决策由网站 UI 完成也完全没有问题。MCP 的存在是为了让 Agent 更方便地参与工作，不是把网站的核心流程迁移到 Agent Client 中。
-
-### 29.9 现有设计的符合性判断与需要补齐的内容
-
-这个场景验证后，结论是：现有设计的方向正确，但还不能只依靠当前通用对象直接上线企业架构评审。需要补齐的是领域语义，而不是引入一个新的 Agent Runtime。
-
-| 设计能力 | 当前设计是否覆盖 | 需要的调整 |
-| --- | --- | --- |
-| 不同 Persona 围绕同一事项协作 | 已覆盖 | 继续使用 Participation，但增加评审轮次中的职责和授权约束 |
-| 提案、ADR、架构图和证据版本 | 基本覆盖 | 增加 Review Submission，固定每轮评审的材料基线 |
-| 多人独立预审 | 部分覆盖 | 明确 Reviewer Assessment，区分正式意见和普通评论 |
-| 现场介绍、提问、SME 补充和会议纪要 | 覆盖不足 | 增加 Review Session 与结构化 Question / Response |
-| 会议讨论与正式决定分离 | 原则已覆盖 | 增加 Decision Authority、Quorum Policy 和 Decision Record |
-| 一次评审中多个 ADR 得到不同结论 | 覆盖不足 | 增加 Decision Item，按 ADR 记录结果、条件和理由 |
-| 要求进一步分析并再次提交 | 基本覆盖 | 将 Deferred 与 Rejected 分开；创建 Analysis Task 和新 Review Submission |
-| Workaround 形成技术债务 | 覆盖不足 | 增加 Technical Debt Item 和偿还、复查机制 |
-| 偏离企业标准的限时授权 | 覆盖不足 | 增加 Architecture Exception 和到期复查 |
-| 安全风险由正确责任人接受 | 覆盖不足 | 将 Risk Acceptance 与架构决定和安全评估分离 |
-| 不同人采用不同 Agent 使用方式 | 已覆盖基本原则 | 明确 AI 使用程度不是业务 Persona，也不是流程门槛 |
-| 外部 Copilot、Claude 等可选接入 | 已覆盖 | 继续使用 Remote MCP + OAuth + Delegation Grant |
-
-实现时不应该先把 CMMN、BPMN 或某个 Agent Framework 全部引入。第一步先在现有 Work Item 服务中实现 Review Submission、Review Round、Reviewer Assessment、Decision Item 和 Technical Debt / Exception 的领域对象与状态约束。流程可以先使用明确的应用服务和状态机；只有当评审路径、分流规则、超时升级和跨团队依赖变得复杂时，再将确定性业务流程交给 BPMN/CMMN Runtime。
-
-一个重要的验收场景是：Solution Architect 提交四个 ADR；EA、Security、SME 和 Development Manager 分别提交不同意见；会议中有问题未解决；Decision Authority 对其中两个 ADR 作出接受，对一个 ADR 要求进一步分析，对另一个 ADR 拒绝；接受的方案中有一个 workaround，被批准为限期例外并登记技术债务；所有后续任务都有责任人和期限。同时，五类参与者中可以有人完全不用 Agent，有人通过 Copilot，有人通过 Claude；他们仍然使用同一个 Work Item、同一轮评审和同一套正式决策记录。
-
-只要系统能保证这个流程完整、可追踪，而且不强迫任何人使用某种 Agent，就说明它真正具备了企业级多人协作能力。
-
-参考资料：
-- [AWS Architecture Blog：Build and operate an effective architecture review board](https://aws.amazon.com/blogs/architecture/build-and-operate-an-effective-architecture-review-board/)：多专业成员、评审门槛、正式决策和例外到期管理。
-- [GitLab Handbook：Architecture Review Board](https://handbook.gitlab.com/handbook/eta/arb/)：预审分流、会议评审、Decision Authority，以及 Approved、Conditionally Approved、Deferred、Rejected 等结果。
-- [GOV.UK：Architectural Decision Record Framework](https://www.gov.uk/government/publications/architectural-decision-record-framework/architectural-decision-record-framework)：先确定决策层级，再选择利益相关方和审批机构。
-- [Defra Architecture：Architecture decision records](https://defra.github.io/architecture/governance/architecture-decision-records/)：一个 ADR 聚焦一个决策，并保留 Accepted、Rejected、Superseded 等生命周期。
+因此，推荐架构仍然是 Work Item-centric Collaboration Architecture，但要把它从“有 Work Item、Task、Review、Decision 这些对象”提升为“有版本基线、有多方独立意见、有策略约束的正式决策，以及可追踪的后续义务”。这些才是这个真实流程验证出来的通用需求。
 
 ## 30. 结论
 
 
-这类系统最合适的设计单位不是 Agent，也不是一个共享聊天会话，而是长期存在的业务事项。参与者通过 Participation 加入事项，角色决定其责任，Task 承载具体工作，Artifact 保存交付物，Review 和 Decision 表达正式判断，Workflow Runtime 管理业务生命周期。
+这次场景验证没有推翻 Work Item-centric Collaboration Architecture，也不应该导致平台增加一套架构评审专用模型。它暴露的是通用模型需要补齐的能力：一组材料的版本基线、多方独立 Review 的组织方式、带授权和适用范围的 Decision，以及可追踪的后续义务。
 
-A2A 是这套架构中的一个通信边界：当独立 Agent 服务需要互相委托工作时使用它；当多个 Agent 只是同一个业务事项中的协作执行者时，不需要把所有内部调用都协议化。
+因此，平台核心应保持稳定、通用：Work Item 表示业务事项，Participation 表示参与关系，Task 表示工作，Artifact 表示有版本的产物，Review 表示针对明确对象和版本的独立意见，Decision 表示有授权依据的正式决定，Thread / Activity 保存协作过程，Workflow 管理确定性的业务生命周期。Submission、Review Cycle 和 Decision Policy 是必要时复用的通用能力，不是某个业务类型的专有对象。
 
-真正需要共享的是经过授权、结构化、版本化的 Work Item Context，而不是所有 Agent 的内部记忆。真正需要治理的是谁能对哪个事项、哪个版本、执行什么动作，而不是 Agent 之间能不能互相发送消息。
+ADR、Technical Debt、Architecture Exception、Security Assessment 等应由业务域作为 Artifact 类型、Work Item 类型、关联资源或策略配置来表达。平台不应内置一整套特定部门的职位、会议和审批规则。
 
-**建议采用 Work Item-centric Collaboration Architecture：以业务事项为中心，以 Participation 管理动态角色，以 Task 管理人与 Agent 的工作，以 Artifact / Decision 固化结果，以 Business Workflow 管理正式状态，以 A2A 连接跨边界 Agent。** 这样既能容纳同一项目内的多 Agent，也能支持不同用户在不同事项中承担不同职责，而且不会把业务责任、项目上下文和 Agent 执行状态混成一团。
+A2A 是跨独立 Agent 服务的通信边界；MCP 是外部 Agent 访问业务服务的工具协议；REST/OpenAPI 是稳定的业务 API。它们都不取代 Work Item、权限、版本和正式决策模型。
+
+**核心设计仍然是 Human-led、Agent-optional、Runtime-independent 的 Work Item Collaboration Platform。** 要验证它是否成立，不能只看架构评审这一个流程；还应使用不同组织、不同决策权结构、不同协作节奏的业务事项验证同一组核心对象和策略机制。如果每增加一个业务流程就必须增加一组专用核心实体，说明抽象仍然不够通用。
 
