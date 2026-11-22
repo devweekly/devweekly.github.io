@@ -682,11 +682,19 @@ export default function App() {
           <Text type="secondary" className="small">正式提交记录</Text>
           <List size="small" dataSource={detail.submissions} renderItem={submission=>{
             const entries=manifestEntries(submission.manifest_json);
+            const packageSnapshot=(()=>{try{return JSON.parse(submission.package_json || "{}") as Record<string,unknown>;}catch{return {};}})();
+            const externalReferences=Array.isArray(packageSnapshot.externalReferences) ? packageSnapshot.externalReferences as {provider:string;external_key:string;title:string;url:string;relation_type:string}[] : [];
             return <List.Item>
               <List.Item.Meta title={<Space direction="vertical" size={2}><Text strong>{"Submission "+submission.sequence+" · "+entries.length+" 份材料"}</Text>{submission.submission_message ? <Text type="secondary">{submission.submission_message}</Text> : null}</Space>} description={<>
                 <div>{submission.created_by_name} · {dateText(submission.created_at)} · Context v{submission.context_version ?? "legacy"}{submission.assisted_by_run_id ? " · Agent Run "+submission.assisted_by_run_id : ""}</div>
                 <details className="submission-manifest-disclosure">
-                  <summary>查看本次提交固定的材料与版本</summary>
+                  <summary>查看本次提交固定的 Request Package、材料与引用</summary>
+                  <div className="small"><strong>预期结果：</strong>{String(packageSnapshot.goal || "—")}</div>
+                  <div className="small"><strong>范围：</strong>{String(packageSnapshot.scope || "—")}</div>
+                  <div className="small"><strong>约束与风险：</strong>{String(packageSnapshot.constraints || "—")}</div>
+                  <div className="small"><strong>初步方案：</strong>{String(packageSnapshot.initialProposal || "未提供")}</div>
+                  <div className="small"><strong>委员会需决定：</strong>{String(packageSnapshot.decisionQuestions || "—")}</div>
+                  {externalReferences.length>0 && <div className="small submission-reference-list"><strong>外部证据与引用：</strong>{externalReferences.map((reference,index)=><span key={reference.provider+reference.external_key+index}>{index>0?" · ":""}<a href={reference.url} target="_blank" rel="noreferrer">{reference.external_key || reference.title}</a></span>)}</div>}
                   <List size="small" dataSource={entries} renderItem={entry=><List.Item>
                     <List.Item.Meta title={<Space wrap><Text>{entry.code || entry.type || entry.id}</Text><Text strong>{entry.title || "材料"}</Text><Tag>v{entry.version}</Tag></Space>} description={entry.content_hash ? "SHA-256 · "+entry.content_hash.slice(0,16)+"…" : "历史基线未记录内容指纹"} />
                   </List.Item>} />
