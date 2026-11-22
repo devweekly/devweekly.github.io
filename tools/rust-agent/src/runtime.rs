@@ -135,7 +135,9 @@ Return exactly one JSON object, no Markdown fences:
 Use the exact reviewed_through value supplied in the input. Use at most 32 note operations and 16 pages. Use valid evidence IDs only. If there is nothing worth preserving, return empty notes and pages while still advancing reviewed_through."#;
 
 const SESSION_SCHEMA_VERSION: u32 = 1;
-const MAX_SESSION_FILE_BYTES: usize = 16 * 1024 * 1024;
+const MAX_SESSION_FILE_BYTES: usize = 8 * 1024 * 1024;
+const MAX_STORED_SESSION_FILES: usize = 512;
+const MAX_SESSION_STORE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_USAGE_LOG_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_AUDIT_LOG_BYTES: u64 = 32 * 1024 * 1024;
 const LOG_BACKUP_COUNT: usize = 3;
@@ -332,13 +334,17 @@ impl SessionStore {
         Ok(self.directory.join(format!("{session_id}.json")))
     }
 
+    fn lock_store(&self) -> Result<fs::File, AgentError> {
+        lock_state_file(&self.directory.join(".session-store"))
+    }
+
     fn load(&self, session_id: &str) -> Result<SessionRecord, AgentError> {
         ensure_real_directory(&self.directory)?;
         let path = self.path_for(session_id)?;
         ensure_regular_file_or_missing(&path)?;
         let metadata = fs::metadata(&path)?;
         if metadata.len() as usize > MAX_SESSION_FILE_BYTES {
-            return Err(AgentError::InvalidAction("session file exceeds the 16 MiB limit".into()));
+            return Err(AgentError::InvalidAction("session file exceeds the 8 MiB limit".into()));
         }
         let bytes = fs::read(path)?;
         let record: SessionRecord = serde_json::from_slice(&bytes)?;
@@ -358,7 +364,7 @@ impl SessionStore {
     fn save_record(&self, record: &SessionRecord) -> Result<(), AgentError> {
         ensure_real_directory(&self.directory)?;
         let path = self.path_for(&record.session_id)?;
-        let lock = lock_state_file(&path)?;
+        let lock = self.lock_store()?;
         ensure_regular_file_or_missing(&path)?;
         let expected_revision = match fs::read(&path) {
             Ok(bytes) => {
@@ -377,8 +383,35 @@ impl SessionStore {
         let temporary = path.with_extension(format!("json.tmp-{}-{}", std::process::id(), now_ms()));
         let bytes = serde_json::to_vec_pretty(record)?;
         if bytes.len() > MAX_SESSION_FILE_BYTES {
-            return Err(AgentError::InvalidAction("session file exceeds the 16 MiB limit".into()));
+            return Err(AgentError::InvalidAction("session file exceeds the 8 MiB limit".into()));
         }
+
+        let mut stored_count = 0usize;
+        let mut stored_bytes = 0u64;
+        for entry in fs::read_dir(&self.directory)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_file()
+                || entry.path().extension().and_then(|value| value.to_str()) != Some("json")
+            {
+                continue;
+            }
+            stored_count += 1;
+            if entry.path() != path {
+                stored_bytes = stored_bytes.saturating_add(entry.metadata()?.len());
+            }
+        }
+        if expected_revision == 1 && stored_count >= MAX_STORED_SESSION_FILES {
+            return Err(AgentError::InvalidAction(format!(
+                "session store reached the {MAX_STORED_SESSION_FILES} file limit; prune old sessions"
+            )));
+        }
+        if stored_bytes.saturating_add(bytes.len() as u64) > MAX_SESSION_STORE_BYTES {
+            return Err(AgentError::InvalidAction(format!(
+                "session store is limited to {} MiB; prune old sessions",
+                MAX_SESSION_STORE_BYTES / (1024 * 1024)
+            )));
+        }
+
         write_private_file(&temporary, &bytes, false)?;
         fs::rename(&temporary, &path)?;
         lock.unlock()?;
