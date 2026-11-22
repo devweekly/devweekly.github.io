@@ -13,7 +13,6 @@ export const api = {
   analytics:()=>request<WorkbenchAnalytics>("/api/analytics"),
   externalResourceRefs:()=>request<ExternalResourceRef[]>("/api/external-resource-refs"),
   agentProfiles:()=>request<{profiles:AgentProfile[];runtime:{mode:string;capabilities:string[];providerOwnedByHost:boolean}}>("/api/agent-profiles"),
-  requestAgentRun:(id:string,body:{agentKey:string;objective:string;taskId?:string})=>request<{run:AgentRun;profile:AgentProfile}>("/api/work-items/"+id+"/agent-runs",{method:"POST",body:JSON.stringify(body)}),
   requestAgentPlan:(id:string,body:{name:string;objective:string;taskId?:string;nodes:{key:string;agentKey:string;objective?:string;dependsOn?:string[]}[]})=>request<AgentPlan>("/api/work-items/"+id+"/agent-plans",{method:"POST",body:JSON.stringify(body)}),
   resumeAgentRun:(id:string,additionalContext:string)=>request<AgentRun>("/api/agent-runs/"+id+"/resume",{method:"POST",body:JSON.stringify({additionalContext})}),
   detail:(id:string)=>request<WorkItemDetail>("/api/work-items/"+id),
