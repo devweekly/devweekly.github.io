@@ -22,7 +22,9 @@
     npm install
     npm run dev
 
-前端地址为 http://localhost:5173，API 地址为 http://localhost:4000。首次启动会自动创建 SQLite schema 和演示数据。默认数据库在 data/architecture-workbench.sqlite。
+前端地址为 http://localhost:5173，API 地址为 http://localhost:4000。首次启动会自动创建 SQLite schema 和演示数据。默认数据库在 data/architecture-workbench.sqlite。Express 会通过 dotenv 读取本目录的 .env。
+
+生产模式先执行 `npm run build`，再执行 `npm start`。
 
 可以切换顶部的演示身份，验证不同事项 Participation 的权限差异。默认身份是 Solution Architect；只有 Decision Authority 的事项级 Participation 获得 decide 权限，才能提交正式 Decision。演示身份切换只是本地原型能力，不是生产认证方案。
 
@@ -32,16 +34,21 @@
 2. 在事项内提交 ADR、架构说明和其他有版本的 Artifact。
 3. 创建或复用 Review Cycle，并针对明确 Artifact Version 提交独立 Review。
 4. 创建 Task，记录责任人和目标日期。
-5. 由具备 decide 权限的 Human 记录接受、附条件接受、要求更多分析或拒绝的正式 Decision。
-6. Decision 要求更多分析时创建后续 Task；附条件接受时可以同时建立独立 Technical Debt Work Item。
-7. 技术债务保留来源事项和来源 Decision 关系，单独维护 Owner、优先级、严重程度、偿还目标、计划、状态和期限。
-8. 将授权后的 Context Capsule 复制给用户自己的 Copilot、Claude 或其他 Agent。
+5. 在事项内管理 Participation，显式授予 read、contribute、comment、review、decide 和 manage；manage 不自动继承 decide 或 review。
+6. 由具备 decide 权限的 Human 记录接受、附条件接受、要求更多分析或拒绝的正式 Decision。
+7. Decision 要求更多分析时创建后续 Task；附条件接受时可以同时建立独立 Technical Debt Work Item。
+8. 技术债务保留来源事项和来源 Decision 关系，单独维护 Owner、优先级、严重程度、偿还目标、计划、状态和期限。
+9. 更新 Task 状态，管理讨论与活动记录。
+10. 上传普通文件和证据附件；本地默认存储，可切换到 AWS S3。
+11. 将授权后的 Context Capsule 复制给用户自己的 Copilot、Claude 或其他 Agent。
 
 ## 领域模型边界
 
 Work Item 是业务事项的持久化根对象。架构评审只是一个 Work Item Type；Technical Debt 也是一个关联 Work Item Type。ADR 是 Artifact 类型，不是平台核心表。Review 指向 Review Cycle、Artifact 和被审查版本。Decision 指向明确的 Work Item 或 Artifact 对象，并记录决策人、结果、理由和条件。
 
-Task 表示执行工作，不等于 Review 或 Decision。外部 Agent 的 Session 不作为业务状态来源。本原型用演示身份 Header 模拟当前 Human Principal，并在服务端校验 Participation permissions；上线前必须替换为企业 OIDC/OAuth 认证、Delegation Grant 和真正的资源级授权。
+Task 表示执行工作，不等于 Review 或 Decision。外部 Agent 的 Session 不作为业务状态来源。一个 Human 可以在同一 Work Item 下拥有多个 Participation，服务端合并其显式权限；manage 不会自动获得 review 或 decide。评审人不能对自己提交的 Artifact 进行独立 Review；新 Artifact Version 不会修改已创建 Review Cycle 的材料基线。
+
+本原型用演示身份 Header 模拟当前 Human Principal，并在服务端校验 Participation permissions；上线前必须替换为企业 OIDC/OAuth 认证、Delegation Grant 和真正的资源级授权。
 
 ## 存储设计
 
@@ -71,6 +78,8 @@ SQLite 仅作为本地原型存储。数据访问集中在 server/db.ts 和 Expr
 
 - 演示登录通过 Header 选择身份，不可用于生产。
 - 暂无 OIDC、OAuth Delegation Grant、Remote MCP Server、完整组织目录和策略引擎。
-- 暂无数据库迁移框架、PostgreSQL Adapter、S3 下载授权或病毒扫描。
+- 演示身份通过请求 Header 提供，不能暴露到公网或用于任何真实审批。
+- 暂无数据库迁移框架和 PostgreSQL Adapter；当前 SQLite 查询仍由 Express Server 直接调用 SQLite helper，迁移到 PostgreSQL 时需要引入异步 Repository / Unit of Work 实现，不能只替换连接字符串。
+- 当前已实现本地/S3 上传和元数据记录，尚未实现经过 Work Item 授权的下载/预签名 URL，也没有病毒扫描。
 - Review Cycle 当前为轻量模型，提交 Review 时绑定 Artifact Version；正式环境还应增加完整 Submission Manifest、Reviewer Assignment、独立性规则和策略版本。
 - 决策界面为原型级状态转换，正式系统应由可版本化 Decision Policy 控制法定人数、会签、职责分离、权限和有效结果。

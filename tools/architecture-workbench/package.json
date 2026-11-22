@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Human-first architecture decision and technical debt workbench prototype",
-  "engines": { "node": ">=22.13" },
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "dev": "concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "tsx watch server/index.ts",
@@ -22,7 +24,7 @@
     "multer": "^2.0.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "zod": "^4.6.5"
+    "dotenv": "^17.2.3"
   },
   "devDependencies": {
     "@types/express": "^5.0.3",

@@ -13,6 +13,7 @@ The prototype deliberately separates business facts from interaction and executi
 | Decision | decisions | Formal decision by an authorized Human |
 | Technical Debt | Work Item + debt_details + relation | Long-lived follow-up with origin and owner |
 | Thread | comments | Human discussion attached to a Work Item |
+| Attachment | attachments + ObjectStore | File metadata and authorization in SQLite; bytes in local storage or S3 |
 | Activity | activity_events | Append-oriented business activity record |
 | Work Session | not persisted in prototype | Runtime/session detail is not business state |
 
@@ -27,7 +28,7 @@ These are prototype values. A production Decision Policy must define applicable 
 
 ## Authorization
 
-Each Participation stores a set of permissions such as read, contribute, comment, review, decide and manage. Each write API re-checks the current actor's Participation. A production deployment must replace the demo identity header and permission seed data with OIDC/OAuth identity, policy versioning and revocable Delegation Grants.
+Each Participation stores a set of permissions such as read, contribute, comment, review, decide and manage. Permissions are explicit and not hierarchical: manage does not automatically grant decide or review. Each write API re-checks the current actor's Participation. A production deployment must replace the demo identity header and permission seed data with OIDC/OAuth identity, policy versioning and revocable Delegation Grants.
 
 ## Technical debt lifecycle
 

@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Alert, Avatar, Breadcrumb, Button, Card, Col, DatePicker, Divider, Drawer, Empty,
   Form, Input, Layout, List, Menu, Modal, Progress, Row, Select, Space, Statistic,
-  Table, Tabs, Tag, Timeline, Tooltip, Typography, message
+  Table, Tabs, Tag, Timeline, Tooltip, Typography, Upload, message
 } from "antd";
 import type { FormInstance } from "antd";
 import {
   AppstoreOutlined, ApartmentOutlined, ArrowLeftOutlined, AuditOutlined,
   CheckCircleOutlined, ClockCircleOutlined, CloudUploadOutlined, CopyOutlined,
   FileProtectOutlined, PlusOutlined, ProjectOutlined, SafetyCertificateOutlined,
-  UnorderedListOutlined
+  UnorderedListOutlined, UserAddOutlined, UploadOutlined
 } from "@ant-design/icons";
 import { Welcome } from "@ant-design/x";
 import dayjs from "dayjs";
@@ -52,12 +52,14 @@ export default function App() {
   const [taskOpen,setTaskOpen] = useState(false);
   const [decisionOpen,setDecisionOpen] = useState(false);
   const [debtOpen,setDebtOpen] = useState(false);
+  const [participantOpen,setParticipantOpen] = useState(false);
   const [newItemForm] = Form.useForm();
   const [artifactForm] = Form.useForm();
   const [reviewForm] = Form.useForm();
   const [taskForm] = Form.useForm();
   const [decisionForm] = Form.useForm();
   const [debtForm] = Form.useForm();
+  const [participantForm] = Form.useForm();
   const [activeTab,setActiveTab] = useState("overview");
   const [commentText,setCommentText] = useState("");
   const [query,setQuery] = useState("");
@@ -128,6 +130,10 @@ export default function App() {
 
   async function updateDebt(debt:DebtItem,status:string) {
     try { await api.updateDebt(debt.id,{status}); message.success("技术债务状态已更新"); await reload(); }
+    catch (error) { message.error(error instanceof Error ? error.message : "更新失败"); }
+  }
+  async function updateTask(taskId:string,status:string) {
+    try { await api.updateTask(taskId,{status}); message.success("Task 状态已更新"); await refreshDetail(); }
     catch (error) { message.error(error instanceof Error ? error.message : "更新失败"); }
   }
   async function submitComment() {
@@ -216,7 +222,7 @@ export default function App() {
       <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
         {key:"overview",label:"概览",children:<Row gutter={[16,16]}>
           <Col xs={24} xl={15}>
-            <Card title="参与者" size="small"><div className="participant-grid">{detail.participants.map(p=><div className="participant" key={p.person_id}><Avatar style={{background:p.avatar_color}}>{p.display_name.slice(0,1)}</Avatar><div><Text strong>{p.display_name}</Text><div><Tag color={roleColors[p.role_key] || "default"}>{p.role_label}</Tag></div></div></div>)}</div></Card>
+            <Card title="参与者" size="small" extra={permissions.includes("manage")?<Button size="small" icon={<UserAddOutlined />} onClick={()=>{participantForm.setFieldsValue({permissions:["read","comment"]});setParticipantOpen(true);}}>管理参与者</Button>:null}><div className="participant-grid">{detail.participants.map(p=><div className="participant" key={p.person_id}><Avatar style={{background:p.avatar_color}}>{p.display_name.slice(0,1)}</Avatar><div><Text strong>{p.display_name}</Text><div><Tag color={roleColors[p.role_key] || "default"}>{p.role_label}</Tag></div></div></div>)}</div></Card>
             <Card title="最新产物" size="small" className="nested-card"><List dataSource={detail.artifacts.slice(0,4)} renderItem={a=><List.Item><List.Item.Meta avatar={<Avatar icon={<FileProtectOutlined />} />} title={(a.code || a.type)+" · "+a.title} description={"v"+a.version+" · "+a.submitter_name+" · "+dateText(a.created_at)} /></List.Item>} /></Card>
           </Col>
           <Col xs={24} xl={9}>
@@ -224,18 +230,18 @@ export default function App() {
             <Card title="未完成任务" size="small" className="nested-card"><Statistic value={detail.tasks.filter(t=>!["done","cancelled"].includes(t.status)).length} suffix="项" /></Card>
           </Col>
         </Row>},
-        {key:"artifacts",label:"架构产物 / ADR",children:<Card size="small" title="版本化产物" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>setArtifactOpen(true)}>添加产物</Button>:null}><Table rowKey="id" dataSource={detail.artifacts} pagination={false} columns={[
+        {key:"artifacts",label:"架构产物 / ADR",children:<><Card size="small" title="版本化产物" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>setArtifactOpen(true)}>添加产物</Button>:null}><Table rowKey="id" dataSource={detail.artifacts} pagination={false} columns={[
           {title:"编号",dataIndex:"code",render:(v:string|null)=>v || "—"},
           {title:"产物",dataIndex:"title",render:(v:string,a:Artifact)=><div><Text strong>{v}</Text><div><Text type="secondary" className="small">{a.type}</Text></div></div>},
           {title:"版本",dataIndex:"version",render:(v:number)=>"v"+v},
           {title:"状态",dataIndex:"status",render:(v:string)=><Tag>{v}</Tag>},
           {title:"提交人",dataIndex:"submitter_name"},
           {title:"",render:(_:unknown,a:Artifact)=><Tooltip title="查看内容"><Button type="link" onClick={()=>Modal.info({title:a.title,content:<Paragraph style={{whiteSpace:"pre-wrap"}}>{a.content}</Paragraph>,width:720})}>查看</Button></Tooltip>}
-        ]} /></Card>},
+        ]} /></Card><Card size="small" className="nested-card" title="附件" extra={permissions.includes("contribute")?<Upload showUploadList={false} customRequest={async options=>{try{await api.uploadAttachment(item.id,options.file as File);options.onSuccess?.({});message.success("附件已上传");await refreshDetail();}catch(error){options.onError?.(error as Error);message.error(error instanceof Error?error.message:"附件上传失败");}}}><Button size="small" icon={<UploadOutlined />}>上传文件</Button></Upload>:null}><List dataSource={detail.attachments} locale={{emptyText:"暂无附件"}} renderItem={file=><List.Item><List.Item.Meta avatar={<Avatar icon={<FileProtectOutlined />} />} title={file.original_name} description={file.content_type+" · "+Math.ceil(file.size_bytes/1024)+" KB · "+dateText(file.created_at)} /></List.Item>} /></Card></>},
         {key:"reviews",label:"Review 意见",children:<Card size="small" title="独立专业意见" extra={permissions.includes("review")?<Button size="small" icon={<PlusOutlined />} onClick={()=>{reviewForm.setFieldsValue({artifactId:detail.artifacts[0]?.id,outcome:"comment",discipline:actorPerson?.title || "General"});setReviewOpen(true);}}>提交 Review</Button>:null}><List dataSource={detail.reviews} locale={{emptyText:"尚无评审意见"}} renderItem={(r:Review)=><List.Item><List.Item.Meta avatar={<Avatar icon={<AuditOutlined />} />} title={<Space wrap><Text strong>{r.reviewer_name}</Text><Tag>{r.discipline}</Tag><Tag color={r.outcome==="approve"?"success":r.outcome==="request_changes"?"warning":"default"}>{r.outcome}</Tag></Space>} description={<><Text>{r.summary}</Text><div className="small muted">{r.artifact_code || r.artifact_title} · v{r.artifact_version} · {dateText(r.created_at)}</div></>} /></List.Item>} /></Card>},
         {key:"tasks",label:"Tasks",children:<Card size="small" title="工作与后续行动" extra={permissions.includes("contribute")?<Button size="small" icon={<PlusOutlined />} onClick={()=>{taskForm.setFieldsValue({assigneeId:actor});setTaskOpen(true);}}>创建 Task</Button>:null}><Table rowKey="id" dataSource={detail.tasks} pagination={false} columns={[
           {title:"Task",dataIndex:"title"},{title:"类型",dataIndex:"kind"},{title:"责任人",dataIndex:"assignee_name",render:(v:string|null)=>v || "未分配"},
-          {title:"状态",dataIndex:"status",render:(v:string)=><Tag color={statusColors[v]}>{statusLabels[v] || v}</Tag>},{title:"截止日期",dataIndex:"due_date",render:dateText}
+          {title:"状态",dataIndex:"status",render:(v:string,t:WorkTask)=><Select size="small" value={v} disabled={!permissions.includes("contribute")} style={{width:112}} onChange={value=>void updateTask(t.id,value)} options={[{value:"open",label:"待处理"},{value:"in_progress",label:"处理中"},{value:"blocked",label:"受阻"},{value:"done",label:"完成"},{value:"cancelled",label:"取消"}]} />},{title:"截止日期",dataIndex:"due_date",render:dateText}
         ]} /></Card>},
         {key:"decisions",label:"Decisions",children:<Card size="small" title="正式决策记录" extra={permissions.includes("decide")?<Button type="primary" size="small" onClick={()=>setDecisionOpen(true)}>记录决定</Button>:<Tag color="gold">当前身份无决策权限</Tag>}><List dataSource={detail.decisions} locale={{emptyText:"尚无正式决定"}} renderItem={d=><List.Item><List.Item.Meta avatar={<Avatar icon={<CheckCircleOutlined />} />} title={<Space><Tag color={statusColors[d.outcome]}>{statusLabels[d.outcome] || d.outcome}</Tag><Text strong>{d.decision_maker_name}</Text></Space>} description={<><Paragraph>{d.rationale}</Paragraph>{d.conditions && <Text type="secondary">条件：{d.conditions}</Text>}<div className="small muted">{dateText(d.created_at)}</div></>} /></List.Item>} /></Card>},
         {key:"activity",label:"讨论与活动",children:<Row gutter={[16,16]}><Col xs={24} xl={13}><Card size="small" title="讨论"><Space.Compact block><Input value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="补充信息或回应问题..." onPressEnter={()=>void submitComment()} /><Button type="primary" onClick={()=>void submitComment()}>发送</Button></Space.Compact><List className="comment-list" dataSource={detail.comments} renderItem={(c:Comment)=><List.Item><List.Item.Meta avatar={<Avatar style={{background:c.avatar_color}}>{c.author_name.slice(0,1)}</Avatar>} title={<Space><Text strong>{c.author_name}</Text><Text type="secondary" className="small">{dateText(c.created_at)}</Text></Space>} description={c.body} /></List.Item>} /></Card></Col><Col xs={24} xl={11}><Card size="small" title="活动记录"><Timeline items={detail.activity.map((a:Activity)=>({children:<><Text strong>{a.actor_name}</Text><div>{a.summary}</div><Text type="secondary" className="small">{dateText(a.created_at)}</Text></>}))} /></Card></Col></Row>}
@@ -294,7 +300,7 @@ export default function App() {
       <Form form={taskForm} layout="vertical">
         <Form.Item name="title" label="工作内容" rules={[{required:true}]}><Input /></Form.Item>
         <Form.Item name="kind" label="工作类型"><Select options={[{value:"analysis",label:"分析"},{value:"revision",label:"材料修改"},{value:"follow_up",label:"后续整改"},{value:"decision_prep",label:"决策准备"}]} /></Form.Item>
-        <Form.Item name="assigneeId" label="责任人"><Select allowClear options={(bootstrap?.people || []).map(p=>({value:p.id,label:p.display_name}))} /></Form.Item>
+        <Form.Item name="assigneeId" label="责任人"><Select allowClear options={(detail?.participants || []).map(p=>({value:p.person_id,label:p.display_name+" · "+p.role_label}))} /></Form.Item>
         <Form.Item name="dueDate" label="截止日期"><DatePicker style={{width:"100%"}} /></Form.Item>
       </Form>
     </Modal>
@@ -320,6 +326,16 @@ export default function App() {
           <Form.Item name={["technicalDebt","remediationPlan"]} label="偿还计划"><TextArea rows={2} /></Form.Item>
           <Row gutter={12}><Col span={12}><Form.Item name={["technicalDebt","priority"]} label="优先级"><Select options={[{value:"low",label:"低"},{value:"normal",label:"普通"},{value:"high",label:"高"}]} /></Form.Item></Col><Col span={12}><Form.Item name={["technicalDebt","dueDate"]} label="目标偿还日期"><DatePicker style={{width:"100%"}} /></Form.Item></Col></Row>
         </>:null}</Form.Item>
+      </Form>
+    </Modal>
+
+    <Modal title="管理事项参与者" open={participantOpen} onCancel={()=>setParticipantOpen(false)} onOk={()=>void submitForm(participantForm,async()=>api.setParticipation(selected!.id,participantForm.getFieldsValue()),"参与关系已更新",()=>setParticipantOpen(false))} confirmLoading={busy}>
+      <Alert type="info" showIcon message="职责和 Agent 使用方式分离。此处只配置 Human 在当前事项中的业务职责和动作权限。" className="modal-alert" />
+      <Form form={participantForm} layout="vertical">
+        <Form.Item name="personId" label="参与者" rules={[{required:true}]}><Select showSearch optionFilterProp="label" options={(bootstrap?.people || []).map(p=>({value:p.id,label:p.display_name+" · "+p.title}))} /></Form.Item>
+        <Form.Item name="roleKey" label="Role Key" rules={[{required:true}]}><Input placeholder="security_architect" /></Form.Item>
+        <Form.Item name="roleLabel" label="职责名称" rules={[{required:true}]}><Input placeholder="Security Architect" /></Form.Item>
+        <Form.Item name="permissions" label="事项权限" rules={[{required:true}]}><Select mode="multiple" options={[{value:"read",label:"读取"},{value:"contribute",label:"提交材料 / Task"},{value:"comment",label:"讨论"},{value:"review",label:"专业评审"},{value:"decide",label:"正式决策"},{value:"manage",label:"管理参与关系"}]} /></Form.Item>
       </Form>
     </Modal>
 

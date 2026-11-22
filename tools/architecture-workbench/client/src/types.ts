@@ -8,5 +8,7 @@ export interface WorkTask { id:string; title:string; kind:string; status:string;
 export interface Decision { id:string; subject_type:string; subject_id:string|null; outcome:string; rationale:string; conditions:string; decision_maker_name:string; created_at:string; }
 export interface Comment { id:string; body:string; author_name:string; avatar_color:string; created_at:string; }
 export interface Activity { id:string; summary:string; actor_name:string; created_at:string; }
-export interface WorkItemDetail { workItem:WorkItem; participants:Participation[]; artifacts:Artifact[]; cycles:{id:string;name:string;status:string;due_date:string;baseline_json:string}[]; reviews:Review[]; tasks:WorkTask[]; decisions:Decision[]; comments:Comment[]; activity:Activity[]; permissions:string[]; }
+export interface WorkItemDetail { workItem:WorkItem; participants:Participation[]; artifacts:Artifact[]; cycles:{id:string;name:string;status:string;due_date:string;baseline_json:string}[]; reviews:Review[]; tasks:WorkTask[]; decisions:Decision[]; comments:Comment[]; activity:Activity[]; attachments:Attachment[]; permissions:string[]; }
 export interface Bootstrap { actorId:string; people:Person[]; workItems:WorkItem[]; debts:DebtItem[]; counts:{openWorkItems:number;awaitingReview:number;activeDebts:number;myTasks:number}; }
+
+export interface Attachment { id:string; original_name:string; content_type:string; size_bytes:number; uploaded_by:string; created_at:string; }

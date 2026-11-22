@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import multer from "multer";
 import { existsSync } from "node:fs";
@@ -18,12 +19,12 @@ function logActivity(workItemId: string, actor: string, action: string, targetTy
   run("INSERT INTO activity_events(id,work_item_id,actor_id,action,target_type,target_id,summary,metadata_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",id("evt"),workItemId,actor,action,targetType,targetId,summary,JSON.stringify(metadata),now());
 }
 function permissions(workItemId: string, actor: string): string[] {
-  const part = one<{permissions_json:string}>("SELECT permissions_json FROM participations WHERE work_item_id=? AND person_id=?",workItemId,actor);
-  return part ? JSON.parse(part.permissions_json) as string[] : [];
+  const parts = all<{permissions_json:string}>("SELECT permissions_json FROM participations WHERE work_item_id=? AND person_id=?",workItemId,actor);
+  return [...new Set(parts.flatMap(part=>JSON.parse(part.permissions_json) as string[]))];
 }
 function can(workItemId: string, actor: string, permission: string) {
   const granted = permissions(workItemId,actor);
-  return granted.includes(permission) || granted.includes("manage");
+  return granted.includes(permission);
 }
 function requirePermission(res: express.Response, workItemId: string, actor: string, permission: string) {
   if (!can(workItemId,actor,"read")) { res.status(403).json({error:"You are not a participant of this Work Item."}); return false; }
@@ -35,8 +36,8 @@ app.get("/api/health",(_req,res)=>res.json({ok:true,database:"sqlite",storage:pr
 app.get("/api/bootstrap",(req,res)=>{
   const actor = actorId(req);
   const people = all("SELECT id,display_name,title,email,avatar_color FROM people ORDER BY display_name");
-  const workItems = all("SELECT w.*,p.display_name AS owner_name,(SELECT COUNT(*) FROM artifacts a WHERE a.work_item_id=w.id) AS artifact_count,(SELECT COUNT(*) FROM tasks t WHERE t.work_item_id=w.id AND t.status NOT IN ('done','cancelled')) AS open_task_count FROM work_items w JOIN people p ON p.id=w.owner_id WHERE w.type <> 'technical_debt' ORDER BY w.updated_at DESC");
-  const debts = all("SELECT w.id,w.code,w.title,w.status,w.owner_id,w.target_date,w.priority,p.display_name AS owner_name,d.severity,d.target_state,d.remediation_plan,d.status AS debt_status,d.source_decision_id FROM work_items w JOIN debt_details d ON d.work_item_id=w.id JOIN people p ON p.id=w.owner_id ORDER BY CASE d.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,w.target_date");
+  const workItems = all("SELECT w.*,p.display_name AS owner_name,(SELECT COUNT(*) FROM artifacts a WHERE a.work_item_id=w.id) AS artifact_count,(SELECT COUNT(*) FROM tasks t WHERE t.work_item_id=w.id AND t.status NOT IN ('done','cancelled')) AS open_task_count FROM work_items w JOIN people p ON p.id=w.owner_id WHERE w.type <> 'technical_debt' AND EXISTS (SELECT 1 FROM participations mine WHERE mine.work_item_id=w.id AND mine.person_id=?) ORDER BY w.updated_at DESC",actor);
+  const debts = all("SELECT w.id,w.code,w.title,w.status,w.owner_id,w.target_date,w.priority,p.display_name AS owner_name,d.severity,d.target_state,d.remediation_plan,d.status AS debt_status,d.source_decision_id FROM work_items w JOIN debt_details d ON d.work_item_id=w.id JOIN people p ON p.id=w.owner_id WHERE EXISTS (SELECT 1 FROM participations mine WHERE mine.work_item_id=w.id AND mine.person_id=?) OR EXISTS (SELECT 1 FROM work_item_relations rel JOIN participations origin_part ON origin_part.work_item_id=rel.source_work_item_id WHERE rel.target_work_item_id=w.id AND origin_part.person_id=?) ORDER BY CASE d.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,w.target_date",actor,actor);
   const counts = {
     openWorkItems: one<{n:number}>("SELECT COUNT(*) AS n FROM work_items WHERE type <> 'technical_debt' AND status NOT IN ('closed','rejected')")?.n || 0,
     awaitingReview: one<{n:number}>("SELECT COUNT(*) AS n FROM work_items WHERE type <> 'technical_debt' AND status='in_review'")?.n || 0,
@@ -45,7 +46,7 @@ app.get("/api/bootstrap",(req,res)=>{
   };
   res.json({actorId:actor,people,workItems,debts,counts});
 });
-app.get("/api/work-items",(_req,res)=>res.json(all("SELECT w.*,p.display_name AS owner_name,(SELECT COUNT(*) FROM artifacts a WHERE a.work_item_id=w.id) AS artifact_count,(SELECT COUNT(*) FROM tasks t WHERE t.work_item_id=w.id AND t.status NOT IN ('done','cancelled')) AS open_task_count FROM work_items w JOIN people p ON p.id=w.owner_id WHERE w.type <> 'technical_debt' ORDER BY w.updated_at DESC")));
+app.get("/api/work-items",(req,res)=>res.json(all("SELECT w.*,p.display_name AS owner_name,(SELECT COUNT(*) FROM artifacts a WHERE a.work_item_id=w.id) AS artifact_count,(SELECT COUNT(*) FROM tasks t WHERE t.work_item_id=w.id AND t.status NOT IN ('done','cancelled')) AS open_task_count FROM work_items w JOIN people p ON p.id=w.owner_id WHERE w.type <> 'technical_debt' AND EXISTS (SELECT 1 FROM participations mine WHERE mine.work_item_id=w.id AND mine.person_id=?) ORDER BY w.updated_at DESC",actorId(req))));
 
 app.post("/api/work-items",(req,res)=>{
   const actor = actorId(req); const body = req.body || {};
@@ -55,6 +56,25 @@ app.post("/api/work-items",(req,res)=>{
   run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",id("part"),workItemId,actor,"owner","Work Item Owner",JSON.stringify(["read","contribute","comment","review","manage"]),timestamp);
   logActivity(workItemId,actor,"created","work_item",workItemId,"Created Work Item "+code);
   res.status(201).json({id:workItemId,code});
+});
+
+app.post("/api/work-items/:id/participations",(req,res)=>{
+  const workItemId=String(req.params.id); const actor=actorId(req);
+  if (!requirePermission(res,workItemId,actor,"manage")) return;
+  const body=req.body || {};
+  const allowed=["read","contribute","comment","review","decide","manage"];
+  if (!body.personId || !body.roleKey || !body.roleLabel || !Array.isArray(body.permissions)) return res.status(400).json({error:"personId, roleKey, roleLabel and permissions are required"});
+  if (!one("SELECT id FROM people WHERE id=?",body.personId)) return res.status(400).json({error:"Unknown participant"});
+  if (body.permissions.some((p:string)=>!allowed.includes(p))) return res.status(400).json({error:"Unsupported permission"});
+  if (!body.permissions.includes("read")) return res.status(400).json({error:"Every Participation must include read permission."});
+  const existing=one<{id:string}>("SELECT id FROM participations WHERE work_item_id=? AND person_id=? AND role_key=?",workItemId,body.personId,body.roleKey);
+  if (existing) {
+    run("UPDATE participations SET role_label=?,permissions_json=? WHERE id=?",body.roleLabel,JSON.stringify(body.permissions),existing.id);
+  } else {
+    run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",id("part"),workItemId,body.personId,body.roleKey,body.roleLabel,JSON.stringify(body.permissions),now());
+  }
+  logActivity(workItemId,actor,"participation_updated","participation",body.personId,"Updated participation for "+body.roleLabel);
+  res.status(200).json({ok:true});
 });
 
 app.get("/api/work-items/:id",(req,res)=>{
@@ -70,7 +90,8 @@ app.get("/api/work-items/:id",(req,res)=>{
   const decisions=all("SELECT d.*,p.display_name AS decision_maker_name FROM decisions d JOIN people p ON p.id=d.decision_maker_id WHERE d.work_item_id=? ORDER BY d.created_at DESC",workItemId);
   const comments=all("SELECT c.*,p.display_name AS author_name,p.avatar_color FROM comments c JOIN people p ON p.id=c.author_id WHERE c.work_item_id=? ORDER BY c.created_at DESC",workItemId);
   const activity=all("SELECT e.*,p.display_name AS actor_name FROM activity_events e JOIN people p ON p.id=e.actor_id WHERE e.work_item_id=? ORDER BY e.created_at DESC LIMIT 30",workItemId);
-  res.json({workItem,participants,artifacts,cycles,reviews,tasks,decisions,comments,activity,permissions:permissions(workItemId,actor)});
+  const attachments=all("SELECT id,original_name,content_type,size_bytes,uploaded_by,created_at FROM attachments WHERE work_item_id=? ORDER BY created_at DESC",workItemId);
+  res.json({workItem,participants,artifacts,cycles,reviews,tasks,decisions,comments,activity,attachments,permissions:permissions(workItemId,actor)});
 });
 
 app.post("/api/work-items/:id/artifacts",(req,res)=>{
@@ -92,13 +113,23 @@ app.post("/api/work-items/:id/reviews",(req,res)=>{
   const workItemId=String(req.params.id); const actor=actorId(req);
   if (!requirePermission(res,workItemId,actor,"review")) return;
   const body=req.body || {};
-  const artifact=one<{id:string;version:number;title:string}>("SELECT id,version,title FROM artifacts WHERE id=? AND work_item_id=?",body.artifactId,workItemId);
+  const artifact=one<{id:string;version:number;title:string;submitted_by:string}>("SELECT id,version,title,submitted_by FROM artifacts WHERE id=? AND work_item_id=?",body.artifactId,workItemId);
   if (!artifact) return res.status(400).json({error:"Review target does not belong to this Work Item."});
-  let cycle=one<{id:string}>("SELECT id FROM review_cycles WHERE work_item_id=? AND status='active' ORDER BY created_at DESC LIMIT 1",workItemId);
-  if (!cycle) {
+  if (artifact.submitted_by===actor) return res.status(403).json({error:"Independent review cannot be submitted by the Artifact author."});
+  let cycle=one<{id:string;baseline_json:string;name:string}>("SELECT id,baseline_json,name FROM review_cycles WHERE work_item_id=? AND status='active' ORDER BY created_at DESC LIMIT 1",workItemId);
+  const baselineEntry={id:artifact.id,version:artifact.version};
+  const baseline=cycle ? JSON.parse(cycle.baseline_json) as {id:string;version:number}[] : [];
+  if (!cycle || !baseline.some(entry=>entry.id===artifact.id && entry.version===artifact.version)) {
+    if (cycle) run("UPDATE review_cycles SET status='closed' WHERE id=?",cycle.id);
+    const latest=all<{id:string;version:number}>(
+      "SELECT a.id,a.version FROM artifacts a WHERE a.work_item_id=? AND NOT EXISTS (SELECT 1 FROM artifacts newer WHERE newer.work_item_id=a.work_item_id AND COALESCE(newer.code,newer.id)=COALESCE(a.code,a.id) AND newer.version>a.version)",
+      workItemId
+    );
     const cycleId=id("cycle");
-    run("INSERT INTO review_cycles(id,work_item_id,name,baseline_json,status,created_by,created_at) VALUES(?,?,?,?,?,?,?)",cycleId,workItemId,"Review round",JSON.stringify([{id:artifact.id,version:artifact.version}]),"active",actor,now());
-    cycle={id:cycleId};
+    const roundCount=one<{n:number}>("SELECT COUNT(*) AS n FROM review_cycles WHERE work_item_id=?",workItemId)?.n || 0;
+    run("INSERT INTO review_cycles(id,work_item_id,name,baseline_json,status,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
+      cycleId,workItemId,"Review round "+(roundCount+1),JSON.stringify(latest.length ? latest : [baselineEntry]),"active",actor,now());
+    cycle={id:cycleId,baseline_json:JSON.stringify(latest.length ? latest : [baselineEntry]),name:"Review round "+(roundCount+1)};
   }
   const reviewId=id("rev");
   run("INSERT INTO reviews(id,cycle_id,artifact_id,artifact_version,reviewer_id,discipline,outcome,summary,findings_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",reviewId,cycle.id,artifact.id,artifact.version,actor,body.discipline || "General",body.outcome || "comment",body.summary || "",JSON.stringify(body.findings || []),now());
@@ -110,10 +141,28 @@ app.post("/api/work-items/:id/tasks",(req,res)=>{
   const workItemId=String(req.params.id); const actor=actorId(req);
   if (!requirePermission(res,workItemId,actor,"contribute")) return;
   const body=req.body || {}; if (!body.title) return res.status(400).json({error:"title is required"});
+  if (body.assigneeId && !one("SELECT id FROM participations WHERE work_item_id=? AND person_id=?",workItemId,body.assigneeId)) return res.status(400).json({error:"Task assignee must be a participant of this Work Item."});
   const taskId=id("task"); const timestamp=now();
   run("INSERT INTO tasks(id,work_item_id,title,kind,status,assignee_id,due_date,relates_to,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",taskId,workItemId,body.title,body.kind || "analysis","open",body.assigneeId || null,body.dueDate || null,body.relatesTo || null,timestamp,timestamp);
   logActivity(workItemId,actor,"created","task",taskId,"Created task: "+body.title);
   res.status(201).json({id:taskId});
+});
+
+app.patch("/api/tasks/:id",(req,res)=>{
+  const taskId=String(req.params.id); const actor=actorId(req);
+  const task=one<{work_item_id:string}>("SELECT work_item_id FROM tasks WHERE id=?",taskId);
+  if (!task) return res.status(404).json({error:"Task not found"});
+  if (!requirePermission(res,task.work_item_id,actor,"contribute")) return;
+  const body=req.body || {};
+  const statuses=["open","in_progress","blocked","done","cancelled"];
+  if (body.status && !statuses.includes(body.status)) return res.status(400).json({error:"Unsupported task status"});
+  if (body.assigneeId && !one("SELECT id FROM participations WHERE work_item_id=? AND person_id=?",task.work_item_id,body.assigneeId)) {
+    return res.status(400).json({error:"Task assignee must be a participant of this Work Item."});
+  }
+  run("UPDATE tasks SET status=COALESCE(?,status),assignee_id=COALESCE(?,assignee_id),due_date=COALESCE(?,due_date),updated_at=? WHERE id=?",
+    body.status || null,body.assigneeId || null,body.dueDate || null,now(),taskId);
+  logActivity(task.work_item_id,actor,"updated","task",taskId,"Task updated",{status:body.status,assigneeId:body.assigneeId});
+  res.json({ok:true});
 });
 
 app.post("/api/work-items/:id/decisions",(req,res)=>{
@@ -122,15 +171,22 @@ app.post("/api/work-items/:id/decisions",(req,res)=>{
   const body=req.body || {}; const outcomes=["accepted","rejected","more_analysis","accepted_with_conditions"];
   if (!outcomes.includes(body.outcome)) return res.status(400).json({error:"Unsupported decision outcome"});
   if (!body.rationale) return res.status(400).json({error:"A rationale is required"});
+  if (body.subjectType==="artifact" && !one("SELECT id FROM artifacts WHERE id=? AND work_item_id=?",body.subjectId,workItemId)) {
+    return res.status(400).json({error:"Decision subject must be an Artifact in this Work Item."});
+  }
   const decisionId=id("dec");
   run("INSERT INTO decisions(id,work_item_id,subject_type,subject_id,outcome,rationale,conditions,decision_maker_id,policy_ref,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",decisionId,workItemId,body.subjectType || "work_item",body.subjectId || null,body.outcome,body.rationale,body.conditions || "",actor,"prototype-policy-v1",now());
   logActivity(workItemId,actor,"decided","decision",decisionId,"Decision recorded: "+body.outcome,{subjectType:body.subjectType || "work_item",subjectId:body.subjectId || null});
+  if ((body.subjectType || "work_item")==="work_item") {
+    const nextStatus=body.outcome==="more_analysis" ? "analysis" : body.outcome==="rejected" ? "rejected" : "accepted";
+    run("UPDATE work_items SET status=?,context_version=context_version+1,updated_at=? WHERE id=?",nextStatus,now(),workItemId);
+  }
   if (body.outcome==="more_analysis") {
     const taskId=id("task");
     run("INSERT INTO tasks(id,work_item_id,title,kind,status,assignee_id,due_date,relates_to,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",taskId,workItemId,body.followUpTitle || "Complete additional analysis","analysis","open",body.followUpOwnerId || null,body.followUpDueDate || null,body.subjectId || null,now(),now());
   }
   let debtId: string | null=null;
-  if (body.technicalDebt && body.outcome==="accepted_with_conditions") {
+  if (body.technicalDebt?.title && body.outcome==="accepted_with_conditions") {
     const debt=body.technicalDebt; debtId=id("wi");
     const debtCode="DEBT-"+new Date().getFullYear()+"-"+Math.floor(Date.now()/1000).toString().slice(-6);
     run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,target_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",debtId,debtCode,"technical_debt",debt.title,debt.description || body.conditions || "","open",debt.priority || "normal",debt.ownerId || actor,debt.dueDate || null,now(),now());
@@ -189,10 +245,20 @@ app.get("/api/work-items/:id/context-capsule",(req,res)=>{
   res.json({workItem,participants,artifacts,reviews,generatedAt:now(),note:"Context projection for the current participant. Include full artifact content only through separately authorized reads."});
 });
 
-app.post("/api/uploads",upload.single("file"),async(req,res)=>{
+app.post("/api/work-items/:id/attachments",upload.single("file"),async(req,res)=>{
+  const workItemId=String(req.params.id); const actor=actorId(req);
+  if (!requirePermission(res,workItemId,actor,"contribute")) return;
   if (!req.file) return res.status(400).json({error:"file is required"});
-  try { const stored=await objectStore.put(req.file.originalname,req.file.buffer,req.file.mimetype || "application/octet-stream"); res.status(201).json(stored); }
-  catch (error) { res.status(500).json({error:error instanceof Error ? error.message : "Upload failed"}); }
+  try {
+    const stored=await objectStore.put(req.file.originalname,req.file.buffer,req.file.mimetype || "application/octet-stream");
+    const attachmentId=id("file");
+    run("INSERT INTO attachments(id,work_item_id,object_key,object_uri,original_name,content_type,size_bytes,uploaded_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+      attachmentId,workItemId,stored.key,stored.uri,req.file.originalname,stored.contentType,stored.size,actor,now());
+    logActivity(workItemId,actor,"uploaded","attachment",attachmentId,"Uploaded "+req.file.originalname,{size:stored.size,contentType:stored.contentType});
+    res.status(201).json({id:attachmentId,name:req.file.originalname,size:stored.size,contentType:stored.contentType});
+  } catch (error) {
+    res.status(500).json({error:error instanceof Error ? error.message : "Upload failed"});
+  }
 });
 
 if (process.env.NODE_ENV==="production" && existsSync(resolve("dist/index.html"))) {
