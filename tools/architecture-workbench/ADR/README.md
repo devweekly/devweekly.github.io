@@ -15,5 +15,6 @@ Architecture decisions for the Workbench are recorded here. The current accepted
 | [0009](0009-server-owned-agent-run-leases-and-crash-recovery.md) | Server-owned Agent Run Leases and Crash Recovery |
 | [0010](0010-business-workflow-and-work-item-workspace.md) | Business Workflow, Submission Baseline and Work Item Workspace |
 | [0011](0011-request-submission-review-and-human-decision.md) | Request Submission, Time-bounded Review and Human Decision |
+| [0012](0012-request-workspace-and-client-agent-boundary.md) | Request Workspace, External References and Client-side Agent Assistance |
 
-ADR-0010 establishes the Work Item Workspace, immutable Submission baseline and separation of Business Workflow, Collaboration Workflow and Agent execution. ADR-0011 supersedes only ADR-0010's original lifecycle taxonomy and defines the Request Package, timed discussion/review, Chairman-led Decision Meeting and explicit closure. It uses the existing Node.js and SQLite runtime; Flowable and BPMN are not introduced.
+ADR-0010 establishes the Work Item Workspace, immutable Submission baseline and separation of Business Workflow, Collaboration Workflow and Agent execution. ADR-0011 supersedes only ADR-0010's original lifecycle taxonomy and defines the Request Package, timed discussion/review, Chairman-led Decision Meeting and explicit closure. It uses the existing Node.js and SQLite runtime; Flowable and BPMN are not introduced. ADR-0012 simplifies the Request workspace, removes server-side Agent Package Draft, and makes related Technical Debt visible from the Request.
