@@ -1085,7 +1085,7 @@ Chawla 与 Thakkar 的 [Agentic AI in Enterprise Systems: A Systematic Review of
 
 ### 27.2 Flowable、Camunda、Temporal 怎么选
 
-| 选择 | 最适合的前提 | 当前场景的优势 | 主要代价 |
+| 选择 | 最适合的前提 | 主要价值 | 主要代价 |
 | --- | --- | --- | --- |
 | Flowable CMMN/BPMN/DMN | 动态 Case、业务人员参与、事项活动顺序不固定 | CMMN 与 Work Item 语义最接近，开源核心可嵌入 | Java 服务、建模和产品能力需自行集成；企业 Agent 功能另行评估 |
 | Camunda 8 | 业务流程确定、审批节点较多、需要 BPMN 建模和可观测 Agent Execution | Agentic Orchestration、Human Task、外部 Agent 可观测 | Camunda 8.6+ 生产自托管许可成本，需要评估产品授权 |
