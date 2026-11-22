@@ -204,7 +204,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Rust Agent ready. Workspace: {}", runtime.workspace().display());
     println!("Session: {}", runtime.session_id());
-    println!("Commands: /help, /attach <workspace-relative-path>, /new, /session, /resume <id>, /fork, /model <id>, /models, /agents, /agent <id>, /mode <default|plan>, /context, /compact, /usage, /dream, /dream-status, /prune-transcripts <days>, /prune-sessions <days>, /prune-tasks <days>, /forget-memory <id>, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
+    println!("Commands: /help, /attach <workspace-relative-path>, /delete-attachment <id>, /new, /session, /resume <id>, /fork, /model <id>, /models, /agents, /agent <id>, /mode <default|plan>, /context, /compact, /usage, /dream, /dream-status, /prune-transcripts <days>, /prune-sessions <days>, /prune-tasks <days>, /forget-memory <id>, /tasks, /task <id>, /wait <id>, /cancel-task <id>, /deliver-task <id>, /exit");
 
     loop {
         print!("you> ");
@@ -227,6 +227,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         if input == "/help" {
             println!(" /attach <path>       Attach a workspace file to the next user turn (max 20 MiB)");
+            println!(" /delete-attachment <id> Delete a stored attachment and release its quota");
             println!(" /new                 Start a new session");
             println!(" /session             Show the active session ID");
             println!(" /resume <id>         Resume a session");
@@ -258,6 +259,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
             match runtime.attach_workspace_file(path.trim()) {
                 Ok(attachment) => println!("Attached {} as {} ({} bytes). It will be included with the next message.", attachment.filename, attachment.id, attachment.size_bytes),
                 Err(error) => eprintln!("Could not attach file: {error}"),
+            }
+            continue;
+        }
+        if let Some(id) = input.strip_prefix("/delete-attachment ") {
+            match runtime.delete_attachment(id.trim()) {
+                Ok(true) => println!("Deleted attachment {}.", id.trim()),
+                Ok(false) => println!("Attachment {} was not found.", id.trim()),
+                Err(error) => eprintln!("Could not delete attachment: {error}"),
             }
             continue;
         }
