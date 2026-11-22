@@ -111,7 +111,7 @@ function RequestCharts({ data }: { data: RequestAnalytics }) {
         </ChartPanel>
       </Col>
       <Col xs={24} lg={12}>
-        <ChartPanel title="事项创建时长" hasData={hasValues(aging)}>
+        <ChartPanel title="事项存续时长" hasData={hasValues(aging)}>
           <BreakdownColumn data={aging} />
         </ChartPanel>
       </Col>
@@ -149,7 +149,7 @@ function DebtCharts({ data }: { data: TechnicalDebtAnalytics }) {
         </ChartPanel>
       </Col>
       <Col xs={24} lg={12}>
-        <ChartPanel title="技术债务登记时长" hasData={hasValues(aging)}>
+        <ChartPanel title="技术债务存续时长" hasData={hasValues(aging)}>
           <BreakdownColumn data={aging} />
         </ChartPanel>
       </Col>
