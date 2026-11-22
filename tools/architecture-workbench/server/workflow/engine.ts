@@ -97,6 +97,7 @@ function createRequestSubmission(workItemId:string,actorId:string,input:Submissi
   const reviewers=reviewerCandidates
     .filter(person=>(JSON.parse(person.permissions_json) as string[]).includes("review"))
     .map(({person_id,display_name,role_key})=>({person_id,display_name,role_key}));
+  if (reviewers.length===0) throw new Error("Assign at least one reviewer before submitting the Request Package.");
   const dueAt=new Date(Date.parse(timestamp)+REVIEW_DAYS*86400000).toISOString();
   const cycleId=id("cycle");
   run("INSERT INTO review_cycles(id,work_item_id,submission_id,name,baseline_json,status,due_date,review_deadline_at,remaining_review_ms,reviewer_snapshot_json,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -143,8 +144,8 @@ export function transitionWorkItem(workItemId:string,actorId:string,action:Workf
       const cycle=one<{id:string}>("SELECT id FROM review_cycles WHERE work_item_id=? ORDER BY created_at DESC LIMIT 1",workItemId);
       if (cycle) cancelCycleTimers(cycle.id,timestamp);
     }
-    const changed=run("UPDATE work_items SET status=?,context_version=context_version+1,updated_at=? WHERE id=? AND status=?",
-      validation.to,timestamp,workItemId,validation.from);
+    const changed=run("UPDATE work_items SET status=?,decision_outcome=CASE WHEN ?='submit_request' THEN NULL ELSE decision_outcome END,context_version=context_version+1,updated_at=? WHERE id=? AND status=?",
+      validation.to,action,timestamp,workItemId,validation.from);
     if (Number(changed.changes)!==1) {
       db.exec("ROLLBACK");
       return {ok:false as const,statusCode:409,error:"The Request changed while the action was being processed. Refresh and try again."};
@@ -196,7 +197,7 @@ export function createClarification(workItemId:string,actorId:string,input:{arti
   if (artifact && !baseline.some(entry=>entry.id===artifact.id && entry.version===artifact.version)) return {ok:false as const,statusCode:409,error:"Clarification target is outside the active Submission baseline."};
   if (one("SELECT id FROM clarification_requests WHERE cycle_id=? AND status='requested'",cycle.id)) return {ok:false as const,statusCode:409,error:"A clarification is already waiting for the Requestor."};
   if (!input.question.trim()) return {ok:false as const,statusCode:400,error:"A clarification question is required."};
-  const responseDeadline=Date.parse(input.responseDueAt);
+  const responseDeadline=input.responseDueAt ? Date.parse(input.responseDueAt) : Date.now()+CLARIFICATION_DAYS*86400000;
   if (!Number.isFinite(responseDeadline) || responseDeadline<=Date.now()) return {ok:false as const,statusCode:400,error:"Clarification response deadline must be in the future."};
   const dueAt=new Date(responseDeadline).toISOString();
   const timestamp=now();
