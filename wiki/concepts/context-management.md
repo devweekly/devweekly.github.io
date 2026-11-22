@@ -82,6 +82,8 @@ A context-management test should begin with a task trajectory, compact or curate
 
 The same principle applies to user memory: evaluate whether the assistant chooses and applies the right preference in the current context, not only whether it can retrieve the preference. See [Personal Intelligence](personal-intelligence.md) and [Memory Hierarchy](memory-hierarchy.md).
 
+Context-management policies and playbooks can be persistent adaptation targets. ACE, for example, incrementally evolves a reusable context playbook from execution feedback. This demonstrates context-level retained improvement; it should only be called recursive self-improvement when the mechanism that proposes, curates, or evaluates future context changes is itself shown to improve. See [Recursive Self-Improvement](recursive-self-improvement.md) and the [RSI research dossier](../references/research-recursive-self-improvement-2026.md).
+
 Related: [Agent Memory](agent-memory.md), [Memory Dreaming](memory-dreaming.md), and [Personal Intelligence](personal-intelligence.md).
 
 [^anthropic-context-engineering]: [Anthropic, Effective context engineering for AI agents](https://www.anthropic.com/research/effective-context-engineering-for-ai-agents).
