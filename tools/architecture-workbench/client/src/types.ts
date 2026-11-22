@@ -17,11 +17,21 @@ export interface WorkflowProjection {
   status:string; currentStep:number; visualStatus:"wait"|"process"|"finish"|"error";
   steps:WorkflowStep[]; availableActions:string[]; history:WorkflowTransition[];
 }
+export interface AgentProfile {
+  key:string; name:string; description:string; skillName:string;
+}
+export type AgentRunStatus = "queued"|"running"|"waiting_for_human"|"completed"|"failed"|"cancelled";
+export interface AgentRun {
+  id:string; work_item_id:string; task_id:string|null; agent_key:string; skill_name:string; objective:string;
+  requested_by:string; claimed_by:string|null; status:AgentRunStatus; handoff_reason:string;
+  result_artifact_id:string|null; error_message:string; created_at:string; updated_at:string;
+  started_at:string|null; finished_at:string|null; requested_by_name:string; claimed_by_name:string|null;
+}
 export interface WorkItemDetail {
   workItem:WorkItem; participants:Participation[]; artifacts:Artifact[];
   cycles:{id:string;name:string;status:string;due_date:string;baseline_json:string}[];
   reviews:Review[]; tasks:WorkTask[]; decisions:Decision[]; comments:Comment[];
-  activity:Activity[]; attachments:Attachment[]; externalLinks:ExternalResourceLink[];
+  activity:Activity[]; attachments:Attachment[]; externalLinks:ExternalResourceLink[]; agentRuns:AgentRun[];
   permissions:string[]; canManageParticipants:boolean; workflow:WorkflowProjection;
 }
 export interface Bootstrap { actorId:string; people:Person[]; workItems:WorkItem[]; debts:DebtItem[]; counts:{openWorkItems:number;awaitingReview:number;activeDebts:number;myTasks:number}; }

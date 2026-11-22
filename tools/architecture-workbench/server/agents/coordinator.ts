@@ -184,7 +184,7 @@ export function resumeAgentRun(input:{runId:string;actorId:string;additionalCont
 export function listAgentRuns(workItemId:string,actorId:string) {
   requirePermission(workItemId,actorId,"read");
   const runs=all(
-    "SELECT r.id,r.work_item_id,r.task_id,r.agent_key,r.skill_name,r.objective,r.status,r.handoff_reason,r.result_artifact_id,r.error_message,r.created_at,r.updated_at,r.started_at,r.finished_at,requestor.display_name AS requested_by_name,claimer.display_name AS claimed_by_name FROM agent_runs r JOIN people requestor ON requestor.id=r.requested_by LEFT JOIN people claimer ON claimer.id=r.claimed_by WHERE r.work_item_id=? ORDER BY r.created_at DESC",
+    "SELECT r.id,r.work_item_id,r.task_id,r.agent_key,r.skill_name,r.objective,r.requested_by,r.claimed_by,r.status,r.handoff_reason,r.result_artifact_id,r.error_message,r.created_at,r.updated_at,r.started_at,r.finished_at,requestor.display_name AS requested_by_name,claimer.display_name AS claimed_by_name FROM agent_runs r JOIN people requestor ON requestor.id=r.requested_by LEFT JOIN people claimer ON claimer.id=r.claimed_by WHERE r.work_item_id=? ORDER BY r.created_at DESC",
     workItemId
   );
   return runs;

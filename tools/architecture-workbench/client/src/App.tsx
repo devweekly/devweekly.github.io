@@ -14,7 +14,7 @@ import {
 import { Welcome } from "@ant-design/x";
 import dayjs from "dayjs";
 import { api, setActor } from "./api";
-import type { Activity, Artifact, Bootstrap, Comment, DebtItem, ExternalResourceRef, MyTask, Person, Participation, Review, WorkItem, WorkItemDetail, WorkTask, WorkbenchAnalytics } from "./types";
+import type { Activity, AgentProfile, AgentRun, Artifact, Bootstrap, Comment, DebtItem, ExternalResourceRef, MyTask, Person, Participation, Review, WorkItem, WorkItemDetail, WorkTask, WorkbenchAnalytics } from "./types";
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
@@ -24,12 +24,14 @@ const statusLabels: Record<string,string> = {
   draft:"草稿", analysis:"分析中", in_review:"评审中", changes_requested:"待修改",
   accepted:"已接受", rejected:"已拒绝", closed:"已关闭", open:"待处理",
   in_progress:"处理中", deferred:"已延期", resolved:"已解决", cancelled:"已取消",
-  accepted_with_conditions:"附条件接受", more_analysis:"需要更多分析"
+  accepted_with_conditions:"附条件接受", more_analysis:"需要更多分析",
+  queued:"待领取", running:"执行中", waiting_for_human:"等待人工输入", completed:"已完成", failed:"执行失败"
 };
 const statusColors: Record<string,string> = {
   draft:"default", analysis:"processing", in_review:"processing", changes_requested:"warning",
   accepted:"success", rejected:"error", closed:"default", open:"warning", in_progress:"processing",
   deferred:"purple", resolved:"success", cancelled:"default", accepted_with_conditions:"success",
+  queued:"default", running:"processing", waiting_for_human:"warning", completed:"success", failed:"error",
   more_analysis:"warning"
 };
 const roleColors: Record<string,string> = {
@@ -57,6 +59,10 @@ export default function App() {
   const [externalReferences,setExternalReferences] = useState<ExternalResourceRef[]>([]);
   const [analyticsData,setAnalyticsData] = useState<WorkbenchAnalytics|null>(null);
   const [myTasks,setMyTasks] = useState<MyTask[]>([]);
+  const [agentProfiles,setAgentProfiles] = useState<AgentProfile[]>([]);
+  const [agentRunOpen,setAgentRunOpen] = useState(false);
+  const [agentResumeOpen,setAgentResumeOpen] = useState(false);
+  const [agentResumeRunId,setAgentResumeRunId] = useState<string|null>(null);
   const [editingParticipationId,setEditingParticipationId] = useState<string|null>(null);
   const [profilePersonId,setProfilePersonId] = useState<string|null>(null);
   const [profileOpen,setProfileOpen] = useState(false);
@@ -69,6 +75,8 @@ export default function App() {
   const [participantForm] = Form.useForm();
   const [profileForm] = Form.useForm();
   const [externalLinkForm] = Form.useForm();
+  const [agentForm] = Form.useForm();
+  const [agentResumeForm] = Form.useForm();
   const [activeTab,setActiveTab] = useState("overview");
   const [commentText,setCommentText] = useState("");
   const [query,setQuery] = useState("");
@@ -77,10 +85,11 @@ export default function App() {
   async function reload() {
     setLoading(true);
     try {
-      const [data,analytics,tasks]=await Promise.all([api.bootstrap(),api.analytics(),api.myTasks()]);
+      const [data,analytics,tasks,profiles]=await Promise.all([api.bootstrap(),api.analytics(),api.myTasks(),api.agentProfiles()]);
       setBootstrap(data);
       setAnalyticsData(analytics);
       setMyTasks(tasks);
+      setAgentProfiles(profiles.profiles);
       if (!profilePersonId) setProfilePersonId(actor);
       if (selected) {
         const fresh=data.workItems.find(item=>item.id===selected.id);
@@ -154,6 +163,18 @@ export default function App() {
       await reload();
       if (selected) await refreshDetail();
     } catch (error) { message.error(error instanceof Error ? error.message : "更新失败"); }
+  }
+
+  function openAgentRunDialog() {
+    agentForm.resetFields();
+    agentForm.setFieldsValue({agentKey:"solution-architect",objective:"根据当前 Request 分析目标、约束、关键方案和待澄清问题。"});
+    setAgentRunOpen(true);
+  }
+  function openAgentResumeDialog(run:AgentRun) {
+    setAgentResumeRunId(run.id);
+    agentResumeForm.resetFields();
+    agentResumeForm.setFieldsValue({additionalContext:""});
+    setAgentResumeOpen(true);
   }
 
   async function transitionWorkflow(action:string) {
@@ -485,6 +506,15 @@ export default function App() {
           {title:"Task",dataIndex:"title"},{title:"类型",dataIndex:"kind"},{title:"责任人",dataIndex:"assignee_name",render:(v:string|null)=>v || "未分配"},
           {title:"状态",dataIndex:"status",render:(v:string,t:WorkTask)=><Select size="small" value={v} disabled={!permissions.includes("contribute") && t.assignee_id!==actor} style={{width:112}} onChange={value=>void updateTask(t.id,value)} options={[{value:"open",label:"待处理"},{value:"in_progress",label:"处理中"},{value:"blocked",label:"受阻"},{value:"done",label:"完成"},{value:"cancelled",label:"取消"}]} />},{title:"截止日期",dataIndex:"due_date",render:dateText}
         ]} /></Card>},
+        {key:"agents",label:"Agent 协作",children:<div className="page-stack">
+          <Card size="small" title="角色 Agent 执行" extra={permissions.includes("contribute")?<Button type="primary" size="small" icon={<PlusOutlined />} onClick={openAgentRunDialog}>发起 Agent Run</Button>:<Tag>当前身份无执行权限</Tag>}>
+            <Alert type="info" showIcon message="外部 Agent Host 执行模型推理" description="Workbench 负责排队、授权、上下文和执行记录；已连接的 MCP Host 通过 agent_claim_next_run 领取任务，加载角色 Skill 后执行。没有可用 Host 时，Run 会保持在待领取状态。" className="modal-alert" />
+            <List itemLayout="vertical" dataSource={detail.agentRuns || []} locale={{emptyText:<Empty description="尚无 Agent 执行记录" />}} renderItem={(run:AgentRun)=><List.Item actions={[
+              run.result_artifact_id?<Button key="artifact" type="link" onClick={()=>{const artifact=detail.artifacts.find(a=>a.id===run.result_artifact_id);if(artifact)Modal.info({title:artifact.title,width:760,content:<Paragraph style={{whiteSpace:"pre-wrap",maxHeight:"60vh",overflow:"auto"}}>{artifact.content}</Paragraph>});}}>查看草案</Button>:null,
+              run.status==="waiting_for_human" && (run.requested_by===actor || item.requestor_id===actor || actorPerson?.is_admin===1)?<Button key="resume" type="link" onClick={()=>openAgentResumeDialog(run)}>补充上下文并继续</Button>:null
+            ]}><List.Item.Meta avatar={<Avatar icon={<ProjectOutlined />} />} title={<Space wrap><Text strong>{agentProfiles.find(profile=>profile.key===run.agent_key)?.name || run.agent_key}</Text><Tag color={statusColors[run.status] || "default"}>{statusLabels[run.status] || run.status}</Tag><Tag>{run.skill_name}</Tag></Space>} description={<Space direction="vertical" size={4}><Text>{run.objective}</Text><Text type="secondary" className="small">请求人：{run.requested_by_name} · 执行人：{run.claimed_by_name || "尚未领取"} · 创建：{dateText(run.created_at)}</Text>{run.handoff_reason?<Text type="warning">需要 Human 输入：{run.handoff_reason}</Text>:null}{run.error_message?<Text type="danger">失败原因：{run.error_message}</Text>:null}</Space>} /></List.Item>} />
+          </Card>
+        </div>},
         {key:"decisions",label:"Decisions",children:<Card size="small" title="正式决策记录" extra={permissions.includes("decide")?<Button type="primary" size="small" onClick={()=>setDecisionOpen(true)}>记录决定</Button>:<Tag color="gold">当前身份无决策权限</Tag>}><List dataSource={detail.decisions} locale={{emptyText:"尚无正式决定"}} renderItem={d=><List.Item><List.Item.Meta avatar={<Avatar icon={<CheckCircleOutlined />} />} title={<Space><Tag color={statusColors[d.outcome]}>{statusLabels[d.outcome] || d.outcome}</Tag><Text strong>{d.decision_maker_name}</Text></Space>} description={<><Paragraph>{d.rationale}</Paragraph>{d.conditions && <Text type="secondary">条件：{d.conditions}</Text>}<div className="small muted">{dateText(d.created_at)}</div></>} /></List.Item>} /></Card>},
         {key:"activity",label:"讨论与活动",children:<Row gutter={[16,16]}><Col xs={24} xl={13}><Card size="small" title="讨论"><Space.Compact block><Input value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="补充信息或回应问题..." onPressEnter={()=>void submitComment()} /><Button type="primary" onClick={()=>void submitComment()}>发送</Button></Space.Compact><List className="comment-list" dataSource={detail.comments} renderItem={(c:Comment)=><List.Item><List.Item.Meta avatar={<Avatar style={{background:c.avatar_color}}>{c.author_name.slice(0,1)}</Avatar>} title={<Space><Text strong>{c.author_name}</Text><Text type="secondary" className="small">{dateText(c.created_at)}</Text></Space>} description={c.body} /></List.Item>} /></Card></Col><Col xs={24} xl={11}><Card size="small" title="活动记录"><Timeline items={detail.activity.map((a:Activity)=>({children:<><Text strong>{a.actor_name}</Text><div>{a.summary}</div><Text type="secondary" className="small">{dateText(a.created_at)}</Text></>}))} /></Card></Col></Row>}
       ]} />
@@ -547,6 +577,20 @@ export default function App() {
         <Form.Item name="assigneeId" label="责任人"><Select allowClear options={(detail?.participants || []).map(p=>({value:p.person_id,label:p.display_name+" · "+p.role_label}))} /></Form.Item>
         <Form.Item name="dueDate" label="截止日期"><DatePicker style={{width:"100%"}} /></Form.Item>
       </Form>
+    </Modal>
+
+    <Modal title="发起 Agent Run" open={agentRunOpen} onCancel={()=>setAgentRunOpen(false)} onOk={()=>void submitForm(agentForm,async()=>api.requestAgentRun(selected!.id,agentForm.getFieldsValue()),"Agent Run 已进入队列",()=>setAgentRunOpen(false))} confirmLoading={busy} width={680}>
+      <Alert type="info" showIcon message="Agent 只提交分析草案" description="本操作不会提交正式 Review 或 Decision。Agent 输出会以 draft Artifact 保存；正式评审、风险接受和决策仍由具备权限的 Human 完成。" className="modal-alert" />
+      <Form form={agentForm} layout="vertical">
+        <Form.Item name="agentKey" label="Agent 角色" rules={[{required:true}]}><Select options={agentProfiles.map(profile=>({value:profile.key,label:profile.name+" · "+profile.description}))} /></Form.Item>
+        <Form.Item name="taskId" label="关联 Task（可选）"><Select allowClear options={detail?.tasks.filter(task=>!["done","cancelled"].includes(task.status)).map(task=>({value:task.id,label:task.title})) || []} /></Form.Item>
+        <Form.Item name="objective" label="本次工作目标" rules={[{required:true,message:"请说明本次 Agent 需要完成的工作"}]}><TextArea rows={5} maxLength={4000} showCount placeholder="说明需要分析的问题、预期输出和需要遵守的限制。" /></Form.Item>
+      </Form>
+    </Modal>
+
+    <Modal title="补充 Human 上下文并恢复 Agent" open={agentResumeOpen} onCancel={()=>{setAgentResumeOpen(false);setAgentResumeRunId(null);}} onOk={()=>void submitForm(agentResumeForm,async()=>api.resumeAgentRun(agentResumeRunId!,String(agentResumeForm.getFieldValue("additionalContext") || "")),"Agent Run 已重新排队",()=>{setAgentResumeOpen(false);setAgentResumeRunId(null);})} confirmLoading={busy}>
+      <Alert type="info" showIcon message="恢复只会重新排队 Agent Run" description="不会改变 Request Workflow 状态，也不会代替正式 Review 或 Decision。" className="modal-alert" />
+      <Form form={agentResumeForm} layout="vertical"><Form.Item name="additionalContext" label="补充说明 / 对 Agent 问题的回答"><TextArea rows={5} maxLength={8000} showCount placeholder="提供 Agent 需要的业务事实、约束、澄清或下一步要求。" /></Form.Item></Form>
     </Modal>
 
     <Modal title="记录正式决定" open={decisionOpen} onCancel={()=>setDecisionOpen(false)} onOk={()=>void submitForm(decisionForm,async()=>{
