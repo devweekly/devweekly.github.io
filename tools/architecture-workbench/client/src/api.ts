@@ -1,4 +1,4 @@
-import type { Bootstrap, WorkbenchAnalytics, WorkItemDetail } from "./types";
+import type { Bootstrap, ExternalResourceRef, WorkbenchAnalytics, WorkItemDetail } from "./types";
 let currentActor = "u-sa";
 export function setActor(actor:string) { currentActor=actor; }
 async function request<T>(path:string,init:RequestInit={}):Promise<T> {
@@ -10,6 +10,7 @@ async function request<T>(path:string,init:RequestInit={}):Promise<T> {
 export const api = {
   bootstrap:()=>request<Bootstrap>("/api/bootstrap"),
   analytics:()=>request<WorkbenchAnalytics>("/api/analytics"),
+  externalResourceRefs:()=>request<ExternalResourceRef[]>("/api/external-resource-refs"),
   detail:(id:string)=>request<WorkItemDetail>("/api/work-items/"+id),
   createWorkItem:(body:unknown)=>request<{id:string;code:string}>("/api/work-items",{method:"POST",body:JSON.stringify(body)}),
   createArtifact:(id:string,body:unknown)=>request<{id:string;version:number}>("/api/work-items/"+id+"/artifacts",{method:"POST",body:JSON.stringify(body)}),

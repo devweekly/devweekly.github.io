@@ -109,6 +109,15 @@ app.get("/api/analytics",(req,res)=>{
   });
 });
 
+app.get("/api/external-resource-refs",(req,res)=>{
+  const actor=actorId(req);
+  const refs=all(
+    "SELECT r.id,r.provider,r.resource_type,r.external_id,r.external_key,r.title,r.url FROM external_resource_refs r WHERE EXISTS (SELECT 1 FROM work_item_external_links visible_link JOIN participations p ON p.work_item_id=visible_link.work_item_id WHERE visible_link.resource_id=r.id AND p.person_id=? AND p.permissions_json LIKE '%\"read\"%') ORDER BY r.provider,r.resource_type,r.title",
+    actor
+  );
+  res.json(refs);
+});
+
 app.get("/api/work-items",(req,res)=>res.json(all("SELECT w.*,p.display_name AS owner_name,(SELECT COUNT(*) FROM artifacts a WHERE a.work_item_id=w.id) AS artifact_count,(SELECT COUNT(*) FROM tasks t WHERE t.work_item_id=w.id AND t.status NOT IN ('done','cancelled')) AS open_task_count FROM work_items w JOIN people p ON p.id=w.owner_id WHERE w.type <> 'technical_debt' AND EXISTS (SELECT 1 FROM participations mine WHERE mine.work_item_id=w.id AND mine.person_id=?) ORDER BY w.updated_at DESC",actorId(req))));
 
 app.post("/api/work-items",(req,res)=>{
@@ -314,36 +323,50 @@ app.post("/api/work-items/:id/external-links",(req,res)=>{
   const workItemId=String(req.params.id); const actor=actorId(req);
   if (!requirePermission(res,workItemId,actor,"contribute")) return;
   const body=req.body || {};
-  const providers=["jira","confluence","github","leanix"];
-  if (!providers.includes(body.provider)) return res.status(400).json({error:"Unsupported external provider"});
-  const resourceTypes:Record<string,string[]> = {
-    jira:["Story","Epic","Task","Bug"],
-    confluence:["Page"],
-    github:["Repository","PullRequest","Issue","Commit"],
-    leanix:["Application","Interface","ITComponent","DataObject","BusinessCapability","Provider","Project"]
-  };
-  if (!resourceTypes[body.provider].includes(body.resourceType)) return res.status(400).json({error:"Unsupported resource type for "+body.provider});
-  if (!body.resourceType || !body.externalId || !body.title) return res.status(400).json({error:"resourceType, externalId and title are required"});
   const relationTypes=["related_to","implements","decision_record","review_evidence","solution_design","implementation_repository","shared_component","impacted_application","impacted_interface","dependency"];
   if (body.relationType && !relationTypes.includes(body.relationType)) return res.status(400).json({error:"Unsupported relationship type"});
-  const template = body.provider==="confluence" && body.resourceType==="Page"
-    ? {template_key:String(body.templateKey || ""),name:String(body.templateName || "")}
-    : undefined;
-  if (body.provider==="confluence" && body.resourceType==="Page" && !template?.template_key) {
-    return res.status(400).json({error:"Confluence template key is required. The Agent will resolve the actual template through its configured MCP/API tool."});
+
+  let resource:{id:string;provider:string;resource_type:string;external_id:string;external_key:string;title:string;url:string}|undefined;
+  if (body.resourceId) {
+    resource=one<{id:string;provider:string;resource_type:string;external_id:string;external_key:string;title:string;url:string}>(
+      "SELECT r.id,r.provider,r.resource_type,r.external_id,r.external_key,r.title,r.url FROM external_resource_refs r WHERE r.id=? AND EXISTS (SELECT 1 FROM work_item_external_links visible_link JOIN participations p ON p.work_item_id=visible_link.work_item_id WHERE visible_link.resource_id=r.id AND p.person_id=? AND p.permissions_json LIKE '%\"read\"%')",
+      String(body.resourceId),actor
+    );
+    if (!resource) return res.status(404).json({error:"External reference not found or not visible to the current principal"});
+  } else {
+    const providers=["jira","confluence","github","leanix"];
+    if (!providers.includes(body.provider)) return res.status(400).json({error:"Unsupported external provider"});
+    const resourceTypes:Record<string,string[]> = {
+      jira:["Story","Epic","Task","Bug"],
+      confluence:["Page"],
+      github:["Repository","PullRequest","Issue","Commit"],
+      leanix:["Application","Interface","ITComponent","DataObject","BusinessCapability","Provider","Project"]
+    };
+    if (!resourceTypes[body.provider].includes(body.resourceType)) return res.status(400).json({error:"Unsupported resource type for "+body.provider});
+    if (!body.externalId || !body.title) return res.status(400).json({error:"externalId and title are required for a new reference"});
+    const created=now();
+    run("INSERT OR IGNORE INTO external_resource_refs(id,provider,resource_type,external_id,external_key,title,url,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+      id("resource"),body.provider,body.resourceType,String(body.externalId),String(body.externalKey || ""),String(body.title),String(body.url || ""),created,created);
+    resource=one<{id:string;provider:string;resource_type:string;external_id:string;external_key:string;title:string;url:string}>(
+      "SELECT id,provider,resource_type,external_id,external_key,title,url FROM external_resource_refs WHERE provider=? AND resource_type=? AND external_id=?",
+      body.provider,body.resourceType,String(body.externalId)
+    );
+    if (!resource) return res.status(500).json({error:"Could not persist external resource reference"});
+    run("UPDATE external_resource_refs SET external_key=CASE WHEN ?<>'' THEN ? ELSE external_key END,title=?,url=CASE WHEN ?<>'' THEN ? ELSE url END,updated_at=? WHERE id=?",
+      String(body.externalKey || ""),String(body.externalKey || ""),String(body.title),String(body.url || ""),String(body.url || ""),created,resource.id);
+  }
+
+  const isConfluencePage=resource.provider==="confluence" && resource.resource_type==="Page";
+  const template=isConfluencePage ? {template_key:String(body.templateKey || ""),name:String(body.templateName || "")} : undefined;
+  if (isConfluencePage && !template?.template_key) {
+    return res.status(400).json({error:"Confluence Template key is required. The Agent will resolve the actual template through its configured MCP/API tool."});
   }
   const created=now();
-  run("INSERT OR IGNORE INTO external_resource_refs(id,provider,resource_type,external_id,external_key,title,url,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
-    id("resource"),body.provider,body.resourceType,String(body.externalId),String(body.externalKey || ""),String(body.title),String(body.url || ""),created,created);
-  const resource=one<{id:string}>("SELECT id FROM external_resource_refs WHERE provider=? AND resource_type=? AND external_id=?",body.provider,body.resourceType,String(body.externalId));
-  if (!resource) return res.status(500).json({error:"Could not persist external resource reference"});
-  run("UPDATE external_resource_refs SET external_key=CASE WHEN ?<>'' THEN ? ELSE external_key END,title=?,url=CASE WHEN ?<>'' THEN ? ELSE url END,updated_at=? WHERE id=?",
-    String(body.externalKey || ""),String(body.externalKey || ""),String(body.title),String(body.url || ""),String(body.url || ""),created,resource.id);
   run("INSERT OR IGNORE INTO work_item_external_links(id,work_item_id,resource_id,relation_type,confluence_template_key,confluence_template_name,linked_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
     id("extlink"),workItemId,resource.id,body.relationType || "related_to",template?.template_key || null,template?.name || null,actor,created);
   const link=one<{id:string}>("SELECT id FROM work_item_external_links WHERE work_item_id=? AND resource_id=? AND relation_type=?",workItemId,resource.id,body.relationType || "related_to");
   run("UPDATE work_items SET context_version=context_version+1,updated_at=? WHERE id=?",created,workItemId);
-  logActivity(workItemId,actor,"linked","external_resource",resource.id,"Recorded external context reference: "+body.provider+" "+body.resourceType+": "+body.title,{relationType:body.relationType || "related_to",templateKey:template?.template_key || null,source:"user_supplied_reference"});
+  logActivity(workItemId,actor,"linked","external_resource",resource.id,"Recorded external context reference: "+resource.provider+" "+resource.resource_type+": "+resource.title,{relationType:body.relationType || "related_to",templateKey:template?.template_key || null,source:body.resourceId ? "reused_workbench_reference" : "user_supplied_reference"});
   res.status(201).json({id:link?.id,resourceId:resource.id});
 });
 

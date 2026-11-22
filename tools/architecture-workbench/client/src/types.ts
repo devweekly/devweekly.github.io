@@ -32,3 +32,8 @@ export interface TechnicalDebtAnalytics {
   byOriginRequest:{code:string;title:string;debt_count:number}[];
 }
 export interface WorkbenchAnalytics { generatedAt:string; requests:RequestAnalytics; technicalDebt:TechnicalDebtAnalytics; }
+
+export interface ExternalResourceRef {
+  id:string; provider:string; resource_type:string; external_id:string; external_key:string;
+  title:string; url:string;
+}

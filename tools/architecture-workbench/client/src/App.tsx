@@ -14,7 +14,7 @@ import {
 import { Welcome } from "@ant-design/x";
 import dayjs from "dayjs";
 import { api, setActor } from "./api";
-import type { Activity, Artifact, Bootstrap, Comment, DebtItem, Person, Review, WorkItem, WorkItemDetail, WorkTask, WorkbenchAnalytics } from "./types";
+import type { Activity, Artifact, Bootstrap, Comment, DebtItem, ExternalResourceRef, Person, Review, WorkItem, WorkItemDetail, WorkTask, WorkbenchAnalytics } from "./types";
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
@@ -54,6 +54,7 @@ export default function App() {
   const [debtOpen,setDebtOpen] = useState(false);
   const [participantOpen,setParticipantOpen] = useState(false);
   const [externalLinkOpen,setExternalLinkOpen] = useState(false);
+  const [externalReferences,setExternalReferences] = useState<ExternalResourceRef[]>([]);
   const [analyticsData,setAnalyticsData] = useState<WorkbenchAnalytics|null>(null);
   const [newItemForm] = Form.useForm();
   const [artifactForm] = Form.useForm();
@@ -141,10 +142,16 @@ export default function App() {
     try { await api.updateTask(taskId,{status}); message.success("Task 状态已更新"); await refreshDetail(); }
     catch (error) { message.error(error instanceof Error ? error.message : "更新失败"); }
   }
-  function openExternalLinkDialog() {
-    externalLinkForm.resetFields();
-    externalLinkForm.setFieldsValue({provider:"jira",resourceType:"Story",relationType:"related_to"});
-    setExternalLinkOpen(true);
+  async function openExternalLinkDialog() {
+    try {
+      const references=await api.externalResourceRefs();
+      setExternalReferences(references);
+      externalLinkForm.resetFields();
+      externalLinkForm.setFieldsValue({provider:"jira",resourceType:"Story",relationType:"related_to"});
+      setExternalLinkOpen(true);
+    } catch(error) {
+      message.error(error instanceof Error ? error.message : "无法读取已登记的外部引用");
+    }
   }
   async function removeExternalLink(linkId:string) {
     if (!selected) return;
@@ -437,17 +444,46 @@ export default function App() {
 
     <Modal title="登记外部上下文引用" open={externalLinkOpen} onCancel={()=>setExternalLinkOpen(false)} onOk={()=>void submitForm(externalLinkForm,async()=>{
       const value=externalLinkForm.getFieldsValue();
+      if(value.existingResourceId) {
+        return api.addExternalLink(selected!.id,{resourceId:value.existingResourceId,relationType:value.relationType,templateKey:value.templateKey,templateName:value.templateName});
+      }
+      delete value.existingResourceId;
       return api.addExternalLink(selected!.id,value);
-    },"外部上下文引用已登记",()=>setExternalLinkOpen(false))} confirmLoading={busy} width={720}>
-      <Alert type="info" showIcon message="这里只保存外部资源引用，不访问外部系统。" description="Workbench 不直接连接或同步 Jira、Confluence、GitHub、LeanIX。将来由网站 Agent 根据这些引用，通过其自身配置的 MCP/API 工具读取外部知识；实际内容和访问权限仍以源系统为准。" className="modal-alert" />
+    },"外部上下文引用已登记",()=>setExternalLinkOpen(false))} confirmLoading={busy} width={760}>
+      <Alert type="info" showIcon message="这里只保存外部资源引用，不访问外部系统。" description="Workbench 不直接连接或同步 Jira、Confluence、GitHub、LeanIX。已登记的引用可以在多个 Request 之间复用；新资源需要手工登记 ID/Key/URL。网站 Agent 将来再通过自身配置的 MCP/API 工具读取源系统内容。" className="modal-alert" />
       <Form form={externalLinkForm} layout="vertical">
-        <Row gutter={12}>
-          <Col span={12}><Form.Item name="provider" label="外部系统" rules={[{required:true}]}><Select options={[{value:"jira",label:"Jira"},{value:"confluence",label:"Confluence"},{value:"github",label:"GitHub"},{value:"leanix",label:"LeanIX"}]} onChange={value=>externalLinkForm.setFieldsValue({resourceType:value==="jira"?"Story":value==="confluence"?"Page":value==="github"?"Repository":"Application",externalId:undefined,externalKey:undefined,title:undefined,url:undefined,templateKey:undefined,templateName:undefined})} /></Form.Item></Col>
-          <Col span={12}><Form.Item name="resourceType" label="资源类型" dependencies={["provider"]} rules={[{required:true}]}><Select options={(externalLinkForm.getFieldValue("provider")==="jira"?["Story","Epic","Task","Bug"]:externalLinkForm.getFieldValue("provider")==="confluence"?["Page"]:externalLinkForm.getFieldValue("provider")==="github"?["Repository","PullRequest","Issue","Commit"]:["Application","Interface","ITComponent","DataObject","BusinessCapability","Provider","Project"]).map(value=>({value,label:value}))} /></Form.Item></Col>
-        </Row>
-        <Row gutter={12}><Col span={12}><Form.Item name="externalId" label="外部资源 ID" rules={[{required:true}]}><Input placeholder="Jira issue ID / Confluence Page ID / LeanIX Fact Sheet ID" /></Form.Item></Col><Col span={12}><Form.Item name="externalKey" label="业务 Key / Identifier"><Input placeholder="DATA-412 / APP-CRM-001 / owner/repository" /></Form.Item></Col></Row>
-        <Form.Item name="title" label="资源名称" rules={[{required:true}]}><Input /></Form.Item>
-        <Form.Item name="url" label="资源 URL"><Input placeholder="https://..." /></Form.Item>
+        <Form.Item name="existingResourceId" label="复用 Workbench 已登记的外部资源（可选）">
+          <Select allowClear showSearch optionFilterProp="label" placeholder="按系统、Key 或名称搜索当前身份可见的引用" options={externalReferences.map(r=>({value:r.id,label:r.provider.toUpperCase()+" · "+(r.external_key || r.external_id)+" · "+r.title}))} />
+        </Form.Item>
+        <Text type="secondary" className="small">此列表只查询 Workbench 已保存的引用，不会发起任何 Jira / Confluence / GitHub / LeanIX 搜索。</Text>
+        <Form.Item noStyle shouldUpdate>{({getFieldValue})=>{
+          const chosen=externalReferences.find(r=>r.id===getFieldValue("existingResourceId"));
+          if (chosen) return <>
+            <Alert type="success" showIcon message="已选择已有引用" description={chosen.provider.toUpperCase()+" · "+chosen.resource_type+" · "+(chosen.external_key || chosen.external_id)+" · "+chosen.title} />
+            {chosen.provider==="confluence" && chosen.resource_type==="Page"?<>
+              <Divider titlePlacement="start">Confluence Page Template Reference</Divider>
+              <Form.Item name="templateKey" label="Template Key / ID" rules={[{required:true,message:"请填写该 Page 使用的 Template 标识"}]}><Input placeholder="例如 architecture-decision-record" /></Form.Item>
+              <Form.Item name="templateName" label="Template 名称"><Input placeholder="例如 Architecture Decision Record" /></Form.Item>
+              <Text type="secondary" className="small">只记录 Template 引用；未来网站 Agent 通过自身配置的 Confluence MCP/API 工具读取模板定义。</Text>
+            </>:null}
+          </>;
+          return <>
+            <Divider titlePlacement="start">登记一个新的外部资源引用</Divider>
+            <Row gutter={12}>
+              <Col span={12}><Form.Item name="provider" label="外部系统" rules={[{required:true}]}><Select options={[{value:"jira",label:"Jira"},{value:"confluence",label:"Confluence"},{value:"github",label:"GitHub"},{value:"leanix",label:"LeanIX"}]} onChange={value=>externalLinkForm.setFieldsValue({resourceType:value==="jira"?"Story":value==="confluence"?"Page":value==="github"?"Repository":"Application",externalId:undefined,externalKey:undefined,title:undefined,url:undefined,templateKey:undefined,templateName:undefined})} /></Form.Item></Col>
+              <Col span={12}><Form.Item name="resourceType" label="资源类型" dependencies={["provider"]} rules={[{required:true}]}><Select options={(externalLinkForm.getFieldValue("provider")==="jira"?["Story","Epic","Task","Bug"]:externalLinkForm.getFieldValue("provider")==="confluence"?["Page"]:externalLinkForm.getFieldValue("provider")==="github"?["Repository","PullRequest","Issue","Commit"]:["Application","Interface","ITComponent","DataObject","BusinessCapability","Provider","Project"]).map(value=>({value,label:value}))} /></Form.Item></Col>
+            </Row>
+            <Row gutter={12}><Col span={12}><Form.Item name="externalId" label="外部资源 ID" rules={[{required:true}]}><Input placeholder="Jira issue ID / Confluence Page ID / LeanIX Fact Sheet ID" /></Form.Item></Col><Col span={12}><Form.Item name="externalKey" label="业务 Key / Identifier"><Input placeholder="DATA-412 / APP-CRM-001 / owner/repository" /></Form.Item></Col></Row>
+            <Form.Item name="title" label="资源名称" rules={[{required:true}]}><Input /></Form.Item>
+            <Form.Item name="url" label="资源 URL"><Input placeholder="https://..." /></Form.Item>
+            {externalLinkForm.getFieldValue("provider")==="confluence" && externalLinkForm.getFieldValue("resourceType")==="Page"?<>
+              <Divider titlePlacement="start">Confluence Page Template Reference</Divider>
+              <Form.Item name="templateKey" label="Template Key / ID" rules={[{required:true,message:"请填写该 Page 使用的 Template 标识"}]}><Input placeholder="例如 architecture-decision-record" /></Form.Item>
+              <Form.Item name="templateName" label="Template 名称"><Input placeholder="例如 Architecture Decision Record" /></Form.Item>
+              <Text type="secondary" className="small">只记录 Template 引用；未来网站 Agent 通过自身配置的 Confluence MCP/API 工具读取模板定义。</Text>
+            </>:null}
+          </>;
+        }}</Form.Item>
         <Form.Item name="relationType" label="与 Request 的关系" rules={[{required:true}]}><Select options={[
           {value:"related_to",label:"相关"},
           {value:"implements",label:"实现 / 交付"},
@@ -460,12 +496,6 @@ export default function App() {
           {value:"impacted_interface",label:"受影响 Interface"},
           {value:"dependency",label:"依赖"}
         ]} /></Form.Item>
-        <Form.Item noStyle shouldUpdate>{({getFieldValue})=>getFieldValue("provider")==="confluence" && getFieldValue("resourceType")==="Page"?<>
-          <Divider titlePlacement="start">Confluence Page Template Reference</Divider>
-          <Form.Item name="templateKey" label="Template Key / ID" rules={[{required:true,message:"请填写该 Page 使用的 Template 标识"}]}><Input placeholder="例如 architecture-decision-record" /></Form.Item>
-          <Form.Item name="templateName" label="Template 名称"><Input placeholder="例如 Architecture Decision Record" /></Form.Item>
-          <Text type="secondary" className="small">这里只记录 Template 引用。网站 Agent 需要读取模板定义时，通过其配置的 Confluence MCP/API 工具获取；Workbench 后端不实现 Confluence Connector。</Text>
-        </>:null}</Form.Item>
       </Form>
     </Modal>
 

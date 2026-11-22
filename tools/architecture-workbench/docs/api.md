@@ -20,7 +20,8 @@ Base URL in development: http://localhost:4000/api
 | PATCH | /tech-debts/:id | Update debt status and remediation plan |
 | POST | /work-items/:id/comments | Add a discussion message |
 | POST | /work-items/:id/attachments | Upload an authorized attachment using the configured ObjectStore |
-| POST | /work-items/:id/external-links | Record an external resource reference; does not call that system |
+| GET | /external-resource-refs | List saved references linked to Work Items visible to the current principal; no source-system search |
+| POST | /work-items/:id/external-links | Reuse an existing reference or record a new one; does not call that system |
 | DELETE | /work-items/:id/external-links/:linkId | Remove a reference association without deleting the remote object |
 | GET | /analytics | Request and Technical Debt portfolio metrics |
 
