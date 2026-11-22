@@ -71,6 +71,8 @@ Workbench Server 使用官方 MCP TypeScript SDK v2，在 `http://localhost:4000
 
 Agent Plan 是一次多角色协作请求；Plan 下的 Agent Run 是执行节点，依赖关系存储在 agent_run_dependencies。创建计划时，Workbench 自动增加最终 Decision Analyst 汇总节点，并让它依赖所有专业节点。Agent Host 通过 agent_claim_next_run 轮询时，服务端只会返回依赖已完成且当前服务身份有权限执行的节点。无依赖的节点可以并行，依赖节点在前置节点成功后才进入可领取状态。节点产出保存为 Draft Artifact，汇总节点会读取全部专业产物，生成最终决策简报草案。
 
+Run 领取采用服务端管理的 Claim Lease。默认租约为 60 秒，Host 每三分之一租期发送一次心跳；Workbench Service 周期性扫描过期租约，并在新任务分配前再次执行回收。租约过期后，原 Claim Token 失效，Run 自动回到队列，由其他 Host 使用新 Token 重新领取。每个 Run 最多允许三次领取，连续崩溃耗尽次数后转为 failed。Artifact 创建与 Run 完成在同一 SQLite 事务提交，避免过期 Worker 留下孤立产物。
+
 
 
 Workbench 不在服务进程内执行模型推理。独立 Host 进程通过 npm run agent-host 运行，按配置的角色并发轮询 MCP；Host 加载并验证 Skill、获取 Context Capsule，并调用部署方提供的 AgentExecutor 实现。模型 SDK、凭据、模型选择和上下文策略由该插件负责，Host 只负责协议、调度、依赖执行和结果回写。
