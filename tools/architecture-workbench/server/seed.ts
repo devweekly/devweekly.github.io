@@ -149,7 +149,7 @@ function snapshotSeedSubmissionExternalReferences(workItemId:string) {
 function seedWorkflowHistory(workItemId:string,created:string) {
   if ((one<{n:number}>("SELECT COUNT(*) AS n FROM workflow_transitions WHERE work_item_id=?",workItemId)?.n || 0) > 0) return;
   run("INSERT INTO workflow_transitions(id,work_item_id,from_status,to_status,action,reason,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?)",
-    "wf-seed-review",workItemId,"draft","discussion_review","submit_request","Request Package submitted and the review deadline started.","u-sa",created);
+    "wf-seed-review",workItemId,"draft","discussion_review","submit_request","申请材料已提交，评审计时开始。","u-sa",created);
 }
 
 function seedExternalReferences() {
