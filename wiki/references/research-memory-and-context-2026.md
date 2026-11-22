@@ -90,6 +90,8 @@ This dossier includes one peer-reviewed/open-access survey and a set of arXiv pr
 
 The recent work points to five requirements for a practical memory system: preserve source-level evidence; keep several memory representations rather than one universal summary; track time and supersession; decide whether retrieved preferences apply to the present context; and evaluate consolidation or compaction by downstream behavior.
 
+The relationship between memory/context evolution and strict recursion is discussed in [Recursive Self-Improvement](../concepts/recursive-self-improvement.md), with further work on ACE and MemEvolve in the [RSI research dossier](research-recursive-self-improvement-2026.md).
+
 # Related concepts
 
 - [Memory Hierarchy](../concepts/memory-hierarchy.md)
