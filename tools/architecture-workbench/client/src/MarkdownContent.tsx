@@ -15,7 +15,8 @@ interface MarkdownContentProps {
 
 function MarkdownCode({ children, className, lang, block }: MarkdownCodeProps) {
   if (!block) return <code className={className}>{children}</code>;
-  return <CodeHighlighter className={className} lang={lang || "text"}>{children}</CodeHighlighter>;
+  const code = typeof children === "string" ? children : String(children ?? "");
+  return <CodeHighlighter className={className} lang={lang || "text"}>{code}</CodeHighlighter>;
 }
 
 // Keep component references stable. XMarkdown maps Mermaid code fences to the
