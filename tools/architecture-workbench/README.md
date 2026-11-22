@@ -98,7 +98,7 @@ LangChain / DeepAgents 可以作为未来 Agent Runtime 的实现选择，LangSm
     AGENT_HOST_POLL_INTERVAL_MS=3000
     npm run agent-host
 
-Executor 插件必须导出 createAgentExecutors()，返回以 Agent Profile key 为索引的 AgentExecutor。接口定义位于 server/agents/host.ts。execute() 接收已验证 Skill、Context Capsule、Run 元数据、可选的 Plan 汇总上下文，以及按 Artifact ID 读取正文的方法。它需要返回 Draft Artifact，或明确请求 Human hand-off。Host 捕获执行异常并记录 Run failure。
+Executor 插件必须导出 createAgentExecutors()，返回以 Agent Profile key 为索引的 AgentExecutor。接口定义位于 server/agents/host.ts。它由独立的 `npm run agent-host` 进程加载和执行，**不是浏览器 UI 的 client 端代码，也不在 Workbench Server 进程中运行**。插件的 execute() 接收已验证 Skill、Context Capsule、Run 元数据、可选的 Plan 汇总上下文、Artifact 读取方法和租约失效时的 AbortSignal；它需要返回 Draft Artifact，或明确请求 Human hand-off。Host 捕获执行异常并记录 Run failure。当前仓库提供 Host 与 Executor 接口，但没有捆绑 CodeBuddy、Copilot 或其他真实模型 Provider Adapter。
 
 Remote Host 使用 MCP_URL、MCP_BEARER_TOKEN 和服务器配置的 MCP_SERVICE_USER_ID；本地演示模式使用 MCP_DEMO_USER_ID。运行身份必须加入每个相关 Work Item 并仅授予必要权限。不要将模型 API Key 放入 Workbench Server 配置或提交到仓库。
 
