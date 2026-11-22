@@ -11,13 +11,13 @@ export function seed() {
       ["u-sme","Yuki Mori","业务专家","yuki@example.test","#b17b52"],
       ["u-dev","Ryo Nakamura","开发经理","ryo@example.test","#628f9f"],
       ["u-chair","Haru Watanabe","架构评审主席","haru@example.test","#9e755d"],
-      ["u-agent","Workbench Agent Service","Agent Service Principal","agent-service@example.test","#557c85"]
+      ["u-agent","Agent 执行服务","Agent 服务账号","agent-service@example.test","#557c85"]
     ];
     for (const p of people) run("INSERT INTO people(id,display_name,title,email,avatar_color,created_at) VALUES(?,?,?,?,?,?)", ...p, created);
   }
   const servicePrincipal=one<{id:string}>("SELECT id FROM people WHERE id='u-agent'");
   if (!servicePrincipal) run("INSERT INTO people(id,display_name,title,email,avatar_color,department,location,bio,expertise_json,timezone,is_admin,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,0,?)",
-    "u-agent","Workbench Agent Service","Agent Service Principal","agent-service@example.test","#557c85","Architecture Platform","Local","Dedicated non-admin identity for remote Agent Host operations. Grant it only the Work Item Participation permissions required for its assigned work.",JSON.stringify(["Agent execution","Draft artifact preparation","Task coordination"]),"Asia/Tokyo",now());
+    "u-agent","Agent 执行服务","Agent 服务账号","agent-service@example.test","#557c85","架构平台","本地","用于执行分配给 Agent 的工作。它不是管理员账号，只能获得具体事项所需的权限。",JSON.stringify(["Agent 任务执行","材料草稿准备","任务协调"]),"Asia/Tokyo",now());
   const admin=one<{id:string}>("SELECT id FROM people WHERE id='u-admin'");
   if (!admin) run("INSERT INTO people(id,display_name,title,email,avatar_color,department,location,bio,expertise_json,timezone,is_admin,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,1,?)",
     "u-admin","工作台管理员","管理员","admin@example.test","#344b70","架构办公室","Tokyo","维护人员目录、事项流程和工作台设置。",JSON.stringify(["人员管理","流程管理","工作台管理"]),"Asia/Tokyo",now());
@@ -30,7 +30,7 @@ export function seed() {
     "u-dev":{department:"研发",location:"Tokyo",bio:"负责开发排期、技术实现和上线交付。",expertise:["软件开发","项目交付","系统运维","可靠性"]},
     "u-chair":{department:"架构办公室",location:"Tokyo",bio:"主持架构评审会议，记录正式决定和后续要求。",expertise:["架构评审","技术决策","风险评估"]},
     "u-admin":{department:"架构办公室",location:"Tokyo",bio:"维护人员目录、事项流程和工作台设置。",expertise:["人员管理","流程管理","工作台管理"]},
-    "u-agent":{department:"Architecture Platform",location:"Local",bio:"Dedicated non-admin identity for Agent Host operations. Grant only explicit, Work Item-scoped permissions.",expertise:["Agent Execution","Draft Artifact Preparation","Task Coordination"]}
+    "u-agent":{department:"架构平台",location:"本地",bio:"用于执行分配给 Agent 的工作。它不是管理员账号，只能获得具体事项所需的权限。",expertise:["Agent 任务执行","材料草稿准备","任务协调"]}
   };
   for (const [personId,profile] of Object.entries(profiles)) {
     run("UPDATE people SET department=CASE WHEN department='' THEN ? ELSE department END,location=CASE WHEN location='' THEN ? ELSE location END,bio=CASE WHEN bio='' THEN ? ELSE bio END,expertise_json=CASE WHEN expertise_json='[]' THEN ? ELSE expertise_json END WHERE id=?",
@@ -39,7 +39,7 @@ export function seed() {
   run("UPDATE work_items SET requestor_id=owner_id WHERE requestor_id IS NULL");
   const workflowPrincipal=one<{id:string}>("SELECT id FROM people WHERE id='u-workflow'");
   if (!workflowPrincipal) run("INSERT INTO people(id,display_name,title,email,avatar_color,department,location,bio,expertise_json,timezone,is_admin,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,0,?)",
-    "u-workflow","Workflow Automation","System Workflow Principal","workflow@example.test","#667788","Architecture Platform","Local","Records timer-driven workflow transitions and deadline events.",JSON.stringify(["Deadline processing","Workflow automation"]),"Asia/Tokyo",now());
+    "u-workflow","流程自动化服务","系统流程账号","workflow@example.test","#667788","架构平台","本地","记录系统自动触发的流程状态变化和截止时间事件。",JSON.stringify(["截止时间处理","流程自动化"]),"Asia/Tokyo",now());
   const existingSeed=one<{id:string}>("SELECT id FROM work_items WHERE id='wi-arch-001'");
   if (existingSeed) {
     run("UPDATE participations SET role_key='chairman',role_label='Chairman',permissions_json=? WHERE work_item_id=? AND person_id='u-chair' AND role_key='decision_authority'",
@@ -155,18 +155,18 @@ function seedWorkflowHistory(workItemId:string,created:string) {
 function seedExternalReferences() {
   const created = now();
   const resources = [
-    ["ref-jira-story-1","jira","Story","100412","DATA-412","Expose customer profile read API","https://jira.example.test/browse/DATA-412"],
-    ["ref-jira-story-2","jira","Story","100418","DATA-418","Define tenant-scoped customer data policy","https://jira.example.test/browse/DATA-418"],
-    ["ref-jira-story-3","jira","Story","100521","PAY-521","Introduce idempotent reconciliation retries","https://jira.example.test/browse/PAY-521"],
-    ["ref-conf-adr","confluence","Page","785001","ADR-002","ADR-002 · Customer Data Protection","https://confluence.example.test/wiki/spaces/ARCH/pages/785001"],
-    ["ref-conf-review","confluence","Page","785010","ARC-014-REVIEW","Customer Data Platform · Architecture Review","https://confluence.example.test/wiki/spaces/ARCH/pages/785010"],
-    ["ref-conf-pay","confluence","Page","785120","PAY-021-DESIGN","Payment Reconciliation Design Notes","https://confluence.example.test/wiki/spaces/PAY/pages/785120"],
+    ["ref-jira-story-1","jira","Story","100412","DATA-412","提供客户资料查询 API","https://jira.example.test/browse/DATA-412"],
+    ["ref-jira-story-2","jira","Story","100418","DATA-418","明确客户数据的租户隔离规则","https://jira.example.test/browse/DATA-418"],
+    ["ref-jira-story-3","jira","Story","100521","PAY-521","增加支持幂等处理的对账重试","https://jira.example.test/browse/PAY-521"],
+    ["ref-conf-adr","confluence","Page","785001","ADR-002","ADR-002 · 客户数据保护","https://confluence.example.test/wiki/spaces/ARCH/pages/785001"],
+    ["ref-conf-review","confluence","Page","785010","ARC-014-REVIEW","客户数据平台 · 架构评审","https://confluence.example.test/wiki/spaces/ARCH/pages/785010"],
+    ["ref-conf-pay","confluence","Page","785120","PAY-021-DESIGN","支付对账服务设计说明","https://confluence.example.test/wiki/spaces/PAY/pages/785120"],
     ["ref-github-repo","github","Repository","repo-771","customer-data-platform","example/customer-data-platform","https://github.com/example/customer-data-platform"],
     ["ref-github-pay","github","Repository","repo-818","payment-reconciliation","example/payment-reconciliation","https://github.com/example/payment-reconciliation"],
-    ["ref-leanix-app","leanix","Application","lx-app-201","APP-CRM-001","Customer Master Platform","https://leanix.example.test/factsheet/lx-app-201"],
-    ["ref-leanix-int-1","leanix","Interface","lx-int-331","INT-CRM-LEDGER","Customer Platform → Ledger Interface","https://leanix.example.test/factsheet/lx-int-331"],
-    ["ref-leanix-int-2","leanix","Interface","lx-int-417","INT-PAY-LEDGER","Payment Reconciliation → Ledger Interface","https://leanix.example.test/factsheet/lx-int-417"],
-    ["ref-leanix-app-2","leanix","Application","lx-app-244","APP-PAY-014","Payment Reconciliation Service","https://leanix.example.test/factsheet/lx-app-244"]
+    ["ref-leanix-app","leanix","Application","lx-app-201","APP-CRM-001","客户主数据平台","https://leanix.example.test/factsheet/lx-app-201"],
+    ["ref-leanix-int-1","leanix","Interface","lx-int-331","INT-CRM-LEDGER","客户平台 → 总账系统接口","https://leanix.example.test/factsheet/lx-int-331"],
+    ["ref-leanix-int-2","leanix","Interface","lx-int-417","INT-PAY-LEDGER","支付对账 → 总账系统接口","https://leanix.example.test/factsheet/lx-int-417"],
+    ["ref-leanix-app-2","leanix","Application","lx-app-244","APP-PAY-014","支付对账服务","https://leanix.example.test/factsheet/lx-app-244"]
   ];  for (const r of resources) {
     run("INSERT OR IGNORE INTO external_resource_refs(id,provider,resource_type,external_id,external_key,title,url,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
       r[0],r[1],r[2],r[3],r[4],r[5],r[6],created,created);
@@ -183,15 +183,15 @@ function seedExternalReferences() {
   if (arch) {
     link(arch,"ref-jira-story-1","implements");
     link(arch,"ref-jira-story-2","implements");
-    link(arch,"ref-conf-adr","decision_record","architecture-decision-record","Architecture Decision Record");
-    link(arch,"ref-conf-review","review_evidence","architecture-review","Architecture Review Record");
+    link(arch,"ref-conf-adr","decision_record","architecture-decision-record","架构决策记录");
+    link(arch,"ref-conf-review","review_evidence","architecture-review","架构评审记录");
     link(arch,"ref-github-repo","implementation_repository");
     link(arch,"ref-leanix-app","impacted_application");
     link(arch,"ref-leanix-int-1","impacted_interface");
   }
   if (payment) {
     link(payment,"ref-jira-story-3","implements");
-    link(payment,"ref-conf-pay","solution_design","solution-design","Solution Design");
+    link(payment,"ref-conf-pay","solution_design","solution-design","解决方案设计");
     link(payment,"ref-github-pay","implementation_repository");
     link(payment,"ref-github-repo","shared_component");
     link(payment,"ref-leanix-app-2","impacted_application");
