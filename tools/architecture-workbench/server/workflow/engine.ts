@@ -164,8 +164,9 @@ export function createClarification(workItemId:string,actorId:string,input:{arti
     "SELECT id,submission_id,baseline_json,review_deadline_at FROM review_cycles WHERE work_item_id=? AND status='active' ORDER BY created_at DESC LIMIT 1",workItemId
   );
   if (!cycle) return {ok:false as const,statusCode:409,error:"No active Review Cycle exists."};
-  const artifact=one<{id:string;version:number;title:string}>("SELECT id,version,title FROM artifacts WHERE id=? AND work_item_id=?",input.artifactId,workItemId);
+  const artifact=one<{id:string;version:number;title:string;submitted_by:string}>("SELECT id,version,title,submitted_by FROM artifacts WHERE id=? AND work_item_id=?",input.artifactId,workItemId);
   if (!artifact) return {ok:false as const,statusCode:400,error:"Clarification target must belong to this Request."};
+  if (artifact.submitted_by===actorId) return {ok:false as const,statusCode:403,error:"Independent reviewers cannot request clarification on their own Artifact."};
   const baseline=JSON.parse(cycle.baseline_json) as {id:string;version:number}[];
   if (!baseline.some(entry=>entry.id===artifact.id && entry.version===artifact.version)) return {ok:false as const,statusCode:409,error:"Clarification target is outside the active Submission baseline."};
   if (one("SELECT id FROM clarification_requests WHERE cycle_id=? AND status='requested'",cycle.id)) return {ok:false as const,statusCode:409,error:"A clarification is already waiting for the Requestor."};
@@ -178,6 +179,8 @@ export function createClarification(workItemId:string,actorId:string,input:{arti
     const clarificationId=id("clar");
     run("INSERT INTO clarification_requests(id,work_item_id,cycle_id,submission_id,requested_by,artifact_id,question,response_due_at,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
       clarificationId,workItemId,cycle.id,cycle.submission_id,actorId,artifact.id,input.question.trim(),dueAt,"requested",timestamp);
+    run("INSERT INTO reviews(id,cycle_id,artifact_id,artifact_version,reviewer_id,discipline,outcome,summary,findings_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+      id("rev"),cycle.id,artifact.id,artifact.version,actorId,"General","clarification_requested",input.question.trim(),"[]",timestamp);
     run("UPDATE review_cycles SET status='waiting_requestor',remaining_review_ms=?,paused_at=? WHERE id=?",remaining,timestamp,cycle.id);
     run("UPDATE work_items SET status='waiting_requestor',updated_at=? WHERE id=?",timestamp,workItemId);
     run("UPDATE workflow_timers SET status='cancelled',updated_at=? WHERE cycle_id=? AND timer_type='review_deadline' AND status IN ('scheduled','processing')",timestamp,cycle.id);
