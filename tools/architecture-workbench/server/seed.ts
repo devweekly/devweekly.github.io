@@ -44,7 +44,7 @@ export function seed() {
   const created = now();
   const wi = "wi-arch-001";
   run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,target_date,context_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-    wi,"ARC-2026-014","architecture_review","客户数据平台现代化方案","统一客户主数据与交易数据访问层。当前方案需要评审 API 边界、数据隔离、遗留批处理兼容和分阶段迁移策略。","in_review","high","u-sa","2026-12-08",4,created,created);
+    wi,"ARC-2026-014","architecture_review","客户数据平台现代化方案","统一客户主数据与交易数据访问层。当前方案需要评审 API 边界、数据隔离、遗留批处理兼容和分阶段迁移策略。","discussion_review","high","u-sa","2026-12-08",4,created,created);
   const participants = [
     ["u-sa","solution_architect","Solution Architect",["read","contribute","comment"]],
     ["u-ea","enterprise_architect","Enterprise Architect",["read","review","comment","contribute"]],
@@ -54,6 +54,7 @@ export function seed() {
     ["u-chair","decision_authority","Decision Authority",["read","review","comment","contribute","decide","manage"]]
   ];
   for (const p of participants) run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)", id("part"),wi,p[0],p[1],p[2],JSON.stringify(p[3]),created);
+  run("UPDATE work_items SET chairman_id='u-chair' WHERE id=?",wi);
   const artifacts = [
     ["adr-101","ADR","ADR-001","API Gateway 与领域服务的边界","accepted","统一入口由 API Gateway 提供，领域服务保留业务授权与数据访问控制。","Decision\nKeep business authorization in domain services.\n\nOptions\nA. Centralize all policy in the gateway.\nB. Keep business authorization close to domain services.\n\nConsequences\nThe gateway handles edge controls; domain services enforce resource-level policy."],
     ["adr-102","ADR","ADR-002","客户敏感数据的隔离策略","proposed","区分租户隔离、字段级保护和审计要求。","Context\nCustomer records include sensitive attributes.\n\nProposal\nUse tenant-scoped access policies, field-level protection for selected attributes, and immutable access audit."],
@@ -67,11 +68,15 @@ export function seed() {
   );
   run("INSERT INTO submissions(id,work_item_id,sequence,purpose,manifest_json,context_version,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
     "sub-101",wi,1,"review",JSON.stringify(reviewBaseline),4,"u-sa",created);
-  run("INSERT INTO review_cycles(id,work_item_id,submission_id,name,baseline_json,status,due_date,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
-    "cycle-101",wi,"sub-101","Review · Submission 1",JSON.stringify(reviewBaseline),"active","2026-11-27","u-sa",created);
+  const seedDeadline="2026-11-27T23:59:59.000Z";
+  run("INSERT INTO review_cycles(id,work_item_id,submission_id,name,baseline_json,status,due_date,review_deadline_at,reviewer_snapshot_json,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+    "cycle-101",wi,"sub-101","Review · Submission 1",JSON.stringify(reviewBaseline),"active","2026-11-27",seedDeadline,
+    JSON.stringify([{person_id:"u-ea",display_name:"Kenji Sato",role_key:"enterprise_architect"},{person_id:"u-sec",display_name:"Mina Ito",role_key:"security_architect"},{person_id:"u-dev",display_name:"Ryo Nakamura",role_key:"development_manager"}]),"u-sa",created);
+  run("INSERT INTO workflow_timers(id,work_item_id,cycle_id,submission_id,timer_type,due_at,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+    "timer-seed-review",wi,"cycle-101","sub-101","review_deadline",seedDeadline,"scheduled",created,created);
   const reviews = [
     ["rev-101","adr-101","u-ea","Enterprise Architecture","approve","边界清晰，建议补充 API 生命周期与标准目录的关联。",["补充 API 版本治理","明确领域服务的标准责任"]],
-    ["rev-102","adr-102","u-sec","Security","request_changes","整体方向可行，但字段级保护与审计留存要求需要明确。",["给出敏感字段分类依据","说明审计保留周期与查询权限"]],
+    ["rev-102","adr-102","u-sec","Security","comment","整体方向可行，但字段级保护与审计留存要求需要明确。",["给出敏感字段分类依据","说明审计保留周期与查询权限"]],
     ["rev-103","adr-103","u-dev","Delivery","comment","过渡适配器可降低交付风险，但必须定义退出条件。",["补充移除适配器的目标版本","说明失败重放和监控责任"]]
   ];
   for (const r of reviews) run("INSERT INTO reviews(id,cycle_id,artifact_id,artifact_version,reviewer_id,discipline,outcome,summary,findings_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
@@ -104,10 +109,7 @@ export function seed() {
 function seedWorkflowHistory(workItemId:string,created:string) {
   if ((one<{n:number}>("SELECT COUNT(*) AS n FROM workflow_transitions WHERE work_item_id=?",workItemId)?.n || 0) > 0) return;
   run("INSERT INTO workflow_transitions(id,work_item_id,from_status,to_status,action,reason,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?)",
-    "wf-seed-analysis",workItemId,"draft","analysis","start_analysis","Request created and analysis started.","u-sa",created);
-  const reviewCreated=new Date(Date.parse(created)+1000).toISOString();
-  run("INSERT INTO workflow_transitions(id,work_item_id,from_status,to_status,action,reason,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?)",
-    "wf-seed-review",workItemId,"analysis","in_review","submit_for_review","Architecture artifacts submitted for the first review round.","u-sa",reviewCreated);
+    "wf-seed-review",workItemId,"draft","discussion_review","submit_request","Request Package submitted and the review deadline started.","u-sa",created);
 }
 
 function seedExternalReferences() {
