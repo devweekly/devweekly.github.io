@@ -90,7 +90,7 @@ try {
   const requiredTools=[
     "workbench_search_work_items","workbench_get_work_item","workbench_get_artifact","workbench_get_context_capsule",
     "workbench_get_workflow_state","workbench_list_my_tasks","workbench_create_task",
-    "workbench_update_task","workbench_create_artifact_draft","workbench_add_comment",
+    "workbench_update_task","workbench_create_artifact_draft","workbench_draft_request_package","workbench_add_comment",
     "agent_list_profiles","agent_request_run","agent_request_plan","agent_list_plans","agent_get_plan_context",
     "agent_claim_run","agent_claim_next_run","agent_heartbeat_run","agent_complete_run","agent_request_human_handoff","agent_fail_run",
     "agent_resume_run","agent_list_runs","agent_get_run_events"
@@ -305,6 +305,68 @@ try {
   }));
   assert(plans.some((entry:any)=>entry.id===plan.id && entry.status==="completed" && entry.result_artifact_id),"The Agent Plan did not complete with a synthesis Artifact.");
 
+  // A Request Package suggestion must be fenced by the Agent Run's live claim,
+  // and must remain separate from the Requestor-owned Package until explicit adoption.
+  const packageDraftWorkItemId=id("wi-package-draft-smoke");
+  const timestamp=now();
+  run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,requestor_id,chairman_id,request_package_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    packageDraftWorkItemId,"WI-PACKAGE-DRAFT-SMOKE","architecture_review","Package Draft Smoke Test","Exercise Requestor-confirmed Agent drafting.","draft","normal","u-sa","u-sa","u-chair",
+    JSON.stringify({goal:"Original Requestor goal",scope:"Original Requestor scope",decisionQuestions:"Original decision question",submissionMessage:"Initial package"}),timestamp,timestamp);
+  for (const [personId,roleKey,label,permissions] of [
+    ["u-sa","requestor","Requestor",["read","contribute","comment","manage"]],
+    ["u-agent","agent_service","Agent Service",["read","contribute","comment"]],
+    ["u-chair","chairman","Chairman",["read","decide"]]
+  ] as const) {
+    run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",
+      id("part"),packageDraftWorkItemId,personId,roleKey,label,JSON.stringify(permissions),timestamp);
+  }
+  const draftRunRequest=parseToolResult(await localClient.callTool({
+    name:"agent_request_run",
+    arguments:{workItemId:packageDraftWorkItemId,agentKey:"request-coordinator",objective:"Prepare a Request Package proposal for Requestor confirmation."}
+  }));
+  let packageAgentClient:Client|undefined;
+  try {
+    packageAgentClient=await connect(localServer.url,{"x-demo-user-id":"u-agent"});
+    const draftClaim=parseToolResult(await packageAgentClient.callTool({
+      name:"agent_claim_run",arguments:{runId:draftRunRequest.run.id,agentKey:"request-coordinator"}
+    }));
+    const baseDraftArgs={
+      workItemId:packageDraftWorkItemId,
+      runId:draftRunRequest.run.id,
+      claimToken:draftClaim.claim_token,
+      goal:"Proposed identity governance outcome",
+      scope:"Identity lifecycle and access review",
+      constraints:"Existing enterprise IdP and audit requirements",
+      initialProposal:"Adopt a common lifecycle API with policy-based checks",
+      decisionQuestions:"Approve the ownership boundary and the access review cadence",
+      submissionMessage:"feat(request): propose identity governance package"
+    };
+    const stolenDraft=await packageAgentClient.callTool({
+      name:"workbench_draft_request_package",
+      arguments:{...baseDraftArgs,claimToken:"0".repeat(64)}
+    });
+    assert(stolenDraft.isError===true,"An Agent without the current Run claim token wrote a Request Package draft.");
+    const draftResult=parseToolResult(await packageAgentClient.callTool({
+      name:"workbench_draft_request_package",arguments:baseDraftArgs
+    }));
+    assert(draftResult.status==="pending" && draftResult.requestorConfirmationRequired===true,"Agent Package suggestion was not persisted as a pending Requestor-confirmed draft.");
+    const unchanged=all<{request_package_json:string}>(
+      "SELECT request_package_json FROM work_items WHERE id=?",packageDraftWorkItemId
+    )[0];
+    assert(JSON.parse(unchanged.request_package_json).goal==="Original Requestor goal","Agent drafting modified the live Request Package before Requestor adoption.");
+    const draftRow=all<{created_by:string;status:string}>(
+      "SELECT created_by,status FROM request_package_drafts WHERE id=?",draftResult.id
+    )[0];
+    assert(draftRow.created_by==="u-agent" && draftRow.status==="pending","Agent Package draft provenance or state was not persisted.");
+    const completedDraftRun=parseToolResult(await packageAgentClient.callTool({
+      name:"agent_complete_run",
+      arguments:{runId:draftRunRequest.run.id,claimToken:draftClaim.claim_token,artifactTitle:"Request Package Preparation Notes",artifactType:"analysis",content:"Proposed goal, scope, constraints and decision questions."}
+    }));
+    assert(completedDraftRun.run.status==="completed","The Agent Run could not complete after saving its Request Package suggestion.");
+  } finally {
+    if (packageAgentClient) await packageAgentClient.close();
+  }
+
   const readOnlyClient=await connect(localServer.url,{"x-demo-user-id":"u-sec"});
   try {
     const denied=await readOnlyClient.callTool({
@@ -382,7 +444,7 @@ try {
     name:"agent_list_plans",arguments:{workItemId:workItem.id}
   }));
   assert(hostPlans.some((entry:any)=>entry.id===hostPlan.id && entry.status==="completed"),"Agent Host did not complete the remote Agent Plan.");
-  console.log("Workbench MCP smoke test passed: 7 Skills; 24 Tools; permission enforcement; DAG dependencies and parallel claims; synthesis aggregation; server lease heartbeat and crash recovery; Host heartbeat during long execution; bounded retries; stale worker fencing; provider-neutral MCP Agent Host; Human hand-off; remote bearer identity.");
+  console.log("Workbench MCP smoke test passed: 7 Skills; 25 Tools; claim-fenced Request Package drafts; Requestor-only submission boundary; permission enforcement; DAG dependencies and parallel claims; synthesis aggregation; server lease heartbeat and crash recovery; Host heartbeat during long execution; bounded retries; stale worker fencing; provider-neutral MCP Agent Host; Human hand-off; remote bearer identity.");
 } finally {
   if (remoteClient) await remoteClient.close();
   if (remoteServer) await closeServer(remoteServer.httpServer);
