@@ -138,7 +138,7 @@ test("Request lifecycle freezes submissions, pauses review for clarification and
   assert.equal(status("workflow-one")?.status,"approved_pending_close");
   assert.equal(status("workflow-one")?.decision_outcome,"approved");
   const decisionLink=one<{meeting_id:string;meeting_count:number}>(
-    "SELECT d.meeting_id,(SELECT COUNT(*) FROM decision_meetings m WHERE m.id=d.meeting_id AND m.cycle_id=d.subject_id OR m.id=d.meeting_id) AS meeting_count FROM decisions d WHERE d.id=?",
+    "SELECT d.meeting_id,(SELECT COUNT(*) FROM decision_meetings m WHERE m.id=d.meeting_id) AS meeting_count FROM decisions d WHERE d.id=?",
     approved.ok?approved.id:""
   );
   assert.ok(decisionLink?.meeting_id);
