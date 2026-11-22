@@ -717,8 +717,14 @@ export default function App() {
     </Modal>
 
     <Modal title={editingTaskId ? "调整任务分工" : "创建后续 Task"} open={taskOpen} onCancel={()=>{setTaskOpen(false);setEditingTaskId(null);taskForm.resetFields();}} onOk={()=>void submitForm(taskForm,async()=>{
-      const v=taskForm.getFieldsValue();if(v.dueDate)v.dueDate=v.dueDate.format("YYYY-MM-DD");
-      return editingTaskId ? api.updateTask(editingTaskId,v) : api.createTask(selected!.id,v);
+      const v=taskForm.getFieldsValue();
+      if(v.dueDate) v.dueDate=v.dueDate.format("YYYY-MM-DD");
+      if(editingTaskId) {
+        if(v.assigneeId===undefined) v.assigneeId=null;
+        if(v.dueDate===undefined) v.dueDate=null;
+        return api.updateTask(editingTaskId,v);
+      }
+      return api.createTask(selected!.id,v);
     },editingTaskId?"任务分工已更新":"Task 已创建",()=>{setTaskOpen(false);setEditingTaskId(null);})} confirmLoading={busy}>
       <Form form={taskForm} layout="vertical">
         <Form.Item name="title" label="工作内容" rules={[{required:true}]}><Input disabled={Boolean(editingTaskId)} /></Form.Item>
