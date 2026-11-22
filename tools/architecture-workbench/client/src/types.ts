@@ -63,13 +63,10 @@ export interface ExternalResourceLink {
 }
 export interface AnalyticsBreakdown { key:string; count:number; label?:string; }
 export interface RequestAnalytics {
-  total:number; active:number; inReview:number; overdue:number; linked:number; withoutExternalLinks:number;
-  byStatus:AnalyticsBreakdown[]; byType:AnalyticsBreakdown[]; byPriority:AnalyticsBreakdown[];
   aging:{key:string;label:string;count:number}[];
-  externalSystems:{key:string;count:number;requestCount:number}[]; externalReferenceCount:number;
+  externalSystems:{key:string;count:number;requestCount:number}[];
 }
 export interface TechnicalDebtAnalytics {
-  total:number; active:number; overdue:number; dueNext30Days:number;
   byStatus:AnalyticsBreakdown[]; bySeverity:AnalyticsBreakdown[]; byPriority:AnalyticsBreakdown[];
   aging:{key:string;label:string;count:number}[];
   byOriginRequest:{code:string;title:string;debt_count:number}[];
