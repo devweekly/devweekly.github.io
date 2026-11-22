@@ -83,5 +83,5 @@ export interface ExternalResourceRef {
 
 export interface MyTask extends WorkTask {
   work_item_id:string; work_item_code:string; work_item_title:string;
-  work_item_status:string; requestor_name:string|null; created_at:string; updated_at:string;
+  work_item_status:string; created_at:string; updated_at:string;
 }
