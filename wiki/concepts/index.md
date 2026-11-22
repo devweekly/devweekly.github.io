@@ -6,3 +6,4 @@
 - [Memory Dreaming](memory-dreaming.md) - Background processes that review experience, repair memories, derive reusable knowledge, and decide what to retain.
 - [Context Management](context-management.md) - Keeping the active model context useful through selection, just-in-time retrieval, clearing, compaction, and memory.
 - [LLM Wiki](llm-wiki.md) - A persistent knowledge graph of linked Markdown concepts maintained by an LLM.
+- [Recursive Self-Improvement](recursive-self-improvement.md) - Persistent changes to agent/model capabilities and, in strict RSI, to the mechanisms that generate further improvements.
