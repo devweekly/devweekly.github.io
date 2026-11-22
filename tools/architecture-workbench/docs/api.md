@@ -38,6 +38,8 @@ Base URL in development: http://localhost:4000/api
 | POST | /work-items/:id/external-links | Reuse an existing reference or record a new one; does not call that system |
 | DELETE | /work-items/:id/external-links/:linkId | Remove a reference association without deleting the remote object |
 | GET | /analytics | Request and Technical Debt portfolio metrics |
+| GET | /admin/workflow-timers?status=dead_letter | Inspect workflow timers by status; Workbench Admin only |
+| POST | /admin/workflow-timers/:timerId/retry | Requeue one dead-letter workflow timer immediately; Workbench Admin only |
 
 The prototype uses x-demo-user-id to simulate the authenticated Human Principal. Do not expose that header as a production authentication mechanism. The server resolves permissions from Participation for every protected write.
 
@@ -53,7 +55,7 @@ The Context Capsule returns external resource IDs/keys/URLs and relationship typ
 
 ## Workflow Engine
 
-The API returns a `workflow` projection in Work Item detail: current phase, Chairman, formal outcome, review deadline, active clarification, reviewer snapshot, available actions and transition history. Request submission creates an immutable Submission manifest, a Review Cycle, a fixed reviewer snapshot and a persisted review timer in one SQLite transaction. The transitions endpoint accepts `submit_request` and `close`; the former is Requestor-confirmed and the latter is Chairman/Admin-only.
+The API returns a `workflow` projection in Work Item detail: current phase, Chairman, formal outcome, review deadline, active clarification, reviewer snapshot, available actions and transition history. Request submission freezes the Request Package, current external resource references, Artifact manifest and context version into an immutable Submission, and creates a Review Cycle, fixed reviewer snapshot and persisted review timer in one SQLite transaction. An Agent may use the MCP tool `workbench_draft_request_package` to propose a package while its Run is claimed; this does not update the Request. The Requestor must apply the completed draft, review/edit it, and submit explicitly. The transitions endpoint accepts `submit_request` and `close`; the former is Requestor-confirmed and the latter is Chairman/Admin-only.
 
 Review operations are limited to `comment`, `clarification_requested` and `objection`. A comment never changes status. A clarification pauses the remaining review duration and creates a response deadline. When all open clarifications are answered, the remaining review time resumes. An unanswered clarification or review deadline expiry moves the Request to `decision_meeting`; a blocking objection does so immediately. None of these events produces an approval or rejection.
 
@@ -61,7 +63,7 @@ Only the designated Chairman or a Workbench Admin may record a formal Decision M
 
 ### Durable timer service
 
-The application uses a small Node.js scheduler backed by SQLite. The `workflow_timers` table stores due time, timer type, Submission/Review Cycle identity, status, lease, attempts and the last processing error. One in-process `setTimeout` is armed for the earliest scheduled timer. API events call `wake()` to recalculate it. Startup recovery reclaims in-flight timers and processes overdue timers; processing re-checks current Work Item and Review Cycle state in a database transaction. Retries use bounded backoff and exhausted jobs enter `dead_letter`.
+The application uses a small Node.js scheduler backed by SQLite. The `workflow_timers` table stores due time, timer type, Submission/Review Cycle identity, status, lease, attempts and the last processing error. One in-process `setTimeout` is armed for the earliest scheduled timer. API events call `wake()` to recalculate it. Startup recovery reclaims in-flight timers and processes overdue timers; processing re-checks current Work Item and Review Cycle state in a database transaction. Retries use bounded backoff and exhausted jobs enter `dead_letter`. Admins can inspect dead-letter jobs through `GET /admin/workflow-timers?status=dead_letter` and explicitly requeue one with `POST /admin/workflow-timers/:timerId/retry`.
 
 Node.js Timer handles are only wake-up signals and are not durable. SQLite remains the source of truth. There is no Flowable/BPMN runtime, Redis, BullMQ or third-party scheduling dependency. The current deployment assumes one application process; multi-instance deployment would require database-backed timer claiming and lease coordination.
 
