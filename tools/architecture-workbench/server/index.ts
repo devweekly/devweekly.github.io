@@ -68,8 +68,8 @@ app.get("/api/bootstrap",(req,res)=>{
 app.get("/api/my/tasks",(req,res)=>{
   const actor=actorId(req);
   const tasks=all(
-    "SELECT t.id,t.work_item_id,t.title,t.kind,t.status,t.owner_id,t.assignee_id,t.due_date,t.relates_to,t.created_at,t.updated_at,a.display_name AS assignee_name,o.display_name AS owner_name,w.code AS work_item_code,w.title AS work_item_title,w.status AS work_item_status,p.display_name AS requestor_name FROM tasks t JOIN work_items w ON w.id=t.work_item_id LEFT JOIN people p ON p.id=w.requestor_id LEFT JOIN people a ON a.id=t.assignee_id LEFT JOIN people o ON o.id=t.owner_id WHERE t.assignee_id=? AND (?=1 OR EXISTS (SELECT 1 FROM participations access WHERE access.work_item_id=w.id AND access.person_id=?)) ORDER BY CASE t.status WHEN 'in_progress' THEN 0 WHEN 'open' THEN 1 WHEN 'blocked' THEN 2 ELSE 3 END,t.due_date,t.updated_at DESC",
-    actor,isGlobalAdmin(actor)?1:0,actor
+    "SELECT t.id,t.work_item_id,t.title,t.kind,t.status,t.owner_id,t.assignee_id,t.due_date,t.relates_to,t.created_at,t.updated_at,a.display_name AS assignee_name,o.display_name AS owner_name,w.code AS work_item_code,w.title AS work_item_title,w.status AS work_item_status,p.display_name AS requestor_name FROM tasks t JOIN work_items w ON w.id=t.work_item_id LEFT JOIN people p ON p.id=w.requestor_id LEFT JOIN people a ON a.id=t.assignee_id LEFT JOIN people o ON o.id=t.owner_id WHERE (t.assignee_id=? OR t.owner_id=?) AND (?=1 OR EXISTS (SELECT 1 FROM participations access WHERE access.work_item_id=w.id AND access.person_id=?)) ORDER BY CASE t.status WHEN 'in_progress' THEN 0 WHEN 'blocked' THEN 1 WHEN 'open' THEN 2 ELSE 3 END,t.due_date,t.updated_at DESC",
+    actor,actor,isGlobalAdmin(actor)?1:0,actor
   );
   res.json(tasks);
 });
