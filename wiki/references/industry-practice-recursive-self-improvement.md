@@ -66,7 +66,7 @@ Several implementation details are relevant to system architects:
 - **Background work is distinct from user interaction.** Dreaming and reflection can maintain memory without making every interactive turn perform a full memory rewrite.
 - **Runtime enforcement remains a harness concern.** Hooks, permission rules, tool availability, and secrets are treated differently from natural-language memory.
 
-The README and agent prompts are implementation documentation, not independent proof that every learned change improves future outcomes. Letta Code demonstrates an available architecture and product direction; strict RSI still requires evidence that the machinery producing those updates improves, not only that the agent can edit persistent state.
+The [memory documentation](https://docs.letta.com/letta-code/memory)[^letta-code-memory-docs] describes the agent's learning operations in more detail. The README and agent prompts are implementation documentation, not independent proof that every learned change improves future outcomes. Letta Code demonstrates an available architecture and product direction; strict RSI still requires evidence that the machinery producing those updates improves, not only that the agent can edit persistent state.
 
 ## ACE: structured context adaptation
 
@@ -140,6 +140,7 @@ Related: [Recursive Self-Improvement](../concepts/recursive-self-improvement.md)
 
 [^letta-code-readme]: [Letta Code, README and feature overview](https://github.com/letta-ai/letta-code).
 [^letta-code-memory-prompt]: [Letta Code, agent memory and self-evolution instructions](https://github.com/letta-ai/letta-code/blob/main/src/agent/prompts/letta_root_memfs.md).
+[^letta-code-memory-docs]: [Letta Code, memory documentation](https://docs.letta.com/letta-code/memory).
 [^ace-repo]: [ACE, official implementation](https://github.com/ace-agent/ace).
 [^rrsi-repo]: [Google Research, RRSI implementation](https://github.com/google-research/rrsi).
 [^rrsi-project]: [RRSI project page](https://regularized-rsi.com/).
