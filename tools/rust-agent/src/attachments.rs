@@ -19,6 +19,50 @@ impl AttachmentStore {
         #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))?; }
         Ok(Self { directory: canonical })
     }
+    pub fn delete(&self, id: &str) -> Result<bool, AgentError> {
+        if id.is_empty() || id.len() > 64
+            || !id.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+        {
+            return Err(AgentError::InvalidAction("invalid attachment ID".into()));
+        }
+        let quota_lock_path = self.directory.join(".quota.lock");
+        match fs::symlink_metadata(&quota_lock_path) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+                return Err(AgentError::InvalidAction("attachment quota lock must be a regular file".into()));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        let mut lock_options = OpenOptions::new();
+        lock_options.create(true).read(true).write(true);
+        #[cfg(unix)] {
+            use std::os::unix::fs::OpenOptionsExt;
+            lock_options.mode(0o600);
+        }
+        let quota_lock = lock_options.open(&quota_lock_path)?;
+        quota_lock.lock()?;
+
+        let data_path = self.directory.join(format!("{id}.bin"));
+        let metadata_path = self.directory.join(format!("{id}.json"));
+        let mut found = false;
+        for path in [&data_path, &metadata_path] {
+            match fs::symlink_metadata(path) {
+                Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+                    return Err(AgentError::InvalidAction("attachment must be a regular file".into()));
+                }
+                Ok(_) => {
+                    fs::remove_file(path)?;
+                    found = true;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        quota_lock.unlock()?;
+        Ok(found)
+    }
+
     pub fn store(&self, filename: &str, content_type: &str, bytes: &[u8]) -> Result<AttachmentMetadata, AgentError> {
         if bytes.is_empty() || bytes.len() > MAX_ATTACHMENT_BYTES { return Err(AgentError::InvalidAction(format!("attachment size must be between 1 and {} bytes", MAX_ATTACHMENT_BYTES))); }
         let filename = Path::new(filename).file_name().and_then(|name| name.to_str()).filter(|name| !name.is_empty() && name.len() <= 255).ok_or_else(|| AgentError::InvalidAction("attachment filename must be a valid basename of at most 255 bytes".into()))?;
@@ -107,6 +151,19 @@ mod tests {
         assert!(root.join(".rust-agent/attachments").join(format!("{}.json", item.id)).is_file());
         let _ = fs::remove_dir_all(root);
     }
+    #[test]
+    fn delete_removes_attachment_and_releases_its_quota() {
+        let root = workspace();
+        let store = AttachmentStore::new(root.clone()).unwrap();
+        let item = store.store("notes.txt", "text/plain", b"private attachment").unwrap();
+        assert!(store.delete(&item.id).unwrap());
+        assert!(!root.join(".rust-agent/attachments").join(format!("{}.bin", item.id)).exists());
+        assert!(!root.join(".rust-agent/attachments").join(format!("{}.json", item.id)).exists());
+        assert!(!store.delete(&item.id).unwrap());
+        assert!(store.delete("../escape").is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
     #[test] fn rejects_empty_and_oversized_uploads() {
         let root = workspace(); let store = AttachmentStore::new(root.clone()).unwrap();
         assert!(store.store("empty.txt", "text/plain", b"").is_err());
