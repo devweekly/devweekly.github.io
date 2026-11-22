@@ -52,12 +52,13 @@ export function startWorkflowTimerService() {
           run("UPDATE work_items SET status='decision_meeting',updated_at=? WHERE id=?",timestamp,task.work_item_id);
         }
       }
-      const admin=one<{id:string}>("SELECT id FROM people WHERE is_admin=1 ORDER BY id LIMIT 1");
-      if (from && admin) {
+      const workflowActor=one<{id:string}>("SELECT id FROM people WHERE id='u-workflow'");
+      if (from && !workflowActor) throw new Error("Workflow system principal u-workflow is missing.");
+      if (from && workflowActor) {
         run("INSERT INTO workflow_transitions(id,work_item_id,from_status,to_status,action,reason,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?)",
-          id("wf"),task.work_item_id,from,"decision_meeting","timer_expired",task.timer_type==="review_deadline"?"Review deadline expired.":"Clarification response deadline expired.",admin.id,timestamp);
+          id("wf"),task.work_item_id,from,"decision_meeting","timer_expired",task.timer_type==="review_deadline"?"Review deadline expired.":"Clarification response deadline expired.",workflowActor.id,timestamp);
         run("INSERT INTO activity_events(id,work_item_id,actor_id,action,target_type,target_id,summary,metadata_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
-          id("evt"),task.work_item_id,admin.id,"workflow_timer_expired","work_item",task.work_item_id,"Deadline reached; Request moved to Decision Meeting",JSON.stringify({timerType:task.timer_type,clarificationId:task.clarification_id}),timestamp);
+          id("evt"),task.work_item_id,workflowActor.id,"workflow_timer_expired","work_item",task.work_item_id,"Deadline reached; Request moved to Decision Meeting",JSON.stringify({timerType:task.timer_type,clarificationId:task.clarification_id}),timestamp);
       }
       run("UPDATE workflow_timers SET status='completed',lease_until=NULL,last_error=NULL,updated_at=? WHERE id=?",timestamp,timerId);
       db.exec("COMMIT");
