@@ -3902,6 +3902,10 @@ mod tests {
         store.save(&record).unwrap();
         assert_eq!(store.load("task-delivery").unwrap().delivered_at_ms, record.delivered_at_ms);
 
+        record.delivered_at_ms = None;
+        assert!(store.save(&record).is_err());
+        record.delivered_at_ms = store.load("task-delivery").unwrap().delivered_at_ms;
+
         record.result = Some("stale replacement".into());
         assert!(store.save(&record).is_err());
         assert_eq!(store.load("task-delivery").unwrap().result.as_deref(), Some("stable result"));
