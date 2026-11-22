@@ -9,7 +9,8 @@ Base URL in development: http://localhost:4000/api
 | GET | /my/tasks | Tasks assigned to the current principal, including Task Owner and Assignee projections |
 | PATCH | /people/:id/profile | Update own profile; Workbench Admin may update another person's profile |
 | GET | /work-items | List business Work Items |
-| POST | /work-items | Create a Work Item |
+| POST | /work-items | Create a Request and its initial Request Package, with a designated Chairman |
+| PATCH | /work-items/:id/request-package | Update a draft or Requestor revision before submission; Requestor/Admin only |
 | GET | /agent-profiles | Registered Agent profiles and runtime adapter capabilities |
 | GET | /work-items/:id | Work Item detail projection, including Submission manifests and Agent Run history |
 | GET | /work-items/:id/agent-runs | List Agent Runs visible to a Work Item participant |
@@ -18,13 +19,14 @@ Base URL in development: http://localhost:4000/api
 | POST | /work-items/:id/agent-plans | Create a multi-role Agent Plan; the server appends a final synthesis node |
 | POST | /agent-runs/:id/resume | Resume a run waiting for Human input |
 | POST | /work-items/:id/artifacts | Submit a new Artifact version |
-| POST | /work-items/:id/reviews | Submit an independent Review |
+| POST | /work-items/:id/reviews | Comment, request Requestor clarification or raise a blocking objection during Discussion and Review |
+| POST | /work-items/:id/clarifications/:clarificationId/answer | Answer an outstanding clarification; Requestor/Admin only |
 | POST | /work-items/:id/participations | Add or upsert a Work Item-scoped Participation; Requestor/Admin/manager only |
 | PUT | /work-items/:id/participations/:participationId | Update the role and permissions for a related person |
 | DELETE | /work-items/:id/participations/:participationId | Remove a related person; Requestor and Owner remain participants | 
 | POST | /work-items/:id/tasks | Create a Task with an accountable owner and optional current assignee |
 | POST | /work-items/:id/decisions | Record a formal human Decision; the Workflow Engine applies the related lifecycle transition |
-| POST | /work-items/:id/transitions | Start analysis, submit for review or close a Request |
+| POST | /work-items/:id/transitions | Submit a Request Package or explicitly close an approved/rejected Request |
 | GET | /work-items/:id/context-capsule | Export a participant-scoped context projection, including external resource references |
 | POST | /tech-debts | Create a linked Technical Debt Work Item |
 | PATCH | /tasks/:id | Update Task status; Work Item contributors may change Task Owner, Assignee or due date |
@@ -50,12 +52,17 @@ The Context Capsule returns external resource IDs/keys/URLs and relationship typ
 
 ## Workflow Engine
 
-The API returns a `workflow` projection in Work Item detail: current status, Steps metadata, available actions and the latest transition history. The same detail projection includes `submissions`; each Review Cycle exposes `submission_id` and its existing `baseline_json`. Clients may request only `start_analysis`, `submit_for_review` or `close` through the transitions endpoint. Review outcomes and formal Decision outcomes trigger their corresponding transitions through their own commands.
+The API returns a `workflow` projection in Work Item detail: current phase, Chairman, formal outcome, review deadline, active clarification, reviewer snapshot, available actions and transition history. Request submission creates an immutable Submission manifest, a Review Cycle, a fixed reviewer snapshot and a persisted review timer in one SQLite transaction. The transitions endpoint accepts `submit_request` and `close`; the former is Requestor-confirmed and the latter is Chairman/Admin-only.
 
-Submitting for review creates an immutable Submission manifest from the latest version of each Artifact stream. It records Artifact IDs, versions, content hashes, context version, submitting principal and time. The server binds the new Review Cycle to this Submission and commits the Submission, Review Cycle, Work Item transition and activity record in one SQLite transaction. A subsequent revision does not alter this baseline; resubmission creates a new Submission and Review Cycle. Existing Review Cycles are backfilled into legacy Submission records at startup.
+Review operations are limited to `comment`, `clarification_requested` and `objection`. A comment never changes status. A clarification pauses the remaining review duration and creates a response deadline. When all open clarifications are answered, the remaining review time resumes. An unanswered clarification or review deadline expiry moves the Request to `decision_meeting`; a blocking objection does so immediately. None of these events produces an approval or rejection.
 
-Every successful transition updates `work_items.status`, appends `workflow_transitions`, and records an activity event. The transition rules and permission checks are server-side; the UI cannot force a target status.
+Only the designated Chairman or a Workbench Admin may record a formal Decision Meeting outcome (`approved`, `needs_work` or `rejected`). Approved and rejected Requests enter pending-close states and require an explicit Chairman/Admin close action. Need Work returns to `requestor_revision` and the next submission creates a new Submission and Review Cycle.
 
+### Durable timer service
+
+The application uses a small Node.js scheduler backed by SQLite. The `workflow_timers` table stores due time, timer type, Submission/Review Cycle identity, status, lease, attempts and the last processing error. One in-process `setTimeout` is armed for the earliest scheduled timer. API events call `wake()` to recalculate it. Startup recovery reclaims in-flight timers and processes overdue timers; processing re-checks current Work Item and Review Cycle state in a database transaction. Retries use bounded backoff and exhausted jobs enter `dead_letter`.
+
+Node.js Timer handles are only wake-up signals and are not durable. SQLite remains the source of truth. There is no Flowable/BPMN runtime, Redis, BullMQ or third-party scheduling dependency. The current deployment assumes one application process; multi-instance deployment would require database-backed timer claiming and lease coordination.
 
 ## MCP Skills Endpoint
 
