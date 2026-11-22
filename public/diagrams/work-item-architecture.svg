@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="work-item-architecture-title work-item-architecture-desc">
+<title id="work-item-architecture-title">共享业务事项的参考架构</title>
+<desc id="work-item-architecture-desc">Human、外部 Agent 和远端 Agent 通过不同协议进入同一业务核心；业务状态、授权和审计由平台持有。</desc>
+<style>
+  text{font-family:'IBM Plex Mono','Noto Sans SC',sans-serif;fill:#221C17}
+  .title{font-size:27px;font-weight:500;letter-spacing:-.02em}
+  .subtitle{font-size:12px;fill:#65584D}
+  .zone{fill:#F1EDE4;stroke:rgba(34,28,23,.12);stroke-width:1}
+  .zone-label{font-size:9px;letter-spacing:.16em;fill:#75695F;font-weight:500}
+  .node{fill:#FFFEFA;stroke:rgba(34,28,23,.16);stroke-width:1;filter:url(#work-item-architecture-shadow)}
+  .node-name{font-size:15px;font-weight:600}
+  .node-sub{font-size:10px;fill:#65584D}
+  .chip{font-size:8px;letter-spacing:.12em;font-weight:600}
+  .edge{fill:none;stroke:#65584D;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#work-item-architecture-arrow)}
+  .edge-accent{fill:none;stroke:#8B5A2B;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#work-item-architecture-arrow-accent)}
+  .edge-dash{fill:none;stroke:#75695F;stroke-width:1.25;stroke-dasharray:5 4;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#work-item-architecture-arrow)}
+  .edge-label{font-size:9px;fill:#65584D}
+  .actor{fill:#FFFEFA;stroke:rgba(34,28,23,.18);stroke-width:1;filter:url(#work-item-architecture-shadow)}
+  .lifeline{stroke:rgba(34,28,23,.28);stroke-width:1;stroke-dasharray:4 5}
+  .activation{fill:rgba(34,28,23,.06);stroke:#65584D;stroke-width:.8}
+  .message{stroke:#65584D;stroke-width:1.5;fill:none;marker-end:url(#work-item-architecture-arrow)}
+  .message-return{stroke:#75695F;stroke-width:1.25;stroke-dasharray:5 4;fill:none;marker-end:url(#work-item-architecture-arrow)}
+  .message-main{stroke:#8B5A2B;stroke-width:1.8;fill:none;marker-end:url(#work-item-architecture-arrow-accent)}
+  .message-label{font-size:10px;fill:#221C17}
+  .state{fill:#FFFEFA;stroke:rgba(34,28,23,.22);stroke-width:1;filter:url(#work-item-architecture-shadow)}
+  .state-main{fill:#F5E7D4;stroke:#8B5A2B;stroke-width:1.5;filter:url(#work-item-architecture-shadow)}
+  .state-text{font-size:14px;font-weight:600}
+  .state-sub{font-size:10px;fill:#65584D}
+  .note{fill:#F1EDE4;stroke:rgba(34,28,23,.16);stroke-width:1}
+  .small{font-size:10px;fill:#65584D}
+</style>
+<defs>
+  <filter id="work-item-architecture-shadow" x="-20%" y="-20%" width="140%" height="150%">
+    <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#221C17" flood-opacity=".09"/>
+  </filter>
+  <marker id="work-item-architecture-arrow" markerWidth="8" markerHeight="7" refX="7" refY="3.5" orient="auto">
+    <path d="M0 0 L8 3.5 L0 7 Z" fill="#65584D"/>
+  </marker>
+  <marker id="work-item-architecture-arrow-accent" markerWidth="8" markerHeight="7" refX="7" refY="3.5" orient="auto">
+    <path d="M0 0 L8 3.5 L0 7 Z" fill="#8B5A2B"/>
+  </marker>
+</defs>
+<rect width="1280" height="760" fill="#F9F6EF"/><text class="title" x="48" y="43">共享业务事项的参考架构</text>
+<text class="subtitle" x="48" y="65">不同入口复用同一业务模型；Runtime 和通信协议不拥有业务状态</text><rect class="zone" x="40" y="86" width="1200" height="128" rx="10"/>
+<rect x="56" y="94" width="132" height="16" rx="3" fill="#F9F6EF"/>
+<text class="zone-label" x="68" y="106">01 · CLIENTS</text><rect class="zone" x="40" y="238" width="1200" height="126" rx="10"/>
+<rect x="56" y="246" width="204" height="16" rx="3" fill="#F9F6EF"/>
+<text class="zone-label" x="68" y="258">02 · PROTOCOL ADAPTERS</text><rect class="zone" x="40" y="388" width="1200" height="166" rx="10"/>
+<rect x="56" y="396" width="172" height="16" rx="3" fill="#F9F6EF"/>
+<text class="zone-label" x="68" y="408">03 · BUSINESS CORE</text><rect class="zone" x="40" y="578" width="1200" height="126" rx="10"/>
+<rect x="56" y="586" width="156" height="16" rx="3" fill="#F9F6EF"/>
+<text class="zone-label" x="68" y="598">04 · PERSISTENCE</text><path class="edge" d="M220 194 V274"/>
+<path class="edge" d="M640 194 V274"/>
+<path class="edge" d="M1060 194 V274"/>
+<path class="edge" d="M220 338 V426"/>
+<path class="edge" d="M640 338 V372 H220 V426"/>
+<path class="edge-dash" d="M1060 338 V360 H640 V426"/>
+<path class="edge" d="M370 466 H490"/>
+<path class="edge-dash" d="M370 506 V534 H1060 V506"/>
+<path class="edge" d="M220 506 V560 H420 V616"/>
+<path class="edge" d="M370 486 H700 V616 H860"/>
+<path class="edge-dash" d="M790 466 H900"/><g><rect x="391.5" y="353" width="77" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="430" y="365" text-anchor="middle">MCP tools</text></g><g><rect x="804.5" y="342" width="91" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="850" y="354" text-anchor="middle">remote task</text></g><g><rect x="374" y="538" width="112" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="430" y="550" text-anchor="middle">business state</text></g><g><rect x="502" y="588" width="126" height="18" rx="4" fill="#F9F6EF"/><text class="edge-label" x="565" y="600" text-anchor="middle">artifact / audit</text></g><g>
+<rect class="node" x="90" y="120" width="260" height="74" rx="12"/>
+<rect x="106" y="130" width="53" height="16" rx="8" fill="#D8EEE8"/>
+<text class="chip" x="132.5" y="141" text-anchor="middle">HUMAN</text>
+<text class="node-name" x="106" y="165">Human Workbench</text>
+<text class="node-sub" x="106" y="184">Work Item · My Work · Decision</text>
+</g><g>
+<rect class="node" x="510" y="120" width="260" height="74" rx="12"/>
+<rect x="526" y="130" width="53" height="16" rx="8" fill="#DCE5F4"/>
+<text class="chip" x="552.5" y="141" text-anchor="middle">AGENT</text>
+<text class="node-name" x="526" y="165">External Agent Client</text>
+<text class="node-sub" x="526" y="184">Copilot / Claude / local connector</text>
+</g><g>
+<rect class="node" x="930" y="120" width="260" height="74" rx="12"/>
+<rect x="946" y="130" width="60" height="16" rx="8" fill="#F0DDEB"/>
+<text class="chip" x="976" y="141" text-anchor="middle">REMOTE</text>
+<text class="node-name" x="946" y="165">Remote Agent Service</text>
+<text class="node-sub" x="946" y="184">independent domain or provider agent</text>
+</g><g>
+<rect class="node" x="90" y="274" width="260" height="64" rx="12"/>
+<rect x="106" y="284" width="52" height="16" rx="8" fill="#D8EEE8"/>
+<text class="chip" x="132" y="295" text-anchor="middle">API</text>
+<text class="node-name" x="106" y="319">REST / OpenAPI</text>
+<text class="node-sub" x="106" y="328">stable business contract</text>
+</g><g>
+<rect class="node" x="510" y="274" width="260" height="64" rx="12"/>
+<rect x="526" y="284" width="52" height="16" rx="8" fill="#DCE5F4"/>
+<text class="chip" x="552" y="295" text-anchor="middle">MCP</text>
+<text class="node-name" x="526" y="319">Remote MCP</text>
+<text class="node-sub" x="526" y="328">tools · resources · OAuth</text>
+</g><g>
+<rect class="node" x="930" y="274" width="260" height="64" rx="12"/>
+<rect x="946" y="284" width="52" height="16" rx="8" fill="#F0DDEB"/>
+<text class="chip" x="972" y="295" text-anchor="middle">A2A</text>
+<text class="node-name" x="946" y="319">A2A Adapter</text>
+<text class="node-sub" x="946" y="328">remote Agent task delegation</text>
+</g><g>
+<rect class="node" x="90" y="426" width="280" height="80" rx="12"/>
+<rect x="106" y="436" width="60" height="16" rx="8" fill="#F5E7D4"/>
+<text class="chip" x="136" y="447" text-anchor="middle">DOMAIN</text>
+<text class="node-name" x="106" y="471">Work Item Service</text>
+<text class="node-sub" x="106" y="496">item · participation · artifact · decision</text>
+</g><g>
+<rect class="node" x="490" y="426" width="300" height="80" rx="12"/>
+<rect x="506" y="436" width="74" height="16" rx="8" fill="#DCE5F4"/>
+<text class="chip" x="543" y="447" text-anchor="middle">WORKFLOW</text>
+<text class="node-name" x="506" y="471">Workflow &amp; Task Runtime</text>
+<text class="node-sub" x="506" y="496">lifecycle · assignment · wait · SLA</text>
+</g><g>
+<rect class="node" x="900" y="426" width="290" height="80" rx="12"/>
+<rect x="916" y="436" width="67" height="16" rx="8" fill="#D8EEE8"/>
+<text class="chip" x="949.5" y="447" text-anchor="middle">CONTROL</text>
+<text class="node-name" x="916" y="471">Identity &amp; Policy</text>
+<text class="node-sub" x="916" y="496">SSO · delegation · authorization · audit</text>
+</g><g>
+<rect class="node" x="290" y="616" width="260" height="62" rx="12"/>
+<rect x="306" y="626" width="52" height="16" rx="8" fill="#F4EFC9"/>
+<text class="chip" x="332" y="637" text-anchor="middle">DATA</text>
+<text class="node-name" x="306" y="661">PostgreSQL + Outbox</text>
+<text class="node-sub" x="306" y="668">domain state · events · idempotency</text>
+</g><g>
+<rect class="node" x="730" y="616" width="260" height="62" rx="12"/>
+<rect x="746" y="626" width="67" height="16" rx="8" fill="#F4EFC9"/>
+<text class="chip" x="779.5" y="637" text-anchor="middle">STORAGE</text>
+<text class="node-name" x="746" y="661">Object Store + Audit</text>
+<text class="node-sub" x="746" y="668">artifact versions · hashes · evidence</text>
+</g><text class="small" x="48" y="733">控制原则：Protocol Adapter 只做协议转换；所有写操作最终经过领域服务、授权策略和版本检查。</text></svg>
