@@ -116,7 +116,7 @@ Remote Host 使用 MCP_URL、MCP_BEARER_TOKEN 和服务器配置的 MCP_SERVICE_
 ## 当前限制
 
 - 演示登录通过 Header 选择身份，不可用于生产。
-- 已提供 Skills / 业务 Tools over MCP、带 DAG 依赖和汇总节点的 Agent Plan、以及 provider-neutral Agent Host。项目未内置特定模型 Executor；部署方需要实现 AgentExecutor 插件。尚未实现企业 OIDC/OAuth Delegation Grant、完整组织目录和策略引擎，也没有 Jira/Confluence/GitHub/LeanIX Connector。
+- 已提供 Skills / 业务 Tools over MCP、带 DAG 依赖和汇总节点的 Agent Plan、带服务端 Claim Lease、心跳与崩溃恢复的 Coordinator，以及 provider-neutral Agent Host。项目没有随 Host 捆绑特定模型 Provider Adapter；部署方仍需提供 AgentExecutor 插件。尚未实现企业 OIDC/OAuth Delegation Grant、完整组织目录和策略引擎，也没有 Jira/Confluence/GitHub/LeanIX Connector。
 - 本地 MCP 默认只允许 localhost Host，并通过 `x-demo-user-id` 模拟调用者；不能用于生产身份认证。远程 MCP 必须同时配置 `MCP_ALLOWED_HOSTS`、长度至少 32 字符的 `MCP_BEARER_TOKEN` 和非 Admin 的 `MCP_SERVICE_USER_ID`。默认 Seed 会创建 `u-agent` 服务身份；必须由 Requestor/Admin 将它作为相关人员加入具体 Work Item，并只授予必要的 `read` / `contribute` / `comment` 权限。远程模式忽略请求自带的 `x-demo-user-id`，所有调用固定映射到该服务身份。静态 Bearer Token 是原型级服务认证，不替代企业 OAuth/OIDC 与用户级 Delegation Grant。
 - 当前 SQLite 通过启动时的增量 schema check 兼容本原型已有数据库；尚无通用迁移框架和 PostgreSQL Adapter。迁移到 PostgreSQL 时需要引入异步 Repository / Unit of Work 实现，不能只替换连接字符串。
 - 当前已实现本地/S3 上传和元数据记录，尚未实现经过 Work Item 授权的下载/预签名 URL，也没有病毒扫描。
