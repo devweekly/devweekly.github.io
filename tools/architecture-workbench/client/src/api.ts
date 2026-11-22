@@ -19,6 +19,7 @@ export const api = {
   detail:(id:string)=>request<WorkItemDetail>("/api/work-items/"+id),
   createWorkItem:(body:unknown)=>request<{id:string;code:string}>("/api/work-items",{method:"POST",body:JSON.stringify(body)}),
   updateRequestPackage:(id:string,body:unknown)=>request<{ok:boolean}>("/api/work-items/"+id+"/request-package",{method:"PATCH",body:JSON.stringify(body)}),
+  applyRequestPackageDraft:(id:string,draftId:string)=>request<{ok:boolean}>("/api/work-items/"+id+"/request-package-drafts/"+draftId+"/apply",{method:"POST"}),
   createArtifact:(id:string,body:unknown)=>request<{id:string;version:number}>("/api/work-items/"+id+"/artifacts",{method:"POST",body:JSON.stringify(body)}),
   createReview:(id:string,body:unknown)=>request<{id:string}>("/api/work-items/"+id+"/reviews",{method:"POST",body:JSON.stringify(body)}),
   createTask:(id:string,body:unknown)=>request<{id:string}>("/api/work-items/"+id+"/tasks",{method:"POST",body:JSON.stringify(body)}),
