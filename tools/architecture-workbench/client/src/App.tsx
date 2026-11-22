@@ -336,7 +336,7 @@ export default function App() {
     const d=analyticsData.technicalDebt;
     const visibleItems=bootstrap?.workItems || [];
     const isOverdue=(item:WorkItem)=>Boolean(item.target_date && dayjs(item.target_date).isBefore(dayjs(),"day") && item.status!=="closed");
-    const attentionItems=visibleItems.filter(item=>isOverdue(item) || item.status==="in_review")
+    const attentionItems=visibleItems.filter(item=>isOverdue(item) || ["discussion_review","waiting_requestor","decision_meeting","approved_pending_close","rejected_pending_close"].includes(item.status))
       .sort((a,b)=>Number(isOverdue(b))-Number(isOverdue(a)) || String(a.target_date || "9999-12-31").localeCompare(String(b.target_date || "9999-12-31")));
     const debtItems=bootstrap?.debts || [];
     return <div className="page-stack">
