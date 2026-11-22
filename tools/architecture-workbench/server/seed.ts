@@ -60,8 +60,9 @@ export function seed() {
     JSON.stringify({goal:"Modernize the customer data platform",scope:"Customer master data and transaction access",constraints:"Legacy batch compatibility and data isolation",initialProposal:"Introduce a unified data access layer in phases",decisionQuestions:"Confirm API boundary, isolation model and migration sequence",submissionMessage:"feat(request): submit customer data platform modernization package"}),wi);
   run("UPDATE submissions SET submission_message=?,package_json=? WHERE id='sub-101' AND submission_message=''",
     "feat(request): submit customer data platform modernization package",JSON.stringify({goal:"Modernize the customer data platform",scope:"Customer master data and transaction access",constraints:"Legacy batch compatibility and data isolation",initialProposal:"Introduce a unified data access layer in phases",decisionQuestions:"Confirm API boundary, isolation model and migration sequence"}));
-  run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,target_date,context_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-    wi,"ARC-2026-014","architecture_review","客户数据平台现代化方案","统一客户主数据与交易数据访问层。当前方案需要评审 API 边界、数据隔离、遗留批处理兼容和分阶段迁移策略。","discussion_review","high","u-sa","2026-12-08",4,created,created);
+  const packageValue={goal:"Modernize the customer data platform",scope:"Customer master data and transaction access",constraints:"Legacy batch compatibility and data isolation",initialProposal:"Introduce a unified data access layer in phases",decisionQuestions:"Confirm API boundary, isolation model and migration sequence",submissionMessage:"feat(request): submit customer data platform modernization package"};
+  run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,requestor_id,chairman_id,request_package_json,target_date,context_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    wi,"ARC-2026-014","architecture_review","客户数据平台现代化方案","统一客户主数据与交易数据访问层。当前方案需要评审 API 边界、数据隔离、遗留批处理兼容和分阶段迁移策略。","discussion_review","high","u-sa","u-sa","u-chair",JSON.stringify(packageValue),"2026-12-08",4,created,created);
   const participants = [
     ["u-sa","solution_architect","Solution Architect",["read","contribute","comment"]],
     ["u-ea","enterprise_architect","Enterprise Architect",["read","review","comment","contribute"]],
@@ -83,8 +84,9 @@ export function seed() {
   const reviewBaseline=all<{id:string;version:number;code:string|null;type:string;title:string;content_hash:string}>(
     "SELECT id,version,code,type,title,content_hash FROM artifacts WHERE work_item_id=? ORDER BY id",wi
   );
-  run("INSERT INTO submissions(id,work_item_id,sequence,purpose,manifest_json,context_version,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
-    "sub-101",wi,1,"review",JSON.stringify(reviewBaseline),4,"u-sa",created);
+  run("INSERT INTO submissions(id,work_item_id,sequence,purpose,manifest_json,context_version,created_by,created_at,submission_message,package_json,submitted_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+    "sub-101",wi,1,"request",JSON.stringify(reviewBaseline),4,"u-sa",created,
+    packageValue.submissionMessage,JSON.stringify(packageValue),"u-sa");
   const seedDeadline="2026-11-27T23:59:59.000Z";
   run("INSERT INTO review_cycles(id,work_item_id,submission_id,name,baseline_json,status,due_date,review_deadline_at,reviewer_snapshot_json,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
     "cycle-101",wi,"sub-101","Review · Submission 1",JSON.stringify(reviewBaseline),"active","2026-11-27",seedDeadline,
