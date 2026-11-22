@@ -49,7 +49,7 @@ try {
     }
 
     const manifest = await host.read(entry);
-    if (!manifest.verified || manifest.frontmatter.name !== entry.frontmatter.name || !manifest.body.trim()) {
+    if (!manifest.verified || !manifest.frontmatter || manifest.frontmatter.name !== entry.frontmatter.name || typeof manifest.body !== "string" || !manifest.body.trim()) {
       throw new Error("Skill resource verification failed for "+entry.uri);
     }
   }
