@@ -12,10 +12,10 @@ const REVIEW_DAYS = Math.max(1, Math.min(30, Number(process.env.WORKFLOW_REVIEW_
 const CLARIFICATION_DAYS = Math.max(1, Math.min(14, Number(process.env.WORKFLOW_CLARIFICATION_DAYS || 3)));
 
 export const workflowStepDefinitions = [
-  { key:"request_package", title:"Request 提交", description:"Requestor 确认目标、背景、范围和初步方案" },
-  { key:"discussion_review", title:"讨论与评审", description:"参与者异步讨论；普通评论不阻断，澄清或异议按规则处理" },
-  { key:"decision_meeting", title:"决定会议", description:"Chairman / Admin 主持并记录正式结论" },
-  { key:"close", title:"关闭", description:"Chairman / Admin 确认关闭并保留完整记录" }
+  { key:"request_package", title:"Request Submission", description:"The requestor confirms the objective, background, scope, and initial proposal" },
+  { key:"discussion_review", title:"Discussion & Review", description:"Participants discuss asynchronously. Ordinary comments do not block progress; clarifications and objections follow the workflow rules" },
+  { key:"decision_meeting", title:"Decision Meeting", description:"The meeting chair or an administrator leads the meeting and records the formal outcome" },
+  { key:"close", title:"Close", description:"The meeting chair or an administrator closes the request and retains the full record" }
 ];
 
 export function isGlobalAdmin(actorId: string): boolean {
@@ -347,8 +347,8 @@ export function getWorkflowProjection(workItemId:string,actorId:string) {
     activeClarification:clarification || null,
     reviewerSnapshot:cycle?.reviewer_snapshot_json ? JSON.parse(cycle.reviewer_snapshot_json) : [],
     steps:workflowStepDefinitions.map((step,index)=>({
-      title:index===3 && status==="rejected_pending_close" ? "拒绝后待关闭" : index===0 && status==="requestor_revision" ? "Requestor 修订" : step.title,
-      description:index===0 && status==="requestor_revision" ? "根据决定会议要求修订并重新提交新的 Submission" : step.description,
+      title:index===3 && status==="rejected_pending_close" ? "Rejected · Pending Closure" : index===0 && status==="requestor_revision" ? "Requestor Revision" : step.title,
+      description:index===0 && status==="requestor_revision" ? "Revise the request as required by the decision meeting and submit a new package" : step.description,
       status:status==="closed" || index<activeStep ? "finish" as const : index===activeStep ? (status==="rejected_pending_close" ? "error" as const : "process" as const) : "wait" as const
     })),
     availableActions,
