@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="3200" height="3400" viewBox="0 0 3200 3400" role="img" aria-labelledby="title desc">
 <title id="title">Agent Sandbox Implementation Options and Security Controls</title>
-<desc id="desc">An expanded implementation tree covering application-level controls, virtual shells, OS process sandboxes, container isolation, sandboxed kernels and microVMs, and remote execution. Named projects are mapped to their actual execution boundaries and the policies operators must enforce.</desc>
+<desc id="desc">An expanded implementation map covering application controls, virtual shells, OS process sandboxes, containers, sandboxed kernels and microVMs, remote execution, Agent security governance, WASM runtimes, persistent workspaces, and browser isolation. Projects are mapped to their actual boundaries and required security policies.</desc>
 <defs>
 <style>
 .bg{fill:#f7f8fa}.title{font:700 42px Inter,Arial,sans-serif;fill:#172033}.sub{font:20px Inter,Arial,sans-serif;fill:#596579}
@@ -173,9 +173,9 @@
 <text class="polT" x="1920" y="1989">does not replace customer responsibility for image, network and secret policy.</text>
 
 <rect class="tech" x="835" y="2045" width="1025" height="145" rx="12"/>
-<text class="techT" x="865" y="2083">Cloudflare Sandbox · E2B · OpenHands Runtime</text>
-<text class="techB" x="865" y="2119">Managed / API-driven task sandboxes · remote workspaces and execution services</text>
-<text class="techB" x="865" y="2152">Underlying isolation varies by product and deployment; verify actual tenant and runtime boundary.</text>
+<text class="techT" x="865" y="2083">Cloudflare Sandbox · E2B · Modal · Daytona · Vercel Sandbox · AWS Bedrock AgentCore</text>
+<text class="techB" x="865" y="2119">Managed task sandboxes · code interpreters · API-driven workspaces and execution services</text>
+<text class="techB" x="865" y="2152">Isolation varies (e.g. gVisor, microVM or container); verify tenant boundary, persistence and lifecycle.</text>
 <rect class="pol" x="1890" y="2045" width="1240" height="145" rx="12"/>
 <text class="polH" x="1920" y="2078">REMOTE TASK POLICY</text>
 <text class="polT" x="1920" y="2114">Ephemeral per-task workspace; tenant isolation; short-lived scoped credentials; egress proxy / allowlist;</text>
