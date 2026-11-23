@@ -239,7 +239,6 @@ export function createEntraTokenVerifier(config: EntraAuthConfig): OAuthTokenVer
         clientId,
         scopes,
         expiresAt: claims.exp,
-        resource: new URL(config.resourceUrl.href),
         extra: {
           workbenchActorId: actorId,
           tenantId: config.tenantId,
