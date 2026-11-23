@@ -77,9 +77,9 @@
 
 <rect class="card" x="1330" y="1045" width="1165" height="155" rx="14"/>
 <text class="cardtitle" x="1360" y="1087">Local and developer sandboxes</text>
-<text class="body" x="1360" y="1129">Docker Sandboxes · BoxLite · SmolVM</text>
+<text class="body" x="1360" y="1129">VM-based: Docker Sandboxes · BoxLite · SmolVM</text>
 <text class="body" x="1360" y="1162">OS sandbox: Nono · Virtual shell: just-bash</text>
-<text class="small" x="1360" y="1190">VM-based: Docker Sandboxes · BoxLite · SmolVM</text>
+<text class="small" x="1360" y="1190">The isolation boundary depends on the selected tool.</text>
 
 <rect class="band band3" x="60" y="1290" width="2480" height="1120" rx="20"/>
 <text class="bandtitle" x="95" y="1340">3. Hosted execution services — products that manage the execution environment</text>
