@@ -17,20 +17,20 @@ export function seed() {
   }
   const servicePrincipal=one<{id:string}>("SELECT id FROM people WHERE id='u-agent'");
   if (!servicePrincipal) run("INSERT INTO people(id,display_name,title,email,avatar_color,department,location,bio,expertise_json,timezone,is_admin,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,0,?)",
-    "u-agent","Agent Execution Service","Agent Service Account","agent-service@example.test","#557c85","Architecture Platform","Local","用于执行分配给 Agent 的工作。它不是Administrator账号，只能获得具体事项所需的权限。",JSON.stringify(["Agent Task Execution","Artifact Draft Preparation","Task Coordination"]),"Asia/Tokyo",now());
+    "u-agent","Agent Execution Service","Agent Service Account","agent-service@example.test","#557c85","Architecture Platform","Local","Executes work assigned to Agents. It is not an administrator account and receives only the permissions required for specific work items.",JSON.stringify(["Agent Task Execution","Artifact Draft Preparation","Task Coordination"]),"Asia/Tokyo",now());
   const admin=one<{id:string}>("SELECT id FROM people WHERE id='u-admin'");
   if (!admin) run("INSERT INTO people(id,display_name,title,email,avatar_color,department,location,bio,expertise_json,timezone,is_admin,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,1,?)",
     "u-admin","Workbench Administrator","Administrator","admin@example.test","#344b70","Architecture Office","Tokyo","Maintains the people directory, work item workflows, and Workbench settings.",JSON.stringify(["People Management","Workflow Management","Workbench Administration"]),"Asia/Tokyo",now());
   run("UPDATE people SET is_admin=1 WHERE id='u-admin'");
   const profiles:Record<string,{department:string;location:string;bio:string;expertise:string[]}> = {
-    "u-sa":{department:"解决方案架构",location:"Tokyo",bio:"Responsible for solution design and coordination across related systems and delivery teams.",expertise:["解决方案架构","System Integration","API Design","Cloud Platforms"]},
-    "u-ea":{department:"Enterprise Architecture",location:"Tokyo",bio:"负责Enterprise Architecture标准、系统关系和技术路线。",expertise:["Enterprise Architecture","Capability Modeling","Architecture Standards","Technology Planning"]},
-    "u-sec":{department:"Information Security",location:"Tokyo",bio:"Responsible for security reviews, focusing on identity and access, data protection, and operational risk.",expertise:["Security架构","Identity and Access Management","Threat Modeling","Data Protection"]},
+    "u-sa":{department:"Solution Architecture",location:"Tokyo",bio:"Responsible for solution design and coordination across related systems and delivery teams.",expertise:["Solution Architecture","System Integration","API Design","Cloud Platforms"]},
+    "u-ea":{department:"Enterprise Architecture",location:"Tokyo",bio:"Responsible for enterprise architecture standards, system relationships, and technology roadmaps.",expertise:["Enterprise Architecture","Capability Modeling","Architecture Standards","Technology Planning"]},
+    "u-sec":{department:"Information Security",location:"Tokyo",bio:"Responsible for security reviews, focusing on identity and access, data protection, and operational risk.",expertise:["Security Architecture","Identity and Access Management","Threat Modeling","Data Protection"]},
     "u-sme":{department:"Business",location:"Tokyo",bio:"Familiar with the customer data platform and existing business processes; provides business input for solution reviews.",expertise:["Business Processes","Domain Knowledge","Requirements Analysis"]},
     "u-dev":{department:"Engineering",location:"Tokyo",bio:"Responsible for development planning, implementation, and production delivery.",expertise:["Software Development","Project Delivery","System Operations","Reliability"]},
-    "u-chair":{department:"Architecture Office",location:"Tokyo",bio:"Chairs architecture review meetings and records formal decisions and follow-up requirements.",expertise:["架构评审","Technical Decision-making","Risk Assessment"]},
+    "u-chair":{department:"Architecture Office",location:"Tokyo",bio:"Chairs architecture review meetings and records formal decisions and follow-up requirements.",expertise:["Architecture Review","Technical Decision-making","Risk Assessment"]},
     "u-admin":{department:"Architecture Office",location:"Tokyo",bio:"Maintains the people directory, work item workflows, and Workbench settings.",expertise:["People Management","Workflow Management","Workbench Administration"]},
-    "u-agent":{department:"Architecture Platform",location:"Local",bio:"用于执行分配给 Agent 的工作。它不是Administrator账号，只能获得具体事项所需的权限。",expertise:["Agent Task Execution","Artifact Draft Preparation","Task Coordination"]}
+    "u-agent":{department:"Architecture Platform",location:"Local",bio:"Executes work assigned to Agents. It is not an administrator account and receives only the permissions required for specific work items.",expertise:["Agent Task Execution","Artifact Draft Preparation","Task Coordination"]}
   };
   for (const [personId,profile] of Object.entries(profiles)) {
     run("UPDATE people SET department=CASE WHEN department='' THEN ? ELSE department END,location=CASE WHEN location='' THEN ? ELSE location END,bio=CASE WHEN bio='' THEN ? ELSE bio END,expertise_json=CASE WHEN expertise_json='[]' THEN ? ELSE expertise_json END WHERE id=?",
@@ -72,12 +72,12 @@ export function seed() {
     ["u-sec","security_architect","Security Architect",["read","review","comment"]],
     ["u-sme","solution_sme","Business SME",["read","comment","contribute"]],
     ["u-dev","development_manager","Development Manager",["read","review","comment","contribute"]],
-    ["u-chair","chairman","会议主席",["read","decide"]]
+    ["u-chair","chairman","Meeting Chair",["read","decide"]]
   ];
   for (const p of participants) run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)", id("part"),wi,p[0],p[1],p[2],JSON.stringify(p[3]),created);
   run("UPDATE work_items SET chairman_id='u-chair' WHERE id=?",wi);
   const artifacts = [
-    ["adr-101","ADR","ADR-001","API Gateway 与领域服务的边界","accepted","The API Gateway provides a unified entry point; domain services retain business authorization and data-access control.","Decision\nBusiness authorization is owned by domain services.\n\nAlternatives\nA. Centralize all authorization policies in the API Gateway.\nB. Let domain services enforce authorization based on business resources.\n\nConsequences\nThe API Gateway handles edge controls; domain services enforce resource-level authorization."],
+    ["adr-101","ADR","ADR-001","API Gateway and Domain Service Boundaries","accepted","The API Gateway provides a unified entry point; domain services retain business authorization and data-access control.","Decision\nBusiness authorization is owned by domain services.\n\nAlternatives\nA. Centralize all authorization policies in the API Gateway.\nB. Let domain services enforce authorization based on business resources.\n\nConsequences\nThe API Gateway handles edge controls; domain services enforce resource-level authorization."],
     ["adr-102","ADR","ADR-002","Customer Sensitive Data Isolation Strategy","proposed","Distinguish tenant isolation, field-level protection, and audit requirements.","Context\nCustomer records contain sensitive information, so data access must be isolated by tenant.\n\nApproach\nRestrict data access by tenant, protect designated fields, and maintain tamper-resistant access audits."],
     ["adr-103","ADR","ADR-003","Transitional Compatibility for Legacy Batch Processing","proposed","Keep the adapter during Phase 1 and replace it with event-driven processing later.","Context\nThe existing batch interface cannot be replaced before the next release window.\n\nApproach\nKeep an adapter temporarily, monitor its operation, and register a follow-up removal task."],
     ["doc-101","Architecture Overview",null,"Target Architecture and Migration Roadmap","submitted","Phased migration: data ingestion, unified access layer, and consumer migration.","Target Architecture\nEstablish a unified customer-data access layer while keeping business authorization in each domain service.\n\nMigration Steps\n1. Standardize customer identifiers.\n2. Establish an API facade and data contracts.\n3. Migrate consumers incrementally by business system."]
@@ -99,7 +99,7 @@ export function seed() {
   const reviews = [
     ["rev-101","adr-101","u-ea","Enterprise Architecture","comment","The boundaries are clear. Consider adding the relationship between the API lifecycle and the standards catalog.",["Add API versioning requirements","Clarify domain-service responsibilities"]],
     ["rev-102","adr-102","u-sec","Security","comment","The overall direction is viable, but field-level protection and audit-retention requirements need clarification.",["Provide the rationale for sensitive-field classification","Specify audit-retention periods and query permissions"]],
-    ["rev-103","adr-103","u-dev","Delivery","comment","过渡适配器可降低Delivery风险，但必须定义退出条件。",["Specify the target release for adapter removal","Clarify ownership of failure replay and monitoring"]]
+    ["rev-103","adr-103","u-dev","Delivery","comment","A transitional adapter can reduce delivery risk, but its exit criteria must be defined.",["Specify the target release for adapter removal","Clarify ownership of failure replay and monitoring"]]
   ];
   for (const r of reviews) run("INSERT INTO reviews(id,cycle_id,artifact_id,artifact_version,reviewer_id,discipline,outcome,summary,findings_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
     r[0],"cycle-101",r[1],1,r[2],r[3],r[4],r[5],JSON.stringify(r[6]),created);
@@ -110,14 +110,14 @@ export function seed() {
   ];
   for (const t of tasks) run("INSERT INTO tasks(id,work_item_id,title,kind,status,owner_id,assignee_id,due_date,relates_to,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",t[0],wi,t[1],t[2],t[3],t[4],t[5],t[6],t[7],created,created);
   run("INSERT INTO comments(id,work_item_id,author_id,body,created_at) VALUES(?,?,?,?,?)","comment-101",wi,"u-sme","Business confirmation: Phase 1 must remain compatible with the existing end-of-day batch window. All consumers cannot be required to switch simultaneously.",created);
-  run("INSERT INTO activity_events(id,work_item_id,actor_id,action,target_type,target_id,summary,metadata_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",id("evt"),wi,"u-sa","submitted","work_item",wi,"提交架构方案与 3 份 ADR，进入Review Cycle 1。","{}",created);
-  run("INSERT INTO activity_events(id,work_item_id,actor_id,action,target_type,target_id,summary,metadata_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",id("evt"),wi,"u-sec","reviewed","artifact","adr-102","Security评审员提交了修改意见。","{}",created);
+  run("INSERT INTO activity_events(id,work_item_id,actor_id,action,target_type,target_id,summary,metadata_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",id("evt"),wi,"u-sa","submitted","work_item",wi,"Submitted the architecture proposal and three ADRs; Review Cycle 1 has started.","{}",created);
+  run("INSERT INTO activity_events(id,work_item_id,actor_id,action,target_type,target_id,summary,metadata_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",id("evt"),wi,"u-sec","reviewed","artifact","adr-102","The security reviewer submitted change requests.","{}",created);
   const second = "wi-change-002";
   run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,requestor_id,chairman_id,request_package_json,target_date,context_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     second,"CHG-2026-021","change_assessment","Payment Reconciliation Service Resilience Improvements","Assess the change impact of retry policies, bulk compensation, and runtime isolation.","draft","normal","u-dev","u-dev","u-chair",
     JSON.stringify({goal:"Reduce the need for manual data correction when payment reconciliation jobs fail due to transient errors.",scope:"Retry policy, bulk compensation workflow, and task execution isolation.",constraints:"The existing settlement window cannot be extended. Retries and compensation must prevent duplicate postings.",initialProposal:"Set retry limits and intervals for retryable errors; make compensation tasks idempotent.",decisionQuestions:"Which errors can be retried automatically? Who owns compensation tasks? Is a dedicated execution queue required?",submissionMessage:"Submit the payment reconciliation service change proposal, defining retry scope, compensation ownership, and runtime isolation."}),
     "2026-12-15",2,created,created);
-  for (const p of [["u-dev","delivery_owner","Delivery负责人",["read","contribute","comment"]],["u-sa","architect","Architect",["read","review","comment"]],["u-chair","chairman","会议主席",["read","decide"]]]) {
+  for (const p of [["u-dev","delivery_owner","Delivery Owner",["read","contribute","comment"]],["u-sa","architect","Architect",["read","review","comment"]],["u-chair","chairman","Meeting Chair",["read","decide"]]]) {
     run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",id("part"),second,p[0],p[1],p[2],JSON.stringify(p[3]),created);
   }
   run("INSERT INTO tasks(id,work_item_id,title,kind,status,owner_id,assignee_id,due_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)","task-201",second,"Map the current failure, retry, and compensation paths","analysis","in_progress","u-dev","u-dev","2026-11-29",created,created);
@@ -158,7 +158,7 @@ function seedExternalReferences() {
     ["ref-jira-story-1","jira","Story","100412","DATA-412","Provide customer profile query API","https://jira.example.test/browse/DATA-412"],
     ["ref-jira-story-2","jira","Story","100418","DATA-418","Define tenant-isolation rules for customer data","https://jira.example.test/browse/DATA-418"],
     ["ref-jira-story-3","jira","Story","100521","PAY-521","Add idempotent retries for reconciliation","https://jira.example.test/browse/PAY-521"],
-    ["ref-conf-adr","confluence","Page","785001","ADR-002","ADR-002 · 客户Data Protection","https://confluence.example.test/wiki/spaces/ARCH/pages/785001"],
+    ["ref-conf-adr","confluence","Page","785001","ADR-002","ADR-002 · Customer Data Protection","https://confluence.example.test/wiki/spaces/ARCH/pages/785001"],
     ["ref-conf-review","confluence","Page","785010","ARC-014-REVIEW","Customer Data Platform · Architecture Review","https://confluence.example.test/wiki/spaces/ARCH/pages/785010"],
     ["ref-conf-pay","confluence","Page","785120","PAY-021-DESIGN","Payment Reconciliation Service Design","https://confluence.example.test/wiki/spaces/PAY/pages/785120"],
     ["ref-github-repo","github","Repository","repo-771","customer-data-platform","example/customer-data-platform","https://github.com/example/customer-data-platform"],
