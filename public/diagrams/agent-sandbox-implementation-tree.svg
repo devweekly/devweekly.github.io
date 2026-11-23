@@ -1,157 +1,193 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1480" viewBox="0 0 2200 1480" role="img" aria-labelledby="title desc">
-<title id="title">Agent Sandbox Implementation Options and Security Policies</title>
-<desc id="desc">A branching taxonomy of application controls, virtual shells, operating-system sandboxes, containers, sandboxed kernels and remote execution. Every concrete technology is paired with the security policies that must be configured around it.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="3200" height="2380" viewBox="0 0 3200 2380" role="img" aria-labelledby="title desc">
+<title id="title">Agent Sandbox Implementation Options and Security Controls</title>
+<desc id="desc">An expanded implementation tree covering application-level controls, virtual shells, OS process sandboxes, container isolation, sandboxed kernels and microVMs, and remote execution. Named projects are mapped to their actual execution boundaries and the policies operators must enforce.</desc>
 <defs>
-  <style>
-    .bg{fill:#f7f8fa}.title{font:700 34px Inter,Arial,sans-serif;fill:#172033}.subtitle{font:18px Inter,Arial,sans-serif;fill:#596579}
-    .root{fill:#172033;stroke:#172033;stroke-width:2}.rootText{font:700 21px Inter,Arial,sans-serif;fill:#fff}
-    .branch{fill:none;stroke:#8994a6;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
-    .category{fill:#eaf0f8;stroke:#9eacc1;stroke-width:2}.categoryText{font:700 19px Inter,Arial,sans-serif;fill:#203047}
-    .categoryTag{font:700 12px Inter,Arial,sans-serif;fill:#596579;letter-spacing:.45px}
-    .stack{fill:#fff;stroke:#cbd3df;stroke-width:1.7}.policy{fill:#f0f5f2;stroke:#a9c1b3;stroke-width:1.5}
-    .stackTitle{font:700 16px Inter,Arial,sans-serif;fill:#26364c}.stackSub{font:13px Inter,Arial,sans-serif;fill:#596579}
-    .policyTitle{font:700 12px Inter,Arial,sans-serif;fill:#476653;letter-spacing:.55px}.policyText{font:14px Inter,Arial,sans-serif;fill:#304b3b}
-    .foot{font:14px Inter,Arial,sans-serif;fill:#596579}
-  </style>
+<style>
+.bg{fill:#f7f8fa}.title{font:700 42px Inter,Arial,sans-serif;fill:#172033}.sub{font:20px Inter,Arial,sans-serif;fill:#596579}
+.root{fill:#172033;stroke:#172033;stroke-width:2}.rootT{font:700 25px Inter,Arial,sans-serif;fill:#fff}
+.branch{fill:none;stroke:#8794a7;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+.cat{fill:#eaf0f8;stroke:#9eacc1;stroke-width:2.5}.catT{font:700 23px Inter,Arial,sans-serif;fill:#203047}.catS{font:700 14px Inter,Arial,sans-serif;fill:#596579;letter-spacing:1px}
+.tech{fill:#fff;stroke:#c7d0dd;stroke-width:2}.pol{fill:#eef5f0;stroke:#a9c1b3;stroke-width:2}
+.techT{font:700 19px Inter,Arial,sans-serif;fill:#26364c}.techB{font:16px Inter,Arial,sans-serif;fill:#536176}
+.polH{font:700 14px Inter,Arial,sans-serif;fill:#476653;letter-spacing:1px}.polT{font:16px Inter,Arial,sans-serif;fill:#304b3b}
+.colH{font:700 15px Inter,Arial,sans-serif;fill:#596579;letter-spacing:1.4px}
+.foot{font:16px Inter,Arial,sans-serif;fill:#596579}
+</style>
 </defs>
-<rect class="bg" width="2200" height="1480"/>
-<text class="title" x="70" y="62">Agent Sandbox Implementation Options</text>
-<text class="subtitle" x="70" y="96">Each implementation needs explicit enforcement policy; the technology name alone does not provide these controls.</text>
-<text class="categoryTag" x="740" y="130">TECHNOLOGY STACK</text>
-<text class="categoryTag" x="1380" y="130">SECURITY POLICY TO CONFIGURE / ENFORCE</text>
+<rect class="bg" width="3200" height="2380"/>
+<text class="title" x="70" y="68">Agent Sandbox Implementation Options</text>
+<text class="sub" x="70" y="108">Expanded project map · implementation boundary, concrete stacks, and security policy obligations</text>
+<text class="colH" x="360" y="165">IMPLEMENTATION FAMILY</text>
+<text class="colH" x="850" y="165">PROJECTS / TECHNOLOGY STACKS</text>
+<text class="colH" x="1910" y="165">SECURITY POLICIES TO CONFIGURE AND VERIFY</text>
 
-<rect class="root" x="55" y="680" width="245" height="145" rx="18"/>
-<text class="rootText" x="177" y="733" text-anchor="middle">Agent Execution</text>
-<text class="rootText" x="177" y="762" text-anchor="middle">Boundary</text>
-<text x="177" y="795" text-anchor="middle" style="font:14px Inter,Arial,sans-serif;fill:#d7deea">Where can code run?</text>
-<path class="branch" d="M300 752 H335 V225 H375 M335 395 H375 M335 628 H375 M335 873 H375 M335 1073 H375 M335 1273 H375"/>
-<circle cx="335" cy="752" r="6" fill="#8994a6"/>
+<rect class="root" x="55" y="1040" width="245" height="180" rx="20"/>
+<text class="rootT" x="177" y="1105" text-anchor="middle">Agent Runtime</text>
+<text class="rootT" x="177" y="1140" text-anchor="middle">Sandbox</text>
+<text x="177" y="1182" text-anchor="middle" style="font:16px Inter,Arial,sans-serif;fill:#d7deea">Where is the boundary</text>
+<text x="177" y="1206" text-anchor="middle" style="font:16px Inter,Arial,sans-serif;fill:#d7deea">actually enforced?</text>
+<path class="branch" d="M300 1130 H330 V340 H355 M330 340 V630 H355 M330 630 V925 H355 M330 925 V1390 H355 M330 1390 V1740 H355 M330 1740 V2110 H355"/>
 
-<!-- 1. Application controls -->
-<rect class="category" x="375" y="150" width="310" height="150" rx="12"/>
-<text class="categoryText" x="395" y="190">1. Application-level</text>
-<text class="categoryText" x="395" y="216">controls</text>
-<text class="categoryTag" x="395" y="253">NO OS ISOLATION</text>
-<path class="branch" d="M685 225 H715 V185 H735 M715 225 V265 H735"/>
-<rect class="stack" x="735" y="150" width="600" height="70" rx="9"/>
-<text class="stackTitle" x="755" y="178">Capability Filesystem · ResourceRef</text>
-<text class="stackSub" x="755" y="201">Scoped file service · directory handles · MCP Filesystem</text>
-<rect class="policy" x="1375" y="150" width="760" height="70" rx="9"/>
-<text class="policyTitle" x="1395" y="173">RESOURCE-BOUNDARY POLICY</text>
-<text class="policyText" x="1395" y="198">Canonicalize paths; reject symlink / mount escapes; separate read, write and delete; keep reference mounts read-only.</text>
-<rect class="stack" x="735" y="230" width="600" height="70" rx="9"/>
-<text class="stackTitle" x="755" y="258">Tool Registry · Resource Policy · MCP Server</text>
-<text class="stackSub" x="755" y="281">Application PEP / Policy Engine</text>
-<rect class="policy" x="1375" y="230" width="760" height="70" rx="9"/>
-<text class="policyTitle" x="1395" y="253">AUTHORIZATION POLICY</text>
-<text class="policyText" x="1395" y="278">Deny by default; check subject / action / resource on every call; bind approval to exact changes; audit decisions.</text>
+<!-- APPLICATION -->
+<rect class="cat" x="355" y="205" width="420" height="270" rx="16"/>
+<text class="catT" x="385" y="252">1. Application-level</text><text class="catT" x="385" y="282">permissions and tools</text>
+<text class="catS" x="385" y="330">LOGICAL / API BOUNDARY</text>
+<text class="techB" x="385" y="370">Controls which resources and</text><text class="techB" x="385" y="396">operations the Agent can invoke.</text>
+<text class="techB" x="385" y="438">Not an OS boundary for arbitrary</text><text class="techB" x="385" y="464">code running in the host process.</text>
+<path class="branch" d="M775 340 H810 V255 H835 M810 340 V385 H835 M810 340 V515 H835"/>
+<rect class="tech" x="835" y="195" width="1025" height="120" rx="12"/>
+<text class="techT" x="865" y="232">AgentFense</text>
+<text class="techB" x="865" y="265">FUSE-backed filesystem projection · none / view / read / write access levels</text>
+<rect class="pol" x="1890" y="195" width="1240" height="120" rx="12"/>
+<text class="polH" x="1920" y="228">FILE VISIBILITY AND INTEGRITY</text>
+<text class="polT" x="1920" y="262">Expose only projected paths; distinguish directory visibility from content reads; enforce writes at the filesystem layer;</text>
+<text class="polT" x="1920" y="288">test symlink, mount, rename and platform filesystem behavior. Do not treat a FUSE view as process isolation.</text>
 
-<!-- 2. Virtual shell -->
-<rect class="category" x="375" y="350" width="310" height="90" rx="12"/>
-<text class="categoryText" x="395" y="386">2. Virtual / controlled</text>
-<text class="categoryText" x="395" y="412">shell</text>
-<text class="categoryTag" x="395" y="430">SIMULATED COMMANDS</text>
-<path class="branch" d="M685 395 H735"/>
-<rect class="stack" x="735" y="350" width="600" height="90" rx="9"/>
-<text class="stackTitle" x="755" y="383">just-bash</text>
-<text class="stackSub" x="755" y="407">TypeScript virtual shell · virtual filesystem · no native host shell</text>
-<rect class="policy" x="1375" y="350" width="760" height="90" rx="9"/>
-<text class="policyTitle" x="1395" y="374">EXECUTION POLICY</text>
-<text class="policyText" x="1395" y="399">Expose only required commands and virtual paths; disable unsafe host callbacks; deny network by default;</text>
-<text class="policyText" x="1395" y="420">cap time, output and operation counts. Treat custom callbacks as trusted host code.</text>
+<rect class="tech" x="835" y="330" width="1025" height="120" rx="12"/>
+<text class="techT" x="865" y="367">easy-agent · Deep Agents</text>
+<text class="techB" x="865" y="400">Separate Read / Write / Edit tools · Virtual Filesystem · scoped path permissions · pluggable execute backend</text>
+<rect class="pol" x="1890" y="330" width="1240" height="120" rx="12"/>
+<text class="polH" x="1920" y="363">TOOL AND RESOURCE AUTHORIZATION</text>
+<text class="polT" x="1920" y="397">Default deny; independently authorize read, write, delete and execute; bind approval to exact diff / digest / target;</text>
+<text class="polT" x="1920" y="423">stage and version changes; keep script creation separate from script execution; audit each decision.</text>
 
-<!-- 3. OS-level sandbox -->
-<rect class="category" x="375" y="500" width="310" height="256" rx="12"/>
-<text class="categoryText" x="395" y="545">3. OS-level process</text>
-<text class="categoryText" x="395" y="571">sandbox</text>
-<text class="categoryTag" x="395" y="610">HOST KERNEL SHARED</text>
-<text class="stackSub" x="395" y="645">Kernel-enforced file,</text>
-<text class="stackSub" x="395" y="665">network and process limits</text>
-<path class="branch" d="M685 628 H715 V538 H735 M715 628 V628 H735 M715 628 V718 H735"/>
-<rect class="stack" x="735" y="500" width="600" height="76" rx="9"/>
-<text class="stackTitle" x="755" y="528">macOS · Seatbelt / sandbox-exec</text>
-<text class="stackSub" x="755" y="552">Anthropic Sandbox Runtime · Codex sandbox patterns</text>
-<rect class="policy" x="1375" y="500" width="760" height="76" rx="9"/>
-<text class="policyTitle" x="1395" y="523">MACOS PROFILE POLICY</text>
-<text class="policyText" x="1395" y="548">Deny by default; allow only task paths; constrain network and Mach / IPC; verify child-process inheritance.</text>
-<rect class="stack" x="735" y="590" width="600" height="76" rx="9"/>
-<text class="stackTitle" x="755" y="618">Linux · bubblewrap / namespaces / seccomp / Landlock</text>
-<text class="stackSub" x="755" y="642">Mount, user, PID and network namespace isolation</text>
-<rect class="policy" x="1375" y="590" width="760" height="76" rx="9"/>
-<text class="policyTitle" x="1395" y="613">LINUX PROFILE POLICY</text>
-<text class="policyText" x="1395" y="638">Unshare namespaces; minimal bind mounts; read-only system paths; syscall filter; Landlock path rules;</text>
-<text class="policyText" x="1395" y="657">no host sockets or privileged devices; explicit egress path.</text>
-<rect class="stack" x="735" y="680" width="600" height="76" rx="9"/>
-<text class="stackTitle" x="755" y="708">Windows · AppContainer / Restricted Token / Job Objects</text>
-<text class="stackSub" x="755" y="732">ACLs · capability SIDs · process and resource management</text>
-<rect class="policy" x="1375" y="680" width="760" height="76" rx="9"/>
-<text class="policyTitle" x="1395" y="703">WINDOWS POLICY</text>
-<text class="policyText" x="1395" y="728">Use low-privilege token and narrow AppContainer capabilities / ACLs; constrain network; Job Object limits</text>
-<text class="policyText" x="1395" y="747">CPU, memory and process tree. A Job Object alone is not a security boundary.</text>
+<rect class="tech" x="835" y="465" width="1025" height="120" rx="12"/>
+<text class="techT" x="865" y="502">MCP Filesystem · Capability Filesystem · ResourceRef</text>
+<text class="techB" x="865" y="535">Scoped filesystem server · directory handles · resource identifiers and constrained operations</text>
+<rect class="pol" x="1890" y="465" width="1240" height="120" rx="12"/>
+<text class="polH" x="1920" y="498">RESOURCE SCOPE</text>
+<text class="polT" x="1920" y="532">Resolve paths safely; prevent symlink / mount escapes and TOCTOU races; keep reference inputs read-only;</text>
+<text class="polT" x="1920" y="558">separate read / write / delete capabilities. A restricted MCP server does not constrain other processes or tools.</text>
 
-<!-- 4. Containers -->
-<rect class="category" x="375" y="790" width="310" height="166" rx="12"/>
-<text class="categoryText" x="395" y="835">4. Container</text>
-<text class="categoryText" x="395" y="861">isolation</text>
-<text class="categoryTag" x="395" y="900">SHARED HOST KERNEL</text>
-<path class="branch" d="M685 873 H715 V828 H735 M715 873 V918 H735"/>
-<rect class="stack" x="735" y="790" width="600" height="76" rx="9"/>
-<text class="stackTitle" x="755" y="818">Docker / Podman</text>
-<text class="stackSub" x="755" y="842">Namespaces · cgroups · seccomp · AppArmor / SELinux</text>
-<rect class="policy" x="1375" y="790" width="760" height="76" rx="9"/>
-<text class="policyTitle" x="1395" y="813">CONTAINER POLICY</text>
-<text class="policyText" x="1395" y="838">Prefer rootless; drop capabilities; no privileged mode / host socket / device; read-only rootfs;</text>
-<text class="policyText" x="1395" y="857">no-new-privileges; seccomp + MAC profile; cgroup quotas; narrowly scoped mounts.</text>
-<rect class="stack" x="735" y="880" width="600" height="76" rx="9"/>
-<text class="stackTitle" x="755" y="908">Kubernetes Restricted Pod</text>
-<text class="stackSub" x="755" y="932">Pod Security Admission · RBAC · NetworkPolicy · RuntimeClass</text>
-<rect class="policy" x="1375" y="880" width="760" height="76" rx="9"/>
-<text class="policyTitle" x="1395" y="903">KUBERNETES POD POLICY</text>
-<text class="policyText" x="1395" y="928">Non-root; no privilege escalation; drop ALL caps; read-only rootfs; seccomp RuntimeDefault;</text>
-<text class="policyText" x="1395" y="947">disable ServiceAccount token automount; default-deny NetworkPolicy; select RuntimeClass deliberately.</text>
+<!-- VIRTUAL SHELL -->
+<rect class="cat" x="355" y="615" width="420" height="185" rx="16"/>
+<text class="catT" x="385" y="662">2. Virtual / controlled</text><text class="catT" x="385" y="692">shell</text>
+<text class="catS" x="385" y="735">SIMULATED COMMAND SEMANTICS</text>
+<text class="techB" x="385" y="770">Avoids exposing a general host shell.</text>
+<path class="branch" d="M775 705 H835"/>
+<rect class="tech" x="835" y="615" width="1025" height="185" rx="12"/>
+<text class="techT" x="865" y="657">just-bash</text>
+<text class="techB" x="865" y="694">TypeScript shell semantics · virtual filesystem · selected commands without launching a native host shell</text>
+<text class="techB" x="865" y="730">Custom command callbacks remain trusted host-side code; this is not a VM or arbitrary native-process sandbox.</text>
+<rect class="pol" x="1890" y="615" width="1240" height="185" rx="12"/>
+<text class="polH" x="1920" y="650">COMMAND AND SIDE-EFFECT POLICY</text>
+<text class="polT" x="1920" y="688">Expose only required commands and virtual paths; audit every custom callback; deny network and host filesystem access</text>
+<text class="polT" x="1920" y="718">unless explicitly mediated; cap execution time, output size and operation counts. Move risky callbacks into</text>
+<text class="polT" x="1920" y="748">a separately killable Worker / process with OS enforcement.</text>
 
-<!-- 5. Sandboxed kernel / microVM -->
-<rect class="category" x="375" y="990" width="310" height="166" rx="12"/>
-<text class="categoryText" x="395" y="1035">5. Sandboxed kernel /</text>
-<text class="categoryText" x="395" y="1061">microVM</text>
-<text class="categoryTag" x="395" y="1100">ADDITIONAL KERNEL BOUNDARY</text>
-<path class="branch" d="M685 1073 H715 V1028 H735 M715 1073 V1118 H735"/>
-<rect class="stack" x="735" y="990" width="600" height="76" rx="9"/>
-<text class="stackTitle" x="755" y="1018">gVisor</text>
-<text class="stackSub" x="755" y="1042">Sentry user-space kernel · runsc</text>
-<rect class="policy" x="1375" y="990" width="760" height="76" rx="9"/>
-<text class="policyTitle" x="1395" y="1013">GVISOR POLICY</text>
-<text class="policyText" x="1395" y="1038">Use an appropriate platform / runtime profile; minimize host mounts and devices; restrict egress;</text>
-<text class="policyText" x="1395" y="1057">apply CPU / memory / PID quotas; protect the node and runtime control socket.</text>
-<rect class="stack" x="735" y="1080" width="600" height="76" rx="9"/>
-<text class="stackTitle" x="755" y="1108">Kata Containers · Firecracker microVM</text>
-<text class="stackSub" x="755" y="1132">Guest kernel · VMM / hypervisor boundary</text>
-<rect class="policy" x="1375" y="1080" width="760" height="76" rx="9"/>
-<text class="policyTitle" x="1395" y="1103">MICROVM POLICY</text>
-<text class="policyText" x="1395" y="1128">Minimal virtual devices; isolate per task / tenant; harden VMM / jailer; verify signed images;</text>
-<text class="policyText" x="1395" y="1147">block metadata and unintended egress; scope volumes and credentials; enforce quotas.</text>
+<!-- OS PROCESS -->
+<rect class="cat" x="355" y="825" width="420" height="385" rx="16"/>
+<text class="catT" x="385" y="872">3. OS-level process</text><text class="catT" x="385" y="902">sandbox</text>
+<text class="catS" x="385" y="945">HOST KERNEL SHARED</text>
+<text class="techB" x="385" y="985">Real processes; restrictions are</text><text class="techB" x="385" y="1011">enforced by OS primitives.</text>
+<text class="techB" x="385" y="1055">Filesystem + network controls</text><text class="techB" x="385" y="1081">must cover child processes too.</text>
+<path class="branch" d="M775 925 H810 V850 H835 M810 925 V980 H835 M810 925 V1110 H835"/>
+<rect class="tech" x="835" y="815" width="1025" height="120" rx="12"/>
+<text class="techT" x="865" y="852">Claude Code Sandbox · Anthropic Sandbox Runtime</text>
+<text class="techB" x="865" y="885">macOS Seatbelt · Linux bubblewrap / namespaces / seccomp · sandboxed Bash and subprocesses</text>
+<rect class="pol" x="1890" y="815" width="1240" height="120" rx="12"/>
+<text class="polH" x="1920" y="848">FILESYSTEM + NETWORK ISOLATION</text>
+<text class="polT" x="1920" y="882">Allow only task paths; block sensitive home / credential paths; mediate egress through an allowlist proxy;</text>
+<text class="polT" x="1920" y="908">cover child processes and MCP servers; keep host credentials outside the sandbox; log denied access.</text>
 
-<!-- 6. Remote execution -->
-<rect class="category" x="375" y="1190" width="310" height="166" rx="12"/>
-<text class="categoryText" x="395" y="1235">6. Remote isolated</text>
-<text class="categoryText" x="395" y="1261">execution</text>
-<text class="categoryTag" x="395" y="1300">SEPARATE EXECUTION HOST</text>
-<path class="branch" d="M685 1273 H715 V1228 H735 M715 1273 V1318 H735"/>
-<rect class="stack" x="735" y="1190" width="600" height="76" rx="9"/>
-<text class="stackTitle" x="755" y="1218">Cloudflare Sandbox · E2B · OpenHands Runtime</text>
-<text class="stackSub" x="755" y="1242">Managed or task-scoped remote execution environment</text>
-<rect class="policy" x="1375" y="1190" width="760" height="76" rx="9"/>
-<text class="policyTitle" x="1395" y="1213">REMOTE TASK POLICY</text>
-<text class="policyText" x="1395" y="1238">Ephemeral per-task workspace; tenant-bound identity; short-lived scoped credentials; egress proxy / allowlist;</text>
-<text class="policyText" x="1395" y="1257">resource and time budgets; audit execution; destroy workspace and revoke grants at task end.</text>
-<rect class="stack" x="735" y="1280" width="600" height="76" rx="9"/>
-<text class="stackTitle" x="755" y="1308">Dedicated VM / worker pool</text>
-<text class="stackSub" x="755" y="1332">Kubernetes + gVisor / Kata / microVM</text>
-<rect class="policy" x="1375" y="1280" width="760" height="76" rx="9"/>
-<text class="policyTitle" x="1395" y="1303">WORKER-POOL POLICY</text>
-<text class="policyText" x="1395" y="1328">Isolate tenant queues, storage and network; use signed immutable images and workload identity;</text>
-<text class="policyText" x="1395" y="1347">broker secrets; cap concurrency / cost; reimage or destroy workers after execution.</text>
+<rect class="tech" x="835" y="950" width="1025" height="120" rx="12"/>
+<text class="techT" x="865" y="987">OpenAI Codex Sandbox</text>
+<text class="techB" x="865" y="1020">macOS Seatbelt · Linux seccomp + Landlock · Windows sandbox backend / MXC transition</text>
+<rect class="pol" x="1890" y="950" width="1240" height="120" rx="12"/>
+<text class="polH" x="1920" y="983">PLATFORM-SPECIFIC POLICY</text>
+<text class="polT" x="1920" y="1017">Define workspace write scope and read-only paths; network off or explicitly allowed; constrain subprocesses;</text>
+<text class="polT" x="1920" y="1043">on Windows, test MXC policy translation and desktop / clipboard / input permissions separately.</text>
 
-<text class="foot" x="70" y="1420">Cross-cutting controls: identity and delegation · resource authorization · data classification · credential broker · network egress · quotas · audit · emergency stop · cleanup.</text>
-<text class="foot" x="70" y="1448">These are policy responsibilities to implement and test, not guarantees supplied automatically by each product or runtime.</text>
+<rect class="tech" x="835" y="1085" width="1025" height="120" rx="12"/>
+<text class="techT" x="865" y="1122">Microsoft Execution Containers (MXC) · Process Container</text>
+<text class="techB" x="865" y="1155">Cross-platform policy / SDK layer; platform backends include AppContainer, Seatbelt and bubblewrap</text>
+<rect class="pol" x="1890" y="1085" width="1240" height="120" rx="12"/>
+<text class="polH" x="1920" y="1118">MXC WORKLOAD POLICY</text>
+<text class="polT" x="1920" y="1152">Declare readable / writable paths, network destinations, environment and UI access; choose a supported backend;</text>
+<text class="polT" x="1920" y="1178">test Enforcement / Learning behavior and denied operations. MXC is a policy layer, not one fixed isolation strength.</text>
+
+<!-- CONTAINERS -->
+<rect class="cat" x="355" y="1230" width="420" height="320" rx="16"/>
+<text class="catT" x="385" y="1277">4. Container isolation</text>
+<text class="catS" x="385" y="1320">SHARED HOST KERNEL BY DEFAULT</text>
+<text class="techB" x="385" y="1360">Namespaces + cgroups + MAC</text><text class="techB" x="385" y="1386">and runtime policy.</text>
+<text class="techB" x="385" y="1430">Kubernetes adds orchestration</text><text class="techB" x="385" y="1456">controls, not a new kernel.</text>
+<path class="branch" d="M775 1390 H810 V1300 H835 M810 1390 V1450 H835"/>
+<rect class="tech" x="835" y="1230" width="1025" height="145" rx="12"/>
+<text class="techT" x="865" y="1268">Docker · Podman · OpenHands Runtime</text>
+<text class="techB" x="865" y="1304">Containerized shell, tools, dependencies and workspace; long-lived task execution environment</text>
+<text class="techB" x="865" y="1337">Default container shares the host kernel; OpenHands Runtime is an execution service, not a microVM by itself.</text>
+<rect class="pol" x="1890" y="1230" width="1240" height="145" rx="12"/>
+<text class="polH" x="1920" y="1263">CONTAINER HARDENING</text>
+<text class="polT" x="1920" y="1299">Prefer rootless; drop capabilities; no privileged mode / host socket / unnecessary devices; read-only rootfs;</text>
+<text class="polT" x="1920" y="1329">no-new-privileges; seccomp + AppArmor / SELinux; scoped volumes; cgroup quotas; default-deny egress.</text>
+
+<rect class="tech" x="835" y="1390" width="1025" height="160" rx="12"/>
+<text class="techT" x="865" y="1428">Kubernetes · Restricted Pod Security · RuntimeClass</text>
+<text class="techB" x="865" y="1464">Pod Security Admission · RBAC · NetworkPolicy · CSI / volume policy · runtime selection</text>
+<text class="techB" x="865" y="1497">RuntimeClass can select gVisor / Kata where installed; a normal Pod is not equivalent to either runtime.</text>
+<rect class="pol" x="1890" y="1390" width="1240" height="160" rx="12"/>
+<text class="polH" x="1920" y="1423">POD AND CLUSTER POLICY</text>
+<text class="polT" x="1920" y="1459">Non-root; no privilege escalation; drop ALL capabilities; read-only rootfs; seccomp RuntimeDefault;</text>
+<text class="polT" x="1920" y="1489">disable ServiceAccount token automount unless needed; default-deny ingress / egress; narrow RBAC;</text>
+<text class="polT" x="1920" y="1519">select and verify RuntimeClass; isolate nodes and storage for mutually untrusted tenants.</text>
+
+<!-- SANDBOXED KERNEL -->
+<rect class="cat" x="355" y="1570" width="420" height="270" rx="16"/>
+<text class="catT" x="385" y="1617">5. Sandboxed kernel</text><text class="catT" x="385" y="1647">and microVM</text>
+<text class="catS" x="385" y="1690">ADDITIONAL KERNEL / VM BOUNDARY</text>
+<text class="techB" x="385" y="1730">Stronger separation for</text><text class="techB" x="385" y="1756">untrusted workloads and tenants.</text>
+<text class="techB" x="385" y="1800">Still requires credential, network</text><text class="techB" x="385" y="1826">and resource controls.</text>
+<path class="branch" d="M775 1740 H810 V1645 H835 M810 1740 V1785 H835"/>
+<rect class="tech" x="835" y="1570" width="1025" height="145" rx="12"/>
+<text class="techT" x="865" y="1608">gVisor</text>
+<text class="techB" x="865" y="1644">User-space kernel (Sentry) · runsc runtime · often deployed behind Docker / Kubernetes RuntimeClass</text>
+<rect class="pol" x="1890" y="1570" width="1240" height="145" rx="12"/>
+<text class="polH" x="1920" y="1603">GVISOR RUNTIME POLICY</text>
+<text class="polT" x="1920" y="1639">Use a supported platform and hardened runtime configuration; minimize host mounts and devices; restrict egress;</text>
+<text class="polT" x="1920" y="1669">apply CPU / memory / PID quotas; protect node credentials, runtime sockets and control plane.</text>
+
+<rect class="tech" x="835" y="1730" width="1025" height="145" rx="12"/>
+<text class="techT" x="865" y="1768">Kata Containers · Firecracker microVM</text>
+<text class="techB" x="865" y="1804">Guest kernel · lightweight VM / VMM boundary · per-workload or per-tenant execution</text>
+<rect class="pol" x="1890" y="1730" width="1240" height="145" rx="12"/>
+<text class="polH" x="1920" y="1763">MICROVM HARDENING</text>
+<text class="polT" x="1920" y="1799">Minimal virtual devices; harden VMM / jailer; use signed immutable images; isolate storage and networking;</text>
+<text class="polT" x="1920" y="1829">block metadata and unintended egress; scope credentials; enforce quotas and destroy task state.</text>
+
+<!-- REMOTE -->
+<rect class="cat" x="355" y="1860" width="420" height="390" rx="16"/>
+<text class="catT" x="385" y="1907">6. Remote isolated</text><text class="catT" x="385" y="1937">execution</text>
+<text class="catS" x="385" y="1980">SEPARATE EXECUTION HOST</text>
+<text class="techB" x="385" y="2020">Remote tool, remote execution</text><text class="techB" x="385" y="2046">and remote Agent are different.</text>
+<text class="techB" x="385" y="2090">Remote location alone does not</text><text class="techB" x="385" y="2116">guarantee tenant isolation.</text>
+<path class="branch" d="M775 2110 H810 V1920 H835 M810 2110 V2070 H835 M810 2110 V2220 H835"/>
+<rect class="tech" x="835" y="1860" width="1025" height="170" rx="12"/>
+<text class="techT" x="865" y="1898">Claude Managed Agents · self-hosted sandbox</text>
+<text class="techB" x="865" y="1934">Agent loop managed by Anthropic; execution actions run in customer-controlled sandbox infrastructure</text>
+<text class="techB" x="865" y="1968">Providers / patterns: Cloudflare · Daytona · Modal · Vercel; Claude session-scoped environments</text>
+<rect class="pol" x="1890" y="1860" width="1240" height="170" rx="12"/>
+<text class="polH" x="1920" y="1893">CUSTOMER-OWNED SANDBOX POLICY</text>
+<text class="polT" x="1920" y="1929">Harden images; non-root; drop capabilities; read-only rootfs; tenant-bound identity; scoped short-lived credentials;</text>
+<text class="polT" x="1920" y="1959">VPC / firewall egress controls; isolate MCP services; cap resources; clean up session state. Provider isolation</text>
+<text class="polT" x="1920" y="1989">does not replace customer responsibility for image, network and secret policy.</text>
+
+<rect class="tech" x="835" y="2045" width="1025" height="145" rx="12"/>
+<text class="techT" x="865" y="2083">Cloudflare Sandbox · E2B · OpenHands Runtime</text>
+<text class="techB" x="865" y="2119">Managed / API-driven task sandboxes · remote workspaces and execution services</text>
+<text class="techB" x="865" y="2152">Underlying isolation varies by product and deployment; verify actual tenant and runtime boundary.</text>
+<rect class="pol" x="1890" y="2045" width="1240" height="145" rx="12"/>
+<text class="polH" x="1920" y="2078">REMOTE TASK POLICY</text>
+<text class="polT" x="1920" y="2114">Ephemeral per-task workspace; tenant isolation; short-lived scoped credentials; egress proxy / allowlist;</text>
+<text class="polT" x="1920" y="2144">resource and time budgets; audit execution; revoke grants and destroy workspace at task end.</text>
+
+<rect class="tech" x="835" y="2205" width="1025" height="120" rx="12"/>
+<text class="techT" x="865" y="2242">Dedicated VM · isolated worker pool · Kubernetes-backed sandbox fleet</text>
+<text class="techB" x="865" y="2275">Bring-your-own execution infrastructure with per-task or per-tenant lifecycle</text>
+<rect class="pol" x="1890" y="2205" width="1240" height="120" rx="12"/>
+<text class="polH" x="1920" y="2238">WORKER-POOL GOVERNANCE</text>
+<text class="polT" x="1920" y="2272">Isolate queues, storage and network; workload identity; secret broker; signed images; concurrency / cost limits;</text>
+<text class="polT" x="1920" y="2298">reimage or destroy workers; prevent cross-tenant cache, volume and credential reuse.</text>
+
+<text class="foot" x="70" y="2348">Cross-cutting controls: identity and delegation · policy decision / enforcement points · credential broker · data classification · network egress · quotas · audit · revocation · cleanup.</text>
 </svg>
