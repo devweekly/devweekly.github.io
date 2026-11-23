@@ -13,7 +13,39 @@ npm run build        # TypeScript + Vite 生产构建
 npm run start:web     # 启动生产 Web 服务
 ```
 
+长期创作经验记忆与 Dreaming 的设计见 [ADR-0010](./ADR/0010-story-memory-and-dreaming.md)。首次使用可在完整章节生成后执行 `npm run dev -- dream-memory --world <world> --run-dir .output/<world>/<run-id>`，从已完成章节及审核记录提炼有逐字证据的候选经验；同一经验需在不同运行中重复出现后才会进入后续写作上下文。
+
 续写架构与实现差距审计见 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。 小说创作的最高原则及全文分析设计决策见 [`ADR-0001`](./ADR/0001-literary-priority-and-corpus-analysis.md)。续写默认全自动：章节完成后自动提取并提交故事状态；只有模型对照实验等隔离场景才使用 `--no-apply-state`。
+
+
+### Story Memory 管理
+
+完整故事单元自然收束后，系统会在后台自动执行一次 Dreaming；固定章节批次、暂停、失败或停滞不会触发。Workbench 的「创作记忆」页可按待观察、可检索、已替代和已淘汰筛选，查看每条记忆的原始证据，修订内容/适用范围，或淘汰与恢复。相似措辞的同类型经验会在高置信阈值下合并到既有记忆，避免近重复条目分散证据；来源 run 和逐字引用持续保留。
+
+检索会综合记忆内容与适用范围的相关性，并对流程类任务适度优先考虑 operational 经验。它仍然只提供少量可选启发，不参与 Canon 事实判断。记忆不按时间自动过期；发现经验被反例推翻时，应在 Workbench 中标记为已替代或淘汰。
+
+Dreaming 也会综合既有 active memories 与新完成故事，提炼跨故事单元的文学经验，并维护派生的 creative-compass.md（位于 worlds/<world>/story-memory/）。它概括值得延续的语言气质、人物复杂性、叙事张力和创意方向，只作为可忽略、可突破的启发，不是固定风格规则。记忆检索会结合当前任务中的对白、冲突、动作、情绪转折、信息揭示、场景转换和环境描写等意图线索。只出现一次但有强证据的独特创意也可先保留为 candidate，仍需遵守原有晋级机制。
+
+Dreaming 的风格判断以当前 world 已激活的 `style-profile.md` 和最多三个活动 Style Reference 样本为锚点；生成章节不能成为唯一风格来源，避免把模型自身的模仿偏差不断沉淀成新的风格基准。没有正式风格资料时，不会臆造原作者风格结论。相关样本只用于观察抽象叙事特征，不复制独特句式。
+
+与当前场景相关的 creative candidate 现在可以低权重进入写作上下文，最多两条，并明确标记为“未验证创意火花”；它们不是剧情事实或写作要求，可忽略、改造或突破。候选仍需至少两个独立故事执行的证据才能晋级 active。
+
+Dreaming 选择代表章节时保留故事开头、中段和结尾，并参考已有审核材料中的文学亮点、人物互动变化、创意和叙事张力挑选额外样本；总量仍最多五章。Creative Compass 每次更新前会归档旧版本，Workbench 创作记忆页展示当前内容和历史版本信息；历史版本只供追溯，不进入写作上下文。
+
+## Story Memory 有效性盲测
+
+不要以记忆条数、检索命中率或 Prompt 长度判断 Dreaming 是否有价值。先让同一世界积累至少两次独立故事执行的 active memory，再用相同故事起点、同一模型和同一份 Story State 运行成对盲测：
+
+```bash
+npm run evaluate-story-memory -- --world conghuoniao \
+  --command write --mode derivative \
+  --brief "在这里写入完全相同的故事任务" \
+  --model <固定模型> --max-words 3500
+```
+
+也可将 `--command write-long` 用于长章节；支持 `--source`、`--context`、`--state-file`、`--story-unit-file`、`--story-arc-file`、`--scenes`、`--timeout-ms`、`--strict-model`。两组均使用 `--no-apply-state`，不会污染正史或改变下一组输入。执行顺序和 A/B 标签随机化，原始运行目录与日志完整保留在 `.output/<world>/story-memory-evaluation/<run-id>/`。
+
+先盲读 `blind/A.md`、`blind/B.md` 并填写 `blind-review.md`，完成评分后才查看单独保存的 `assignment-key.json`。重点比较人物复杂度、互动张力、叙事节奏、语言力量和意外性；若只是更贴近旧经验却损失新鲜感，应判为负收益。一次对照只能作为个案证据，建议不同故事任务重复多轮后再决定是否保留或调整记忆机制。实验不自动让 LLM 给自己的输出打分，也不自动修改 Memory。
 
 ## 1. 导入小说资料
 
@@ -214,7 +246,8 @@ npm run dev -- story-state --world conghuoniao --type graph --query 李阎
 - `analyze-world` 默认走文件交接，不调用模型；输入包与成稿随代码提交，便于复核每个结论的依据。`--evidence-review` 会额外调用模型逐句核验句中具体事实与引用行是否一致；解析失败的批次二分重试，不整片作废。
 - 本地检索是词项/BM25 风格排序，不是向量语义检索。倒排统计与片段词频在进程内按索引文件版本缓存；索引更新后自动失效。Zod 是直接运行时依赖，用于校验故事状态、章节索引和模型证据审查输出。
 - 回归对照只做写法比较：情节不同是预期的，评审 Agent 不据此扣分。指标由确定性函数统计，评审结论属于模型判断，两者分开记录。
-- 文本抽取按片段进行，带独立证据审查、来源哈希/章节偏移、显式别名注册表和有证据门槛的共指解析；原著人物出场/事件时间线与人物 Profile 已进入成书知识库。续写 Story State 另行追加有正文逐字证据的 `arcMilestones`、`relationshipUpdates`、`foreshadowingUpdates` 和 `macguffinUpdates`，并在后续章节规划/终审上下文中按任务相关性读取；这些记录不反向改写原著分析快照。完整原著人物状态逐章重建、跨章节实体自动消歧仍有边界。\n- `analyze-story` 的 v6 全文图谱分析与 `analyze` 的逐片段 annotations 是两条独立流程：前者生成 `story_analysis` 快照，必须确认 `analysisVersion=6` 且 `complete=true`；后者涉及约 2,594 次模型调用，属于额外的逐片段证据标注，不是 Story Graph 的前置条件。仓库中能看到 v6 delta 批次缓存，但仅凭缓存文件不能确认当前 world 的 `novel.db` 是否已经合并到 v6；必须执行 `npm run dev -- analyze-story --world <world> --delta --merge-only` 验证；缺批次时会报告 pending。
+- 文本抽取按片段进行，带独立证据审查、来源哈希/章节偏移、显式别名注册表和有证据门槛的共指解析；原著人物出场/事件时间线与人物 Profile 已进入成书知识库。续写 Story State 另行追加有正文逐字证据的 `arcMilestones`、`relationshipUpdates`、`foreshadowingUpdates` 和 `macguffinUpdates`，并在后续章节规划/终审上下文中按任务相关性读取；这些记录不反向改写原著分析快照。完整原著人物状态逐章重建、跨章节实体自动消歧仍有边界。
+- `analyze-story` 的 v6 全文图谱分析与 `analyze` 的逐片段 annotations 是两条独立流程：前者生成 `story_analysis` 快照，必须确认 `analysisVersion=6` 且 `complete=true`；后者涉及约 2,594 次模型调用，属于额外的逐片段证据标注，不是 Story Graph 的前置条件。仓库中能看到 v6 delta 批次缓存，但仅凭缓存文件不能确认当前 world 的 `novel.db` 是否已经合并到 v6；必须执行 `npm run dev -- analyze-story --world <world> --delta --merge-only` 验证；缺批次时会报告 pending。
 - `analysis/build-corpus-index.mjs` 只做确定性结构解析，不调用模型；卷边界由章号重置判定，作者单章与卷末总结单独记录，不做语义归并。
 - 导入器支持 TXT/Markdown；EPUB、PDF、OCR 和网页采集不在当前范围。
 - 多 Agent 通过独立模型调用协作；主线规划与创意发散并行，其余阶段按依赖顺序执行。Agent SDK session 不持久化，但每个模型阶段有 SHA-256 输入指纹、输出哈希和原子 checkpoint。中断后使用 `--resume-dir` 指向原 `.output/<world>/<run-id>`（长章节为 `long-<run-id>`）恢复；只复用 prompt、模型与阶段配置完全一致且输出哈希未变化的阶段。运行目录保存初始故事状态快照，避免数据库提交后中断造成重复累加。

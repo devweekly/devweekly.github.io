@@ -12,6 +12,10 @@ on:
       - ".github/workflows/novel-generation.yml"
   workflow_dispatch:
 
+concurrency:
+  group: novel-generation-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

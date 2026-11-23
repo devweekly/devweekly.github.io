@@ -5,6 +5,12 @@
 
 > 流程说明以实际执行路径为准；人工审核仅作为可选的事后观察和干预，不是常规执行门禁。
 
+## Story Memory & Dreaming（ADR-0010）
+
+Memory 与 Canon 分离：易变事实继续从 Story State、Story Graph 和原文检索获取；长期记忆只保存带来源证据、可跨任务复用的隐性创作经验。当前实现将记忆写入每个 world 的 `story.db`，由 `story_memories` 独立表保存，不受章节 Story State 快照替换影响。
+
+`src/story-memory.ts` 提供 Dreaming 候选提取与动态上下文选择。通过 `dream-memory` 命令对已完成运行目录执行整理；候选必须带来源材料中的逐字证据，同一经验在不同 run 中重复出现后才晋级为 active，并以可选参考形式注入普通/长章节写作。Memory 不修改 Canon，不形成固定 Prompt 或人物行为约束。详见 [ADR-0010](./ADR/0010-story-memory-and-dreaming.md)。
+
 ## 1. 设计目标与运行原则
 
 续写从输入创作任务开始，到章节正文、人物/事件/情节线状态持久化结束，默认由系统自动完成。人工不参与常规提纲选择、正文编辑、对白修改、风格修订、连续性确认或状态确认；工作台不设置必须点击才能继续的常规审批状态。
