@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1900" viewBox="0 0 2200 1900" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="2050" viewBox="0 0 2200 2050" role="img" aria-labelledby="title desc">
 <title id="title">Agent Sandbox Landscape</title>
 <desc id="desc">A concise map of Agent sandbox implementation families, representative projects and their primary security controls.</desc>
 <defs><style>
@@ -8,7 +8,7 @@
 .projects{font:700 20px Inter,Arial,sans-serif;fill:#26364c}.guard{font:18px Inter,Arial,sans-serif;fill:#476653}
 .note{font:17px Inter,Arial,sans-serif;fill:#596579}
 </style></defs>
-<rect class="bg" width="2200" height="1900"/>
+<rect class="bg" width="2200" height="2050"/>
 <text class="title" x="70" y="78">Agent Sandbox Landscape</text>
 <text class="sub" x="70" y="116">Implementation families · representative projects · essential controls</text>
 <text class="head" x="100" y="200">IMPLEMENTATION FAMILY</text>
@@ -54,9 +54,9 @@
 <text class="family" x="100" y="1738">10 · Browser execution</text>
 <text class="projects" x="520" y="1738">Browserbase · Steel · Lightpanda · AgentCore Browser</text>
 <text class="guard" x="520" y="1781">Per-task profile · cookie isolation · download / egress controls</text>
-<rect x="70" y="1740" width="2060" height="105" rx="14" fill="#eaf0f8" stroke="#9eacc1" stroke-width="2"/>
-<text class="family" x="100" y="1782">Kubernetes SIG Apps — Agent Sandbox</text>
-<text class="projects" x="740" y="1782">kubernetes-sigs/agent-sandbox · Sandbox / SandboxTemplate / SandboxClaim</text>
-<text class="guard" x="740" y="1820">Lifecycle API and warm pools; choose RuntimeClass (e.g. gVisor / Kata) for actual isolation.</text>
-<text class="note" x="70" y="1880">A control plane or API does not itself provide a kernel / VM security boundary. Verify the selected runtime.</text>
+<rect x="70" y="1860" width="2060" height="105" rx="14" fill="#eaf0f8" stroke="#9eacc1" stroke-width="2"/>
+<text class="family" x="100" y="1902">Kubernetes SIG Apps — Agent Sandbox</text>
+<text class="projects" x="740" y="1902">kubernetes-sigs/agent-sandbox · Sandbox / SandboxTemplate / SandboxClaim</text>
+<text class="guard" x="740" y="1940">Lifecycle API and warm pools; choose RuntimeClass (e.g. gVisor / Kata) for actual isolation.</text>
+<text class="note" x="70" y="2010">A control plane or API does not itself provide a kernel / VM security boundary. Verify the selected runtime.</text>
 </svg>
