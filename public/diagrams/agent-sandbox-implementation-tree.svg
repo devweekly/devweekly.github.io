@@ -1,131 +1,157 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1900" height="1260" viewBox="0 0 1900 1260" role="img" aria-labelledby="title desc">
-<title id="title">Agent Sandbox Implementation Options</title>
-<desc id="desc">A branching taxonomy of Agent sandbox approaches, from application-level controls and virtual shells to operating-system sandboxes, containers, virtual machines, and remote execution services, with concrete implementation examples.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1480" viewBox="0 0 2200 1480" role="img" aria-labelledby="title desc">
+<title id="title">Agent Sandbox Implementation Options and Security Policies</title>
+<desc id="desc">A branching taxonomy of application controls, virtual shells, operating-system sandboxes, containers, sandboxed kernels and remote execution. Every concrete technology is paired with the security policies that must be configured around it.</desc>
 <defs>
   <style>
     .bg{fill:#f7f8fa}.title{font:700 34px Inter,Arial,sans-serif;fill:#172033}.subtitle{font:18px Inter,Arial,sans-serif;fill:#596579}
-    .root{fill:#172033;stroke:#172033;stroke-width:2}.rootText{font:700 22px Inter,Arial,sans-serif;fill:#fff}
+    .root{fill:#172033;stroke:#172033;stroke-width:2}.rootText{font:700 21px Inter,Arial,sans-serif;fill:#fff}
     .branch{fill:none;stroke:#8994a6;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
-    .node{fill:#fff;stroke:#cbd3df;stroke-width:2}.head{fill:#eaf0f8;stroke:#9eacc1;stroke-width:2}
-    .headText{font:700 19px Inter,Arial,sans-serif;fill:#203047}.body{font:16px Inter,Arial,sans-serif;fill:#354258}
-    .small{font:14px Inter,Arial,sans-serif;fill:#596579}.tag{font:700 13px Inter,Arial,sans-serif;fill:#41536d;letter-spacing:.5px}
-    .note{fill:#fff8e8;stroke:#e2c98e;stroke-width:1.5}.noteText{font:15px Inter,Arial,sans-serif;fill:#624c1d}
+    .category{fill:#eaf0f8;stroke:#9eacc1;stroke-width:2}.categoryText{font:700 19px Inter,Arial,sans-serif;fill:#203047}
+    .categoryTag{font:700 12px Inter,Arial,sans-serif;fill:#596579;letter-spacing:.45px}
+    .stack{fill:#fff;stroke:#cbd3df;stroke-width:1.7}.policy{fill:#f0f5f2;stroke:#a9c1b3;stroke-width:1.5}
+    .stackTitle{font:700 16px Inter,Arial,sans-serif;fill:#26364c}.stackSub{font:13px Inter,Arial,sans-serif;fill:#596579}
+    .policyTitle{font:700 12px Inter,Arial,sans-serif;fill:#476653;letter-spacing:.55px}.policyText{font:14px Inter,Arial,sans-serif;fill:#304b3b}
+    .foot{font:14px Inter,Arial,sans-serif;fill:#596579}
   </style>
 </defs>
-<rect class="bg" width="1900" height="1260"/>
-<text class="title" x="70" y="68">Agent Sandbox Implementation Options</text>
-<text class="subtitle" x="70" y="103">Choose the enforcement boundary first; then select an implementation that can enforce it.</text>
+<rect class="bg" width="2200" height="1480"/>
+<text class="title" x="70" y="62">Agent Sandbox Implementation Options</text>
+<text class="subtitle" x="70" y="96">Each implementation needs explicit enforcement policy; the technology name alone does not provide these controls.</text>
+<text class="categoryTag" x="740" y="130">TECHNOLOGY STACK</text>
+<text class="categoryTag" x="1380" y="130">SECURITY POLICY TO CONFIGURE / ENFORCE</text>
 
-<rect class="root" x="70" y="535" width="250" height="150" rx="18"/>
-<text class="rootText" x="195" y="588" text-anchor="middle">Agent Execution</text>
-<text class="rootText" x="195" y="619" text-anchor="middle">Boundary</text>
-<text x="195" y="652" text-anchor="middle" style="font:14px Inter,Arial,sans-serif;fill:#d7deea">Where can code run?</text>
+<rect class="root" x="55" y="680" width="245" height="145" rx="18"/>
+<text class="rootText" x="177" y="733" text-anchor="middle">Agent Execution</text>
+<text class="rootText" x="177" y="762" text-anchor="middle">Boundary</text>
+<text x="177" y="795" text-anchor="middle" style="font:14px Inter,Arial,sans-serif;fill:#d7deea">Where can code run?</text>
+<path class="branch" d="M300 752 H335 V225 H375 M335 395 H375 M335 628 H375 M335 873 H375 M335 1073 H375 M335 1273 H375"/>
+<circle cx="335" cy="752" r="6" fill="#8994a6"/>
 
-<!-- trunk -->
-<path class="branch" d="M320 610 H375 V190 H430 M375 350 H430 M375 510 H430 M375 700 H430 M375 890 H430 M375 1080 H430"/>
-<circle cx="375" cy="610" r="6" fill="#8994a6"/>
+<!-- 1. Application controls -->
+<rect class="category" x="375" y="150" width="310" height="150" rx="12"/>
+<text class="categoryText" x="395" y="190">1. Application-level</text>
+<text class="categoryText" x="395" y="216">controls</text>
+<text class="categoryTag" x="395" y="253">NO OS ISOLATION</text>
+<path class="branch" d="M685 225 H715 V185 H735 M715 225 V265 H735"/>
+<rect class="stack" x="735" y="150" width="600" height="70" rx="9"/>
+<text class="stackTitle" x="755" y="178">Capability Filesystem · ResourceRef</text>
+<text class="stackSub" x="755" y="201">Scoped file service · directory handles · MCP Filesystem</text>
+<rect class="policy" x="1375" y="150" width="760" height="70" rx="9"/>
+<text class="policyTitle" x="1395" y="173">RESOURCE-BOUNDARY POLICY</text>
+<text class="policyText" x="1395" y="198">Canonicalize paths; reject symlink / mount escapes; separate read, write and delete; keep reference mounts read-only.</text>
+<rect class="stack" x="735" y="230" width="600" height="70" rx="9"/>
+<text class="stackTitle" x="755" y="258">Tool Registry · Resource Policy · MCP Server</text>
+<text class="stackSub" x="755" y="281">Application PEP / Policy Engine</text>
+<rect class="policy" x="1375" y="230" width="760" height="70" rx="9"/>
+<text class="policyTitle" x="1395" y="253">AUTHORIZATION POLICY</text>
+<text class="policyText" x="1395" y="278">Deny by default; check subject / action / resource on every call; bind approval to exact changes; audit decisions.</text>
 
-<!-- 1 -->
-<path class="branch" d="M430 190 H455"/>
-<rect class="head" x="455" y="145" width="330" height="90" rx="12"/>
-<text class="headText" x="475" y="180">1. Application-level controls</text>
-<text class="tag" x="475" y="207">NO OS ISOLATION</text>
-<path class="branch" d="M785 190 H820 V145 H850 M820 190 V235 H850"/>
-<rect class="node" x="850" y="112" width="420" height="68" rx="10"/>
-<text class="body" x="872" y="140">Capability-based file access</text>
-<text class="small" x="872" y="162">Custom ResourceRef / scoped file service</text>
-<rect class="node" x="850" y="202" width="420" height="68" rx="10"/>
-<text class="body" x="872" y="230">Tool and resource permissions</text>
-<text class="small" x="872" y="252">Runtime Policy Engine · MCP Filesystem</text>
-<rect class="note" x="1310" y="142" width="510" height="95" rx="10"/>
-<text class="noteText" x="1332" y="177">Controls which operations are exposed;</text>
-<text class="noteText" x="1332" y="201">does not contain arbitrary code execution.</text>
+<!-- 2. Virtual shell -->
+<rect class="category" x="375" y="350" width="310" height="90" rx="12"/>
+<text class="categoryText" x="395" y="386">2. Virtual / controlled</text>
+<text class="categoryText" x="395" y="412">shell</text>
+<text class="categoryTag" x="395" y="430">SIMULATED COMMANDS</text>
+<path class="branch" d="M685 395 H735"/>
+<rect class="stack" x="735" y="350" width="600" height="90" rx="9"/>
+<text class="stackTitle" x="755" y="383">just-bash</text>
+<text class="stackSub" x="755" y="407">TypeScript virtual shell · virtual filesystem · no native host shell</text>
+<rect class="policy" x="1375" y="350" width="760" height="90" rx="9"/>
+<text class="policyTitle" x="1395" y="374">EXECUTION POLICY</text>
+<text class="policyText" x="1395" y="399">Expose only required commands and virtual paths; disable unsafe host callbacks; deny network by default;</text>
+<text class="policyText" x="1395" y="420">cap time, output and operation counts. Treat custom callbacks as trusted host code.</text>
 
-<!-- 2 -->
-<path class="branch" d="M430 350 H455"/>
-<rect class="head" x="455" y="305" width="330" height="90" rx="12"/>
-<text class="headText" x="475" y="340">2. Virtual / controlled shell</text>
-<text class="tag" x="475" y="367">SIMULATED COMMAND ENVIRONMENT</text>
-<path class="branch" d="M785 350 H850"/>
-<rect class="node" x="850" y="310" width="420" height="80" rx="10"/>
-<text class="body" x="872" y="342">just-bash</text>
-<text class="small" x="872" y="366">TypeScript virtual shell · constrained commands</text>
-<rect class="note" x="1310" y="310" width="510" height="80" rx="10"/>
-<text class="noteText" x="1332" y="342">Useful for predictable command workflows;</text>
-<text class="noteText" x="1332" y="366">not a boundary for arbitrary native processes.</text>
+<!-- 3. OS-level sandbox -->
+<rect class="category" x="375" y="500" width="310" height="256" rx="12"/>
+<text class="categoryText" x="395" y="545">3. OS-level process</text>
+<text class="categoryText" x="395" y="571">sandbox</text>
+<text class="categoryTag" x="395" y="610">HOST KERNEL SHARED</text>
+<text class="stackSub" x="395" y="645">Kernel-enforced file,</text>
+<text class="stackSub" x="395" y="665">network and process limits</text>
+<path class="branch" d="M685 628 H715 V538 H735 M715 628 V628 H735 M715 628 V718 H735"/>
+<rect class="stack" x="735" y="500" width="600" height="76" rx="9"/>
+<text class="stackTitle" x="755" y="528">macOS · Seatbelt / sandbox-exec</text>
+<text class="stackSub" x="755" y="552">Anthropic Sandbox Runtime · Codex sandbox patterns</text>
+<rect class="policy" x="1375" y="500" width="760" height="76" rx="9"/>
+<text class="policyTitle" x="1395" y="523">MACOS PROFILE POLICY</text>
+<text class="policyText" x="1395" y="548">Deny by default; allow only task paths; constrain network and Mach / IPC; verify child-process inheritance.</text>
+<rect class="stack" x="735" y="590" width="600" height="76" rx="9"/>
+<text class="stackTitle" x="755" y="618">Linux · bubblewrap / namespaces / seccomp / Landlock</text>
+<text class="stackSub" x="755" y="642">Mount, user, PID and network namespace isolation</text>
+<rect class="policy" x="1375" y="590" width="760" height="76" rx="9"/>
+<text class="policyTitle" x="1395" y="613">LINUX PROFILE POLICY</text>
+<text class="policyText" x="1395" y="638">Unshare namespaces; minimal bind mounts; read-only system paths; syscall filter; Landlock path rules;</text>
+<text class="policyText" x="1395" y="657">no host sockets or privileged devices; explicit egress path.</text>
+<rect class="stack" x="735" y="680" width="600" height="76" rx="9"/>
+<text class="stackTitle" x="755" y="708">Windows · AppContainer / Restricted Token / Job Objects</text>
+<text class="stackSub" x="755" y="732">ACLs · capability SIDs · process and resource management</text>
+<rect class="policy" x="1375" y="680" width="760" height="76" rx="9"/>
+<text class="policyTitle" x="1395" y="703">WINDOWS POLICY</text>
+<text class="policyText" x="1395" y="728">Use low-privilege token and narrow AppContainer capabilities / ACLs; constrain network; Job Object limits</text>
+<text class="policyText" x="1395" y="747">CPU, memory and process tree. A Job Object alone is not a security boundary.</text>
 
-<!-- 3 -->
-<path class="branch" d="M430 510 H455"/>
-<rect class="head" x="455" y="465" width="330" height="90" rx="12"/>
-<text class="headText" x="475" y="500">3. OS-level process sandbox</text>
-<text class="tag" x="475" y="527">SAME HOST KERNEL</text>
-<path class="branch" d="M785 510 H850"/>
-<rect class="node" x="850" y="405" width="420" height="205" rx="10"/>
-<text class="body" x="872" y="442">macOS · Seatbelt / sandbox-exec</text>
-<text class="small" x="872" y="466">Anthropic Sandbox Runtime · Codex patterns</text>
-<text class="body" x="872" y="505">Linux · bubblewrap / namespaces / seccomp</text>
-<text class="small" x="872" y="529">Landlock · network proxy / egress controls</text>
-<text class="body" x="872" y="568">Windows · AppContainer / restricted token</text>
-<text class="small" x="872" y="592">Job Objects · ACLs · process mitigation</text>
-<path class="branch" d="M1270 510 H1310"/>
-<rect class="note" x="1310" y="470" width="510" height="125" rx="10"/>
-<text class="noteText" x="1332" y="505">Strong host-enforced restrictions for files,</text>
-<text class="noteText" x="1332" y="529">processes and network; still shares the host</text>
-<text class="noteText" x="1332" y="553">kernel and its attack surface.</text>
+<!-- 4. Containers -->
+<rect class="category" x="375" y="790" width="310" height="166" rx="12"/>
+<text class="categoryText" x="395" y="835">4. Container</text>
+<text class="categoryText" x="395" y="861">isolation</text>
+<text class="categoryTag" x="395" y="900">SHARED HOST KERNEL</text>
+<path class="branch" d="M685 873 H715 V828 H735 M715 873 V918 H735"/>
+<rect class="stack" x="735" y="790" width="600" height="76" rx="9"/>
+<text class="stackTitle" x="755" y="818">Docker / Podman</text>
+<text class="stackSub" x="755" y="842">Namespaces · cgroups · seccomp · AppArmor / SELinux</text>
+<rect class="policy" x="1375" y="790" width="760" height="76" rx="9"/>
+<text class="policyTitle" x="1395" y="813">CONTAINER POLICY</text>
+<text class="policyText" x="1395" y="838">Prefer rootless; drop capabilities; no privileged mode / host socket / device; read-only rootfs;</text>
+<text class="policyText" x="1395" y="857">no-new-privileges; seccomp + MAC profile; cgroup quotas; narrowly scoped mounts.</text>
+<rect class="stack" x="735" y="880" width="600" height="76" rx="9"/>
+<text class="stackTitle" x="755" y="908">Kubernetes Restricted Pod</text>
+<text class="stackSub" x="755" y="932">Pod Security Admission · RBAC · NetworkPolicy · RuntimeClass</text>
+<rect class="policy" x="1375" y="880" width="760" height="76" rx="9"/>
+<text class="policyTitle" x="1395" y="903">KUBERNETES POD POLICY</text>
+<text class="policyText" x="1395" y="928">Non-root; no privilege escalation; drop ALL caps; read-only rootfs; seccomp RuntimeDefault;</text>
+<text class="policyText" x="1395" y="947">disable ServiceAccount token automount; default-deny NetworkPolicy; select RuntimeClass deliberately.</text>
 
-<!-- 4 -->
-<path class="branch" d="M430 700 H455"/>
-<rect class="head" x="455" y="655" width="330" height="90" rx="12"/>
-<text class="headText" x="475" y="690">4. Container isolation</text>
-<text class="tag" x="475" y="717">SHARED HOST KERNEL BY DEFAULT</text>
-<path class="branch" d="M785 700 H820 V665 H850 M820 700 V775 H850"/>
-<rect class="node" x="850" y="630" width="420" height="70" rx="10"/>
-<text class="body" x="872" y="658">Docker / Podman (rootless where possible)</text>
-<text class="small" x="872" y="682">Namespaces · cgroups · seccomp · AppArmor</text>
-<rect class="node" x="850" y="740" width="420" height="70" rx="10"/>
-<text class="body" x="872" y="768">Kubernetes Restricted Pod</text>
-<text class="small" x="872" y="792">Pod Security · NetworkPolicy · RuntimeClass</text>
-<path class="branch" d="M1270 665 H1310 M1270 775 H1310"/>
-<rect class="note" x="1310" y="675" width="510" height="110" rx="10"/>
-<text class="noteText" x="1332" y="710">Good packaging and operational isolation;</text>
-<text class="noteText" x="1332" y="734">add a stronger runtime when executing</text>
-<text class="noteText" x="1332" y="758">hostile multi-tenant workloads.</text>
+<!-- 5. Sandboxed kernel / microVM -->
+<rect class="category" x="375" y="990" width="310" height="166" rx="12"/>
+<text class="categoryText" x="395" y="1035">5. Sandboxed kernel /</text>
+<text class="categoryText" x="395" y="1061">microVM</text>
+<text class="categoryTag" x="395" y="1100">ADDITIONAL KERNEL BOUNDARY</text>
+<path class="branch" d="M685 1073 H715 V1028 H735 M715 1073 V1118 H735"/>
+<rect class="stack" x="735" y="990" width="600" height="76" rx="9"/>
+<text class="stackTitle" x="755" y="1018">gVisor</text>
+<text class="stackSub" x="755" y="1042">Sentry user-space kernel · runsc</text>
+<rect class="policy" x="1375" y="990" width="760" height="76" rx="9"/>
+<text class="policyTitle" x="1395" y="1013">GVISOR POLICY</text>
+<text class="policyText" x="1395" y="1038">Use an appropriate platform / runtime profile; minimize host mounts and devices; restrict egress;</text>
+<text class="policyText" x="1395" y="1057">apply CPU / memory / PID quotas; protect the node and runtime control socket.</text>
+<rect class="stack" x="735" y="1080" width="600" height="76" rx="9"/>
+<text class="stackTitle" x="755" y="1108">Kata Containers · Firecracker microVM</text>
+<text class="stackSub" x="755" y="1132">Guest kernel · VMM / hypervisor boundary</text>
+<rect class="policy" x="1375" y="1080" width="760" height="76" rx="9"/>
+<text class="policyTitle" x="1395" y="1103">MICROVM POLICY</text>
+<text class="policyText" x="1395" y="1128">Minimal virtual devices; isolate per task / tenant; harden VMM / jailer; verify signed images;</text>
+<text class="policyText" x="1395" y="1147">block metadata and unintended egress; scope volumes and credentials; enforce quotas.</text>
 
-<!-- 5 -->
-<path class="branch" d="M430 890 H455"/>
-<rect class="head" x="455" y="845" width="330" height="90" rx="12"/>
-<text class="headText" x="475" y="880">5. Sandboxed kernel / microVM</text>
-<text class="tag" x="475" y="907">ADDITIONAL KERNEL BOUNDARY</text>
-<path class="branch" d="M785 890 H820 V845 H850 M820 890 V955 H850"/>
-<rect class="node" x="850" y="810" width="420" height="70" rx="10"/>
-<text class="body" x="872" y="838">gVisor</text>
-<text class="small" x="872" y="862">User-space kernel intercepts application syscalls</text>
-<rect class="node" x="850" y="920" width="420" height="70" rx="10"/>
-<text class="body" x="872" y="948">Kata Containers · Firecracker microVM</text>
-<text class="small" x="872" y="972">Guest kernel · lightweight virtual machines</text>
-<path class="branch" d="M1270 845 H1310 M1270 955 H1310"/>
-<rect class="note" x="1310" y="845" width="510" height="110" rx="10"/>
-<text class="noteText" x="1332" y="880">Better fit for untrusted code and stronger</text>
-<text class="noteText" x="1332" y="904">tenant separation; requires image, lifecycle,</text>
-<text class="noteText" x="1332" y="928">network and credential controls.</text>
+<!-- 6. Remote execution -->
+<rect class="category" x="375" y="1190" width="310" height="166" rx="12"/>
+<text class="categoryText" x="395" y="1235">6. Remote isolated</text>
+<text class="categoryText" x="395" y="1261">execution</text>
+<text class="categoryTag" x="395" y="1300">SEPARATE EXECUTION HOST</text>
+<path class="branch" d="M685 1273 H715 V1228 H735 M715 1273 V1318 H735"/>
+<rect class="stack" x="735" y="1190" width="600" height="76" rx="9"/>
+<text class="stackTitle" x="755" y="1218">Cloudflare Sandbox · E2B · OpenHands Runtime</text>
+<text class="stackSub" x="755" y="1242">Managed or task-scoped remote execution environment</text>
+<rect class="policy" x="1375" y="1190" width="760" height="76" rx="9"/>
+<text class="policyTitle" x="1395" y="1213">REMOTE TASK POLICY</text>
+<text class="policyText" x="1395" y="1238">Ephemeral per-task workspace; tenant-bound identity; short-lived scoped credentials; egress proxy / allowlist;</text>
+<text class="policyText" x="1395" y="1257">resource and time budgets; audit execution; destroy workspace and revoke grants at task end.</text>
+<rect class="stack" x="735" y="1280" width="600" height="76" rx="9"/>
+<text class="stackTitle" x="755" y="1308">Dedicated VM / worker pool</text>
+<text class="stackSub" x="755" y="1332">Kubernetes + gVisor / Kata / microVM</text>
+<rect class="policy" x="1375" y="1280" width="760" height="76" rx="9"/>
+<text class="policyTitle" x="1395" y="1303">WORKER-POOL POLICY</text>
+<text class="policyText" x="1395" y="1328">Isolate tenant queues, storage and network; use signed immutable images and workload identity;</text>
+<text class="policyText" x="1395" y="1347">broker secrets; cap concurrency / cost; reimage or destroy workers after execution.</text>
 
-<!-- 6 -->
-<path class="branch" d="M430 1080 H455"/>
-<rect class="head" x="455" y="1035" width="330" height="90" rx="12"/>
-<text class="headText" x="475" y="1070">6. Remote isolated execution</text>
-<text class="tag" x="475" y="1097">SEPARATE EXECUTION HOST</text>
-<path class="branch" d="M785 1080 H820 V1035 H850 M820 1080 V1145 H850"/>
-<rect class="node" x="850" y="1000" width="420" height="70" rx="10"/>
-<text class="body" x="872" y="1028">Task-scoped remote sandbox</text>
-<text class="small" x="872" y="1052">Cloudflare Sandbox · E2B · OpenHands Runtime</text>
-<rect class="node" x="850" y="1110" width="420" height="70" rx="10"/>
-<text class="body" x="872" y="1138">Dedicated VM / worker pool</text>
-<text class="small" x="872" y="1162">Kubernetes + gVisor / Kata / microVM</text>
-<path class="branch" d="M1270 1035 H1310 M1270 1145 H1310"/>
-<rect class="note" x="1310" y="1040" width="510" height="115" rx="10"/>
-<text class="noteText" x="1332" y="1075">Separates execution from the desktop host;</text>
-<text class="noteText" x="1332" y="1099">remote tool, remote execution and remote</text>
-<text class="noteText" x="1332" y="1123">Agent are different deployment models.</text>
-
-<text class="small" x="70" y="1225">Orthogonal controls still apply at every branch: identity, scoped credentials, resource permissions, egress policy, quotas, audit and lifecycle cleanup.</text>
+<text class="foot" x="70" y="1420">Cross-cutting controls: identity and delegation · resource authorization · data classification · credential broker · network egress · quotas · audit · emergency stop · cleanup.</text>
+<text class="foot" x="70" y="1448">These are policy responsibilities to implement and test, not guarantees supplied automatically by each product or runtime.</text>
 </svg>
