@@ -100,10 +100,10 @@
 
 <rect class="tech" x="835" y="1085" width="1025" height="120" rx="12"/>
 <text class="techT" x="865" y="1122">Microsoft Execution Containers (MXC) · Process Container</text>
-<text class="techB" x="865" y="1155">Cross-platform policy / SDK layer; platform backends include AppContainer, Seatbelt and bubblewrap</text>
+<text class="techB" x="865" y="1155">Cross-platform policy / SDK · Process, Session, WSL and experimental MicroVM containment backends</text>
 <rect class="pol" x="1890" y="1085" width="1240" height="120" rx="12"/>
 <text class="polH" x="1920" y="1118">MXC WORKLOAD POLICY</text>
-<text class="polT" x="1920" y="1152">Declare readable / writable paths, network destinations, environment and UI access; choose a supported backend;</text>
+<text class="polT" x="1920" y="1152">Declare readable / writable paths, network destinations, environment and UI access; select a supported backend;</text>
 <text class="polT" x="1920" y="1178">test Enforcement / Learning behavior and denied operations. MXC is a policy layer, not one fixed isolation strength.</text>
 
 <!-- CONTAINERS -->
