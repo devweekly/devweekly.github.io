@@ -2,17 +2,18 @@
 <title id="title">Agent Sandbox Landscape</title>
 <desc id="desc">Layered landscape of isolation primitives, sandbox runtimes and orchestration, managed execution services, and browser sandboxes. Firecracker is shown as a microVM monitor used by several managed platforms.</desc>
 <defs><style>
-.bg{fill:#f5f7fa}.title{font:700 48px Inter,Arial,sans-serif;fill:#182437}.sub{font:22px Inter,Arial,sans-serif;fill:#596579}
-.band{fill:#e9eef5;stroke:#c4cedb;stroke-width:2}.bandtitle{font:700 27px Inter,Arial,sans-serif;fill:#24364d}
-.card{fill:#fff;stroke:#c8d1de;stroke-width:2}.cardtitle{font:700 22px Inter,Arial,sans-serif;fill:#203149}.body{font:19px Inter,Arial,sans-serif;fill:#34465d}.small{font:17px Inter,Arial,sans-serif;fill:#5a687a}
-.emph{font:700 20px Inter,Arial,sans-serif;fill:#225b47}.fire{fill:#fff7ed;stroke:#d97706;stroke-width:3}.firetitle{font:700 26px Inter,Arial,sans-serif;fill:#9a3412}
-.line{stroke:#8a98aa;stroke-width:2;fill:none}.dash{stroke:#8a98aa;stroke-width:2;stroke-dasharray:7 7;fill:none}
+.bg{fill:#fffaf2}.title{font:700 48px Inter,Arial,sans-serif;fill:#20202a}.sub{font:22px Inter,Arial,sans-serif;fill:#57515d}
+.band{stroke-width:2}.band1{fill:#f0e7ff;stroke:#b99ae8}.band2{fill:#e1f5ef;stroke:#80c7ad}.band3{fill:#fff0df;stroke:#e6b16f}.band4{fill:#e5f1ff;stroke:#8fb8e8}
+.bandtitle{font:700 27px Inter,Arial,sans-serif;fill:#292536}
+.card{fill:#fffefa;stroke:#b9b1a7;stroke-width:2}.cardtitle{font:700 22px Inter,Arial,sans-serif;fill:#28232d}.body{font:19px Inter,Arial,sans-serif;fill:#38333d}.small{font:17px Inter,Arial,sans-serif;fill:#625b65}
+.emph{font:700 20px Inter,Arial,sans-serif;fill:#225b47}
+.line{stroke:#817985;stroke-width:2;fill:none}.dash{stroke:#817985;stroke-width:2;stroke-dasharray:7 7;fill:none}
 </style></defs>
 <rect class="bg" width="2600" height="3000"/>
 <text class="title" x="80" y="82">Agent Sandbox Landscape</text>
 <text class="sub" x="80" y="122">Separate the isolation boundary, the runtime that manages it, and the hosted product that exposes it.</text>
 
-<rect class="band" x="60" y="165" width="2480" height="565" rx="20"/>
+<rect class="band band1" x="60" y="165" width="2480" height="565" rx="20"/>
 <text class="bandtitle" x="95" y="215">1. Isolation primitives — where the security boundary comes from</text>
 
 <rect class="card" x="95" y="250" width="760" height="190" rx="14"/>
@@ -27,8 +28,8 @@
 <text class="body" x="950" y="367">Syscall interception · reduced host-kernel surface</text>
 <text class="small" x="950" y="410">Not a VM; workload syscalls are mediated by a userspace kernel.</text>
 
-<rect class="fire" x="1705" y="250" width="790" height="190" rx="14"/>
-<text class="firetitle" x="1735" y="292">Firecracker — microVM VMM</text>
+<rect class="card" x="1705" y="250" width="790" height="190" rx="14"/>
+<text class="cardtitle" x="1735" y="292">Firecracker — microVM VMM</text>
 <text class="body" x="1735" y="334">KVM-backed microVM · own guest kernel</text>
 <text class="body" x="1735" y="367">Minimal device model · jailer · seccomp</text>
 <text class="small" x="1735" y="410">A building block, not a complete sandbox service or policy engine.</text>
@@ -51,7 +52,7 @@
 <text class="body" x="1735" y="582">Namespaces · cgroups · capabilities · LSM</text>
 <text class="small" x="1735" y="630">Containers package processes; by default they share the host kernel.</text>
 
-<rect class="band" x="60" y="770" width="2480" height="480" rx="20"/>
+<rect class="band band2" x="60" y="770" width="2480" height="480" rx="20"/>
 <text class="bandtitle" x="95" y="820">2. Runtime and orchestration — how sandboxes are created, governed and recycled</text>
 
 <rect class="card" x="95" y="855" width="760" height="165" rx="14"/>
@@ -79,7 +80,7 @@
 <text class="body" x="1360" y="1129">Docker Sandboxes · BoxLite · SmolVM · Nono · just-bash</text>
 <text class="small" x="1360" y="1168">Different trade-offs: microVM, lightweight VM, OS policy or virtual shell.</text>
 
-<rect class="band" x="60" y="1290" width="2480" height="1120" rx="20"/>
+<rect class="band band3" x="60" y="1290" width="2480" height="1120" rx="20"/>
 <text class="bandtitle" x="95" y="1340">3. Managed sandbox services — hosted execution, not one uniform product category</text>
 <text class="small" x="95" y="1375">Substrate labels reflect published product documentation; unspecified means the provider does not clearly disclose the isolation primitive.</text>
 
@@ -118,7 +119,7 @@
 <text class="body" x="1360" y="2012">E2B / Daytona / Runloop / Blaxel — managed control planes</text>
 <text class="small" x="1360" y="2075">Separate control plane / BYOC deployment from the actual isolation mechanism.</text>
 
-<rect class="band" x="60" y="2450" width="2480" height="430" rx="20"/>
+<rect class="band band4" x="60" y="2450" width="2480" height="430" rx="20"/>
 <text class="bandtitle" x="95" y="2500">4. Browser sandboxes — isolate browser state and web interaction separately</text>
 <rect class="card" x="95" y="2530" width="760" height="260" rx="14"/>
 <text class="cardtitle" x="125" y="2572">Hosted browser sessions</text>
