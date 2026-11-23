@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="3200" height="2380" viewBox="0 0 3200 2380" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="3200" height="3400" viewBox="0 0 3200 3400" role="img" aria-labelledby="title desc">
 <title id="title">Agent Sandbox Implementation Options and Security Controls</title>
 <desc id="desc">An expanded implementation tree covering application-level controls, virtual shells, OS process sandboxes, container isolation, sandboxed kernels and microVMs, and remote execution. Named projects are mapped to their actual execution boundaries and the policies operators must enforce.</desc>
 <defs>
@@ -14,7 +14,7 @@
 .foot{font:16px Inter,Arial,sans-serif;fill:#596579}
 </style>
 </defs>
-<rect class="bg" width="3200" height="2380"/>
+<rect class="bg" width="3200" height="3400"/>
 <text class="title" x="70" y="68">Agent Sandbox Implementation Options</text>
 <text class="sub" x="70" y="108">Expanded project map · implementation boundary, concrete stacks, and security policy obligations</text>
 <text class="colH" x="360" y="165">IMPLEMENTATION FAMILY</text>
@@ -26,7 +26,7 @@
 <text class="rootT" x="177" y="1140" text-anchor="middle">Sandbox</text>
 <text x="177" y="1182" text-anchor="middle" style="font:16px Inter,Arial,sans-serif;fill:#d7deea">Where is the boundary</text>
 <text x="177" y="1206" text-anchor="middle" style="font:16px Inter,Arial,sans-serif;fill:#d7deea">actually enforced?</text>
-<path class="branch" d="M300 1130 H330 V340 H355 M330 340 V630 H355 M330 630 V925 H355 M330 925 V1390 H355 M330 1390 V1740 H355 M330 1740 V2110 H355"/>
+<path class="branch" d="M300 1130 H330 V340 H355 M330 340 V630 H355 M330 630 V925 H355 M330 925 V1390 H355 M330 1390 V1740 H355 M330 1740 V2110 H355 M330 2110 V2460 H355 M330 2460 V2670 H355 M330 2670 V2880 H355 M330 2880 V3150 H355"/>
 
 <!-- APPLICATION -->
 <rect class="cat" x="355" y="205" width="420" height="270" rx="16"/>
@@ -189,5 +189,86 @@
 <text class="polT" x="1920" y="2272">Isolate queues, storage and network; workload identity; secret broker; signed images; concurrency / cost limits;</text>
 <text class="polT" x="1920" y="2298">reimage or destroy workers; prevent cross-tenant cache, volume and credential reuse.</text>
 
-<text class="foot" x="70" y="2348">Cross-cutting controls: identity and delegation · policy decision / enforcement points · credential broker · data classification · network egress · quotas · audit · revocation · cleanup.</text>
+
+<!-- AGENT SECURITY RUNTIME AND CONTROL PLANE -->
+<rect class="cat" x="355" y="2380" width="420" height="250" rx="16"/>
+<text class="catT" x="385" y="2427">7. Agent security runtime</text>
+<text class="catT" x="385" y="2457">and sandbox control plane</text>
+<text class="catS" x="385" y="2500">POLICY + LIFECYCLE CONTROL</text>
+<text class="techB" x="385" y="2540">Governs identity, policy,</text><text class="techB" x="385" y="2566">provisioning and execution.</text>
+<text class="techB" x="385" y="2608">Does not imply one fixed</text><text class="techB" x="385" y="2634">kernel / VM boundary.</text>
+<path class="branch" d="M775 2510 H810 V2440 H835 M810 2510 V2575 H835"/>
+<rect class="tech" x="835" y="2370" width="1025" height="145" rx="12"/>
+<text class="techT" x="865" y="2408">NVIDIA OpenShell</text>
+<text class="techB" x="865" y="2444">Agent security runtime · policy enforcement · credential / network mediation · multiple compute backends</text>
+<text class="techB" x="865" y="2477">Treat the selected backend and its enforcement coverage as the actual isolation boundary.</text>
+<rect class="pol" x="1890" y="2370" width="1240" height="145" rx="12"/>
+<text class="polH" x="1920" y="2403">AGENT POLICY AND CREDENTIAL GOVERNANCE</text>
+<text class="polT" x="1920" y="2439">Default-deny tools and resources; broker short-lived credentials; mediate egress; separate policy administration</text>
+<text class="polT" x="1920" y="2469">from Agent identity; prevent self-modification; record decisions and backend capabilities.</text>
+<rect class="tech" x="835" y="2530" width="1025" height="145" rx="12"/>
+<text class="techT" x="865" y="2568">Kubernetes Agent Sandbox · Alibaba OpenSandbox</text>
+<text class="techB" x="865" y="2604">Sandbox API / CRDs · templates, claims, warm pools, runtime adapters and task lifecycle</text>
+<text class="techB" x="865" y="2637">Control-plane abstractions; select and verify the underlying container, gVisor, Kata or microVM runtime.</text>
+<rect class="pol" x="1890" y="2530" width="1240" height="145" rx="12"/>
+<text class="polH" x="1920" y="2563">PROVISIONING AND TENANT LIFECYCLE</text>
+<text class="polT" x="1920" y="2599">Authorize claims; isolate tenant identity, storage and network; enforce quotas and TTL; scrub warm pools;</text>
+<text class="polT" x="1920" y="2629">verify RuntimeClass / backend selection; reconcile orphaned workloads and revoke grants on termination.</text>
+
+<!-- WASM -->
+<rect class="cat" x="355" y="2650" width="420" height="190" rx="16"/>
+<text class="catT" x="385" y="2697">8. WASM sandbox</text>
+<text class="catS" x="385" y="2740">RUNTIME + CAPABILITY ABI</text>
+<text class="techB" x="385" y="2780">Module-level isolation and</text><text class="techB" x="385" y="2806">explicit host capabilities.</text>
+<path class="branch" d="M775 2745 H835"/>
+<rect class="tech" x="835" y="2690" width="1025" height="145" rx="12"/>
+<text class="techT" x="865" y="2728">Wasmtime · Wasmer · WASI</text>
+<text class="techB" x="865" y="2764">WASM / component execution · capability-oriented filesystem, sockets and host imports</text>
+<text class="techB" x="865" y="2797">Not a drop-in native OS: validate WASI coverage, host imports, escape surface and workload compatibility.</text>
+<rect class="pol" x="1890" y="2690" width="1240" height="145" rx="12"/>
+<text class="polH" x="1920" y="2723">WASM HOST-CAPABILITY POLICY</text>
+<text class="polT" x="1920" y="2759">Expose only required WASI interfaces and preopened directories; deny ambient filesystem / network access;</text>
+<text class="polT" x="1920" y="2789">limit fuel / CPU, memory, table and output; validate host functions and component dependencies.</text>
+
+<!-- EMBEDDED AND PERSISTENT MICROVM -->
+<rect class="cat" x="355" y="2860" width="420" height="260" rx="16"/>
+<text class="catT" x="385" y="2907">9. Embedded and</text><text class="catT" x="385" y="2937">persistent microVM</text>
+<text class="catS" x="385" y="2980">WORKSPACE AS A LIFECYCLE</text>
+<text class="techB" x="385" y="3020">Local embedding, snapshots,</text><text class="techB" x="385" y="3046">restore and durable state.</text>
+<text class="techB" x="385" y="3088">MicroVM claim must be checked</text><text class="techB" x="385" y="3114">against actual backend.</text>
+<path class="branch" d="M775 2990 H810 V2925 H835 M810 2990 V3065 H835"/>
+<rect class="tech" x="835" y="2850" width="1025" height="145" rx="12"/>
+<text class="techT" x="865" y="2888">BoxLite · SmolVM</text>
+<text class="techB" x="865" y="2924">Embedded / lightweight VM-oriented execution for applications and Agent runtimes</text>
+<text class="techB" x="865" y="2957">Verify host platform, VMM, kernel boundary, device model and project maturity before production use.</text>
+<rect class="pol" x="1890" y="2850" width="1240" height="145" rx="12"/>
+<text class="polH" x="1920" y="2883">EMBEDDED VM HARDENING</text>
+<text class="polT" x="1920" y="2919">Minimize host APIs and virtual devices; isolate VM storage; authenticate control sockets; constrain resources;</text>
+<text class="polT" x="1920" y="2949">patch VMM / guest images; prevent snapshot and cache reuse across tenants.</text>
+<rect class="tech" x="835" y="3010" width="1025" height="145" rx="12"/>
+<text class="techT" x="865" y="3048">Fly.io Sprites · Docker Sandboxes / Cloud Sandboxes · Deno Sandbox</text>
+<text class="techB" x="865" y="3084">Persistent or API-created isolated workspaces · checkpoint / restore · local-to-cloud execution patterns</text>
+<text class="techB" x="865" y="3117">Product backends and availability vary; do not infer Firecracker / microVM use without verifying deployment.</text>
+<rect class="pol" x="1890" y="3010" width="1240" height="145" rx="12"/>
+<text class="polH" x="1920" y="3043">PERSISTENCE AND SNAPSHOT POLICY</text>
+<text class="polT" x="1920" y="3079">Encrypt and tenant-bind snapshots; scan restored state; rotate credentials on resume; expire idle workspaces;</text>
+<text class="polT" x="1920" y="3109">prevent poisoned image / cache propagation; audit restore, fork, export and deletion operations.</text>
+
+<!-- BROWSER / DESKTOP EXECUTION -->
+<rect class="cat" x="355" y="3140" width="420" height="190" rx="16"/>
+<text class="catT" x="385" y="3187">10. Browser and</text><text class="catT" x="385" y="3217">desktop isolation</text>
+<text class="catS" x="385" y="3260">SESSION / PROFILE BOUNDARY</text>
+<text class="techB" x="385" y="3300">Separate browser state,</text><text class="techB" x="385" y="3326">downloads and user session.</text>
+<path class="branch" d="M775 3235 H835"/>
+<rect class="tech" x="835" y="3170" width="1025" height="145" rx="12"/>
+<text class="techT" x="865" y="3208">Browserbase · Steel Browser · Lightpanda · AgentCore Browser</text>
+<text class="techB" x="865" y="3244">Managed / self-hosted browser sessions and automation-oriented browser runtimes</text>
+<text class="techB" x="865" y="3277">Browser isolation is not general code isolation; Lightpanda is a browser engine, not a security boundary.</text>
+<rect class="pol" x="1890" y="3170" width="1240" height="145" rx="12"/>
+<text class="polH" x="1920" y="3203">BROWSER SESSION POLICY</text>
+<text class="polT" x="1920" y="3239">Per-task profiles and cookies; isolate downloads / uploads; restrict navigation and egress; protect credentials;</text>
+<text class="polT" x="1920" y="3269">block local-network and metadata access; mediate clipboard, file chooser, screenshots and user confirmation.</text>
+
+<text class="foot" x="70" y="3370">Cross-cutting controls: identity and delegation · policy decision / enforcement points · credential broker · data classification · network egress · quotas · audit · revocation · cleanup. Categories describe distinct concerns, not a single security ranking.</text>
+
 </svg>
