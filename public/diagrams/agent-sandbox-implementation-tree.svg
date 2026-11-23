@@ -1,143 +1,136 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="2600" height="3000" viewBox="0 0 2600 3000" role="img" aria-labelledby="title desc">
 <title id="title">Agent Sandbox Landscape</title>
-<desc id="desc">Layered landscape of isolation primitives, sandbox runtimes and orchestration, managed execution services, and browser sandboxes. Firecracker is shown as a microVM monitor used by several managed platforms.</desc>
+<desc id="desc">A layered map of isolation mechanisms, sandbox runtimes and orchestration, hosted execution services, and browser execution. Each layer describes a different part of the execution boundary.</desc>
 <defs><style>
 .bg{fill:#fffaf2}.title{font:700 48px Inter,Arial,sans-serif;fill:#20202a}.sub{font:22px Inter,Arial,sans-serif;fill:#57515d}
 .band{stroke-width:2}.band1{fill:#f0e7ff;stroke:#b99ae8}.band2{fill:#e1f5ef;stroke:#80c7ad}.band3{fill:#fff0df;stroke:#e6b16f}.band4{fill:#e5f1ff;stroke:#8fb8e8}
 .bandtitle{font:700 27px Inter,Arial,sans-serif;fill:#292536}
 .card{fill:#fffefa;stroke:#b9b1a7;stroke-width:2}.cardtitle{font:700 22px Inter,Arial,sans-serif;fill:#28232d}.body{font:19px Inter,Arial,sans-serif;fill:#38333d}.small{font:17px Inter,Arial,sans-serif;fill:#625b65}
 .emph{font:700 20px Inter,Arial,sans-serif;fill:#225b47}
-.line{stroke:#817985;stroke-width:2;fill:none}.dash{stroke:#817985;stroke-width:2;stroke-dasharray:7 7;fill:none}
 </style></defs>
 <rect class="bg" width="2600" height="3000"/>
 <text class="title" x="80" y="82">Agent Sandbox Landscape</text>
-<text class="sub" x="80" y="122">Separate the isolation boundary, the runtime that manages it, and the hosted product that exposes it.</text>
+<text class="sub" x="80" y="122">Isolation mechanisms, runtime management and hosted execution are separate layers.</text>
 
 <rect class="band band1" x="60" y="165" width="2480" height="565" rx="20"/>
-<text class="bandtitle" x="95" y="215">1. Isolation primitives — where the security boundary comes from</text>
+<text class="bandtitle" x="95" y="215">1. Isolation mechanisms — the boundary around a process or workload</text>
 
 <rect class="card" x="95" y="250" width="760" height="190" rx="14"/>
 <text class="cardtitle" x="125" y="292">OS-level process sandbox</text>
-<text class="body" x="125" y="334">Seatbelt · sandbox-exec · AppContainer</text>
-<text class="body" x="125" y="367">bubblewrap · seccomp · Landlock · namespaces</text>
-<text class="small" x="125" y="410">Shared host kernel; syscall, path, identity and capability restrictions.</text>
+<text class="body" x="125" y="334">macOS Seatbelt · Linux seccomp / Landlock / namespaces</text>
+<text class="body" x="125" y="367">Windows AppContainer · bubblewrap</text>
+<text class="small" x="125" y="410">Shares the host kernel; restricts files, syscalls and process capabilities.</text>
 
 <rect class="card" x="920" y="250" width="720" height="190" rx="14"/>
 <text class="cardtitle" x="950" y="292">Userspace kernel</text>
-<text class="body" x="950" y="334">gVisor (runsc)</text>
-<text class="body" x="950" y="367">Syscall interception · reduced host-kernel surface</text>
-<text class="small" x="950" y="410">Not a VM; workload syscalls are mediated by a userspace kernel.</text>
+<text class="body" x="950" y="334">gVisor · runsc</text>
+<text class="body" x="950" y="367">System calls handled by the Sentry kernel</text>
+<text class="small" x="950" y="410">Mediates workload syscalls instead of exposing the host kernel directly.</text>
 
 <rect class="card" x="1705" y="250" width="790" height="190" rx="14"/>
-<text class="cardtitle" x="1735" y="292">Firecracker — microVM VMM</text>
-<text class="body" x="1735" y="334">KVM-backed microVM · own guest kernel</text>
+<text class="cardtitle" x="1735" y="292">MicroVM monitor</text>
+<text class="body" x="1735" y="334">Firecracker · KVM · separate guest kernel</text>
 <text class="body" x="1735" y="367">Minimal device model · jailer · seccomp</text>
-<text class="small" x="1735" y="410">A building block, not a complete sandbox service or policy engine.</text>
+<text class="small" x="1735" y="410">Firecracker is a VMM, not a sandbox manager or policy engine.</text>
 
 <rect class="card" x="95" y="465" width="760" height="210" rx="14"/>
-<text class="cardtitle" x="125" y="507">VM-backed isolation</text>
+<text class="cardtitle" x="125" y="507">Virtual machines</text>
 <text class="body" x="125" y="549">Kata Containers · Cloud Hypervisor · QEMU/KVM</text>
-<text class="body" x="125" y="582">Hyper-V isolation · dedicated VM</text>
-<text class="small" x="125" y="630">Separate guest kernel; device, storage, network and host controls still matter.</text>
+<text class="body" x="125" y="582">Hyper-V · dedicated VM</text>
+<text class="small" x="125" y="630">Each VM runs a guest OS; the hypervisor and host remain trusted.</text>
 
 <rect class="card" x="920" y="465" width="720" height="210" rx="14"/>
-<text class="cardtitle" x="950" y="507">WASM / language runtime</text>
+<text class="cardtitle" x="950" y="507">WebAssembly and language runtimes</text>
 <text class="body" x="950" y="549">Wasmtime · Wasmer · WASI</text>
-<text class="body" x="950" y="582">Deno isolates · V8 isolates</text>
-<text class="small" x="950" y="630">Capability-oriented APIs; not a drop-in replacement for a full Linux VM.</text>
+<text class="body" x="950" y="582">V8 isolates · Deno</text>
+<text class="small" x="950" y="630">Modules and isolates access the host through runtime-provided APIs.</text>
 
 <rect class="card" x="1705" y="465" width="790" height="210" rx="14"/>
-<text class="cardtitle" x="1735" y="507">Container isolation</text>
-<text class="body" x="1735" y="549">runc / crun · Docker · containerd</text>
-<text class="body" x="1735" y="582">Namespaces · cgroups · capabilities · LSM</text>
-<text class="small" x="1735" y="630">Containers package processes; by default they share the host kernel.</text>
+<text class="cardtitle" x="1735" y="507">Containers</text>
+<text class="body" x="1735" y="549">runc · crun (OCI runtimes)</text>
+<text class="body" x="1735" y="582">containerd · Docker (container engines)</text>
+<text class="small" x="1735" y="630">Namespaces and cgroups constrain processes; the host kernel is shared.</text>
 
 <rect class="band band2" x="60" y="770" width="2480" height="480" rx="20"/>
-<text class="bandtitle" x="95" y="820">2. Runtime and orchestration — how sandboxes are created, governed and recycled</text>
+<text class="bandtitle" x="95" y="820">2. Runtimes and orchestration — create, configure and recycle sandboxes</text>
 
 <rect class="card" x="95" y="855" width="760" height="165" rx="14"/>
 <text class="cardtitle" x="125" y="897">Kubernetes SIG Apps · Agent Sandbox</text>
 <text class="body" x="125" y="939">Sandbox · SandboxTemplate · SandboxClaim</text>
-<text class="small" x="125" y="980">Lifecycle API, warm pools and placement; isolation comes from the selected runtime.</text>
+<text class="small" x="125" y="980">Lifecycle controller and warm pools; RuntimeClass selects the isolation runtime.</text>
 
 <rect class="card" x="920" y="855" width="720" height="165" rx="14"/>
 <text class="cardtitle" x="950" y="897">Open-source sandbox runtimes</text>
 <text class="body" x="950" y="939">OpenSandbox · E2B Runtime · OpenHands Runtime</text>
-<text class="small" x="950" y="980">Runtime APIs, images, sessions and execution management.</text>
+<text class="small" x="950" y="980">APIs and session management; the selected backend defines isolation.</text>
 
 <rect class="card" x="1705" y="855" width="790" height="165" rx="14"/>
-<text class="cardtitle" x="1735" y="897">Agent security / local runtimes</text>
-<text class="body" x="1735" y="939">NVIDIA OpenShell · Anthropic SRT · Microsoft MXC</text>
-<text class="small" x="1735" y="980">Policy, tool mediation and backend selection; verify the enforced boundary.</text>
+<text class="cardtitle" x="1735" y="897">Agent execution controls</text>
+<text class="body" x="1735" y="939">Anthropic SRT · Microsoft MXC · NVIDIA OpenShell</text>
+<text class="small" x="1735" y="980">Command, filesystem and network controls; enforcement is backend-specific.</text>
 
 <rect class="card" x="95" y="1045" width="1170" height="155" rx="14"/>
-<text class="cardtitle" x="125" y="1087">Kubernetes execution stack</text>
-<text class="body" x="125" y="1129">Pod Security Standards · RBAC · NetworkPolicy · ResourceQuota · RuntimeClass</text>
-<text class="small" x="125" y="1168">RuntimeClass selects a handler (e.g. runsc / Kata); Pod Security is not VM isolation.</text>
+<text class="cardtitle" x="125" y="1087">Kubernetes security controls</text>
+<text class="body" x="125" y="1129">Pod Security · RBAC · NetworkPolicy · ResourceQuota</text>
+<text class="body" x="125" y="1162">Admission · RuntimeClass</text>
+<text class="small" x="125" y="1190">Admission and access controls; RuntimeClass selects a runtime handler.</text>
 
 <rect class="card" x="1330" y="1045" width="1165" height="155" rx="14"/>
-<text class="cardtitle" x="1360" y="1087">Developer / desktop sandbox wrappers</text>
-<text class="body" x="1360" y="1129">Docker Sandboxes · BoxLite · SmolVM · Nono · just-bash</text>
-<text class="small" x="1360" y="1168">Different trade-offs: microVM, lightweight VM, OS policy or virtual shell.</text>
+<text class="cardtitle" x="1360" y="1087">Local and developer sandboxes</text>
+<text class="body" x="1360" y="1129">Docker Sandboxes · BoxLite · SmolVM</text>
+<text class="body" x="1360" y="1162">Nono · just-bash</text>
+<text class="small" x="1360" y="1190">VM, OS-policy and virtual-shell designs; these are different boundaries.</text>
 
 <rect class="band band3" x="60" y="1290" width="2480" height="1120" rx="20"/>
-<text class="bandtitle" x="95" y="1340">3. Managed sandbox services — hosted execution, not one uniform product category</text>
-<text class="small" x="95" y="1375">Substrate labels reflect published product documentation; unspecified means the provider does not clearly disclose the isolation primitive.</text>
+<text class="bandtitle" x="95" y="1340">3. Hosted execution services — products that manage the execution environment</text>
+<text class="small" x="95" y="1375">A substrate is named only where the provider documents it; otherwise no implementation is inferred.</text>
 
-<rect class="card" x="95" y="1410" width="1170" height="440" rx="14"/>
-<text class="cardtitle" x="125" y="1452">MicroVM / VM-backed sandboxes</text>
-<text class="body" x="125" y="1500">E2B — Firecracker microVM · pause / resume · BYOC</text>
-<text class="body" x="125" y="1542">Vercel Sandbox — Firecracker microVM · snapshots</text>
-<text class="body" x="125" y="1584">CodeSandbox SDK — Firecracker-powered VM</text>
-<text class="body" x="125" y="1626">Fly.io Sprites / Machines — Firecracker microVM</text>
-<text class="body" x="125" y="1668">Blaxel — microVM · standby / fast resume</text>
-<text class="body" x="125" y="1710">Northflank Sandboxes — microVM (Kata / gVisor options)</text>
-<text class="body" x="125" y="1752">Runloop Devboxes — isolated ephemeral VMs</text>
-<text class="body" x="125" y="1794">Morph Cloud — VM instances from snapshots</text>
-<text class="small" x="125" y="1825">Best fit: untrusted code, full Linux compatibility, persistent dev environments.</text>
+<rect class="card" x="95" y="1410" width="1170" height="400" rx="14"/>
+<text class="cardtitle" x="125" y="1452">Firecracker and VM-based products</text>
+<text class="body" x="125" y="1500">E2B · Vercel Sandbox · CodeSandbox SDK — Firecracker</text>
+<text class="body" x="125" y="1542">Fly.io Sprites / Machines — Firecracker</text>
+<text class="body" x="125" y="1584">Morph Cloud — VMs created from snapshots</text>
+<text class="small" x="125" y="1765">VM lifecycle, persistence and networking differ by service.</text>
 
-<rect class="card" x="1330" y="1410" width="1165" height="440" rx="14"/>
-<text class="cardtitle" x="1360" y="1452">Container / gVisor / managed cloud sessions</text>
-<text class="body" x="1360" y="1500">Modal Sandboxes — gVisor (GPU supported)</text>
-<text class="body" x="1360" y="1542">Daytona — isolated containers and VM class</text>
-<text class="body" x="1360" y="1584">Cloudflare Sandbox — container inside per-instance VM</text>
-<text class="body" x="1360" y="1626">Beam Sandboxes — container-based runtime</text>
-<text class="body" x="1360" y="1668">AWS Bedrock AgentCore Code Interpreter — managed container</text>
-<text class="body" x="1360" y="1710">Azure Container Apps Dynamic Sessions — Hyper-V isolation</text>
-<text class="body" x="1360" y="1752">Google Agent Platform Code Execution — substrate undisclosed</text>
-<text class="small" x="1360" y="1825">Check network defaults, persistence, session caps, GPU, tenant boundary and BYOC.</text>
+<rect class="card" x="1330" y="1410" width="1165" height="400" rx="14"/>
+<text class="cardtitle" x="1360" y="1452">Other documented isolation models</text>
+<text class="body" x="1360" y="1500">Modal Sandboxes — gVisor</text>
+<text class="body" x="1360" y="1542">Azure Container Apps Dynamic Sessions — Hyper-V isolation</text>
+<text class="small" x="1360" y="1765">These are different execution boundaries, not interchangeable products.</text>
 
-<rect class="card" x="95" y="1880" width="1170" height="240" rx="14"/>
-<text class="cardtitle" x="125" y="1922">Model-provider execution tools</text>
-<text class="body" x="125" y="1970">OpenAI Code Interpreter — managed sandboxed VM</text>
-<text class="body" x="125" y="2012">Anthropic Code Execution — isolated Linux container</text>
-<text class="small" x="125" y="2075">Convenient tool execution; not necessarily a general-purpose persistent computer.</text>
+<rect class="card" x="95" y="1840" width="1170" height="430" rx="14"/>
+<text class="cardtitle" x="125" y="1882">Hosted development environments</text>
+<text class="body" x="125" y="1930">Blaxel · Northflank Sandboxes · Runloop Devboxes</text>
+<text class="body" x="125" y="1972">Daytona · Cloudflare Sandbox · Beam Sandboxes · Replit</text>
+<text class="small" x="125" y="2225">Check filesystem, network, persistence and tenant boundaries per service.</text>
 
-<rect class="card" x="1330" y="1880" width="1165" height="240" rx="14"/>
-<text class="cardtitle" x="1360" y="1922">Other hosted execution platforms</text>
-<text class="body" x="1360" y="1970">Replit · Modal Jobs · Beam · serverless task runners</text>
-<text class="body" x="1360" y="2012">E2B / Daytona / Runloop / Blaxel — managed control planes</text>
-<text class="small" x="1360" y="2075">Separate control plane / BYOC deployment from the actual isolation mechanism.</text>
+<rect class="card" x="1330" y="1840" width="1165" height="430" rx="14"/>
+<text class="cardtitle" x="1360" y="1882">Model-provider code execution</text>
+<text class="body" x="1360" y="1930">OpenAI Code Interpreter · Anthropic Code Execution</text>
+<text class="body" x="1360" y="1972">Google Agent Platform Code Execution</text>
+<text class="body" x="1360" y="2014">AWS Bedrock AgentCore Code Interpreter</text>
+<text class="small" x="1360" y="2225">Provider-managed execution APIs with product-specific limits and lifecycle.</text>
 
 <rect class="band band4" x="60" y="2450" width="2480" height="430" rx="20"/>
-<text class="bandtitle" x="95" y="2500">4. Browser sandboxes — isolate browser state and web interaction separately</text>
+<text class="bandtitle" x="95" y="2500">4. Browser execution — browser isolation is not general process isolation</text>
+
 <rect class="card" x="95" y="2530" width="760" height="260" rx="14"/>
-<text class="cardtitle" x="125" y="2572">Hosted browser sessions</text>
+<text class="cardtitle" x="125" y="2572">Hosted browser services</text>
 <text class="body" x="125" y="2620">Browserbase · Browserless · Browser Use Cloud</text>
 <text class="body" x="125" y="2662">Steel · Hyperbrowser</text>
-<text class="small" x="125" y="2735">Browser / profile / session isolation; not arbitrary code sandboxing.</text>
+<text class="small" x="125" y="2735">Remote browser sessions, profiles and browser APIs.</text>
 
 <rect class="card" x="920" y="2530" width="720" height="260" rx="14"/>
-<text class="cardtitle" x="950" y="2572">Browser execution runtimes</text>
-<text class="body" x="950" y="2620">Playwright · Chromium · Lightpanda</text>
-<text class="body" x="950" y="2662">Chrome sandbox · remote browser workers</text>
-<text class="small" x="950" y="2735">Browser process sandboxing does not isolate the Agent's other tools.</text>
+<text class="cardtitle" x="950" y="2572">Browser engines and automation</text>
+<text class="body" x="950" y="2620">Playwright (automation) · Chromium (browser)</text>
+<text class="body" x="950" y="2662">Lightpanda · Chrome Sandbox</text>
+<text class="small" x="950" y="2735">Automation framework and browser process are separate components.</text>
 
 <rect class="card" x="1705" y="2530" width="790" height="260" rx="14"/>
-<text class="cardtitle" x="1735" y="2572">Security controls across all layers</text>
-<text class="body" x="1735" y="2620">Filesystem · syscall · network egress · credentials</text>
-<text class="body" x="1735" y="2662">Tenant identity · quotas · lifecycle · audit</text>
-<text class="small" x="1735" y="2735">No sandbox replaces policy, secret isolation or data-loss controls.</text>
+<text class="cardtitle" x="1735" y="2572">Controls across all layers</text>
+<text class="body" x="1735" y="2620">Filesystem · syscalls · devices · IPC</text>
+<text class="body" x="1735" y="2662">Network egress · secrets · tenant identity · quotas · audit</text>
+<text class="small" x="1735" y="2735">No single sandbox provides every control.</text>
 
-<text class="emph" x="80" y="2940">Key distinction: Firecracker is a microVM building block; Kubernetes Agent Sandbox manages lifecycle; managed providers package execution, persistence and operations.</text>
+<text class="emph" x="80" y="2940">Isolation mechanism ≠ sandbox lifecycle ≠ hosted execution product.</text>
 </svg>
