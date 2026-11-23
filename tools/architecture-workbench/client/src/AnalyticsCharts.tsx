@@ -9,41 +9,41 @@ type Props =
   | { mode: "debt"; data: TechnicalDebtAnalytics };
 
 const statusLabels: Record<string, string> = {
-  draft: "草稿",
-  requestor_revision: "申请人修改",
-  discussion_review: "讨论与评审",
-  waiting_requestor: "等待申请人答复",
-  decision_meeting: "决定会议",
-  approved_pending_close: "批准待关闭",
-  rejected_pending_close: "拒绝待关闭",
-  closed: "已关闭",
-  open: "待处理",
-  in_progress: "处理中",
-  deferred: "已延期",
-  resolved: "已解决",
-  cancelled: "已取消"
+  draft: "Draft",
+  requestor_revision: "Requestor Changes",
+  discussion_review: "Discussion & Review",
+  waiting_requestor: "Awaiting Requestor Response",
+  decision_meeting: "Decision Meeting",
+  approved_pending_close: "Approved · Pending Closure",
+  rejected_pending_close: "Rejected · Pending Closure",
+  closed: "Closed",
+  open: "Open",
+  in_progress: "In Progress",
+  deferred: "Deferred",
+  resolved: "Resolved",
+  cancelled: "Cancelled"
 };
 
 const typeLabels: Record<string, string> = {
-  architecture_review: "架构评审",
-  solution_assessment: "方案评估",
-  change_assessment: "变更评估",
-  risk_assessment: "风险评估",
-  technical_debt: "技术债务",
-  other: "其他"
+  architecture_review: "Architecture Review",
+  solution_assessment: "Solution Assessment",
+  change_assessment: "Change Assessment",
+  risk_assessment: "Risk Assessment",
+  technical_debt: "Technical Debt",
+  other: "Other"
 };
 
 const priorityLabels: Record<string, string> = {
-  high: "高",
-  normal: "普通",
-  low: "低"
+  high: "High",
+  normal: "Normal",
+  low: "Low"
 };
 
 const severityLabels: Record<string, string> = {
-  critical: "严重",
-  high: "高",
-  medium: "中",
-  low: "低"
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low"
 };
 
 const providerLabels: Record<string, string> = {
@@ -67,7 +67,7 @@ function hasValues(rows: ChartRow[]) {
 function ChartPanel({ title, hasData, children }: { title: string; hasData: boolean; children: ReactNode }) {
   return (
     <Card title={title} className="panel-card analytics-chart-card">
-      {hasData ? children : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />}
+      {hasData ? children : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" />}
     </Card>
   );
 }
@@ -88,35 +88,35 @@ function RequestCharts({ data }: { data: RequestAnalytics }) {
   const external = data.externalSystems.flatMap(row => {
     const provider = providerLabels[row.key] || row.key;
     return [
-      { provider, series: "关联资源", count: row.count },
-      { provider, series: "关联事项", count: row.requestCount }
+      { provider, series: "Linked Resources", count: row.count },
+      { provider, series: "Linked Work Items", count: row.requestCount }
     ];
   });
 
   return (
     <Row gutter={[16, 16]}>
       <Col xs={24} lg={12}>
-        <ChartPanel title="事项状态分布" hasData={hasValues(status)}>
+        <ChartPanel title="Work Item Status" hasData={hasValues(status)}>
           <Pie data={status} angleField="count" colorField="label" innerRadius={0.62} height={260} />
         </ChartPanel>
       </Col>
       <Col xs={24} lg={12}>
-        <ChartPanel title="事项类型" hasData={hasValues(types)}>
+        <ChartPanel title="Work Item Types" hasData={hasValues(types)}>
           <BreakdownBar data={types} />
         </ChartPanel>
       </Col>
       <Col xs={24} lg={12}>
-        <ChartPanel title="优先级分布" hasData={hasValues(priorities)}>
+        <ChartPanel title="Priority Distribution" hasData={hasValues(priorities)}>
           <BreakdownColumn data={priorities} />
         </ChartPanel>
       </Col>
       <Col xs={24} lg={12}>
-        <ChartPanel title="事项存续时长" hasData={hasValues(aging)}>
+        <ChartPanel title="Work Item Age" hasData={hasValues(aging)}>
           <BreakdownColumn data={aging} />
         </ChartPanel>
       </Col>
       <Col xs={24} lg={12}>
-        <ChartPanel title="外部资源关联" hasData={external.some(row => row.count > 0)}>
+        <ChartPanel title="External Resource Links" hasData={external.some(row => row.count > 0)}>
           <Column data={external} xField="provider" yField="count" colorField="series" group height={270} />
         </ChartPanel>
       </Col>
@@ -134,27 +134,27 @@ function DebtCharts({ data }: { data: TechnicalDebtAnalytics }) {
   return (
     <Row gutter={[16, 16]}>
       <Col xs={24} lg={12}>
-        <ChartPanel title="技术债务状态" hasData={hasValues(status)}>
+        <ChartPanel title="Technical Debt Status" hasData={hasValues(status)}>
           <BreakdownBar data={status} />
         </ChartPanel>
       </Col>
       <Col xs={24} lg={12}>
-        <ChartPanel title="严重程度分布" hasData={hasValues(severity)}>
+        <ChartPanel title="Severity Distribution" hasData={hasValues(severity)}>
           <BreakdownColumn data={severity} />
         </ChartPanel>
       </Col>
       <Col xs={24} lg={12}>
-        <ChartPanel title="优先级分布" hasData={hasValues(priorities)}>
+        <ChartPanel title="Priority Distribution" hasData={hasValues(priorities)}>
           <BreakdownColumn data={priorities} />
         </ChartPanel>
       </Col>
       <Col xs={24} lg={12}>
-        <ChartPanel title="技术债务存续时长" hasData={hasValues(aging)}>
+        <ChartPanel title="Technical Debt Age" hasData={hasValues(aging)}>
           <BreakdownColumn data={aging} />
         </ChartPanel>
       </Col>
       <Col xs={24} lg={12}>
-        <ChartPanel title="来源事项" hasData={hasValues(origins)}>
+        <ChartPanel title="Originating Work Items" hasData={hasValues(origins)}>
           <BreakdownBar data={origins} />
         </ChartPanel>
       </Col>
