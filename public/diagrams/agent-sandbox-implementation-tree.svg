@@ -62,12 +62,12 @@
 <rect class="card" x="920" y="855" width="720" height="165" rx="14"/>
 <text class="cardtitle" x="950" y="897">Open-source sandbox runtimes</text>
 <text class="body" x="950" y="939">OpenSandbox · E2B Runtime · OpenHands Runtime</text>
-<text class="small" x="950" y="980">APIs and session management; the selected backend defines isolation.</text>
+<text class="small" x="950" y="980">Runtime APIs create, connect to and manage execution sessions.</text>
 
 <rect class="card" x="1705" y="855" width="790" height="165" rx="14"/>
 <text class="cardtitle" x="1735" y="897">Agent execution controls</text>
 <text class="body" x="1735" y="939">Anthropic SRT · Microsoft MXC · NVIDIA OpenShell</text>
-<text class="small" x="1735" y="980">Command, filesystem and network controls; enforcement is backend-specific.</text>
+<text class="small" x="1735" y="980">Apply filesystem and network policy to agent tool execution.</text>
 
 <rect class="card" x="95" y="1045" width="1170" height="155" rx="14"/>
 <text class="cardtitle" x="125" y="1087">Kubernetes security controls</text>
@@ -78,8 +78,8 @@
 <rect class="card" x="1330" y="1045" width="1165" height="155" rx="14"/>
 <text class="cardtitle" x="1360" y="1087">Local and developer sandboxes</text>
 <text class="body" x="1360" y="1129">Docker Sandboxes · BoxLite · SmolVM</text>
-<text class="body" x="1360" y="1162">Nono · just-bash</text>
-<text class="small" x="1360" y="1190">VM, OS-policy and virtual-shell designs; these are different boundaries.</text>
+<text class="body" x="1360" y="1162">OS sandbox: Nono · Virtual shell: just-bash</text>
+<text class="small" x="1360" y="1190">VM-based: Docker Sandboxes · BoxLite · SmolVM</text>
 
 <rect class="band band3" x="60" y="1290" width="2480" height="1120" rx="20"/>
 <text class="bandtitle" x="95" y="1340">3. Hosted execution services — products that manage the execution environment</text>
@@ -93,23 +93,23 @@
 <text class="small" x="125" y="1765">VM lifecycle, persistence and networking differ by service.</text>
 
 <rect class="card" x="1330" y="1410" width="1165" height="400" rx="14"/>
-<text class="cardtitle" x="1360" y="1452">Other documented isolation models</text>
+<text class="cardtitle" x="1360" y="1452">Provider-documented isolation backends</text>
 <text class="body" x="1360" y="1500">Modal Sandboxes — gVisor</text>
 <text class="body" x="1360" y="1542">Azure Container Apps Dynamic Sessions — Hyper-V isolation</text>
-<text class="small" x="1360" y="1765">These are different execution boundaries, not interchangeable products.</text>
+<text class="small" x="1360" y="1765">gVisor uses a userspace kernel; Hyper-V provides VM isolation.</text>
 
 <rect class="card" x="95" y="1840" width="1170" height="430" rx="14"/>
 <text class="cardtitle" x="125" y="1882">Hosted development environments</text>
 <text class="body" x="125" y="1930">Blaxel · Northflank Sandboxes · Runloop Devboxes</text>
 <text class="body" x="125" y="1972">Daytona · Cloudflare Sandbox · Beam Sandboxes · Replit</text>
-<text class="small" x="125" y="2225">Check filesystem, network, persistence and tenant boundaries per service.</text>
+<text class="small" x="125" y="2225">Isolation and persistence vary by service.</text>
 
 <rect class="card" x="1330" y="1840" width="1165" height="430" rx="14"/>
 <text class="cardtitle" x="1360" y="1882">Model-provider code execution</text>
 <text class="body" x="1360" y="1930">OpenAI Code Interpreter · Anthropic Code Execution</text>
 <text class="body" x="1360" y="1972">Google Agent Platform Code Execution</text>
 <text class="body" x="1360" y="2014">AWS Bedrock AgentCore Code Interpreter</text>
-<text class="small" x="1360" y="2225">Provider-managed execution APIs with product-specific limits and lifecycle.</text>
+<text class="small" x="1360" y="2225">Execution is exposed through the provider's tool API.</text>
 
 <rect class="band band4" x="60" y="2450" width="2480" height="430" rx="20"/>
 <text class="bandtitle" x="95" y="2500">4. Browser execution — browser isolation is not general process isolation</text>
@@ -130,7 +130,7 @@
 <text class="cardtitle" x="1735" y="2572">Controls across all layers</text>
 <text class="body" x="1735" y="2620">Filesystem · syscalls · devices · IPC</text>
 <text class="body" x="1735" y="2662">Network egress · secrets · tenant identity · quotas · audit</text>
-<text class="small" x="1735" y="2735">No single sandbox provides every control.</text>
+<text class="small" x="1735" y="2735">Isolation does not replace identity, egress or audit controls.</text>
 
 <text class="emph" x="80" y="2940">Isolation mechanism ≠ sandbox lifecycle ≠ hosted execution product.</text>
 </svg>
