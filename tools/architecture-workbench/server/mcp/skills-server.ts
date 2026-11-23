@@ -61,7 +61,6 @@ export async function mountSkillsMcpEndpoint(app: Express): Promise<number> {
       verifier,
       requiredScopes: config.requiredScopes.map(scope => config.resourceUrl.href + "/" + scope),
       resourceMetadataUrl: resourceMetadataUrl.href,
-      expectedResource: config.resourceUrl,
     });
 
     // RFC 9728 Protected Resource Metadata. Entra remains the Authorization
