@@ -21,21 +21,21 @@ A server-side Agent Package Draft MCP tool also duplicated a responsibility that
 
 The Request stores its business description and operational information. Original materials are linked through external references to Jira, Confluence, GitHub and LeanIX. The Workbench stores the source system, resource identity/key, title, URL and relationship type; it does not copy source content or create a parallel deliverables catalogue.
 
-The Request detail presents these references once in a concise **关联资源** section. It does not repeat them under Submission history or material-version history.
+The Request detail presents these references once in a concise **Linked Resources** section. It does not repeat them under Submission history or material-version history.
 
 ### 2. Keep Submission as an internal review baseline
 
 The database Submission and Review Cycle remain because the review process must retain the exact Request context and external references that were current when the review began. This is an internal consistency and audit mechanism.
 
-The normal Request workspace does not present separate **正式提交记录** and **材料版本历史** panels. It does not display the same links or content repeatedly. Artifact versions remain available in the advanced information area for generated analysis outputs and formal records that genuinely have versions, such as ADRs.
+The normal Request workspace does not present separate **Formal Submission History** and **Artifact Version History** panels. It does not display the same links or content repeatedly. Artifact versions remain available in the advanced information area for generated analysis outputs and formal records that genuinely have versions, such as ADRs.
 
 ### 3. Present collaboration as progress, not approvals
 
-The primary collaboration section is named **协作进展**. Work items are grouped by their actual progress state, such as:
-- 正在推进
-- 待开始
-- 需要协调
-- 已完成
+The primary collaboration section is named **Collaboration Progress**. Work items are grouped by their actual progress state, such as:
+- In Progress
+- Not Started
+- Needs Coordination
+- Completed
 
 Task title and progress are primary. Owner, current assignee and due date are supporting context, not the primary layout. This view does not introduce approve/reject actions. Updating a Task is a work-progress update only.
 
@@ -43,7 +43,7 @@ The Request lifecycle remains separate. Reviewers may comment, ask for clarifica
 
 ### 4. Show linked Technical Debt in Request detail
 
-The Request detail always includes an **关联技术债务** section. Each linked debt displays its code, title, severity, status, owner, priority and target date. An empty state explicitly indicates that no Technical Debt is linked.
+The Request detail always includes an **Related Technical Debt** section. Each linked debt displays its code, title, severity, status, owner, priority and target date. An empty state explicitly indicates that no Technical Debt is linked.
 
 A principal who can read the originating Request may inspect its linked Technical Debt in read-only mode. This relationship does not grant contribution or debt-management permissions. Debt ownership and lifecycle remain on the Technical Debt Work Item.
 
