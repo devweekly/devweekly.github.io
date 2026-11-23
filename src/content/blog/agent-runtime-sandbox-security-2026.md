@@ -553,6 +553,23 @@ mcp-server-filesystem \
 
 Filesystem Server 的安全实现也需要持续审查。路径解析、符号链接、目录移动和协议 Roots 的行为都会影响真实授权范围。建议将命令行目录作为管理员或宿主侧确定的上限；客户端提供的工作区只能缩小范围，不能扩大范围。即使使用只读目录，也应在 OS 文件权限或容器只读挂载层再加一道保护。
 
+### 5.6 Sandbox implementation tree：从逻辑约束到独立执行环境
+
+Sandbox 不是单一技术。选型时先确认隔离边界由谁强制执行，再决定采用哪种实现。下面的树状图把常见路径和可落地项目放在一起。图中的 Application-level controls 和 Virtual Shell 很有价值，但它们不能替代 OS 或虚拟化层对任意代码的隔离。
+
+![Agent Sandbox Implementation Options](/diagrams/agent-sandbox-implementation-tree.svg)
+
+可以把这些分支理解为逐步增强的执行边界：
+
+- **Application-level controls**：通过 Tool Permission、Capability Filesystem、ResourceRef 和 MCP Filesystem 限制 Agent 可见的资源。适用于不需要执行任意代码的任务；如果允许运行不受信任脚本，这一层本身不构成 Sandbox。
+- **Virtual / controlled shell**：使用 [just-bash](https://github.com/vercel-labs/just-bash) 提供受控命令语义，避免把每个简单命令都交给宿主机 Shell。它适合有限命令集和可预测的数据处理，不应被描述成能隔离任意原生进程的 OS Sandbox。
+- **OS-level process sandbox**：本机真实进程仍运行在宿主机 Kernel 上，但由系统机制限制文件、网络和进程能力。可参考 [Anthropic Sandbox Runtime](https://github.com/anthropics/sandbox-runtime)、macOS Seatbelt、Linux bubblewrap / namespaces / seccomp / Landlock，以及 Windows AppContainer、Restricted Token 和 Job Objects。跨平台项目如 [Microsoft Execution Containers](https://github.com/microsoft/mxc) 可以作为统一策略接口的参考，底层仍需按平台验证。
+- **Container isolation**：用 Docker / Podman、namespaces、cgroups、seccomp 和 AppArmor / SELinux 管理执行环境；Kubernetes 再叠加 Restricted Pod Security、RBAC 和 NetworkPolicy。容器默认共享 Host Kernel。面对不可信多租户代码时，可进一步使用 [gVisor](https://gvisor.dev/) 或 [Kata Containers](https://katacontainers.io/) 等更强运行时。
+- **Sandboxed kernel / microVM**：gVisor 通过用户态 Kernel 拦截系统调用；Kata 和 [Firecracker](https://github.com/firecracker-microvm/firecracker) 通过轻量虚拟机提供 Guest Kernel 边界。它们更适合高风险代码和更强租户隔离，但仍需要限制凭证、网络出口、镜像来源和资源配额。
+- **Remote isolated execution**：把任务放到独立 Worker、容器、microVM 或 VM 中执行，例如 [Cloudflare Sandbox](https://github.com/cloudflare/sandbox)、[E2B](https://github.com/e2b-dev)、[OpenHands Runtime](https://github.com/All-Hands-AI/openhands)。远端执行减少本机暴露面，但不会自动解决远端凭证、租户隔离和数据外传问题。还要区分 Remote Tool、Remote Execution 和 Remote Agent：它们分别是远程调用、远程执行环境和远程 Agent Loop，不是同一种架构。
+
+这些分支不是互斥的产品清单。生产系统通常会组合使用：Runtime 在应用层实施 Tool / Resource Policy，简单任务走受控 Shell，需要真实进程时进入 OS Sandbox 或容器；高风险、不可信或多租户代码再使用 gVisor、Kata 或 microVM。无论采用哪一种后端，短期凭证、独立 Workspace、默认拒绝的网络出口、资源配额、完整进程树终止和可审计的任务生命周期都必须单独实现。
+
 ## 6. 不同部署环境的安全边界
 
 通用策略可以复用，但执行隔离不能只靠一套抽象接口。桌面端依赖操作系统权限模型，云端需要处理租户和凭证隔离，Kubernetes 还要约束 Pod 与节点，而 GUI VM 必须把显示、输入和 Host Integration 纳入威胁模型。
