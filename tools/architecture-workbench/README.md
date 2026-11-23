@@ -1,132 +1,136 @@
 # Architecture Workbench
 
-用于管理架构方案和 ADR，组织跨角色评审、记录正式决定，并跟踪决定后需要处理的技术债务。
+Architecture Workbench manages architecture proposals and ADRs, coordinates cross-functional reviews, records formal decisions, and tracks technical debt that must be addressed after those decisions.
 
-本项目位于 devweekly 的 tools 目录，可独立运行，不依赖 Astro 站点构建。除架构评审外，也可用于变更评估、风险评估等业务事项。
+The project lives under `devweekly/tools` and runs independently of the Astro site build. In addition to architecture reviews, it supports other business work items such as change assessments and risk assessments.
 
-## 当前实现
+## Current Implementation
 
-- React 19、Vite、TypeScript。
-- Ant Design 6 作为通用企业 UI，Ant Design X 提供 Agent/上下文辅助区域。
-- Express 5 提供 REST API。
-- Node 内置 node:sqlite 作为第一阶段存储，要求 Node.js 24.0 或更高版本。
-- 非结构化文件通过 ObjectStore 接口存储，默认写入本地目录；配置 S3 后使用 AWS SDK。
-- Workbench Server 通过 MCP 发布角色 Skills 和业务 Tools，并提供 Agent Plan / Run Coordinator、DAG 依赖及最终汇总节点。独立 Agent Host 连接 MCP，调度可执行节点，并通过部署方的 AgentExecutor 插件调用具体模型 Runtime；Workbench 不绑定 Copilot、CodeBuddy 或特定模型 SDK。Jira、Confluence、GitHub、LeanIX 只登记为外部上下文引用；Workbench 不实现这些系统的 Connector、同步或缓存。
+- React 19, Vite, and TypeScript.
+- Ant Design 6 provides the enterprise UI; Ant Design X provides optional Agent and context-assistance surfaces.
+- Express 5 exposes the REST API.
+- Node.js built-in `node:sqlite` is used for the first phase of persistence. Node.js 24.0 or later is required.
+- Unstructured files are stored through the `ObjectStore` interface. The default implementation writes to a local directory; configuring S3 switches to the AWS SDK implementation.
+- The Workbench Server publishes role Skills and business Tools over MCP. It also provides an Agent Plan / Run Coordinator, DAG dependencies, and a final synthesis node. A separate Agent Host connects to MCP, schedules executable nodes, and invokes the model Runtime through a deployment-provided `AgentExecutor` plugin. Workbench is not coupled to Copilot, CodeBuddy, or a specific model SDK. Jira, Confluence, GitHub, and LeanIX are registered only as external context references; Workbench does not implement connectors, synchronization, or caching for those systems.
 
-## 启动
+## Getting Started
 
-需要 Node.js >=24.0 和 pnpm 或 npm。
+Requirements: Node.js >=24.0 and pnpm or npm.
 
-    cd tools/architecture-workbench
-    cp .env.example .env
-    npm install
-    npm run dev
+```bash
+cd tools/architecture-workbench
+cp .env.example .env
+npm install
+npm run dev
+```
 
-前端地址为 http://localhost:5173，API 地址为 http://localhost:4000。首次启动会自动创建 SQLite schema 和演示数据。默认数据库在 data/architecture-workbench.sqlite。Express 会通过 dotenv 读取本目录的 .env。
+The frontend runs at http://localhost:5173 and the API at http://localhost:4000. On first startup, the application creates the SQLite schema and demo data. The default database is `data/architecture-workbench.sqlite`. Express loads the local `.env` file through dotenv.
 
-生产模式先执行 `npm run build`，再执行 `npm start`。
+For production mode, run `npm run build` followed by `npm start`.
 
-可以在页面顶部切换演示身份，查看不同人员在各事项中的权限差异。系统还会创建一个管理员演示账号，用于维护人员目录和流程。演示身份切换只用于本地测试；正式部署需要接入企业身份认证，并设置受控的管理员账号管理流程。
+The identity selector at the top of the page lets you switch between demo users and inspect their different permissions on each work item. The system also creates an administrator demo account for maintaining the people directory and workflows. Identity switching is for local testing only. A production deployment must integrate enterprise identity and provide a controlled administrator-account management process.
 
-## 原型能力
+## Prototype Capabilities
 
-1. 创建业务事项，查看负责人、状态、参与者和关联资源。
-2. 在事项内提交 ADR、架构方案和其他需要保留版本的材料。
-3. 申请人提交材料时，系统会记录本轮评审所依据的材料版本和内容摘要，并保留提交说明。Agent 可以协助准备，但必须由申请人确认并提交。
-4. 讨论和评审有明确截止时间：普通评论不会改变流程；提出澄清问题时暂停评审计时；出现阻断性异议或评审到期后，进入决定会议。
-5. 会议主席或管理员在决定会议后记录批准、要求修改或拒绝。要求修改时由申请人修改材料后重新提交；批准或拒绝后，还需由会议主席或管理员关闭事项。
-6. 为任务分别指定负责人和执行人；Agent 任务记录实际执行者，但不会因此转移人的责任。
-7. 管理事项参与者，并分别授予读取、提交材料、讨论、评审、决策和人员管理权限。人员管理权限不会自动包含评审或决策权限。
-8. 技术债务关联产生它的事项和决定，并单独记录负责人、优先级、严重程度、处理目标、计划、状态和期限。
-9. 更新任务状态，查看讨论和操作记录。
-10. 上传文件和证据附件；默认保存在本地，也可配置为使用 AWS S3。
-11. 将 Jira Story、Confluence Page、GitHub Repository、LeanIX Application / Interface 等外部资源关联到事项。同一资源可以被多个事项复用。
-12. 为 Confluence 页面记录模板标识，供具备相应访问权限的 Agent 读取模板内容。
-13. 全局分析分为事项分析和技术债务分析，展示状态、优先级、登记时长、逾期情况、来源事项和外部资源关联情况。
-14. 将当前人员有权查看的事项资料复制给 Copilot、Claude 或其他 Agent。资料中只包含外部资源链接和关联关系，不包含外部系统正文。
+1. Create business work items and inspect their owners, status, participants, and linked resources.
+2. Add ADRs, architecture proposals, and other versioned artifacts to a work item.
+3. When a requestor submits a package, the system records the artifact versions and content summaries used as the review baseline, together with the submission note. An Agent may help prepare the package, but the requestor must confirm and submit it.
+4. Discussion and review have explicit deadlines. Ordinary comments do not change the workflow. Requesting clarification pauses the review timer. A blocking objection or an expired review period moves the item into a decision meeting.
+5. The meeting chair or an administrator records approval, a request for changes, or rejection after the decision meeting. When changes are requested, the requestor revises and resubmits the package. After approval or rejection, the meeting chair or an administrator must explicitly close the work item.
+6. Assign a task owner and assignee independently. Agent task records identify the actual executor without transferring human accountability.
+7. Manage work item participants and grant read, contribute, comment, review, decide, and participant-management permissions independently. Participant-management permission does not imply review or decision authority.
+8. Link technical debt to the work item and decision that introduced it. Track its owner, priority, severity, target state, remediation plan, status, and due date separately.
+9. Update task status and inspect discussion and activity history.
+10. Upload files and evidence attachments. Files are stored locally by default, with optional AWS S3 support.
+11. Link external resources such as Jira Stories, Confluence Pages, GitHub repositories, and LeanIX Applications or Interfaces. A resource can be reused by multiple work items.
+12. Record a Confluence page template identifier so an Agent with the required access can retrieve the template content.
+13. Review global analytics for work items and technical debt, including status, priority, age, overdue items, originating work items, and external-resource relationships.
+14. Copy the context of work items visible to the current user for use with Copilot, Claude, or another Agent. The exported context contains external links and relationships, not source-system content.
 
-## 核心对象及关系
+## Core Domain Model
 
-Work Item 表示一项需要持续跟踪的业务工作，例如架构评审、变更评估或技术债务。架构评审和技术债务只是不同类型的 Work Item。ADR、架构方案等属于有版本的材料；Review 记录针对哪一轮评审、哪一份材料和哪个版本提出的意见；Decision 记录由谁作出决定、决定结果、理由和附加条件。一个事项可以关联多条外部资源，同一条外部资源也可以被多个事项引用。
+A **Work Item** represents business work that needs to be tracked over time, such as an architecture review, change assessment, or technical-debt item. Architecture reviews and technical debt are simply different Work Item types. ADRs and architecture proposals are versioned Artifacts. A Review records feedback against a specific review cycle, Artifact, and version. A Decision records who made the decision, its outcome, rationale, and conditions. A work item can link to multiple external resources, and an external resource can be referenced by multiple work items.
 
-Task 是具体要完成的工作，不等于评审意见或正式决定。任务负责人对结果负责，执行人负责处理任务；Agent Run 记录实际执行任务的 Agent，不替代人的责任。Request 的状态由 Node.js 状态机管理。每次提交都会固定本轮评审所依据的材料版本和内容摘要；评审过程按保存的截止时间运行，正式决定只能由有权限的会议主席或管理员记录。同一个人可以在同一事项中承担多个角色，系统会合并其明确授予的权限；人员管理权限不会自动获得评审或决策权限。评审人不能独立评审自己提交的材料；新版本也不会改变已经开始的评审所依据的材料。
+A **Task** is executable work; it is not a review comment or a formal decision. The task owner is accountable for the result, while the assignee performs the work. An **Agent Run** records the Agent that actually executed a task and does not replace human accountability. Request status is managed by a Node.js state machine. Each submission freezes the artifact versions and content summaries used by that review cycle. The review runs against its stored deadline, and only an authorized meeting chair or administrator can record a formal decision. One person may hold multiple roles on the same work item; explicitly granted permissions are combined. Participant-management permission does not automatically grant review or decision authority. A reviewer cannot independently review their own submission, and a later Artifact version does not change the baseline of a review already in progress.
 
-本地原型通过请求 Header 模拟当前登录用户，服务端按事项参与者权限控制访问。正式部署前，需要接入企业 OIDC/OAuth 身份认证和委托授权，并落实资源级权限检查。
+The local prototype simulates the current user through a request header. The server enforces access according to work item participation permissions. Before production deployment, integrate enterprise OIDC/OAuth authentication and delegated authorization, and enforce resource-level access checks.
 
-## 事项工作区
+## Work Item Workspace
 
-事项详情使用一个连续的工作区，不把概览、任务、材料、评审和 Agent 执行记录拆成一排同级页面。默认视图优先展示事项阶段、负责人、下一步工作、当前任务、材料版本和讨论内容。
+A work item opens in one continuous workspace rather than splitting the overview, tasks, artifacts, reviews, and Agent execution records into a row of peer pages. The default view prioritizes the current stage, owner, next action, active tasks, Artifact versions, and discussion.
 
-参与者和权限、完整评审与决定记录、材料历史版本、提交记录、外部资源、附件、Agent 计划和执行记录、事项资料导出及操作轨迹统一放在“更多信息”中。全局导航包括我的工作、全部事项、全局分析和技术债务；人员目录作为次级入口。
+Participants and permissions, full review and decision history, Artifact version history, submission history, external resources, attachments, Agent plans and runs, context export, and activity history are grouped under **More Details**. Global navigation includes My Work, All Work Items, Analytics, and Technical Debt. The People Directory is a secondary entry point.
 
-此设计遵循 Apple HIG 所强调的清晰层级、用户控制和渐进披露，而不是复刻某个 Apple 产品的视觉外观。业务流程、协作任务和 Agent 执行始终是三个独立层次。
+The design follows the Apple HIG principles of clear hierarchy, user control, and progressive disclosure. It does not attempt to reproduce the visual appearance of a particular Apple product. Business workflow, collaborative tasks, and Agent execution remain three separate layers.
 
-## 存储设计
+## Storage Design
 
-SQLite 仅作为本地原型存储。数据访问集中在 server/db.ts 和 Express Application Service 中，前端不直接访问数据库。后续迁移 PostgreSQL 时，保留领域 API 与业务约束，替换数据库连接和 repository 实现，并补充正式迁移脚本、并发控制和备份恢复策略。当前尚未实现 PostgreSQL 驱动。
+SQLite is used only for the local prototype. Data access is concentrated in `server/db.ts` and the Express Application Service; the frontend never accesses the database directly. A future PostgreSQL migration should preserve the domain API and business constraints while replacing the database connection and repository implementation. It will also require formal migration scripts, concurrency control, and backup/recovery procedures. A PostgreSQL driver has not yet been implemented.
 
-对象存储通过 server/object-store.ts 的 ObjectStore 接口隔离。默认 LocalObjectStore 将文件放在 LOCAL_OBJECT_DIR。设置 STORAGE_DRIVER=s3、S3_BUCKET 和 AWS_REGION 后切换为 S3ObjectStore；部署环境应优先使用 IAM Role / Workload Identity，不要把长期 AWS Key 写入代码或提交到仓库。文件元数据和访问授权在业务数据库中管理；S3 URI 本身不应被视为授权。
+Object storage is isolated behind the `ObjectStore` interface in `server/object-store.ts`. The default `LocalObjectStore` writes files to `LOCAL_OBJECT_DIR`. Set `STORAGE_DRIVER=s3`, `S3_BUCKET`, and `AWS_REGION` to use `S3ObjectStore`. Deployment environments should prefer IAM Roles or Workload Identity; never put long-lived AWS keys in source code or commit them to the repository. File metadata and access grants are managed in the business database. An S3 URI is not an authorization mechanism.
 
-## AI 与 Agent 接入
+## AI and Agent Integration
 
-当前阶段不接入 LangChain、DeepAgents 或 LangSmith。这个原型的首要验证对象是业务状态、授权、评审和决策，不是 Agent 编排。Ant Design X 只提供可选的 Agent 辅助体验，页面提供 Context Capsule 导出。
+LangChain, DeepAgents, and LangSmith are not included at this stage. The prototype is intended to validate business state, authorization, review, and decision boundaries—not Agent orchestration. Ant Design X provides optional Agent assistance, and the UI can export a Context Capsule.
 
-Workbench Server 使用官方 MCP TypeScript SDK v2，在 `http://localhost:4000/mcp` 同时发布 Skills 和业务 Tools。Skills 通过 `skills/list`、`skills/get` 和 `resources/read` 发现与读取；业务 Tools 用于查询事项、读取 Context Capsule、管理 Task、提交 Artifact 草案和讨论记录。目录中的每个 Skill 都有 `SKILL.md`，可继续包含 references、examples 等配套文件。目录在服务启动时严格校验，内容随代码版本发布。
+The Workbench Server uses the official MCP TypeScript SDK v2 to publish Skills and business Tools at `http://localhost:4000/mcp`. Skills are discovered and read through `skills/list`, `skills/get`, and `resources/read`. Business Tools query work items, read Context Capsules, manage Tasks, and submit Artifact drafts and discussion records. Each Skill directory contains a `SKILL.md` and may include supporting references and examples. The catalog is strictly validated at startup and deployed with the application version.
 
-**外部业务系统不由 Workbench 后端集成。** Workbench 只保存 Jira Story、Confluence Page、GitHub Repository、LeanIX Application、Interface 等资源的 ID/Key、URL、类型、关联语义，以及 Confluence Template 的引用标识。不会调用外部系统 API，不同步状态，不复制外部正文，也不保存这些系统的凭据。用户可以复用当前身份可见、之前已经登记的引用；新资源由用户录入。当前没有源系统搜索选择器。
+**The Workbench backend does not integrate with external business systems.** It stores only the IDs/keys, URLs, resource types, relationship semantics, and Confluence Template reference identifiers for Jira Stories, Confluence Pages, GitHub repositories, and LeanIX Applications or Interfaces. It does not call external APIs, synchronize status, copy source content, or store credentials for those systems. Users can reuse references already registered and visible to their current identity; new resources are entered by the user. There is no source-system search picker.
 
-外部 Agent Host 是 MCP/API 工具的调用方：它读取 Work Item 的引用信息，使用自身配置和授权的源系统工具按需查询外部内容，再将分析、证据和草案提交回 Workbench。外部权限仍由各源系统及 Agent 使用的身份/授权决定。Agent 返回的信息要保留来源和获取时间；它不能据此自动创建正式 Review Outcome 或 Decision。
+The external Agent Host is the MCP/API tool client. It reads references from a Work Item, uses its own configuration and authorized source-system tools to retrieve external content when needed, then submits analysis, evidence, and drafts back to Workbench. External access remains governed by each source system and the identity/authorization used by the Agent. Agent results must retain their source and retrieval time. They cannot automatically create a formal Review Outcome or Decision.
 
-Agent Plan 是一次多角色分析任务；其中的 Agent Run 是具体执行节点，依赖关系存储在 agent_run_dependencies。创建计划时，Workbench 会自动增加最后的汇总节点，并等待所有专业角色完成分析后再执行。Agent Host 通过 agent_claim_next_run 轮询时，服务端只会返回依赖已完成且当前服务身份有权限执行的节点。无依赖的节点可以并行，依赖节点在前置节点成功后才进入可领取状态。各节点的结果会保存为材料草稿；汇总节点读取各角色的分析结果，整理成供负责人审议的决策简报。
+An **Agent Plan** is a multi-role analysis task. Each **Agent Run** is an executable node, with dependencies stored in `agent_run_dependencies`. When a plan is created, Workbench adds a final synthesis node and waits for all specialist roles to finish before running it. When an Agent Host polls through `agent_claim_next_run`, the server returns only nodes whose dependencies are complete and that the current service identity is authorized to execute. Independent nodes can run in parallel; dependent nodes become claimable only after their prerequisites succeed. Each node's output is saved as an Artifact draft. The synthesis node reads the specialist results and prepares a decision brief for the responsible owner.
 
-Run 领取采用服务端管理的 Claim Lease。默认租约为 60 秒，Host 每三分之一租期发送一次心跳；Workbench Service 周期性扫描过期租约，并在新任务分配前再次执行回收。租约过期后，原 Claim Token 失效，Run 自动回到队列，由其他 Host 使用新 Token 重新领取。每个 Run 最多允许三次领取，连续崩溃耗尽次数后转为 failed。Artifact 创建与 Run 完成在同一 SQLite 事务提交，避免过期 Worker 留下孤立产物。
+Run claiming uses server-managed Claim Leases. The default lease is 60 seconds, and the Host sends a heartbeat every one-third of the lease duration. Workbench Service periodically scans expired leases and performs another recovery pass before assigning new work. When a lease expires, the old Claim Token becomes invalid and the Run returns to the queue for another Host to claim with a new Token. Each Run can be claimed at most three times; repeated crashes that exhaust the limit move the Run to `failed`. Artifact creation and Run completion are committed in the same SQLite transaction so an expired Worker cannot leave orphaned output.
 
+Workbench does not run model inference inside the server process. A separate Host process runs through `npm run agent-host`, polling MCP concurrently for its configured roles. The Host loads and validates Skills, obtains the Context Capsule, and invokes the deployment-provided `AgentExecutor`. The plugin owns the model SDK, credentials, model selection, and context strategy. The Host handles protocol, scheduling, dependency execution, and result submission.
 
+Skills describe working methods, MCP Tools expose controlled operations, and the Coordinator manages the Agent Run lifecycle. The Host must discover, validate, approve, and load Skills itself. Agents can create drafts, Tasks, and discussion records only. There are no MCP Tools for formal Review Outcomes, Decisions, risk acceptance, or work item closure. Each Tool rechecks the current Participation permissions; a Skill or Agent Profile cannot expand authorization.
 
-Workbench 不在服务进程内执行模型推理。独立 Host 进程通过 npm run agent-host 运行，按配置的角色并发轮询 MCP；Host 加载并验证 Skill、获取 Context Capsule，并调用部署方提供的 AgentExecutor 实现。模型 SDK、凭据、模型选择和上下文策略由该插件负责，Host 只负责协议、调度、依赖执行和结果回写。
-
-Skills 描述工作方法，MCP Tools 提供受控操作，Coordinator 管理 Agent Run 生命周期。Host 必须自行发现、校验、审批和加载 Skill。Agent 只能创建草案、Task 和讨论记录；没有正式 Review Outcome、Decision、风险接受或关闭事项的 MCP Tool。每个 Tool 都重新读取当前 Participation 权限，不能通过 Skill 或 Agent Profile 扩大权限。
-
-LangChain / DeepAgents 可以作为未来 Agent Runtime 的实现选择，LangSmith 用于 Agent 执行追踪；它们都不是外部系统 Connector，更不能成为业务状态的权威来源。
+LangChain or DeepAgents may be considered as future Agent Runtime implementations, and LangSmith may be used for execution tracing. They are not external-system connectors and must never become the source of truth for business state.
 
 ## Agent Host
 
-安装项目依赖后，配置 MCP 地址、远程 Bearer Token（远程模式）、要运行的角色和 Executor 插件路径：
+After installing the project dependencies, configure the MCP endpoint, a remote Bearer Token (for remote mode), the roles to run, and the Executor plugin path:
 
-    # Workbench Server lease settings
-    AGENT_RUN_LEASE_MS=60000
-    AGENT_RUN_LEASE_SWEEP_MS=10000
+```bash
+# Workbench Server lease settings
+AGENT_RUN_LEASE_MS=60000
+AGENT_RUN_LEASE_SWEEP_MS=10000
 
-    # Separate Agent Host process
-    MCP_URL=http://localhost:4000/mcp
-    MCP_DEMO_USER_ID=u-agent
-    AGENT_EXECUTOR_MODULE=/absolute/path/to/agent-executors.ts
-    AGENT_HOST_PROFILES=business-analyst,solution-architect,data-architect,security-reviewer,decision-analyst
-    AGENT_HOST_WORKERS_PER_PROFILE=1
-    AGENT_HOST_POLL_INTERVAL_MS=3000
-    npm run agent-host
+# Separate Agent Host process
+MCP_URL=http://localhost:4000/mcp
+MCP_DEMO_USER_ID=u-agent
+AGENT_EXECUTOR_MODULE=/absolute/path/to/agent-executors.ts
+AGENT_HOST_PROFILES=business-analyst,solution-architect,data-architect,security-reviewer,decision-analyst
+AGENT_HOST_WORKERS_PER_PROFILE=1
+AGENT_HOST_POLL_INTERVAL_MS=3000
+npm run agent-host
+```
 
-Executor 插件必须导出 createAgentExecutors()，返回以 Agent Profile key 为索引的 AgentExecutor。接口定义位于 server/agents/host.ts。它由独立的 `npm run agent-host` 进程加载和执行，**不是浏览器 UI 的 client 端代码，也不在 Workbench Server 进程中运行**。插件的 execute() 接收已验证 Skill、Context Capsule、Run 元数据、可选的 Plan 汇总上下文、Artifact 读取方法和租约失效时的 AbortSignal；它需要返回 Draft Artifact，或明确请求 Human hand-off。Host 捕获执行异常并记录 Run failure。当前仓库提供 Host 与 Executor 接口，但没有捆绑 CodeBuddy、Copilot 或其他真实模型 Provider Adapter。
+The Executor plugin must export `createAgentExecutors()`, returning an `AgentExecutor` indexed by Agent Profile key. The interface is defined in `server/agents/host.ts`. It is loaded and executed by the separate `npm run agent-host` process. **It is not browser UI client code and does not run inside the Workbench Server process.** Its `execute()` method receives the validated Skill, Context Capsule, Run metadata, optional Plan synthesis context, Artifact-reading methods, and an `AbortSignal` for lease loss. It must return a Draft Artifact or explicitly request a Human hand-off. The Host captures execution exceptions and records Run failures. This repository provides the Host and Executor interface, but does not bundle CodeBuddy, Copilot, or another real model Provider Adapter.
 
-Remote Host 使用 MCP_URL 和 Entra 签发的 Workbench API access token（通过 MCP_BEARER_TOKEN 传入）；本地演示模式使用 MCP_DEMO_USER_ID。Entra delegated token 通过 `tid + oid` 映射到 Workbench Person；app-only Agent token 通过 `MCP_SERVICE_USER_ID` 映射到非 Admin 服务身份。两种身份都必须加入相关 Work Item 并仅授予必要 Participation 权限。Agent Host 当前不负责交互式登录或刷新令牌，部署方负责令牌获取和续期。不要将模型 API Key 放入 Workbench Server 配置或提交到仓库。
+A remote Host uses `MCP_URL` and a Workbench API access token issued by Entra (passed through `MCP_BEARER_TOKEN`). The local demo mode uses `MCP_DEMO_USER_ID`. An Entra delegated token maps to a Workbench Person through `tid + oid`; an app-only Agent token maps through `MCP_SERVICE_USER_ID` to a non-Admin service identity. Both identities must be added to the relevant Work Item and granted only the required Participation permissions. The Agent Host does not currently handle interactive login or token refresh; token acquisition and renewal are the responsibility of the deployment. Do not put model API keys in Workbench Server configuration or commit them to the repository.
 
-## 目录
+## Repository Layout
 
-    client/              React + Ant Design + Ant Design X
-    server/              Express API、SQLite schema/seed、对象存储适配
-    server/agents/       Agent Profile、Plan Coordinator、MCP Agent Host 和 Executor contract
-    server/mcp/          Skills Extension、业务 Tools 和 MCP Host smoke tests
-    skills/              通过 MCP Skills Extension 发布的角色 Skills
-    ADR/                 本工具架构决策记录
-    docs/                领域模型、权限与 API 说明
-    data/                 本地运行时数据（gitignore）
+```text
+client/              React, Ant Design, and Ant Design X
+server/              Express API, SQLite schema/seed, and object-storage adapters
+server/agents/       Agent Profile, Plan Coordinator, MCP Agent Host, and Executor contract
+server/mcp/          Skills Extension, business Tools, and MCP Host smoke tests
+skills/              Role Skills published through the MCP Skills Extension
+ADR/                 Architecture Decision Records
+docs/                Domain model, authorization, and API documentation
+data/                Local runtime data (gitignored)
+```
 
-## 当前限制
+## Current Limitations
 
-- 演示登录通过 Header 选择身份，不可用于生产。
-- 已提供 Skills / 业务 Tools over MCP、DAG Agent Plan、服务端 Claim Lease 和 provider-neutral Agent Host。项目没有捆绑模型 Provider Adapter；部署方仍需提供 AgentExecutor 插件。尚未实现完整组织目录和策略引擎，也没有 Jira/Confluence/GitHub/LeanIX Connector。
-- 本地 MCP 仅允许 localhost Host，并通过 `x-demo-user-id` 模拟调用者；不可用于生产。远程 MCP 必须配置 `MCP_ALLOWED_HOSTS`，并启用 Entra OAuth Resource Server（`MCP_AUTH_ENABLED=true`），或明确使用仅供原型的静态 Bearer Token 兼容模式。Entra 模式验证 v2 access token 的签名、issuer、audience、tenant、客户端白名单及 delegated scope / app role；delegated 用户按 `tid + oid` 映射到 Person，app-only Agent 映射到非 Admin `MCP_SERVICE_USER_ID`。Email 自动关联默认关闭。关闭 Entra 模式时，远程静态 Token 仍会固定映射到服务身份，不提供用户委托身份。
-- 当前 SQLite 通过启动时的增量 schema check 兼容本原型已有数据库；尚无通用迁移框架和 PostgreSQL Adapter。迁移到 PostgreSQL 时需要引入异步 Repository / Unit of Work 实现，不能只替换连接字符串。
-- 当前已实现本地/S3 上传和元数据记录，尚未实现经过 Work Item 授权的下载/预签名 URL，也没有病毒扫描。
-- 已实现申请材料提交、评审材料版本留存、评论、澄清、阻断性异议、决定会议，以及由会议主席或管理员关闭事项。系统已保存评审开始时的评审人员名单；正式环境仍需补充通知送达、评审独立性规则、法定人数和可配置的评审策略。
-- 定时服务使用单个 Node.js `setTimeout` + SQLite 持久化任务。它面向当前单实例原型；多实例部署需进一步实现严格的任务认领、租约和恢复协调。
+- Demo authentication selects an identity through a request header and is not suitable for production.
+- Skills and business Tools over MCP, DAG Agent Plans, server-side Claim Leases, and a provider-neutral Agent Host are implemented. No model Provider Adapter is bundled; deployments must supply an `AgentExecutor` plugin. A complete organizational directory and policy engine are not yet implemented, and there are no Jira, Confluence, GitHub, or LeanIX connectors.
+- Local MCP allows only a localhost Host and simulates the caller through `x-demo-user-id`; it is not suitable for production. Remote MCP must configure `MCP_ALLOWED_HOSTS` and enable the Entra OAuth Resource Server (`MCP_AUTH_ENABLED=true`), or explicitly use the prototype-only static Bearer Token compatibility mode. Entra mode validates the v2 access-token signature, issuer, audience, tenant, client allowlist, and delegated scope/app role. Delegated users map to People through `tid + oid`; app-only Agents map to the non-Admin `MCP_SERVICE_USER_ID`. Email-based automatic matching is disabled by default. With Entra disabled, a remote static Token remains mapped to a service identity and does not provide user delegation.
+- The current SQLite implementation uses incremental schema checks at startup to support existing prototype databases. There is no general migration framework or PostgreSQL adapter. A PostgreSQL migration requires an asynchronous Repository / Unit of Work implementation; changing only the connection string is insufficient.
+- Local/S3 upload and metadata recording are implemented. Authorized downloads or presigned URLs scoped to a Work Item, and malware scanning, are not yet implemented.
+- Request package submission, review-baseline version retention, comments, clarification, blocking objections, decision meetings, and closure by a meeting chair or administrator are implemented. The reviewer roster is captured when review starts. Production still needs notification delivery, reviewer-independence rules, quorum handling, and configurable review policies.
+- The timer service uses a single Node.js `setTimeout` with tasks persisted in SQLite. It targets the current single-instance prototype; multi-instance deployment requires stricter task claiming, leases, and recovery coordination.
