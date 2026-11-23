@@ -26,7 +26,7 @@
 <text class="rootT" x="177" y="1140" text-anchor="middle">Sandbox</text>
 <text x="177" y="1182" text-anchor="middle" style="font:16px Inter,Arial,sans-serif;fill:#d7deea">Where is the boundary</text>
 <text x="177" y="1206" text-anchor="middle" style="font:16px Inter,Arial,sans-serif;fill:#d7deea">actually enforced?</text>
-<path class="branch" d="M300 1130 H330 V340 H355 M330 340 V630 H355 M330 630 V925 H355 M330 925 V1390 H355 M330 1390 V1740 H355 M330 1740 V2110 H355 M330 2110 V2460 H355 M330 2460 V2670 H355 M330 2670 V2880 H355 M330 2880 V3150 H355"/>
+<path class="branch" d="M300 1130 H330 V340 H355 M330 340 V630 H355 M330 630 V925 H355 M330 925 V1390 H355 M330 1390 V1740 H355 M330 1740 V2110 H355 M330 2110 V2505 H355 M330 2505 V2745 H355 M330 2745 V2990 H355 M330 2990 V3235 H355"/>
 
 <!-- APPLICATION -->
 <rect class="cat" x="355" y="205" width="420" height="270" rx="16"/>
