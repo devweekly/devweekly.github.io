@@ -150,7 +150,7 @@ app.get("/api/analytics",(req,res)=>{
   };
   const ageDays=(createdAt:string)=>Math.max(0,Math.floor((Date.now()-new Date(createdAt).getTime())/86400000));
   const aging=(rows:Array<{created_at:string}>)=>{
-    const buckets=[{key:"0-7",label:"0–7 天",count:0},{key:"8-30",label:"8–30 天",count:0},{key:"31-90",label:"31–90 天",count:0},{key:"90+",label:"90 天以上",count:0}];
+    const buckets=[{key:"0-7",label:"0–7 days",count:0},{key:"8-30",label:"8–30 days",count:0},{key:"31-90",label:"31–90 days",count:0},{key:"90+",label:"Over 90 days",count:0}];
     for(const row of rows){const days=ageDays(row.created_at);const index=days<=7?0:days<=30?1:days<=90?2:3;buckets[index].count++;}
     return buckets;
   };
@@ -197,11 +197,11 @@ app.get("/api/work-items",(req,res)=>{
 
 app.post("/api/work-items",(req,res)=>{
   const actor=actorId(req); const body=req.body || {};
-  if (!body.title || !body.type || !String(body.description || "").trim()) return res.status(400).json({error:"请填写事项名称、事项类型和问题背景。"});
+  if (!body.title || !body.type || !String(body.description || "").trim()) return res.status(400).json({error:"Enter a work item name, type, and background."});
   const chairmanId=body.chairmanId ? String(body.chairmanId) : null;
-  if (!chairmanId) return res.status(400).json({error:"请选择会议主席。"});
-  if (chairmanId===actor) return res.status(400).json({error:"申请人不能同时担任会议主席。"});
-  if (!one("SELECT id FROM people WHERE id=?",chairmanId)) return res.status(400).json({error:"找不到指定的会议主席。"});
+  if (!chairmanId) return res.status(400).json({error:"Select a meeting chair."});
+  if (chairmanId===actor) return res.status(400).json({error:"The requestor cannot also serve as the meeting chair."});
+  if (!one("SELECT id FROM people WHERE id=?",chairmanId)) return res.status(400).json({error:"The specified meeting chair could not be found."});
   const requestPackage={
     goal:String(body.goal || body.description || ""),scope:String(body.scope || ""),constraints:String(body.constraints || ""),
     initialProposal:String(body.initialProposal || ""),decisionQuestions:String(body.decisionQuestions || ""),
@@ -213,9 +213,9 @@ app.post("/api/work-items",(req,res)=>{
   run("INSERT INTO work_items(id,code,type,title,description,status,priority,owner_id,requestor_id,chairman_id,request_package_json,target_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     workItemId,code,body.type,String(body.title),String(body.description || ""),"draft",body.priority || "normal",actor,actor,chairmanId,JSON.stringify(requestPackage),body.targetDate || null,timestamp,timestamp);
   run("INSERT INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",
-    id("part"),workItemId,actor,"owner","事项负责人",JSON.stringify(["read","contribute","comment","review","manage"]),timestamp);
+    id("part"),workItemId,actor,"owner","Work Item Owner",JSON.stringify(["read","contribute","comment","review","manage"]),timestamp);
   if (chairmanId) run("INSERT OR IGNORE INTO participations(id,work_item_id,person_id,role_key,role_label,permissions_json,created_at) VALUES(?,?,?,?,?,?,?)",
-    id("part"),workItemId,chairmanId,"chairman","会议主席",JSON.stringify(["read","decide"]),timestamp);
+    id("part"),workItemId,chairmanId,"chairman","Meeting Chair",JSON.stringify(["read","decide"]),timestamp);
   logActivity(workItemId,actor,"created","work_item",workItemId,"Created Request "+code);
   res.status(201).json({id:workItemId,code});
 });
