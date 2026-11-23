@@ -559,6 +559,8 @@ Sandbox 不是单一技术。选型时先确认隔离边界由谁强制执行，
 
 ![Agent Sandbox Implementation Options](/diagrams/agent-sandbox-implementation-tree.svg)
 
+图中每个具体技术栈右侧都标出了需要配套实施的安全策略，包括文件与进程边界、网络出口、凭证、租户隔离和资源配额。这些是部署方必须配置、验证和持续审计的控制项，并非使用相应产品后自动获得的默认保证。尤其要注意：Kubernetes Restricted Pod、NetworkPolicy 与 RuntimeClass 是不同层面的控制；普通容器仍共享 Host Kernel，只有明确选择并验证 gVisor、Kata 等 RuntimeClass，才会进一步改变执行隔离边界。
+
 可以把这些分支理解为逐步增强的执行边界：
 
 - **Application-level controls**：通过 Tool Permission、Capability Filesystem、ResourceRef 和 MCP Filesystem 限制 Agent 可见的资源。适用于不需要执行任意代码的任务；如果允许运行不受信任脚本，这一层本身不构成 Sandbox。
