@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1120" viewBox="0 0 1800 1120" role="img" aria-labelledby="title desc">
+<title id="title">Pragmatic investment research ontology architecture</title>
+<desc id="desc">A staged architecture separates source systems and original documents, ingestion and extraction candidates, a typed PostgreSQL ontology runtime, search and analytics systems, and research applications. Optional components are explicitly outside the first implementation.</desc>
+<defs>
+  <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0 0 L12 6 L0 12 z" fill="#64748b"/></marker>
+  <marker id="darrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0 0 L12 6 L0 12 z" fill="#94a3b8"/></marker>
+  <style>
+    text{font-family:Inter,Arial,sans-serif;fill:#172033}
+    .title{font-size:31px;font-weight:700}.sub{font-size:17px;fill:#526078}
+    .head{font-size:21px;font-weight:700}.body{font-size:16px}.small{font-size:14px;fill:#526078}
+    .box{stroke-width:2;rx:14}.source{fill:#f8fafc;stroke:#94a3b8}.process{fill:#eff6ff;stroke:#60a5fa}
+    .store{fill:#ecfdf5;stroke:#34a37a}.review{fill:#fff7ed;stroke:#fb923c}.consumer{fill:#f5f3ff;stroke:#8b7bd6}
+    .optional{fill:#f8fafc;stroke:#94a3b8;stroke-dasharray:8 6}
+    .edge{stroke:#64748b;stroke-width:3;fill:none;marker-end:url(#arrow)}
+    .optionalEdge{stroke:#94a3b8;stroke-width:2.5;fill:none;stroke-dasharray:8 7;marker-end:url(#darrow)}
+    .lane{font-size:15px;font-weight:700;letter-spacing:1px;fill:#64748b}
+    .tag{font-size:13px;font-weight:700;fill:#315b91}
+  </style>
+</defs>
+<rect width="1800" height="1120" fill="#fff"/>
+<text x="70" y="62" class="title">A pragmatic ontology architecture for investment research</text>
+<text x="70" y="94" class="sub">Start with a governed relational core; keep documents, search and historical analytics in the systems suited to them.</text>
+
+<text x="70" y="150" class="lane">SOURCE SYSTEMS</text>
+<rect x="70" y="175" width="300" height="145" class="box source"/>
+<text x="94" y="213" class="head">Structured sources</text>
+<text x="94" y="246" class="body">PMS / OMS / custody</text>
+<text x="94" y="274" class="body">SEC filings / market data</text>
+<text x="94" y="300" class="small">Positions, identifiers, facts, prices</text>
+<rect x="70" y="350" width="300" height="145" class="box source"/>
+<text x="94" y="388" class="head">Research materials</text>
+<text x="94" y="421" class="body">PDF / Word / HTML / email</text>
+<text x="94" y="449" class="body">Notes, reports, transcripts</text>
+<text x="94" y="475" class="small">Original files remain authoritative</text>
+
+<text x="440" y="150" class="lane">INGESTION &amp; EVIDENCE</text>
+<rect x="440" y="175" width="350" height="145" class="box process"/>
+<text x="464" y="213" class="head">Ingestion &amp; normalization</text>
+<text x="464" y="246" class="body">Source mapping • identifiers</text>
+<text x="464" y="274" class="body">Units • currency • effective time</text>
+<text x="464" y="300" class="small">Keep source IDs and source versions</text>
+<rect x="440" y="350" width="350" height="145" class="box review"/>
+<text x="464" y="388" class="head">Extraction candidates</text>
+<text x="464" y="421" class="body">Typed candidate + schema version</text>
+<text x="464" y="449" class="body">JSONB attributes + evidence refs</text>
+<text x="464" y="475" class="small">Validate / review before publication</text>
+
+<text x="860" y="150" class="lane">ONTOLOGY RUNTIME — FIRST IMPLEMENTATION</text>
+<rect x="860" y="175" width="440" height="460" class="box store"/>
+<text x="886" y="213" class="head">PostgreSQL</text>
+<text x="886" y="245" class="small">Typed tables, constraints, transactions, RLS</text>
+<rect x="886" y="270" width="388" height="76" rx="10" fill="#fff" stroke="#9acbb8"/>
+<text x="908" y="300" class="body" font-weight="700">Core objects &amp; relationships</text>
+<text x="908" y="326" class="small">Issuer • Security • Listing • Portfolio • Position</text>
+<rect x="886" y="362" width="388" height="76" rx="10" fill="#fff" stroke="#9acbb8"/>
+<text x="908" y="392" class="body" font-weight="700">Facts &amp; research records</text>
+<text x="908" y="418" class="small">Filing • Financial Fact • Report • Thesis</text>
+<rect x="886" y="454" width="388" height="76" rx="10" fill="#fff" stroke="#9acbb8"/>
+<text x="908" y="484" class="body" font-weight="700">Evidence &amp; provenance</text>
+<text x="908" y="510" class="small">Source version • page / paragraph • valid time</text>
+<rect x="886" y="546" width="388" height="62" rx="10" fill="#fff" stroke="#9acbb8"/>
+<text x="908" y="584" class="body" font-weight="700">Views / API / shared query functions</text>
+
+<text x="1370" y="150" class="lane">CONSUMPTION</text>
+<rect x="1370" y="175" width="360" height="130" class="box consumer"/>
+<text x="1394" y="213" class="head">Research applications</text>
+<text x="1394" y="246" class="body">Coverage • portfolio • evidence</text>
+<text x="1394" y="274" class="small">Analyst review and approval</text>
+<rect x="1370" y="335" width="360" height="130" class="box consumer"/>
+<text x="1394" y="373" class="head">Agents &amp; automation</text>
+<text x="1394" y="406" class="body">Read through scoped APIs / SQL</text>
+<text x="1394" y="434" class="small">Actions use separate controlled writes</text>
+<rect x="1370" y="495" width="360" height="130" class="box review"/>
+<text x="1394" y="533" class="head">Action service</text>
+<text x="1394" y="566" class="body">Authorise • validate • audit</text>
+<text x="1394" y="594" class="small">No direct writes from read-only query paths</text>
+
+<!-- Separate storage and analytics -->
+<text x="70" y="570" class="lane">SPECIALIZED STORAGE</text>
+<rect x="70" y="595" width="300" height="150" class="box source"/>
+<text x="94" y="633" class="head">Object storage</text>
+<text x="94" y="666" class="body">S3 / R2: original documents</text>
+<text x="94" y="694" class="body">Immutable versions and checksums</text>
+<text x="94" y="722" class="small">PostgreSQL stores metadata and access refs</text>
+<rect x="440" y="550" width="350" height="145" class="box process"/>
+<text x="464" y="588" class="head">Search index</text>
+<text x="464" y="621" class="body">PostgreSQL FTS first</text>
+<text x="464" y="649" class="body">Add vector / dedicated search if needed</text>
+<text x="464" y="675" class="small">Indexes are rebuildable, not the source of truth</text>
+<rect x="860" y="700" width="440" height="150" class="box source"/>
+<text x="886" y="738" class="head">Analytical warehouse</text>
+<text x="886" y="771" class="body">Snowflake: history, large scans, aggregates</text>
+<text x="886" y="799" class="body">Curated facts / snapshots from source systems</text>
+<text x="886" y="827" class="small">Not a transactional replacement for the runtime</text>
+
+<!-- Optional later -->
+<rect x="1370" y="700" width="360" height="150" class="box optional"/>
+<text x="1394" y="738" class="head">Optional, only when justified</text>
+<text x="1394" y="771" class="body">pgvector / dedicated search</text>
+<text x="1394" y="799" class="body">Graph engine / event platform</text>
+<text x="1394" y="827" class="small">Introduce for measured workload or product need</text>
+
+<!-- flows -->
+<path d="M370 245 H440" class="edge"/>
+<path d="M370 420 H410 V420 H440" class="edge"/>
+<path d="M615 320 V350" class="edge"/>
+<path d="M370 670 H410 V455 H440" class="edge"/>
+<path d="M790 420 H830 V400 H860" class="edge"/>
+<path d="M1300 330 H1335 V240 H1370" class="edge"/>
+<path d="M1300 575 H1335 V400 H1370" class="edge"/>
+<path d="M1300 585 H1335 V560 H1370" class="edge"/>
+<path d="M615 495 V550" class="edge"/>
+<path d="M1080 635 V700" class="edge"/>
+<path d="M790 620 H825 V650 H440" class="optionalEdge"/>
+<path d="M1300 770 H1370" class="optionalEdge"/>
+<path d="M1080 850 V885 H220 V745" class="optionalEdge"/>
+<text x="805" y="389" class="tag">approved records</text>
+<text x="1315" y="220" class="tag">read</text>
+<text x="1315" y="388" class="tag">read</text>
+<text x="1315" y="548" class="tag">controlled write</text>
+
+<rect x="70" y="930" width="1660" height="105" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+<text x="96" y="970" class="head">What this architecture deliberately does not build on day one</text>
+<text x="96" y="1002" class="body">No universal dynamic ontology platform • no graph database by default • no separate vector service before search needs justify it • no migration of every tick or document into business objects</text>
+<text x="70" y="1080" class="small">The boundary is intentional: source systems own their records; object storage owns original files; PostgreSQL owns governed operational objects; the warehouse owns large-scale historical analysis.</text>
+</svg>
