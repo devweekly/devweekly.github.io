@@ -561,7 +561,7 @@ PostgreSQL Row-Level Security 可以把行级访问规则放在数据库中。�
 
 不过，RLS 也有容易被忽略的边界：表所有者通常绕过策略，超级用户和具有 \`BYPASSRLS\` 属性的角色始终绕过策略。使用连接池时，需要在每个事务开始时可靠地设置当前用户和租户上下文，并确保应用连接角色不是表所有者，也没有绕过 RLS 的权限。必要时使用 \`FORCE ROW LEVEL SECURITY\`，并测试连接复用、异常回滚和上下文清理。
 
-RLS 解决的是行级授权，不等于完整的 Ontology Security。属性级脱敏、对象类型级权限、关系访问权限、Action 授权和审计仍然需要明确设计。
+还要注意 View 的执行身份：PostgreSQL 15 及以上可以为 View 设置 `security_invoker = true`，让底层权限和 RLS 按调用者身份执行；否则默认 View 权限语义可能让底层访问按 View owner 的权限判断。对外暴露的 View 应明确选择执行身份，并针对 owner、普通用户和连接池角色做权限测试。PostgreSQL 新建函数默认可能向 `PUBLIC` 授予 EXECUTE，发布函数时也应显式 `REVOKE` 默认权限，再只授权给目标角色。\n\nRLS 解决的是行级授权，不等于完整的 Ontology Security。属性级脱敏、对象类型级权限、关系访问权限、Action 授权和审计仍然需要明确设计。
 
 ### 10.4 Snowflake：适合把 Semantic View 做深，而不是照搬整个 Ontology Runtime
 
