@@ -44,7 +44,7 @@ Palantir 在 2026 年 11 月 12 日宣布 Ontology SQL 与 SQL Functions 正式 
 
 传统应用通常通过对象查询接口逐步完成这些操作：先找 Customer，再沿关系查 Account，最后查 Transaction，随后在应用代码中聚合金额。Ontology SQL 把这类查询表达为一条 SQL：
 
-\`\`\`sql
+```sql
 SELECT
     c.customerId,
     c.name,
@@ -59,9 +59,9 @@ WHERE c.riskLevel = 'HIGH'
   AND t.timestamp >= '2026-10-01'
   AND t.timestamp <  '2026-11-01'
 GROUP BY c.customerId, c.name;
-\`\`\`
+```
 
-上面是关系查询的逻辑示意，\`customer_object\` 等名称用于帮助理解，不是可以直接复制到 Foundry 的真实表名。实际 Ontology SQL 使用 Object Type RID 引用对象类型；列名使用 Ontology Property 的 API name，而不是 UI 中的显示名称。下面会给出官方语法。
+上面是关系查询的逻辑示意，`customer_object` 等名称用于帮助理解，不是可以直接复制到 Foundry 的真实表名。实际 Ontology SQL 使用 Object Type RID 引用对象类型；列名使用 Ontology Property 的 API name，而不是 UI 中的显示名称。下面会给出官方语法。
 
 这点很重要：SQL 查询面对的是 Ontology 中定义的业务对象，而不是要求开发人员重新找到并 JOIN 每一张底层数据集。底层数据如何进入 Ontology、如何建立索引以及如何关联数据源，仍由 Foundry 的数据接入和 Ontology 后端负责。
 
@@ -73,18 +73,18 @@ Ontology SQL 不是把每个 Object Type 导出成一张临时表。它在 SQL �
 
 对象类型通过 RID 引用：
 
-\`\`\`sql
+```sql
 SELECT
     employeeId,
     firstName,
     department
-FROM \`ri.ontology.main.object-type.<employee-object-type-rid>\`;
-\`\`\`
+FROM `ri.ontology.main.object-type.<employee-object-type-rid>`;
+```
 
 这里有几个约束：
 
-- \`<employee-object-type-rid>\` 是 Ontology Manager 中对象类型的实际 RID，示例中的占位符需要替换。
-- 查询字段使用 Property API name，例如 \`employeeId\`，而不是显示标签。
+- `<employee-object-type-rid>` 是 Ontology Manager 中对象类型的实际 RID，示例中的占位符需要替换。
+- 查询字段使用 Property API name，例如 `employeeId`，而不是显示标签。
 - Object Type 需要在 Ontology Manager 中定义。
 - Object Type 的列结构由 Ontology 元数据决定，不是用户在 SQL 中自行建表。
 
@@ -94,19 +94,19 @@ FROM \`ri.ontology.main.object-type.<employee-object-type-rid>\`;
 
 一对一和一对多关系可以直接使用 SQL JOIN。官方文档明确说明，这类关系不要求先在 Ontology Manager 中定义 Link Type；查询时可以按照业务键或外键字段进行关联。是否把这种关联登记为 Ontology Link，不改变 SQL JOIN 的性能语义。
 
-例如，Account 对象中有 \`customerId\` 属性：
+例如，Account 对象中有 `customerId` 属性：
 
-\`\`\`sql
+```sql
 SELECT
     c.customerId,
     c.name,
     a.accountId,
     a.balance
-FROM \`ri.ontology.main.object-type.<customer-rid>\` AS c
-JOIN \`ri.ontology.main.object-type.<account-rid>\` AS a
+FROM `ri.ontology.main.object-type.<customer-rid>` AS c
+JOIN `ri.ontology.main.object-type.<account-rid>` AS a
   ON a.customerId = c.customerId
 WHERE c.riskLevel = 'HIGH';
-\`\`\`
+```
 
 这里的 JOIN 条件由对象属性表达。SQL 并不要求每个 JOIN 都必须对应一条 Ontology Link。
 
@@ -114,15 +114,15 @@ WHERE c.riskLevel = 'HIGH';
 
 多对多关系不同。它需要在 Ontology Manager 中定义 Link Type，SQL 查询时使用对应的 Relation RID。
 
-官方文档以 Person 和 Car 为例。Person 的 Link API name 是 \`vehicles\`，Car 侧的 Link API name 是 \`drivers\`。关系表中的外键列名按 \`<objectTypeApiName>_<relationApiName>\` 组织：
+官方文档以 Person 和 Car 为例。Person 的 Link API name 是 `vehicles`，Car 侧的 Link API name 是 `drivers`。关系表中的外键列名按 `<objectTypeApiName>_<relationApiName>` 组织：
 
-\`\`\`sql
+```sql
 SELECT c.*
-FROM \`ri.ontology.main.relation.<person-car-relation-rid>\` AS linkTable
-JOIN \`ri.ontology.main.object-type.<car-rid>\` AS c
+FROM `ri.ontology.main.relation.<person-car-relation-rid>` AS linkTable
+JOIN `ri.ontology.main.object-type.<car-rid>` AS c
   ON c.carId = linkTable.person_vehicles
 WHERE linkTable.car_drivers = 'person-123';
-\`\`\`
+```
 
 这条查询找出指定 Person 驾驶的 Car。关系表不是让开发者自行在数据库中创建的物理表，而是 Ontology SQL 对已定义 Many-to-Many Link 提供的 SQL 查询入口。
 
@@ -173,7 +173,7 @@ Ontology SQL 的查询直接针对 Foundry Object Storage 执行，使用的也�
 | Object Storage 上的 In-memory Compute | 已支持的查询形态，减少执行开销 |
 | Spark | 更复杂的查询，由系统自动路由 |
 
-这不是用户在 SQL 中指定 \`USE SPARK\` 或手动切换执行引擎，而是查询执行层根据计划和资源约束选择路径。官方没有公布完整的路由规则，也没有给出每种 JOIN、聚合或函数表达式对应的引擎矩阵。因此不能简单断言“所有简单 JOIN 都走内存”或“所有 GROUP BY 都走 Spark”。
+这不是用户在 SQL 中指定 `USE SPARK` 或手动切换执行引擎，而是查询执行层根据计划和资源约束选择路径。官方没有公布完整的路由规则，也没有给出每种 JOIN、聚合或函数表达式对应的引擎矩阵。因此不能简单断言“所有简单 JOIN 都走内存”或“所有 GROUP BY 都走 Spark”。
 
 这种 Compute Engine Abstraction 的价值在于：SQL 接口与具体执行引擎解耦。引擎可以按查询复杂度、资源管理和性能优化逐步演进，而调用方不必更换 SQL 接口。
 
@@ -191,9 +191,9 @@ Object Storage v2 将对象索引、查询和写入等职责拆分到不同服�
 
 ### 4.1 用 DECLARE 定义参数
 
-Ontology SQL 使用 \`DECLARE\` 声明参数：
+Ontology SQL 使用 `DECLARE` 声明参数：
 
-\`\`\`sql
+```sql
 DECLARE
     @riskLevel STRING = 'HIGH',
     @minBalance DOUBLE = 100000.0;
@@ -202,16 +202,16 @@ SELECT
     customerId,
     accountId,
     balance
-FROM \`ri.ontology.main.object-type.<account-rid>\`
+FROM `ri.ontology.main.object-type.<account-rid>`
 WHERE riskLevel = @riskLevel
   AND balance >= @minBalance;
-\`\`\`
+```
 
 发布时，参数会成为函数的输入。测试查询时可以使用默认值；正式调用时由调用方传入参数。
 
 参数并不是任意 SQL 片段。Literal 参数只能承载 SQL 方言支持的字面量类型，例如字符串、数字和布尔值，并且只能出现在 SQL 语法允许字面量的位置。调用方不能通过参数传入一段 WHERE、JOIN 或任意 SQL 表达式。这既限制了函数的动态能力，也避免把 SQL 拼接当成参数化查询。
 
-ObjectSet 参数是另一种形式，只能放在 \`FROM\` 子句中，用于把对象集合传给查询。
+ObjectSet 参数是另一种形式，只能放在 `FROM` 子句中，用于把对象集合传给查询。
 
 ### 4.2 发布与调用
 
@@ -224,25 +224,25 @@ ObjectSet 参数是另一种形式，只能放在 \`FROM\` 子句中，用于把
 5. 在 Ontology Manager 中查看和管理已发布函数及其版本。
 6. 在支持 Ontology Function 的应用和代码中调用。
 
-SQL Function 的返回类型由 SELECT 列决定。选择多个列时，每行返回一个 Struct，整个结果是 \`List<Struct<...>>\`；只选择一个列时，返回对应类型的 List。
+SQL Function 的返回类型由 SELECT 列决定。选择多个列时，每行返回一个 Struct，整个结果是 `List<Struct<...>>`；只选择一个列时，返回对应类型的 List。
 
 例如：
 
-\`\`\`sql
+```sql
 SELECT customerId, accountId, balance
-FROM \`ri.ontology.main.object-type.<account-rid>\`
+FROM `ri.ontology.main.object-type.<account-rid>`
 WHERE balance >= @minBalance;
-\`\`\`
+```
 
 对应的结果形状类似：
 
-\`\`\`text
+```text
 List<Struct<
   customerId: STRING,
   accountId: STRING,
   balance: DOUBLE
 >>
-\`\`\`
+```
 
 发布后，SQL Function 可以在 Workshop、Actions、Automate 和 Ontology SDK 中复用，也可以从 TypeScript Functions 和 Python Functions 调用。它还支持在 Branch 和 Scenario 上查询。
 
@@ -300,22 +300,22 @@ SQL 方言也是 Spark SQL 的一个子集。不能因为两个引擎共享解�
 
 不推荐：
 
-\`\`\`sql
+```sql
 SELECT employeeId, hireDate
 FROM employee
 WHERE YEAR(hireDate) = 2026;
-\`\`\`
+```
 
 更合适的写法：
 
-\`\`\`sql
+```sql
 SELECT employeeId, hireDate
 FROM employee
 WHERE hireDate >= '2026-01-01'
   AND hireDate < '2027-01-01';
-\`\`\`
+```
 
-类似地，使用 \`salary + bonus\` 这样的计算表达式过滤，也可能使索引无法发挥作用。应尽量让过滤条件直接作用于原始属性。
+类似地，使用 `salary + bonus` 这样的计算表达式过滤，也可能使索引无法发挥作用。应尽量让过滤条件直接作用于原始属性。
 
 这说明 Ontology SQL 并不是把所有查询都交给一个通用关系执行器。数据模型和索引仍然来自 Ontology 后端，SQL 写法需要考虑其访问特征。
 
