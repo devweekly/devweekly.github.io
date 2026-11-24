@@ -603,7 +603,141 @@ PostgreSQL Row-Level Security 可以把行级访问规则放在数据库中。�
 
 **最终选择：PostgreSQL 做 Ontology Runtime，Snowflake 按需做 Analytics Layer。** 先用 PostgreSQL 的原生表、View、Planner、事务和 RLS 把对象模型跑通，真正遇到分析规模瓶颈时再增加 Snowflake。这样既能验证 Ontology 的核心价值，也不会在第一版就为一个并不需要的分布式查询引擎付出复杂度。
 
-## 11. 结论：SQL 不是重点，业务模型成为可查询接口才是
+
+## 11. Ontology 的数据从哪里来？以投资研究为例
+
+Ontology 不会凭空产生业务数据，也不应该把原始数据复制一遍后就宣布完成建模。它的数据通常来自多个系统：内部交易和投资组合系统、客户与研究管理系统、外部市场数据供应商、监管披露，以及宏观经济数据源。Ontology 的工作是把这些来源中的记录解析成稳定的业务对象，统一身份和关系，再把经过治理的数据与业务规则发布给应用和 Agent。
+
+下面用一个虚构的投资研究场景说明。假设研究团队覆盖一家虚构的上市公司 **Asterion Cloud, Inc.（ASTR）**，维护一只科技成长型投资组合。公司、证券、价格、财务数字、持仓和研究结论均为模拟数据，不代表真实证券或投资建议。
+
+### 11.1 数据源不是一个系统，而是几类不同的事实
+
+| 数据域 | 典型来源 | 进入 Ontology 的对象 | 需要保留的来源信息 |
+| --- | --- | --- | --- |
+| 发行人和证券主数据 | OpenFIGI、GLEIF、交易所参考数据、商业 Security Master | Issuer、Security、Listing、Identifier | FIGI、LEI、ISIN、CUSIP、Ticker、交易所、有效期、映射来源 |
+| 监管披露和财务数据 | SEC EDGAR filings、XBRL；其他市场的监管披露源 | Filing、Financial Fact、Corporate Event | CIK、Accession Number、taxonomy、concept、period、单位、原始文件 URL |
+| 市场行情与公司行动 | 有授权的行情供应商、交易所数据 | Price Observation、Corporate Action、Trading Calendar | Vendor、instrument ID、交易时间、币种、调整口径、延迟/实时标记 |
+| 投资组合和交易 | 内部 PMS / OMS、托管行或基金会计系统 | Portfolio、Position、Order、Trade、Cash Balance | 内部账户 ID、证券 ID、数量、成本、估值时间、账簿来源 |
+| 研究活动 | Research Management System、文档库、研究员提交 | Research Report、Analyst、Recommendation、Thesis、Catalyst、Risk Factor | 作者、团队、版本、发布日期、审批状态、引用材料 |
+| 宏观与行业数据 | FRED、统计机构、行业数据供应商 | Economic Series、Observation、Industry、Peer Group | Series ID、发布日期、观测期、修订版本、来源机构 |
+| 客户与适当性（如涉及客户投资建议） | CRM、客户主数据、适当性/合规系统 | Client、Mandate、Restriction、Suitability Profile | 客户权限域、适用范围、生效期、敏感级别 |
+
+公共数据源可以帮助构建可演示的基础数据集。SEC 的 EDGAR API 提供申报历史和 XBRL 财务事实，适合取得发行人披露及其原始依据；OpenFIGI 可用于证券标识符映射；GLEIF 提供 LEI 及法律实体参考数据；FRED 提供宏观经济时间序列。市场行情、机构持仓和研究报告则通常需要商业授权或内部数据，不能把公开披露当作实时行情或完整持仓数据。
+
+参考入口：[SEC EDGAR APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces)、[OpenFIGI API](https://www.openfigi.com/api)、[GLEIF API](https://www.gleif.org/en/lei-data/gleif-api)、[FRED API](https://fred.stlouisfed.org/docs/api/fred/)。具体数据集的使用权、再分发限制、刷新频率和历史覆盖范围必须单独确认。
+
+### 11.2 从原始记录到 Ontology 对象
+
+数据进入平台时，不应直接写入最终 Object Store。建议分成五个阶段：
+
+1. **Source Landing**：按来源和批次保存原始响应、文件或事件，保留原文、采集时间、来源主键和校验值。原始记录不可被规范化过程覆盖。
+2. **Canonicalisation**：解析字段、单位、币种、时区、会计期间和标识符，把供应商字段映射到内部标准字段。无法确认的值保留原始表达，不做猜测性转换。
+3. **Identity Resolution**：解析 Issuer、Security、Listing、Person 等实体身份。先使用权威 ID 和明确映射，再用名称、地址、别名等辅助匹配；模糊匹配进入人工复核队列。
+4. **Ontology Publishing**：通过已批准的映射规则创建或更新 Object，并建立 Link。发布前执行主键唯一性、关系完整性、时间有效性、来源覆盖和权限检查。
+5. **Derived Data**：在对象层之上生成估值指标、风险暴露、同行比较、研究观点和事件影响等派生对象。派生结果必须记录公式/模型版本、输入对象版本和计算时间。
+
+数据接入与对象发布是两个不同的生命周期。一个来源记录可以被拒绝、隔离或等待人工确认，而不应因为 ETL 成功就自动成为可信业务对象。
+
+![Investment research ontology data ingestion and publishing architecture](/diagrams/palantir-ontology-sql/investment-research-ontology-data-flow.svg)
+
+*图：从外部与内部数据源，经原始接入、标准化、实体解析和治理发布，形成可查询的投资研究对象图。派生研究结论与原始事实分开存储，并保留来源和版本。*
+
+### 11.3 模拟的投资研究 Ontology
+
+这套示例不需要一开始就定义几十种对象。第一版可以围绕以下核心对象建模：
+
+| Object Type | 关键属性 | 主要关系 |
+| --- | --- | --- |
+| Issuer | issuerId、legalName、LEI、CIK、domicile、sector | ISSUER_HAS_SECURITY、ISSUER_FILED |
+| Security | securityId、FIGI、ISIN、CUSIP、assetClass、currency | SECURITY_ISSUED_BY、SECURITY_HAS_LISTING |
+| Listing | listingId、ticker、exchange、tradingCurrency、validFrom、validTo | LISTING_REFERENCES_SECURITY |
+| Price Observation | securityId、observedAt、close、volume、currency、adjustmentType | PRICE_FOR_SECURITY |
+| Filing | accessionNumber、formType、filedAt、periodEnd、documentUrl | FILING_BY_ISSUER、FILING_CONTAINS_FACT |
+| Financial Fact | concept、value、unit、periodStart、periodEnd、dimensions、taxonomy | FACT_REPORTED_IN、FACT_FOR_ISSUER |
+| Portfolio | portfolioId、baseCurrency、mandate、asOf | PORTFOLIO_HAS_POSITION |
+| Position | positionId、quantity、marketValue、costBasis、asOf | POSITION_IN_PORTFOLIO、POSITION_IN_SECURITY |
+| Research Report | reportId、title、author、publishedAt、status、version | REPORT_COVERS_ISSUER、REPORT_CITES_SOURCE |
+| Thesis | thesisId、stance、horizon、confidence、status、asOf | THESIS_ABOUT_ISSUER、THESIS_SUPPORTED_BY |
+| Catalyst / Risk Factor | eventType、description、expectedAt、severity、status | AFFECTS_ISSUER、AFFECTS_SECURITY |
+| Analyst | analystId、team、coverageStatus | ANALYST_AUTHORED_REPORT、ANALYST_OWNS_THESIS |
+
+这里的关系不仅是为了方便 JOIN。比如 Position 属于某个 Portfolio、对应某个 Security；Security 由 Issuer 发行；Listing 是 Security 在特定交易所的交易标识。Ticker 不是 Security 的稳定主键：同一证券可能有多个 Listing，Ticker 也可能随时间变化或被不同市场重复使用。
+
+一个简化的对象关系视图如下：
+
+```text
+Portfolio ──has position──> Position ──in security──> Security
+                                                       │
+Issuer <──issued by────────────────────────────────────┘
+  │
+  ├──has listing via Security──> Listing ──has──> Price Observation
+  ├──filed──> Filing ──contains──> Financial Fact
+  ├──covered by──> Research Report ──cites──> Filing / Market Data
+  └──evaluated by──> Thesis ──supported by──> Financial Fact / Catalyst / Risk Factor
+```
+
+上图表达的是业务关系，不是物理表结构。实现时可以把一对多关系放在外键属性上，把真正需要独立身份、双向导航、关系属性或多对多语义的关系定义为 Link Type。
+
+### 11.4 用一组模拟数据串起对象
+
+假设接入后得到以下模拟对象：
+
+| 对象 | 示例数据 |
+| --- | --- |
+| Issuer | `ISSUER-001`，Asterion Cloud, Inc.，LEI/CIK 使用明确标注的模拟值 |
+| Security | `SEC-001`，ASTR 普通股，USD |
+| Listing | `LISTING-001`，ASTR / NASDAQ，示例有效期从 2024-01-01 开始 |
+| Portfolio | `PORT-TECH-01`，US Technology Growth |
+| Position | `POS-001`，持有 12,000 股 `SEC-001`，估值日 2026-11-20 |
+| Price Observation | `PRICE-001`，2026-11-20 收盘价 82.40 USD，明确标记为模拟行情 |
+| Filing | `FILING-001`，FY2025 10-K，文档 URL 指向模拟测试文件而非真实 SEC filing |
+| Financial Fact | `FACT-001`，FY2025 Revenue 2.4bn USD，来源指向 `FILING-001`，标记为模拟事实 |
+| Research Report | `REPORT-001`，Cloud infrastructure coverage update，Analyst `ANALYST-07` 编写 |
+| Thesis | `THESIS-001`，Positive / 12-month horizon，基于收入增长、毛利率和估值假设形成 |
+
+一个研究问题可以沿着这些关系展开：某组合持有多少 ASTR；该持仓对应哪个发行人和上市地；最近价格和估值日是什么；最新财报披露了哪些财务事实；研究报告引用了哪些披露；当前 Thesis 的观点由哪些事实支持、有哪些尚未解决的风险。
+
+SQL 查询只是读取这张业务关系网的一种方式。实际系统还需要让用户从 Position 跳转到 Security、Issuer、Filing 和 Research Report，并能看到每个属性的来源、时间和权限。
+
+### 11.5 最重要的是事实、观点和计算结果不能混为一谈
+
+投资研究尤其容易把不同性质的数据混在一起。至少要明确区分：
+
+- **Observed Fact**：来源直接披露或测得的事实，例如 SEC XBRL 中的收入、供应商提供的收盘价、PMS 中的持仓数量。
+- **Analyst Assertion**：研究员的判断，例如收入质量改善、竞争优势增强、目标价或评级。必须有作者、时间、版本、审批状态和支持材料。
+- **Derived Metric**：平台按公式计算的结果，例如持仓市值、收益率、估值倍数、行业暴露。必须记录公式版本、输入数据版本、币种和 as-of 时间。
+- **Model Output**：模型生成的分类、情绪、事件抽取或风险信号。必须保留模型版本、提示/规则版本、置信度和人工复核状态，不能伪装成监管披露事实。
+
+建议增加统一的 Provenance / Assertion 机制：每个关键属性或派生对象都能追溯到 Source Record、数据批次、来源时间和转换规则。研究结论通过 `SUPPORTED_BY`、`CONTRADICTED_BY` 等关系连接证据，而不是把引用 URL 放在自由文本里就算完成溯源。
+
+金融数据还必须采用双时间语义：**有效时间（valid time）**表示事实在业务世界何时成立，**记录时间（transaction/record time）**表示平台何时获知或记录它。比如一份 10-K 在 2026-02-20 提交，披露的财年截止日可能是 2025-12-31；后续重述又可能改变历史数字。只保留一个 `updated_at` 无法支持“当时研究员能看到什么”的回溯分析。
+
+### 11.6 需要显式处理的金融领域约束
+
+- **标识符有类型和有效期**：CIK 标识 SEC filer，LEI 标识法律实体，FIGI/ISIN/CUSIP 标识不同层级的金融工具，Ticker 标识某个市场上的交易代码。不要把它们塞进一个 `externalId` 字段后混用。
+- **Issuer、Security、Listing 分开**：发行人、证券和上市交易代码不是同一对象。公司可以发行多类证券，一种证券也可能有多个市场 Listing。
+- **财务事实需要上下文**：概念、taxonomy、单位、币种、期间、维度、报告日期和是否重述，都是事实含义的一部分。不能只存 `revenue = 2.4bn`。
+- **价格需要市场语义**：交易时间、时区、币种、交易所、复权口径、行情类型和供应商延迟状态都应保留。
+- **持仓必须有 as-of**：数量、成本和市值属于特定账簿与估值时点；交易、结算、公司行动和估值调整会改变结果。
+- **权限与授权要下沉到对象和属性**：研究团队、交易团队、客户团队的访问范围不同；供应商许可可能限制用户、用途、缓存和再分发。RLS 不能替代数据许可和业务授权检查。
+- **研究观点必须版本化**：评级变更、目标价调整、报告撤回和合规审批不能覆盖历史版本。Agent 生成的观点不能自动变成正式研究结论。
+
+### 11.7 如何把它映射到 PostgreSQL 实现
+
+前一节建议的 PostgreSQL Runtime 可以承载这套模型，但不要把所有东西都塞进一张 `ontology_object` JSONB 表。对投资研究场景，更实用的第一版是：
+
+- 核心对象采用类型化表：`issuer`、`security`、`listing`、`portfolio`、`position`、`filing`、`research_report`、`thesis`。
+- 对象身份和来源记录独立：`external_identifier`、`source_record`、`ingestion_batch`、`object_provenance`。
+- 关系按语义建表：`security_issuer`、`portfolio_position`、`position_security`、`report_issuer`、`thesis_evidence`。有关系属性或多对多语义时，不要仅靠 JSON 数组表达。
+- 时间序列数据分开管理：`price_observation`、`financial_fact`、`economic_observation`，按 instrument/concept 和时间建立合适索引；大规模行情历史可分区或下沉分析仓库。
+- 研究判断和模型输出独立版本化：`analyst_assertion`、`model_assessment`，与客观事实使用不同权限和状态流。
+- 元数据 Registry 管理 Object Type、Property、Link Type、Interface、Function 和 Action；不要把业务定义散落在 ETL 代码里。
+
+第一版不需要自研图数据库或 SQL Parser。PostgreSQL 的外键、唯一约束、部分索引、范围类型、JSONB、View、RLS 和事务足以验证核心对象模型。等到跨对象遍历、事件传播或超大规模关系查询确实成为瓶颈，再根据实际查询负载评估专门的图计算或搜索组件。
+
+**核心原则：数据源负责提供证据，身份解析负责判断“这是哪个对象”，Ontology 负责表达对象及其业务关系，研究流程负责形成观点，Agent 负责在权限边界内查询和辅助工作。** 这几件事不能交给同一个 LLM 步骤一次性完成。
+
+## 12. 结论：SQL 不是重点，业务模型成为可查询接口才是
 
 Ontology SQL 的 GA 不只是给 Ontology 增加了一种语法。它把 SQL 查询能力直接接入 Ontology 对象模型，并通过 Object Storage 和 OSS 的执行路径完成查询；SQL Functions 又把查询封装成平台函数，让不同应用复用同一份逻辑。
 
