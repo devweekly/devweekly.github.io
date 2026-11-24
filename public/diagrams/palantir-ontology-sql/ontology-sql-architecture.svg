@@ -9,8 +9,8 @@
 <rect x="44" y="116" width="250" height="450" rx="14" fill="#F1EDE4" stroke="#CFC5B8"/><text x="66" y="146" font-size="12" font-weight="650" fill="#65584D">QUERY ENTRY</text>
 <rect x="318" y="116" width="350" height="450" rx="14" fill="#F1EDE4" stroke="#CFC5B8"/><text x="340" y="146" font-size="12" font-weight="650" fill="#65584D">ONTOLOGY SQL BACKEND</text>
 <rect x="692" y="116" width="544" height="450" rx="14" fill="#F1EDE4" stroke="#CFC5B8"/><text x="714" y="146" font-size="12" font-weight="650" fill="#65584D">OBJECT QUERY AND COMPUTE</text>
-<path d="M270 248 H310" fill="none" stroke="#65584D" stroke-width="2" marker-end="url(#arrow)"/>
-<path d="M270 420 H292 V286 H310" fill="none" stroke="#65584D" stroke-width="1.5" marker-end="url(#arrow)"/>
+<path d="M270 248 H342" fill="none" stroke="#65584D" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M270 420 H300 V286 H342" fill="none" stroke="#65584D" stroke-width="1.5" marker-end="url(#arrow)"/>
 <path d="M480 248 H510" fill="none" stroke="#65584D" stroke-width="2" marker-end="url(#arrow)"/>
 <path d="M575 306 V344" fill="none" stroke="#65584D" stroke-width="2" marker-end="url(#arrow)"/>
 <path d="M650 390 H710" fill="none" stroke="#8B5A2B" stroke-width="2.4" marker-end="url(#arrow-accent)"/>
