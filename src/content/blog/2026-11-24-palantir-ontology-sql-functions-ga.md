@@ -663,20 +663,7 @@ Ontology 不会凭空产生业务数据，也不应该把原始数据复制一�
 
 这里的关系不仅是为了方便 JOIN。比如 Position 属于某个 Portfolio、对应某个 Security；Security 由 Issuer 发行；Listing 是 Security 在特定交易所的交易标识。Ticker 不是 Security 的稳定主键：同一证券可能有多个 Listing，Ticker 也可能随时间变化或被不同市场重复使用。
 
-一个简化的对象关系视图如下：
-
-```text
-Portfolio ──has position──> Position ──in security──> Security
-                                                       │
-Issuer <──issued by────────────────────────────────────┘
-  │
-  ├──has listing via Security──> Listing ──has──> Price Observation
-  ├──filed──> Filing ──contains──> Financial Fact
-  ├──covered by──> Research Report ──cites──> Filing / Market Data
-  └──evaluated by──> Thesis ──supported by──> Financial Fact / Catalyst / Risk Factor
-```
-
-上图表达的是业务关系，不是物理表结构。实现时可以把一对多关系放在外键属性上，把真正需要独立身份、双向导航、关系属性或多对多语义的关系定义为 Link Type。
+在这张对象图中，Portfolio 通过 Position 持有 Security；Security 由 Issuer 发行，并通过 Listing 对应一个或多个交易市场。Issuer 关联监管 Filing，Filing 提供 Financial Fact；Research Report 覆盖 Issuer 并引用 Filing 或 Market Data；Thesis 则关联支持它的 Financial Fact、Catalyst 和 Risk Factor。这里表达的是业务关系，不是物理表结构。实现时可以把一对多关系放在外键属性上，把真正需要独立身份、双向导航、关系属性或多对多语义的关系定义为 Link Type。
 
 ### 11.4 用一组模拟数据串起对象
 
