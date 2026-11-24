@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1080" viewBox="0 0 1800 1080" role="img" aria-labelledby="title desc">
+<title id="title">Investment research ontology data flow</title>
+<desc id="desc">Internal and external financial data sources flow through landing, canonicalisation, identity resolution and governance before being published as ontology objects and relationships, queried by research applications and agents.</desc>
+<defs>
+  <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0 0 L12 6 L0 12 z" fill="#64748b"/></marker>
+  <style>
+    text{font-family:Inter,Arial,sans-serif;fill:#172033}
+    .title{font-size:30px;font-weight:700}.sub{font-size:17px;fill:#526078}
+    .h{font-size:21px;font-weight:700}.body{font-size:16px}.small{font-size:14px;fill:#526078}
+    .box{stroke-width:2;rx:14}.src{fill:#f8fafc;stroke:#94a3b8}.stage{fill:#eff6ff;stroke:#60a5fa}.gov{fill:#fff7ed;stroke:#fb923c}
+    .onto{fill:#ecfdf5;stroke:#34a37a}.app{fill:#f5f3ff;stroke:#8b7bd6}.edge{stroke:#64748b;stroke-width:3;fill:none;marker-end:url(#arrow)}
+    .dash{stroke-dasharray:8 7}.tag{font-size:13px;font-weight:700;fill:#315b91}
+  </style>
+</defs>
+<rect width="1800" height="1080" fill="#ffffff"/>
+<text x="70" y="64" class="title">Investment research ontology: from source records to governed business objects</text>
+<text x="70" y="96" class="sub">Illustrative design • synthetic issuer and portfolio data • source facts, analyst judgement and computed metrics remain distinct</text>
+
+<!-- Sources -->
+<text x="70" y="155" class="h">1. Source systems</text>
+<rect x="70" y="180" width="360" height="150" class="box src"/>
+<text x="94" y="215" class="h">External reference &amp; filings</text>
+<text x="94" y="247" class="body">SEC EDGAR / XBRL • OpenFIGI • GLEIF</text>
+<text x="94" y="276" class="body">Exchange &amp; licensed market data</text>
+<text x="94" y="305" class="small">Issuer, instrument, disclosure, price</text>
+<rect x="70" y="355" width="360" height="150" class="box src"/>
+<text x="94" y="390" class="h">Internal investment systems</text>
+<text x="94" y="422" class="body">PMS / OMS • custody • fund accounting</text>
+<text x="94" y="451" class="body">CRM • research management • DMS</text>
+<text x="94" y="480" class="small">Portfolio, position, trade, report, analyst</text>
+<rect x="70" y="530" width="360" height="130" class="box src"/>
+<text x="94" y="565" class="h">Macro &amp; industry sources</text>
+<text x="94" y="597" class="body">FRED • statistical agencies • vendors</text>
+<text x="94" y="626" class="small">Economic series, industry and peer data</text>
+
+<!-- ingestion -->
+<text x="500" y="155" class="h">2. Data integration &amp; control</text>
+<rect x="500" y="180" width="390" height="120" class="box stage"/>
+<text x="526" y="218" class="h">Source landing</text>
+<text x="526" y="250" class="body">Immutable payloads • source IDs • batch IDs</text>
+<text x="526" y="276" class="small">Capture time, checksum, source licence</text>
+<rect x="500" y="330" width="390" height="120" class="box stage"/>
+<text x="526" y="368" class="h">Canonicalisation</text>
+<text x="526" y="400" class="body">Schema mapping • units • currency • time</text>
+<text x="526" y="426" class="small">Preserve original values and transformations</text>
+<rect x="500" y="480" width="390" height="120" class="box gov"/>
+<text x="526" y="518" class="h">Identity resolution</text>
+<text x="526" y="550" class="body">CIK / LEI / FIGI / ISIN / CUSIP / ticker</text>
+<text x="526" y="576" class="small">Effective-dated mapping; ambiguous matches reviewed</text>
+<rect x="500" y="630" width="390" height="120" class="box gov"/>
+<text x="526" y="668" class="h">Quality &amp; entitlement gates</text>
+<text x="526" y="700" class="body">Uniqueness • referential checks • freshness</text>
+<text x="526" y="726" class="small">Data licence, access policy, reject / quarantine</text>
+
+<!-- ontology -->
+<text x="970" y="155" class="h">3. Ontology Runtime (PostgreSQL)</text>
+<rect x="970" y="180" width="420" height="570" class="box onto"/>
+<text x="996" y="220" class="h">Object &amp; relationship model</text>
+<rect x="995" y="245" width="370" height="104" rx="10" fill="#ffffff" stroke="#9acbb8"/>
+<text x="1015" y="277" class="body" font-weight="700">Issuer → Security → Listing</text>
+<text x="1015" y="306" class="small">Identifier, exchange, effective dates</text>
+<rect x="995" y="365" width="370" height="104" rx="10" fill="#ffffff" stroke="#9acbb8"/>
+<text x="1015" y="397" class="body" font-weight="700">Filing → Financial Fact</text>
+<text x="1015" y="426" class="small">Taxonomy, concept, period, unit, context</text>
+<rect x="995" y="485" width="370" height="104" rx="10" fill="#ffffff" stroke="#9acbb8"/>
+<text x="1015" y="517" class="body" font-weight="700">Portfolio → Position → Security</text>
+<text x="1015" y="546" class="small">Quantity, valuation time, account scope</text>
+<rect x="995" y="605" width="370" height="104" rx="10" fill="#ffffff" stroke="#9acbb8"/>
+<text x="1015" y="637" class="body" font-weight="700">Research Report → Thesis</text>
+<text x="1015" y="666" class="small">Citations, analyst, status, version, evidence</text>
+
+<!-- provenance -->
+<rect x="970" y="790" width="420" height="170" class="box gov"/>
+<text x="996" y="830" class="h">Cross-cutting governance</text>
+<text x="996" y="862" class="body">SourceRecord • Provenance • valid time / record time</text>
+<text x="996" y="892" class="body">Object version • data quality • audit • RLS</text>
+<text x="996" y="922" class="small">Facts ≠ analyst assertions ≠ derived metrics ≠ model output</text>
+
+<!-- consumption -->
+<text x="1470" y="155" class="h">4. Query &amp; action</text>
+<rect x="1470" y="180" width="270" height="150" class="box app"/>
+<text x="1494" y="218" class="h">SQL / Views</text>
+<text x="1494" y="250" class="body">PostgreSQL Planner</text>
+<text x="1494" y="279" class="small">Read-only query surface</text>
+<rect x="1470" y="355" width="270" height="150" class="box app"/>
+<text x="1494" y="393" class="h">Research workspace</text>
+<text x="1494" y="425" class="body">Coverage • portfolio • evidence</text>
+<text x="1494" y="454" class="small">Analyst review and approval</text>
+<rect x="1470" y="530" width="270" height="150" class="box app"/>
+<text x="1494" y="568" class="h">AI Agent</text>
+<text x="1494" y="600" class="body">Search • explain • compare</text>
+<text x="1494" y="629" class="small">Read-only SQL / published functions</text>
+<rect x="1470" y="705" width="270" height="130" class="box gov"/>
+<text x="1494" y="745" class="h">Action Service</text>
+<text x="1494" y="777" class="body">Controlled write operations</text>
+<text x="1494" y="806" class="small">Authorisation • validation • audit</text>
+
+<!-- arrows -->
+<path d="M430 250 H500" class="edge"/><path d="M430 425 H500" class="edge"/><path d="M430 595 H500" class="edge"/>
+<path d="M695 300 V330" class="edge"/><path d="M695 450 V480" class="edge"/><path d="M695 600 V630" class="edge"/>
+<path d="M890 690 H930 V465 H970" class="edge"/>
+<path d="M1390 275 H1470" class="edge"/><path d="M1390 420 H1430 V430 H1470" class="edge"/><path d="M1390 550 H1430 V605 H1470" class="edge"/>
+<path d="M1390 875 H1430 V770 H1470" class="edge dash"/>
+<path d="M1180 750 V790" class="edge dash"/>
+<text x="915" y="450" class="tag">publish objects + links</text>
+<text x="1410" y="258" class="tag">read</text>
+<text x="1410" y="408" class="tag">read</text>
+<text x="1410" y="582" class="tag">read</text>
+<text x="1410" y="858" class="tag">controlled writes</text>
+
+<text x="70" y="1020" class="small">Design boundary: source systems remain authoritative for their records; the Ontology is the governed business model and access surface, not a replacement for every upstream system.</text>
+</svg>
