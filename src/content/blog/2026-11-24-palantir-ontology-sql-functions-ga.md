@@ -705,7 +705,7 @@ Ontology 不是所有系统都需要的中间层。单一应用、少量数据�
 
 先验证研究员能否更快地完成持仓穿透、财报查证和观点溯源。如果同一模型随后被研究、风险和合规流程持续复用，再扩展 Function 和 Action；如果现有 SQL/API 已经够用，就没有必要建设通用 Ontology 平台。
 
-## 13. 结论
+## 11. 结论
 
 Ontology SQL 的 GA 不只是给 Ontology 增加了一种语法。它把 SQL 查询能力直接接入 Ontology 对象模型，并通过 Object Storage 和 OSS 的执行路径完成查询；SQL Functions 又把查询封装成平台函数，让不同应用复用同一份逻辑。
 
