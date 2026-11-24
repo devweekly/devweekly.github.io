@@ -21,9 +21,7 @@ description: "拆解 Palantir Ontology SQL 与 SQL Functions GA：对象和关�
 
 Palantir 在 2026 年 11 月 12 日宣布 Ontology SQL 与 SQL Functions 正式 GA。Ontology SQL 允许使用 Spark SQL 方言的一个子集查询 Ontology 中的 Object Types、Interfaces 和 Many-to-Many Links；SQL Functions 则把带参数的查询发布为 Foundry Function，供 Workshop、Actions、Automate 和 Ontology SDK 等组件复用。
 
-这条消息值得关注的原因不在于 Foundry 又增加了一种 SQL 编辑器。SQL Studio 早已同时支持 Dataset 和 Ontology 查询，背后分别由 Furnace 与 Ontology SQL 两个引擎处理。此次 GA 的重点，是 Ontology SQL 和 SQL Functions 从预览能力进入正式可用状态。
-
-更重要的是它改变了 Ontology 的使用方式：开发者不必总是通过 Object Set API、专用 SDK 或应用函数逐步拼接对象查询，可以直接用 SQL 表达关系查询；一段查询也可以发布成平台级业务函数，让多个应用共享同一份查询逻辑。
+SQL Studio 此前已经支持 Dataset 和 Ontology 两种查询模式，分别由 Furnace 和 Ontology SQL 执行。这次 GA 将 Ontology SQL 与 SQL Functions 转为正式能力：开发者可以用 SQL 查询对象和关系，也可以把带参数的查询发布为函数，供多个应用调用。
 
 但不要把它理解成“Palantir 把 Ontology 变成了一个普通关系数据库”。Ontology SQL 有自己的数据提供器、查询规划和执行路径，底层仍然是 Ontology 对象模型与 Object Storage。它只支持查询，不负责修改对象；它也不是完整的 Spark SQL，更不是替代 Snowflake、PostgreSQL 或通用数据仓库的新数据库。
 
@@ -63,7 +61,7 @@ GROUP BY c.customerId, c.name;
 
 上面是关系查询的逻辑示意，`customer_object` 等名称用于帮助理解，不是可以直接复制到 Foundry 的真实表名。实际 Ontology SQL 使用 Object Type RID 引用对象类型；列名使用 Ontology Property 的 API name，而不是 UI 中的显示名称。下面会给出官方语法。
 
-这点很重要：SQL 查询面对的是 Ontology 中定义的业务对象，而不是要求开发人员重新找到并 JOIN 每一张底层数据集。底层数据如何进入 Ontology、如何建立索引以及如何关联数据源，仍由 Foundry 的数据接入和 Ontology 后端负责。
+查询直接面向 Ontology 定义的业务对象，不需要开发者重新定位并 JOIN 底层数据集。数据接入、索引和来源关联仍由 Foundry 后端负责。
 
 ## 2. SQL 与 Ontology 对象模型如何映射？
 
@@ -709,15 +707,9 @@ Ontology 不是所有系统都需要的中间层。单一应用、少量数据�
 
 Ontology SQL 的 GA 不只是给 Ontology 增加了一种语法。它把 SQL 查询能力直接接入 Ontology 对象模型，并通过 Object Storage 和 OSS 的执行路径完成查询；SQL Functions 又把查询封装成平台函数，让不同应用复用同一份逻辑。
 
-从架构上看，它的关键设计有三点：
+实现上，Foundry 复用 SQL 解析基础设施，通过 Ontology 专用 Data Provider 生成查询计划，再由 OSS 选择内存计算或 Spark。Worksheet 中的查询还可以发布为 SQL Function，供应用和自动化调用。
 
-- SQL 解析层与 Ontology 专用数据提供器分离，既复用已有 SQL 体系，又保留对象模型语义。
-- 查询执行与底层计算引擎解耦，由 OSS 为支持的查询形态选择内存计算或 Spark。
-- 查询逻辑可以从 Worksheet 发布为函数，进入 Foundry 的应用和自动化体系。
-
-这套设计最值得其他企业平台借鉴的地方，是不要把业务语义层做成一份只供目录浏览的元数据。对象、关系、权限和业务操作如果已经成为组织认可的模型，就应该让查询引擎、应用和 Agent 都能够直接使用它。
-
-但要达到这一点，语义模型本身必须可靠，权限需要贯穿访问链路，查询与写入需要明确分离。SQL 只是入口；真正有价值的是同一套业务模型能够被不同执行环境和应用一致地理解。
+企业自建平台可以借鉴这种分层，但前提是对象、关系和权限已经有稳定的业务定义。否则，SQL 只会让不一致的数据模型更容易被查询。读取和写入也应保持分离：查询走 SQL 或 Function，状态变更走受控 Action。
 
 ## 参考资料
 
