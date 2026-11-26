@@ -1,3 +1,0 @@
-# SQLite 是二进制，diff 无意义；标注 binary 可避免 git 逐行比对卡住
-worlds/*/*.db binary
-*.zip binary

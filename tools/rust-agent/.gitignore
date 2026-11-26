@@ -1,4 +1,0 @@
-/target
-.env
-*.log
-.rust-agent/
