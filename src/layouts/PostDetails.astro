@@ -66,14 +66,21 @@ const layoutProps = {
       </svg><span>Go back</span>
     </button>
 
-    <h1 transition:name={slugifyStr(title)} class="post-title">{title}</h1>
+    <h1
+      transition:name={slugifyStr(title)}
+      class="post-title"
+      data-pagefind-body
+      data-pagefind-meta="title"
+    >
+      {title}
+    </h1>
     <Datetime
       pubDatetime={pubDatetime}
       modDatetime={modDatetime}
       size="lg"
       className="my-2"
     />
-    <article id="article" role="article" class="prose mt-8">
+    <article id="article" role="article" class="prose mt-8" data-pagefind-body>
       <Content />
     </article>
 
