@@ -1,5 +1,5 @@
 import Fuse from "fuse.js";
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import Card from "@components/Card";
 import type { CollectionEntry } from "astro:content";
 
@@ -14,41 +14,55 @@ interface Props {
   searchList: SearchItem[];
 }
 
-interface SearchResult {
-  item: SearchItem;
-  refIndex: number;
-}
+type PagefindResult = {
+  url: string;
+  excerpt: string;
+  meta: Record<string, string>;
+};
+
+type PagefindApi = {
+  search: (
+    query: string
+  ) => Promise<{ results: { data: () => Promise<PagefindResult> }[] }>;
+};
+
+const MAX_RESULTS = 50;
+const DEBOUNCE_MS = 300;
+
+// Constructed at runtime: Vite cannot statically analyze this import, so the
+// build succeeds before pagefind emits its bundle into dist/.
+const dynamicImport = new Function("url", "return import(url)") as (
+  url: string
+) => Promise<unknown>;
 
 export default function SearchBar({ searchList }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [inputVal, setInputVal] = useState("");
-  const [searchResults, setSearchResults] = useState<SearchResult[] | null>(
-    null
-  );
+  const [pagefind, setPagefind] = useState<PagefindApi | null>(null);
+  const [fullTextResults, setFullTextResults] = useState<PagefindResult[]>([]);
+  const [titleResults, setTitleResults] = useState<SearchItem[]>([]);
 
-  const handleChange = (e: React.FormEvent<HTMLInputElement>) => {
-    setInputVal(e.currentTarget.value);
-  };
-
-  const fuse = useMemo(
-    () =>
-      new Fuse(searchList, {
-        keys: ["title", "description"],
-        includeMatches: true,
-        minMatchCharLength: 2,
-        threshold: 0.5,
-      }),
-    [searchList]
-  );
+  // Pagefind's assets are emitted at build time. In dev they don't exist,
+  // so fall back to title/description search via Fuse.
+  useEffect(() => {
+    let active = true;
+    dynamicImport("/pagefind/pagefind.js")
+      .then(mod => {
+        if (active)
+          setPagefind(
+            (mod as { default?: PagefindApi }).default ?? (mod as PagefindApi)
+          );
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
-    // if URL has search query,
-    // insert that search query in input field
     const searchUrl = new URLSearchParams(window.location.search);
     const searchStr = searchUrl.get("q");
     if (searchStr) setInputVal(searchStr);
-
-    // put focus cursor at the end of the string
     setTimeout(function () {
       inputRef.current!.selectionStart = inputRef.current!.selectionEnd =
         searchStr?.length || 0;
@@ -56,22 +70,67 @@ export default function SearchBar({ searchList }: Props) {
   }, []);
 
   useEffect(() => {
-    // Add search result only if
-    // input value is more than one character
-    let inputResult = inputVal.length > 1 ? fuse.search(inputVal) : [];
-    setSearchResults(inputResult);
-
-    // Update search string in URL
     if (inputVal.length > 0) {
       const searchParams = new URLSearchParams(window.location.search);
       searchParams.set("q", inputVal);
-      const newRelativePathQuery =
-        window.location.pathname + "?" + searchParams.toString();
-      history.replaceState(history.state, "", newRelativePathQuery);
+      history.replaceState(
+        history.state,
+        "",
+        window.location.pathname + "?" + searchParams.toString()
+      );
     } else {
       history.replaceState(history.state, "", window.location.pathname);
     }
   }, [inputVal]);
+
+  useEffect(() => {
+    const query = inputVal.trim();
+    if (query.length < 2) {
+      setFullTextResults([]);
+      setTitleResults([]);
+      return;
+    }
+
+    let stale = false;
+
+    if (pagefind) {
+      const timer = setTimeout(() => {
+        pagefind
+          .search(query)
+          .then(async ({ results }) => {
+            const data = await Promise.all(
+              results.slice(0, MAX_RESULTS).map(r => r.data())
+            );
+            if (!stale) setFullTextResults(data);
+          })
+          .catch(() => {
+            if (!stale) setFullTextResults([]);
+          });
+      }, DEBOUNCE_MS);
+      return () => {
+        stale = true;
+        clearTimeout(timer);
+      };
+    }
+
+    const fuse = new Fuse(searchList, {
+      keys: ["title", "description"],
+      includeMatches: true,
+      minMatchCharLength: 2,
+      threshold: 0.5,
+    });
+    setTitleResults(
+      fuse
+        .search(query)
+        .slice(0, MAX_RESULTS)
+        .map(r => r.item)
+    );
+    return () => {
+      stale = true;
+    };
+  }, [inputVal, pagefind, searchList]);
+
+  const resultCount = pagefind ? fullTextResults.length : titleResults.length;
 
   return (
     <>
@@ -91,33 +150,50 @@ export default function SearchBar({ searchList }: Props) {
           type="text"
           name="search"
           value={inputVal}
-          onChange={handleChange}
+          onChange={e => setInputVal(e.currentTarget.value)}
           autoComplete="off"
-          // autoFocus
           ref={inputRef}
         />
       </label>
 
       {inputVal.length > 1 && (
         <div className="mt-8">
-          Found {searchResults?.length}
-          {searchResults?.length && searchResults?.length === 1
-            ? " result"
-            : " results"}{" "}
-          for '{inputVal}'
+          Found {resultCount}
+          {resultCount === 1 ? " result" : " results"} for '{inputVal}'
         </div>
       )}
 
-      <ul>
-        {searchResults &&
-          searchResults.map(({ item, refIndex }) => (
+      {pagefind ? (
+        <ul>
+          {fullTextResults.map(result => (
+            <li
+              key={result.url}
+              className="my-6 border-b border-skin-fill pb-6"
+            >
+              <a
+                href={result.url}
+                className="text-lg font-semibold text-skin-accent hover:underline"
+              >
+                {result.meta?.title ?? result.url}
+              </a>
+              <div
+                className="mt-2 text-sm text-skin-base [&_mark]:bg-skin-accent [&_mark]:text-skin-base"
+                dangerouslySetInnerHTML={{ __html: result.excerpt }}
+              />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <ul>
+          {titleResults.map(item => (
             <Card
               href={`/posts/${item.slug}/`}
               frontmatter={item.data}
-              key={`${refIndex}-${item.slug}`}
+              key={item.slug}
             />
           ))}
-      </ul>
+        </ul>
+      )}
     </>
   );
 }
